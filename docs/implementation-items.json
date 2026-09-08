@@ -8,8 +8,8 @@
     "title": "[EPIC] Deliver the full TestRail 10.7 MCP server",
     "depends_on": [],
     "body_file": "docs/issues/EPIC.md",
-    "number": null,
-    "url": null,
+    "number": 1,
+    "url": "https://github.com/dichovsky/testrail-mcp/issues/1",
     "tools": []
   },
   "items": [
@@ -19,8 +19,8 @@
       "depends_on": [],
       "tools": [],
       "body_file": "docs/issues/F01.md",
-      "number": null,
-      "url": null
+      "number": 2,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/2"
     },
     {
       "id": "F02",
@@ -28,8 +28,8 @@
       "depends_on": [],
       "tools": [],
       "body_file": "docs/issues/F02.md",
-      "number": null,
-      "url": null
+      "number": 3,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/3"
     },
     {
       "id": "F03",
@@ -39,8 +39,8 @@
       ],
       "tools": [],
       "body_file": "docs/issues/F03.md",
-      "number": null,
-      "url": null
+      "number": 4,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/4"
     },
     {
       "id": "F04",
@@ -50,8 +50,8 @@
       ],
       "tools": [],
       "body_file": "docs/issues/F04.md",
-      "number": null,
-      "url": null
+      "number": 5,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/5"
     },
     {
       "id": "F05",
@@ -62,8 +62,8 @@
       ],
       "tools": [],
       "body_file": "docs/issues/F05.md",
-      "number": null,
-      "url": null
+      "number": 6,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/6"
     },
     {
       "id": "F06",
@@ -73,8 +73,8 @@
       ],
       "tools": [],
       "body_file": "docs/issues/F06.md",
-      "number": null,
-      "url": null
+      "number": 7,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/7"
     },
     {
       "id": "F07",
@@ -85,8 +85,8 @@
       ],
       "tools": [],
       "body_file": "docs/issues/F07.md",
-      "number": null,
-      "url": null
+      "number": 8,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/8"
     },
     {
       "id": "F08",
@@ -98,8 +98,8 @@
       ],
       "tools": [],
       "body_file": "docs/issues/F08.md",
-      "number": null,
-      "url": null
+      "number": 9,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/9"
     },
     {
       "id": "T01",
@@ -129,8 +129,8 @@
         "testrail_update_suite"
       ],
       "body_file": "docs/issues/T01.md",
-      "number": null,
-      "url": null
+      "number": 10,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/10"
     },
     {
       "id": "T02",
@@ -156,8 +156,8 @@
         "testrail_update_cases"
       ],
       "body_file": "docs/issues/T02.md",
-      "number": null,
-      "url": null
+      "number": 11,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/11"
     },
     {
       "id": "T03",
@@ -182,8 +182,8 @@
         "testrail_update_shared_step"
       ],
       "body_file": "docs/issues/T03.md",
-      "number": null,
-      "url": null
+      "number": 12,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/12"
     },
     {
       "id": "T04",
@@ -207,8 +207,8 @@
         "testrail_update_tests"
       ],
       "body_file": "docs/issues/T04.md",
-      "number": null,
-      "url": null
+      "number": 13,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/13"
     },
     {
       "id": "T05",
@@ -230,8 +230,8 @@
         "testrail_edit_result"
       ],
       "body_file": "docs/issues/T05.md",
-      "number": null,
-      "url": null
+      "number": 14,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/14"
     },
     {
       "id": "T06",
@@ -264,8 +264,8 @@
         "testrail_update_run_in_plan_entry"
       ],
       "body_file": "docs/issues/T06.md",
-      "number": null,
-      "url": null
+      "number": 15,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/15"
     },
     {
       "id": "T07",
@@ -290,8 +290,8 @@
         "testrail_update_milestone"
       ],
       "body_file": "docs/issues/T07.md",
-      "number": null,
-      "url": null
+      "number": 16,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/16"
     },
     {
       "id": "T08",
@@ -317,8 +317,8 @@
         "testrail_update_user"
       ],
       "body_file": "docs/issues/T08.md",
-      "number": null,
-      "url": null
+      "number": 17,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/17"
     },
     {
       "id": "T09",
@@ -341,8 +341,8 @@
         "testrail_update_variable"
       ],
       "body_file": "docs/issues/T09.md",
-      "number": null,
-      "url": null
+      "number": 18,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/18"
     },
     {
       "id": "T10",
@@ -366,8 +366,8 @@
         "testrail_get_version"
       ],
       "body_file": "docs/issues/T10.md",
-      "number": null,
-      "url": null
+      "number": 19,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/19"
     },
     {
       "id": "T11",
@@ -385,8 +385,8 @@
         "testrail_run_report"
       ],
       "body_file": "docs/issues/T11.md",
-      "number": null,
-      "url": null
+      "number": 20,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/20"
     },
     {
       "id": "T12",
@@ -413,8 +413,8 @@
         "testrail_delete_attachment"
       ],
       "body_file": "docs/issues/T12.md",
-      "number": null,
-      "url": null
+      "number": 21,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/21"
     },
     {
       "id": "R01",
@@ -436,8 +436,8 @@
       ],
       "tools": [],
       "body_file": "docs/issues/R01.md",
-      "number": null,
-      "url": null
+      "number": 22,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/22"
     },
     {
       "id": "R02",
@@ -449,8 +449,8 @@
       ],
       "tools": [],
       "body_file": "docs/issues/R02.md",
-      "number": null,
-      "url": null
+      "number": 23,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/23"
     },
     {
       "id": "R03",
@@ -462,8 +462,8 @@
       ],
       "tools": [],
       "body_file": "docs/issues/R03.md",
-      "number": null,
-      "url": null
+      "number": 24,
+      "url": "https://github.com/dichovsky/testrail-mcp/issues/24"
     }
   ]
 }
