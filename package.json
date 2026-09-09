@@ -1,0 +1,56 @@
+{
+  "name": "@dichovsky/testrail-mcp",
+  "version": "0.1.0-dev.0",
+  "description": "Local stdio MCP server for the TestRail API",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dichovsky/testrail-mcp.git"
+  },
+  "homepage": "https://github.com/dichovsky/testrail-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/dichovsky/testrail-mcp/issues"
+  },
+  "engines": {
+    "node": "^22.13.0 || >=24"
+  },
+  "bin": {
+    "testrail-mcp": "dist/cli.js"
+  },
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:package": "node scripts/verify-package.mjs",
+    "check": "npm run build && npm run typecheck && npm run lint && npm test && npm run test:package",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@dichovsky/testrail-api-client": "7.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "zod": "4.6.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@modelcontextprotocol/client": "2.0.0",
+    "@types/node": "22.20.2",
+    "eslint": "10.10.0",
+    "globals": "17.12.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.0",
+    "vitest": "4.1.11"
+  }
+}
