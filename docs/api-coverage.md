@@ -22,12 +22,14 @@ Full coverage means every listed HTTP verb/path operation has an MCP-accessible 
 
 Exact npm dependency **`@dichovsky/testrail-api-client@7.0.0` is the development baseline only**, with a committed lockfile. As checked on 2026-09-09, [npm metadata](https://registry.npmjs.org/@dichovsky%2Ftestrail-api-client/7.0.0) and [GitHub release/7.0.0](https://github.com/dichovsky/testrail-api-client/releases/tag/release/7.0.0) identify commit `71a80d984aea14713d8eeaf6ac9a0d41c1fba12b` as the latest published stable release. Its endpoint inventory, domain modules, and 181 endpoint/helper methods match this baseline; the published tarball was integrity-checked and its declarations and JavaScript bindings were verified. The machine-readable [operation inventory](operation-inventory.json) records that verification and the development-only dependency scope.
 
-**Production release is blocked on a new fixed published driver version**, which must include both:
+**Production release is blocked on a new fixed published driver version**, which must include all three requirements:
 
 - The network-guard fixes already present at inspected main commit `89f636e276ea701412bb06039e3b963d83126ea1` in `client-core.ts` and `config-validation.ts`. Published 7.0.0 lacks these fixes; see the [pinned changelog](https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/CHANGELOG.md).
 - A driver patch for `reports.runReport` and `reports.runCrossProjectReport`: use `bypassCache: true` and `retry: 'none'`, bypassing GET cache reads/writes **and pending-request coalescing**. These endpoints generate reports despite using GET. Each explicit invocation must execute independently without automatic retries. Both published 7.0.0 and the inspected main revision still need this patch; merely upgrading to that main commit is insufficient.
 
-Once the fixed package is published, pin its exact version in the production dependency and committed lockfile, then reverify this matrix and runtime regression checks against that package. An unpinned Git dependency does not satisfy the prerequisite. The fixes change execution behavior without changing this 133-endpoint inventory.
+- A public per-operation handle that exposes result completion separately from actual settlement of DNS/fetch/body/upload/retry/coalesced descendants, as defined in the [implementation contracts](implementation-contracts.md). The inspected public method promise can reject at a deadline while background work remains pending; F03 cannot enforce its capacity/cleanup contract without this addition.
+
+Once the fixed package is published, F03 must pin its exact version in the production dependency and committed lockfile, then reverify this matrix and runtime regression checks against that package. An unpinned Git dependency does not satisfy the prerequisite. The runtime changes and settlement API do not change this 133-endpoint inventory or add an MCP tool.
 
 ## Counting and pagination rules
 

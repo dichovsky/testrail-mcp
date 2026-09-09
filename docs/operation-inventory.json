@@ -31,7 +31,7 @@
     "recommended_exact_dependency": "7.0.0",
     "endpoint_and_module_inventory_matches_source_commit": true,
     "published_methods_and_helpers_verified": 181,
-    "runtime_caveat": "Exact npm 7.0.0 is the development baseline only. It lacks the inspected main commit's network-guard fixes, and both revisions still require the report-generator cache/coalescing bypass and no-retry patch. Production release requires a new fixed published driver, pinned and verified exactly.",
+    "runtime_caveat": "Exact npm 7.0.0 is the development baseline only. It lacks the inspected main commit's network-guard fixes, and both revisions still require the report-generator cache/coalescing bypass and no-retry patch. Production release requires a new fixed published driver, pinned and verified exactly. The inspected public method promises can reject while DNS/fetch/body descendants remain pending; F03 additionally requires a published public operation-settlement API.",
     "recommended_exact_dependency_scope": "development_only",
     "production_release": {
       "status": "blocked_on_published_driver_fixes",
@@ -59,6 +59,15 @@
           },
           "required_cache_behavior": "Bypass GET cache reads, GET cache writes, and pending-request coalescing.",
           "description": "These GET endpoints generate reports and must execute independently for each explicit invocation without automatic retries. Both exact npm 7.0.0 and inspected main still require this driver patch."
+        },
+        {
+          "id": "operation_result_and_settlement",
+          "status": "requires_driver_enhancement_and_publication",
+          "proposed_api": "trackOperation(callback) -> { result: Promise<T>, settled: Promise<void> }",
+          "description": "Expose actual per-operation descendant settlement separately from result deadlines. Track started/joined DNS, fetch, body reads and cancellation, uploads, retries and coalesced work. F03 retains capacity and staging until settled; rejected result promises alone are insufficient.",
+          "blocks_work_items": [
+            "F03"
+          ]
         },
         {
           "id": "published_dependency_pin_and_verification",

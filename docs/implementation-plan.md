@@ -14,7 +14,7 @@ Tracking epic: [EPIC](https://github.com/dichovsky/testrail-mcp/issues/1). There
 | --- | --- | --- | ---: |
 | [F01](https://github.com/dichovsky/testrail-mcp/issues/2) | Qualify and pin a published TestRail driver with required runtime fixes | None | — |
 | [F02](https://github.com/dichovsky/testrail-mcp/issues/3) | Scaffold the TypeScript ESM package and baseline CI | None | — |
-| [F03](https://github.com/dichovsky/testrail-mcp/issues/4) | Implement configuration, driver ownership and bounded invocation lifetime | [F02](https://github.com/dichovsky/testrail-mcp/issues/3) | — |
+| [F03](https://github.com/dichovsky/testrail-mcp/issues/4) | Implement configuration, driver ownership and bounded invocation lifetime | [F01](https://github.com/dichovsky/testrail-mcp/issues/2), [F02](https://github.com/dichovsky/testrail-mcp/issues/3) | — |
 | [F04](https://github.com/dichovsky/testrail-mcp/issues/5) | Build the operation registry, strict inputs and parameter manifest | [F02](https://github.com/dichovsky/testrail-mcp/issues/3) | — |
 | [F05](https://github.com/dichovsky/testrail-mcp/issues/6) | Implement preserved results, per-call warnings and truthful errors | [F03](https://github.com/dichovsky/testrail-mcp/issues/4), [F04](https://github.com/dichovsky/testrail-mcp/issues/5) | — |
 | [F06](https://github.com/dichovsky/testrail-mcp/issues/7) | Implement page defaults and bounded complete aggregation | [F05](https://github.com/dichovsky/testrail-mcp/issues/6) | — |
@@ -36,12 +36,12 @@ Tracking epic: [EPIC](https://github.com/dichovsky/testrail-mcp/issues/1). There
 | [R02](https://github.com/dichovsky/testrail-mcp/issues/23) | Document and qualify Codex, Claude Code and Copilot CLI | [R01](https://github.com/dichovsky/testrail-mcp/issues/22), [F07](https://github.com/dichovsky/testrail-mcp/issues/8), [F08](https://github.com/dichovsky/testrail-mcp/issues/9) | — |
 | [R03](https://github.com/dichovsky/testrail-mcp/issues/24) | Qualify TestRail 10.7 and ship the complete npm release | [F01](https://github.com/dichovsky/testrail-mcp/issues/2), [R01](https://github.com/dichovsky/testrail-mcp/issues/22), [R02](https://github.com/dichovsky/testrail-mcp/issues/23) | — |
 
-Dependencies describe completion prerequisites. An implementer may prepare fixtures or parallel code ahead of a dependency, but cannot close an item until its prerequisites and acceptance checks are satisfied. In particular, F02 and initial adapter development can use exact driver 7.0.0 while F01 obtains the fixed published release. T11 qualification and R03 release require that fixed driver.
+Dependencies describe completion prerequisites. An implementer may prepare fixtures or parallel code ahead of a dependency, but cannot close an item until its prerequisites and acceptance checks are satisfied. In particular, F02 and initial adapter development can use exact driver 7.0.0 while F01 obtains the fixed published release. F03 runtime completion, T11 qualification and R03 release require that fixed driver. A public method result deadline is not proof that DNS/fetch/body cleanup has settled; the added F03 → F01 dependency makes that runtime prerequisite explicit.
 
 ## Execution sequence
 
-1. **Foundation:** pursue F01 upstream qualification and F02 package/CI in parallel. F01 includes already identified network-guard fixes and report-generation cache/coalescing/retry behavior; it must name an actual published version, not a guessed future version.
-2. **Shared adapter:** after F02, develop F03 runtime/configuration and F04 registry/input infrastructure in parallel. F05 results/errors follows both; F06 pagination, F07 files and F08 stdio can then proceed alongside one another.
+1. **Foundation:** pursue F01 upstream qualification and F02 package/CI in parallel. F01 includes network-guard fixes, report-generation cache/coalescing/retry behavior and a public per-operation result/settlement handle; it must name an actual published version, not a guessed future version.
+2. **Shared adapter:** after F02, F04 registry/input work can proceed while F01 qualifies the enhanced driver. F03 runtime/configuration may be prepared in parallel, but completes only after both F01 and F02; it adopts the qualified package and uses its settlement handle. F05 results/errors follows both; F06 pagination, F07 files and F08 stdio can then proceed alongside one another.
 3. **Endpoint families:** implement T01–T12 in parallel as their shared dependencies are ready. Keep the public registry stable and partition edits by family. T03/T12 share F07, and T11 depends on F01. Each family owns its complete independent parameter manifest and fixtures, not only a handler list.
 4. **Integrated qualification:** R01 assembles exhaustive endpoint/parameter/protocol gates. R02 verifies the required client surfaces and setup documentation against the packed candidate.
 5. **Release:** R03 verifies the dedicated TestRail 10.7.0 baseline and final candidate, then publishes through the repository release process when authorized. All 133 operations and all required evidence must be complete before the full release is ready.
@@ -58,9 +58,9 @@ Dependencies describe completion prerequisites. An implementer may prepare fixtu
 
 | Gate | Required evidence | Owner |
 | --- | --- | --- |
-| Published driver | Exact version/integrity with required runtime fixes; public export and endpoint parity; report requests execute independently without retries | F01 |
+| Published driver | Exact version/integrity with required runtime fixes; public export and endpoint parity; report requests execute independently without retries; per-operation settlement remains pending for deadline losers | F01 |
 | Endpoint and parameter coverage | All 133 bindings, 28 resources, 24 page/all pairs and every supported parameter; independent positive/negative fixtures and omission-detection regressions | T01–T12, R01 |
-| Runtime and local files | Bounded calls/downloads, per-caller warnings, complete-result byte caps, honest cancellation/write outcomes, staging cleanup and persistent completed downloads | F03, F05–F07, R01 |
+| Runtime and local files | Bounded calls/downloads, per-caller warnings, complete-result byte caps, honest cancellation/write outcomes, staging cleanup after actual descendant settlement, persistent completed downloads and accurate local-effect annotations | F03, F05–F07, R01 |
 | Protocol and packaging | Legacy initialization plus MCP 2026-07-28 discovery; protocol-only stdout; tarball install and executable checks on Node 22/24 across Linux/macOS/Windows | F02, F08, R01 |
 | Required clients | Exact versions/builds, models/providers, settings and C01–C12 results for Codex desktop, Codex CLI, Claude Code and Copilot CLI | R02 |
 | TestRail 10.7.0 | Dedicated disposable environment, required features/licenses/permissions, operation-level live evidence and truthful availability reporting | R03 |
@@ -75,3 +75,5 @@ The 133-operation baseline is versioned, not a claim to cover future TestRail re
 The planning inventory was checked against the selected driver source and the published 7.0.0 artifact: 133 endpoint methods, 48 additional page/all helpers, 28 resource groups and 12 implementation families. All 133 endpoint tools are assigned exactly once; the 23-item dependency graph is acyclic. This validates the plan's accounting, not the future server's implementation or live compatibility.
 
 Publication verification on 2026-09-09 confirmed that the tracking epic and all 23 implementation issues are open and that their titles, bodies, numbers and URLs match the saved issue files and manifest. Documentation links and dependency references were checked after publication.
+
+A fresh review on 2026-09-10 identified and resolved two planning gaps: observable driver settlement after internal deadlines, and MCP annotations for persistent attachment downloads. The revised plan adds F03's completion dependency on F01, specifies the required upstream settlement API and regression cases, and separates local file effects from TestRail mutation/retry policy. The reviewer rechecked the revisions with no remaining concrete findings; all 23 work items remain acyclic and all 133 endpoints remain assigned exactly once. These are planning fixes; the upstream API and server tests remain implementation work.

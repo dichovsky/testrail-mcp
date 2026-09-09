@@ -20,7 +20,7 @@ Use TypeScript compiled to ESM, with Node engines `^22.13.0 || >=24`. Run the re
 
 Use the official `@modelcontextprotocol/server` SDK pinned to **2.0.0**, with `@modelcontextprotocol/client` **2.0.0** for protocol tests. Host the server through `serveStdio(factory)` and retain its default legacy compatibility. Test both the earlier initialization flow and MCP 2026-07-28 discovery; do not assume that a required client uses the modern revision by default. The [released stdio entry point](https://raw.githubusercontent.com/modelcontextprotocol/typescript-sdk/@modelcontextprotocol%2Fserver@2.0.0/packages/server/src/server/serveStdio.ts) supports both.
 
-Pin `@dichovsky/testrail-api-client` to **7.0.0** for initial development and deterministic contract tests. This is not an acceptable final production dependency until the required upstream fixes are published and adopted. The production release must consume an exact published driver version containing both the network-guard fixes identified after 7.0.0 and the fixes preventing report execution from being cached, coalesced, or blindly retried. Re-run parity and contract tests against that exact version before release. Do not substitute a floating branch, an independent HTTP implementation, or silent omission of affected endpoints. See [implementation contracts](implementation-contracts.md) and [implementation plan](implementation-plan.md) for the release dependencies and verification.
+Pin `@dichovsky/testrail-api-client` to **7.0.0** for initial development and deterministic contract tests. This is not an acceptable final production dependency until the required upstream fixes are published and adopted. The production release must consume an exact published driver version containing the network-guard fixes identified after 7.0.0, the fixes preventing report execution from being cached/coalesced/retried, and the public per-operation result/settlement handle specified in the contracts. F03 runtime completion depends on this qualified driver through F01; a public method deadline can otherwise reject before its DNS/fetch/body descendants settle. Re-run parity and contract tests against that exact version before release. Do not substitute a floating branch, an independent HTTP implementation, or silent omission of affected endpoints. See [implementation contracts](implementation-contracts.md) and [implementation plan](implementation-plan.md) for the release dependencies and verification.
 
 ```mermaid
 flowchart LR
@@ -90,7 +90,7 @@ The MCP server uses the configured user's TestRail credentials, and TestRail enf
 
 Input validation, credential protection, and accurate handling of failed or indeterminate writes still apply to every operation. Attachment tools follow the local-file contract below, including its configured directory boundaries.
 
-Classify effects from actual TestRail behavior, not just the HTTP verb. Report-execution endpoints can initiate work despite using GET; their annotations and driver policy must reflect those effects. The required upstream report fixes are a production release gate, not a reason to label these operations read-only.
+Classify MCP effects from the complete tool behavior, including local filesystem changes, separately from TestRail mutation and retry classification. Report-execution endpoints can initiate work despite using GET; their annotations and driver policy must reflect those effects. The required upstream report fixes are a production release gate, not a reason to label these operations read-only. Attachment downloads also use `readOnlyHint: false`, `destructiveHint: false` and `idempotentHint: false`, because each call creates a new persistent local file. Their upstream request remains an ordinary TestRail GET.
 
 ### One tool per API endpoint
 
@@ -171,7 +171,7 @@ Release acceptance requires:
 - Exact endpoint/parameter parity with the versioned baseline, with no missing routes, duplicate bindings, hidden operations, or unsupported parameter claims.
 - Passing deterministic contracts for every endpoint, including administrative and destructive operations against synthetic upstream fixtures.
 - Passing pagination, field-preservation, response-structure, attachment containment/lifetime, budget, cancellation, and indeterminate-outcome tests.
-- A published, exactly pinned driver release containing the required network and report-execution fixes, followed by rerun integration tests.
+- A published, exactly pinned driver release containing the required network and report-execution fixes and public operation-settlement API, followed by rerun integration tests.
 - Passing Node 22/24 checks and recorded results for each required client surface with the complete catalog.
 - A packed npm executable, configuration examples, sanitized diagnostics, and documented TestRail/version/permission limitations that match verified behavior.
 

@@ -12,4 +12,4 @@ The accepted design exposes **133 endpoint tools**, enabled by default, for Code
 - [Client configuration and verification](docs/client-compatibility.md)
 - [Domain glossary](CONTEXT.md), [design decision](docs/adr/0001-endpoint-tools.md) and [research sources](docs/research-notes.md)
 
-Production release requires a published driver containing the identified network-guard and report-execution fixes, complete endpoint/parameter verification, and the required client and TestRail compatibility evidence. See the implementation plan for dependencies and acceptance criteria.
+Production release requires a published driver containing the identified network-guard and report-execution fixes plus a public operation-settlement API, complete endpoint/parameter verification, and the required client and TestRail compatibility evidence. See the implementation plan for dependencies and acceptance criteria.

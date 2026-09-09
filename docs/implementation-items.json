@@ -35,6 +35,7 @@
       "id": "F03",
       "title": "[F03] Implement configuration, driver ownership and bounded invocation lifetime",
       "depends_on": [
+        "F01",
         "F02"
       ],
       "tools": [],

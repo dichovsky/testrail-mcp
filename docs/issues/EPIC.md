@@ -6,7 +6,7 @@ Implement the full TestRail MCP server in this repository using the public `@dic
 
 - Local stdio, one configured TestRail instance and user identity per subprocess.
 - One endpoint tool named `testrail_<REST operation token>`; all 133 enabled by default, including writes, administration, closing and deletion. No server-added startup unlock or per-call confirmation.
-- One page by default,50 items where controllable; explicit bounded all mode for24 lists. Disclose the six initial-page/all-only lists.
+- One page by default, 50 items where controllable; explicit bounded all mode for 24 lists. Disclose the six initial-page/all-only lists.
 - Uploads within configured roots; unique downloads to a configured directory return absolute path/ID/bytes and persist until user removal. BDD uploads share file handling.
 - Preserve driver-returned fields and flat custom_* in a stable wrapper; strict inputs, per-call entity-drift warnings, structural errors and truthful mutation outcomes.
 - Required clients: Codex desktop/CLI, Claude Code and GitHub Copilot CLI. Full catalog verification is required in every target.
@@ -39,6 +39,6 @@ Implement the full TestRail MCP server in this repository using the public `@dic
 
 ## Release gates
 
-The 23 implementation items have explicit dependencies and acceptance tests. Adapter development can start with exact driver 7.0.0, but production release requires an exact published driver with the newer network-guard fixes and report generators that bypass cache/coalescing/retries. Full endpoint and independent parameter parity, both MCP protocol eras, all certified OS/Node checks, required-client evidence and TestRail 10.7 live qualification must pass. Missing credentials/licensed test features are unverified, never passing results. Phase completion alone does not authorize a reduced API release.
+The 23 implementation items have explicit dependencies and acceptance tests. Adapter development can start with exact driver 7.0.0, but F03 runtime completion and production release require an exact published driver with the newer network-guard fixes, report generators that bypass cache/coalescing/retries, and a public per-operation settlement API that covers background work after result deadlines. Full endpoint and independent parameter parity, both MCP protocol eras, all certified OS/Node checks, required-client evidence and TestRail 10.7 live qualification must pass. Missing credentials/licensed test features are unverified, never passing results. Phase completion alone does not authorize a reduced API release.
 
 Architecture and engineering decisions: [architecture](https://github.com/dichovsky/testrail-mcp/blob/codex/testrail-mcp-plan/docs/architecture.md), [contracts](https://github.com/dichovsky/testrail-mcp/blob/codex/testrail-mcp-plan/docs/implementation-contracts.md), [implementation plan](https://github.com/dichovsky/testrail-mcp/blob/codex/testrail-mcp-plan/docs/implementation-plan.md), [coverage](https://github.com/dichovsky/testrail-mcp/blob/codex/testrail-mcp-plan/docs/api-coverage.md), [clients](https://github.com/dichovsky/testrail-mcp/blob/codex/testrail-mcp-plan/docs/client-compatibility.md).
