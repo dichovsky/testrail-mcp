@@ -1,6 +1,6 @@
 # Implementation plan
 
-Status: architecture and implementation backlog defined on 2026-09-09. All implementation and release checks below remain to be executed. The first release must deliver the complete baseline; completing a subset is not a reduced-scope release.
+Status: architecture and implementation backlog defined on 2026-09-09. F02 is implemented in [PR #26](https://github.com/dichovsky/testrail-mcp/pull/26); its build, typecheck, lint, CLI and packed-install checks pass on Node 22 and 24 across Linux, macOS and Windows. F01 is in progress: [driver qualification evidence](driver-qualification.md) records published 7.1.0 and the remaining release requirements. MCP runtime, endpoint tools and release qualification remain to be implemented. The first release must deliver the complete baseline; completing a subset is not a reduced-scope release.
 
 The server is a local stdio adapter around `@dichovsky/testrail-api-client`, with one configured TestRail identity per subprocess. It exposes exactly **133 endpoint tools across 28 resources**, enabled by default, including administration and destructive operations. TestRail 10.7.0 is the compatibility baseline; older versions are best effort. Required clients are Codex desktop/CLI, Claude Code and GitHub Copilot CLI.
 
