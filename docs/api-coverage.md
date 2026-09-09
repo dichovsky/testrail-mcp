@@ -22,6 +22,8 @@ Full coverage means every listed HTTP verb/path operation has an MCP-accessible 
 
 Exact npm dependency **`@dichovsky/testrail-api-client@7.0.0` is the development baseline only**, with a committed lockfile. As checked on 2026-09-09, [npm metadata](https://registry.npmjs.org/@dichovsky%2Ftestrail-api-client/7.0.0) and [GitHub release/7.0.0](https://github.com/dichovsky/testrail-api-client/releases/tag/release/7.0.0) identify commit `71a80d984aea14713d8eeaf6ac9a0d41c1fba12b` as the latest published stable release. Its endpoint inventory, domain modules, and 181 endpoint/helper methods match this baseline; the published tarball was integrity-checked and its declarations and JavaScript bindings were verified. The machine-readable [operation inventory](operation-inventory.json) records that verification and the development-only dependency scope.
 
+Follow-up on 2026-09-10: published 7.1.0 includes the network-guard fixes and retains all 181 endpoint/helper bindings, but still lacks independent report execution and the settlement API. See the [current driver qualification evidence](driver-qualification.md). The original 7.0.0 audit above remains the development baseline.
+
 **Production release is blocked on a new fixed published driver version**, which must include all three requirements:
 
 - The network-guard fixes already present at inspected main commit `89f636e276ea701412bb06039e3b963d83126ea1` in `client-core.ts` and `config-validation.ts`. Published 7.0.0 lacks these fixes; see the [pinned changelog](https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/CHANGELOG.md).

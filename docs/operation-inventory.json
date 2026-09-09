@@ -39,8 +39,8 @@
       "requirements": [
         {
           "id": "network_guard_fixes",
-          "status": "implemented_in_inspected_main_not_published",
-          "description": "The production driver release must include the network-guard fixes already present at inspected commit 89f636e276ea701412bb06039e3b963d83126ea1 in client-core.ts and config-validation.ts."
+          "status": "published_in_7.1.0",
+          "description": "Published 7.1.0 includes the network-guard fixes from commit 89f636e276ea701412bb06039e3b963d83126ea1 (upstream PR #266). Report execution and settlement still require a new published release; 7.1.0 is not the qualified production dependency."
         },
         {
           "id": "report_generator_execution_policy",
@@ -75,6 +75,19 @@
           "description": "Select the newly published fixed driver version, pin that exact version with a committed lockfile, and reverify endpoint bindings and runtime regression checks against its published package. An unpinned Git dependency is not an acceptable production substitute."
         }
       ]
+    },
+    "follow_up_audit": {
+      "checked_on": "2026-09-10",
+      "version": "7.1.0",
+      "release_commit": "2b70e26c67e1356ab8de21e79da6d051b6038fc7",
+      "release_url": "https://github.com/dichovsky/testrail-api-client/releases/tag/release/7.1.0",
+      "npm_integrity": "sha512-BLZWFPx+jtsZD4TddhGbtYaIKNyfGkqreGBje2klL5jF0xD3jnWdMANxZOAXRfuSoFyl0Vumcbw1PG19HvgxDA==",
+      "public_endpoint_and_helper_bindings_verified": 181,
+      "track_operation_available": false,
+      "sequential_report_calls": 2,
+      "observed_report_fetches": 1,
+      "qualified_for_production": false,
+      "evidence_document": "docs/driver-qualification.md"
     }
   },
   "counts": {

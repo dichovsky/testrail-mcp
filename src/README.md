@@ -1,0 +1,17 @@
+# Source boundaries
+
+`cli.ts` is the executable entry point. Informational arguments are parsed in `config/command-line.ts` before credentials or transport dependencies are loaded.
+
+The remaining components follow [the architecture](../docs/architecture.md#runtime-and-component-boundaries):
+
+| Directory | Responsibility | Implementation item |
+| --- | --- | --- |
+| `config/` | Immutable environment, directory and budget configuration | F03 |
+| `driver/` | Public TestRail client construction and operation settlement | F03 |
+| `runtime/` | Admission, invocation lifetime and shutdown | F03 |
+| `operations/` | Endpoint registry and domain bindings | F04, T01–T12 |
+| `contracts/` | Input validation, preserved results, errors and pagination | F04–F06 |
+| `files/` | Bounded upload staging and persistent downloads | F07 |
+| `transport/` | MCP registration and stdio compatibility | F08 |
+
+Create each remaining directory when its implementation begins. The foundation executable provides help and version output; server startup reports that this development build does not yet serve MCP. All endpoint entries remain planned until their implementation and verification are complete.
