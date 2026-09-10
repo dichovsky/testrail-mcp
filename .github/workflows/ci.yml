@@ -41,6 +41,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Verify operation registry and generated reference
+        run: npm run registry:check
+
       - name: Typecheck
         run: npm run typecheck
 

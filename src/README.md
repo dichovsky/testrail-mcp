@@ -14,4 +14,4 @@ The remaining components follow [the architecture](../docs/architecture.md#runti
 | `files/` | Bounded upload staging and persistent downloads | F07 |
 | `transport/` | MCP registration and stdio compatibility | F08 |
 
-Create each remaining directory when its implementation begins. The foundation executable provides help and version output; server startup reports that this development build does not yet serve MCP. All endpoint entries remain planned until their implementation and verification are complete.
+The F04 registry and input helpers now live in `operations/` and `contracts/inputs.ts`; see the [authoring guide](../docs/registry-authoring.md). Family implementations still need to populate the catalog. Create other directories when their implementation begins. The foundation executable provides help and version output; server startup reports that this development build does not yet serve MCP. All endpoint entries remain planned until their implementation and verification are complete.

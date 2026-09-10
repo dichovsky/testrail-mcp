@@ -1,0 +1,390 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.0.0",
+    "driver_commit": "71a80d984aea14713d8eeaf6ac9a0d41c1fba12b",
+    "reviewed_on": "2026-09-10"
+  },
+  "endpoint": {
+    "family_id": "T12",
+    "http_method": "GET",
+    "route": "get_attachments_for_plan_entry/{plan_id}/{entry_id}",
+    "tool": "testrail_get_attachments_for_plan_entry",
+    "driver_method": "attachments.getAttachmentsForPlanEntry"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/modules/attachments.ts",
+      "supports": "getAttachmentsForPlanEntry path order, UUID correction and list projection."
+    },
+    {
+      "id": "driver-validation",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/validation.ts",
+      "supports": "validateId and validateEntryId accepted domains."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement. Driver passthrough alone does not enforce it."
+  },
+  "outer_result": {
+    "driver": "array",
+    "tool_data": "array",
+    "notes": "Driver accepts an attachment array or attachments envelope and projects the item array."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown ordinary top-level fields before driver invocation."
+    }
+  ],
+  "parameters": [
+    {
+      "id": "plan_id",
+      "input_path": [
+        "plan_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      },
+      "semantics": "No coercion. Preserve the validated value.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "plan_id"
+        ],
+        "encoding": "Decimal path segment."
+      },
+      "sources": [
+        "driver-module",
+        "driver-validation"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value at the explicit driver argument and wire location."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a representative value in the documented domain."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a representative invalid value before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing required input."
+        }
+      ]
+    },
+    {
+      "id": "entry_id",
+      "input_path": [
+        "entry_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain": {
+        "type": "string",
+        "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?![\\s\\S])"
+      },
+      "semantics": "A UUID string. The attachment documentation integer label conflicts with actual plan-entry IDs; the pinned public driver validates UUID format.",
+      "driver": {
+        "argument": 1,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "entry_id"
+        ],
+        "encoding": "UUID path segment; preserve case, no trimming."
+      },
+      "sources": [
+        "driver-module",
+        "driver-validation"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value at the explicit driver argument and wire location."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a representative value in the documented domain."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a representative invalid value before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing required input."
+        },
+        {
+          "id": "trailing-line-terminator",
+          "kind": "invalid",
+          "description": "Reject trailing line terminators in UUID input, including LF and CRLF; require end of input rather than the JavaScript dollar anchor."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "uuid-path",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d"
+      },
+      "covers": [
+        {
+          "parameter": "plan_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "entry_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.getAttachmentsForPlanEntry",
+          "arguments": [
+            7,
+            "3933d74b-4282-44de-82ae-a6412808369d"
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_attachments_for_plan_entry/7/3933d74b-4282-44de-82ae-a6412808369d"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": []
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": []
+        }
+      }
+    },
+    {
+      "id": "missing-plan",
+      "input": {
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d"
+      },
+      "covers": [
+        {
+          "parameter": "plan_id",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-plan",
+      "input": {
+        "plan_id": 0,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d"
+      },
+      "covers": [
+        {
+          "parameter": "plan_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-entry",
+      "input": {
+        "plan_id": 7
+      },
+      "covers": [
+        {
+          "parameter": "entry_id",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "numeric-entry",
+      "input": {
+        "plan_id": 7,
+        "entry_id": 12
+      },
+      "covers": [
+        {
+          "parameter": "entry_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "unexpected": true
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "traversal",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "../../admin"
+      },
+      "covers": [
+        {
+          "parameter": "entry_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "malformed-uuid",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369z"
+      },
+      "covers": [
+        {
+          "parameter": "entry_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "whitespace-uuid",
+      "input": {
+        "plan_id": 7,
+        "entry_id": " 3933d74b-4282-44de-82ae-a6412808369d"
+      },
+      "covers": [
+        {
+          "parameter": "entry_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "trailing-newline-uuid",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d\n"
+      },
+      "covers": [
+        {
+          "parameter": "entry_id",
+          "requirements": [
+            "trailing-line-terminator"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "trailing-crlf-uuid",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d\r\n"
+      },
+      "covers": [
+        {
+          "parameter": "entry_id",
+          "requirements": [
+            "trailing-line-terminator"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}
