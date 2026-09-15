@@ -2,6 +2,7 @@ import type { Tool, ToolAnnotations } from '@modelcontextprotocol/server';
 import type { z } from 'zod';
 import { inputJsonSchema } from '../contracts/inputs.js';
 import type { DriverBinding, DriverCall } from './driver-call.js';
+import { InputPaths, isRecord } from './input-paths.js';
 
 export type Family = `T0${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}` | `T${10 | 11 | 12}`;
 export type HttpMethod = 'GET' | 'POST';
@@ -152,19 +153,14 @@ function describeOperation(operation: OperationDefinition): string {
   return description;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /** Supported input composition is a closed object or a union of closed objects. */
-function objectVariants(schema: unknown): Record<string, unknown>[] {
-  if (!isRecord(schema)) throw new Error('Operation inputs require object schemas');
-  const alternatives = schema.anyOf ?? schema.oneOf;
-  if (Array.isArray(alternatives) && alternatives.length > 0) return alternatives.flatMap(objectVariants);
-  if (schema.type !== 'object' || schema.additionalProperties !== false) {
+function objectVariants(paths: InputPaths, schema: unknown): Record<string, unknown>[] {
+  const variants = paths.variants(schema);
+  if (variants.length === 0) throw new Error('Operation inputs require object schemas');
+  if (variants.some((variant) => variant.type !== 'object' || variant.additionalProperties !== false)) {
     throw new Error('Top-level and query inputs must be closed objects');
   }
-  return [schema];
+  return variants;
 }
 
 function validateInputLayout(operation: OperationDefinition, schema: Tool['inputSchema']): void {
@@ -175,8 +171,9 @@ function validateInputLayout(operation: OperationDefinition, schema: Tool['input
     ...(operation.files.kind === 'upload' ? ['file_path', 'filename', 'content_type'] : []),
     ...(operation.pagination.kind === 'none' ? [] : ['_mcp']),
   ]);
-  const declared = new Set<string>();
-  for (const variant of objectVariants(schema)) {
+  const paths = new InputPaths(schema);
+  const variants = objectVariants(paths, schema);
+  for (const variant of variants) {
     const properties = isRecord(variant.properties) ? variant.properties : {};
     const required = Array.isArray(variant.required) ? variant.required : [];
     for (const name of pathNames) {
@@ -186,14 +183,14 @@ function validateInputLayout(operation: OperationDefinition, schema: Tool['input
     }
     for (const name of Object.keys(properties)) {
       if (!allowed.has(name)) throw new Error(`Unsupported top-level input: ${operation.token} ${name}`);
-      declared.add(name);
     }
-    if (properties.query !== undefined) objectVariants(properties.query);
-    if (properties._mcp !== undefined) objectVariants(properties._mcp);
+    if (properties.query !== undefined) objectVariants(paths, properties.query);
+    if (properties._mcp !== undefined) objectVariants(paths, properties._mcp);
   }
   for (const mapping of operation.argumentMap) {
-    const name = mapping.input.split(/[.[]/u)[0];
-    if (name === undefined || !declared.has(name)) throw new Error(`Argument mapping has no input: ${operation.token} ${mapping.input}`);
+    if (!paths.forMode(variants, mapping.call).some((variant) => paths.has(variant, mapping.input))) {
+      throw new Error(`Argument mapping has no input: ${operation.token} ${mapping.call} ${mapping.input}`);
+    }
   }
 }
 

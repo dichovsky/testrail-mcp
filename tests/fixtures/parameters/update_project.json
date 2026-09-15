@@ -124,7 +124,7 @@
           }
         ]
       },
-      "semantics": "Role0 chooses Global Role; null clears project-specific role. Required in every supplied group assignment. Omitting groups preserves assignments.",
+      "semantics": "Role 0 chooses Global Role; null clears project-specific role. Required in every supplied group assignment. Omitting groups preserves assignments.",
       "driver": {
         "argument": 1,
         "path": [

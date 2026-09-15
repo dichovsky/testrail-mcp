@@ -42,10 +42,17 @@ export function auditRegisteredParameters(registry: OperationRegistry, manifests
       const accepted = fixture.expect.kind === 'accepted';
       if (operation.inputSchema.safeParse(fixture.input).success !== accepted) errors.push(`${operation.tool}: runtime schema disagrees with fixture ${fixture.id}`);
       if (validateJson(fixture.input).valid !== accepted) errors.push(`${operation.tool}: JSON Schema disagrees with fixture ${fixture.id}`);
-      if (accepted) {
+      if (fixture.expect.kind === 'accepted') {
         const control = fixture.input._mcp;
-        exercisedModes.add(operation.pagination.kind === 'none' ? 'single'
-          : typeof control === 'object' && control !== null && !Array.isArray(control) && control.pagination === 'all' ? 'all' : 'page');
+        const mode = operation.pagination.kind === 'none' ? 'single'
+          : typeof control === 'object' && control !== null && !Array.isArray(control) && control.pagination === 'all' ? 'all' : 'page';
+        const call = operation.pagination.kind === 'none' ? operation.pagination.single
+          : mode === 'all' ? operation.pagination.all : operation.pagination.page;
+        if (fixture.expect.driver.binding !== call.binding) {
+          errors.push(`${operation.tool}: fixture ${fixture.id} expects ${fixture.expect.driver.binding}, but ${mode} mode selects ${call.binding}`);
+        } else {
+          exercisedModes.add(mode);
+        }
       }
     }
     for (const mode of modes) if (!exercisedModes.has(mode)) errors.push(`${operation.tool}: no accepted ${mode} fixture`);

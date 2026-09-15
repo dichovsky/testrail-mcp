@@ -41,6 +41,63 @@ describe('registered parameter coverage gate', () => {
     expect(auditRegisteredParameters(createRegistry(changed), manifests)).toEqual(['testrail_get_attachment: no single argument mapping for attachment_id']);
   });
 
+  it('does not count a single-mode fixture that names another driver binding', () => {
+    const accepted = attachment.cases.find((fixture) => fixture.expect.kind === 'accepted');
+    if (accepted?.expect.kind !== 'accepted') throw new Error('Missing accepted attachment fixture');
+    const changed = { ...attachment, cases: [{ ...accepted, expect: {
+      ...accepted.expect, driver: { ...accepted.expect.driver, binding: 'projects.getProject' },
+    } }] };
+    expect(auditRegisteredParameters(createRegistry(operation), [changed])).toEqual([
+      `testrail_get_attachment: fixture ${accepted.id} expects projects.getProject, but single mode selects attachments.getAttachment`,
+      'testrail_get_attachment: no accepted single fixture',
+    ]);
+  });
+
+  it.each([
+    ['all', 'cases.getCasesPage'],
+    ['all', 'projects.getAllProjects'],
+    ['all', 'cases.getAllCases'],
+    ['page', 'cases.getAllCases'],
+    ['page', 'projects.getProjectsPage'],
+    ['page', 'cases.getCasesPage'],
+  ] as const)('checks the %s fixture against the selected binding: %s', (mode, binding) => {
+    const listInput = createListInput({ path: { project_id: positiveIdSchema }, pagination: 'controlled' });
+    const cases = defineOperation({
+      ...operation, token: 'get_cases', route: 'get_cases/{project_id}', family: 'T02', driverBinding: 'cases.getCases',
+      inputSchema: listInput, files: { kind: 'none' }, effects: { testRail: 'read', destructive: false, idempotent: true },
+      argumentMap: [
+        { input: 'project_id', call: 'page', argument: 0, serialization: 'path' },
+        { input: 'project_id', call: 'all', argument: 0, serialization: 'path' },
+      ],
+      response: { shape: 'page', outerSchema: z.object({ kind: z.enum(['envelope', 'legacy-array']), items: z.array(z.unknown()) }), entitySchema: null },
+      pagination: { kind: 'controlled', page: driverCall(listInput, 'cases.getCasesPage', (method) => method(7)), all: driverCall(listInput, 'cases.getAllCases', (method) => method(7)) },
+    });
+    const manifest = manifests.find((candidate) => candidate.endpoint.tool === cases.tool);
+    const accepted = manifest?.cases.find((fixture) => fixture.id === 'refs-omitted');
+    if (!manifest || accepted?.expect.kind !== 'accepted') throw new Error('Missing accepted case-list fixture');
+    // These synthetic fixtures isolate mode coverage; they do not complete T02's manifest.
+    const sample = {
+      ...manifest, review: { ...manifest.review, status: 'complete' as const, pending: [] },
+      parameters: manifest.parameters.filter((parameter) => parameter.id === 'project_id'),
+      cases: [
+        { ...accepted, id: 'page', covers: [{ parameter: 'project_id', requirements: ['mapping', 'valid'] }], expect: {
+          ...accepted.expect, driver: { ...accepted.expect.driver, binding: mode === 'page' ? binding : 'cases.getCasesPage' },
+        } },
+        { ...accepted, id: 'all', input: { project_id: 7, _mcp: { pagination: 'all' } },
+          covers: [{ parameter: 'project_id', requirements: ['mapping', 'valid'] }], expect: {
+            ...accepted.expect,
+            driver: { binding: mode === 'all' ? binding : 'cases.getAllCases', arguments: [7, { pageSize: 50 }] },
+            driver_result: { kind: 'json' as const, value: [] },
+          } },
+      ],
+    };
+    const selectedBinding = mode === 'all' ? 'cases.getAllCases' : 'cases.getCasesPage';
+    expect(auditRegisteredParameters(createRegistry(cases), [sample])).toEqual(binding === selectedBinding ? [] : [
+      `testrail_get_cases: fixture ${mode} expects ${binding}, but ${mode} mode selects ${selectedBinding}`,
+      `testrail_get_cases: no accepted ${mode} fixture`,
+    ]);
+  });
+
   it('allows a reviewed whole-body mapping to carry nested wildcard fields', () => {
     const nested = manifests.find((manifest) => manifest.endpoint.tool === 'testrail_update_project');
     if (!nested) throw new Error('Missing nested-field manifest');
@@ -63,7 +120,7 @@ describe('registered parameter coverage gate', () => {
         argumentMap: [
           { input: 'project_id', call: 'page', argument: 0, serialization: 'path' },
           { input: 'project_id', call: 'all', argument: 0, serialization: 'path' },
-          { input: 'query.refs', call: 'page', argument: 1, property: 'refs', serialization: 'query-repeated' },
+          ...(includeRefs ? [{ input: 'query.refs', call: 'page' as const, argument: 1, property: 'refs', serialization: 'query-repeated' as const }] : []),
         ],
         response: { shape: 'page', outerSchema: z.object({ kind: z.enum(['envelope', 'legacy-array']), items: z.array(z.unknown()) }), entitySchema: null },
         pagination: { kind: 'controlled', page: driverCall(listInput, 'cases.getCasesPage', (method) => method(1)), all: driverCall(listInput, 'cases.getAllCases', (method) => method(1)) },
@@ -90,7 +147,7 @@ describe('registered parameter coverage gate', () => {
     });
     const parameter = attachment.parameters[0];
     const accepted = attachment.cases.find((fixture) => fixture.expect.kind === 'accepted');
-    if (!parameter || !accepted) throw new Error('Missing format examples');
+    if (!parameter || accepted?.expect.kind !== 'accepted') throw new Error('Missing format examples');
     // Test-only format sample of the pinned public non-helper signature. It is
     // not added to the reviewed family manifest counts or production catalog.
     const sample = {
@@ -99,7 +156,13 @@ describe('registered parameter coverage gate', () => {
         { ...parameter, id: 'test_id', input_path: ['test_id'] },
         ...['limit', 'offset'].map((name) => ({ ...parameter, id: `query.${name}`, input_path: ['query', name], scope: 'query' as const, driver: { argument: 1, path: [name] } })),
       ],
-      cases: [{ ...accepted, input: { test_id: 42, query: { limit: 10, offset: 20 } } }],
+      cases: [{ ...accepted, input: { test_id: 42, query: { limit: 10, offset: 20 } }, expect: {
+        ...accepted.expect,
+        driver: { binding: 'attachments.getAttachmentsForTest', arguments: [42, { limit: 10, offset: 20 }] },
+        wire: { method: 'GET' as const, endpoint: 'get_attachments_for_test/42&limit=10&offset=20' },
+        upstream_response: { kind: 'json' as const, body: [] },
+        driver_result: { kind: 'json' as const, value: [] },
+      } }],
     };
     expect(auditRegisteredParameters(createRegistry(listing), [sample])).toEqual([]);
   });
