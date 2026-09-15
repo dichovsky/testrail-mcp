@@ -35,7 +35,10 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:package": "node scripts/verify-package.mjs",
-    "check": "npm run build && npm run typecheck && npm run lint && npm test && npm run test:package",
+    "registry:check": "node scripts/check-registry.mjs",
+    "registry:generate": "npm run build && node scripts/check-registry.mjs --write",
+    "registry:complete": "node scripts/check-registry.mjs --complete",
+    "check": "npm run build && npm run registry:check && npm run typecheck && npm run lint && npm test && npm run test:package",
     "prepack": "npm run build"
   },
   "dependencies": {

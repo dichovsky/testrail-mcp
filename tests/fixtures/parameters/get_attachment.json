@@ -1,0 +1,369 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.0.0",
+    "driver_commit": "71a80d984aea14713d8eeaf6ac9a0d41c1fba12b",
+    "reviewed_on": "2026-09-10"
+  },
+  "endpoint": {
+    "family_id": "T12",
+    "http_method": "GET",
+    "route": "get_attachment/{attachment_id}",
+    "tool": "testrail_get_attachment",
+    "driver_method": "attachments.getAttachment"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/modules/attachments.ts",
+      "supports": "getAttachment uses responseKind binary and validates the number/UUID union."
+    },
+    {
+      "id": "driver-validation",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/validation.ts",
+      "supports": "validateAttachmentId rejects numeric strings and arbitrary paths."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement. Driver passthrough alone does not enforce it."
+  },
+  "outer_result": {
+    "driver": "binary",
+    "tool_data": "download_metadata",
+    "notes": "Driver returns bytes. F07 writes a unique persistent file and returns attachment_id, file_path and bytes; this fixture does not certify file handling."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown ordinary top-level fields before driver invocation."
+    }
+  ],
+  "parameters": [
+    {
+      "id": "attachment_id",
+      "input_path": [
+        "attachment_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain": {
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?![\\s\\S])"
+          }
+        ]
+      },
+      "semantics": "No coercion. Preserve the validated value.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "attachment_id"
+        ],
+        "encoding": "Integer or UUID path segment; numeric strings are not coerced."
+      },
+      "sources": [
+        "driver-module",
+        "driver-validation"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value at the explicit driver argument and wire location."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a representative value in the documented domain."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a representative invalid value before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing required input."
+        },
+        {
+          "id": "uuid",
+          "kind": "valid",
+          "description": "Accept and preserve the UUID union branch."
+        },
+        {
+          "id": "trailing-line-terminator",
+          "kind": "invalid",
+          "description": "Reject trailing line terminators in UUID input, including LF and CRLF; require end of input rather than the JavaScript dollar anchor."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "numeric-id",
+      "input": {
+        "attachment_id": 17
+      },
+      "covers": [
+        {
+          "parameter": "attachment_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.getAttachment",
+          "arguments": [
+            17
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_attachment/17"
+        },
+        "upstream_response": {
+          "kind": "binary",
+          "utf8": "attachment fixture\n"
+        },
+        "driver_result": {
+          "kind": "binary",
+          "utf8": "attachment fixture\n"
+        }
+      }
+    },
+    {
+      "id": "uuid-id",
+      "input": {
+        "attachment_id": "3933d74b-4282-44de-82ae-a6412808369d"
+      },
+      "covers": [
+        {
+          "parameter": "attachment_id",
+          "requirements": [
+            "uuid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.getAttachment",
+          "arguments": [
+            "3933d74b-4282-44de-82ae-a6412808369d"
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_attachment/3933d74b-4282-44de-82ae-a6412808369d"
+        },
+        "upstream_response": {
+          "kind": "binary",
+          "utf8": "uuid fixture\n"
+        },
+        "driver_result": {
+          "kind": "binary",
+          "utf8": "uuid fixture\n"
+        }
+      }
+    },
+    {
+      "id": "numeric-string",
+      "input": {
+        "attachment_id": "17"
+      },
+      "covers": [
+        {
+          "parameter": "attachment_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-id",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "attachment_id",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "attachment_id": 17,
+        "download_path": "/tmp/not-authorized"
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "traversal",
+      "input": {
+        "attachment_id": "../../admin"
+      },
+      "covers": [
+        {
+          "parameter": "attachment_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "malformed-uuid",
+      "input": {
+        "attachment_id": "3933d74b-4282-44de-82ae-a6412808369z"
+      },
+      "covers": [
+        {
+          "parameter": "attachment_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "whitespace-uuid",
+      "input": {
+        "attachment_id": " 3933d74b-4282-44de-82ae-a6412808369d"
+      },
+      "covers": [
+        {
+          "parameter": "attachment_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "zero-id",
+      "input": {
+        "attachment_id": 0
+      },
+      "covers": [
+        {
+          "parameter": "attachment_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "fractional-id",
+      "input": {
+        "attachment_id": 1.5
+      },
+      "covers": [
+        {
+          "parameter": "attachment_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "trailing-newline-uuid",
+      "input": {
+        "attachment_id": "3933d74b-4282-44de-82ae-a6412808369d\n"
+      },
+      "covers": [
+        {
+          "parameter": "attachment_id",
+          "requirements": [
+            "trailing-line-terminator"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "trailing-crlf-uuid",
+      "input": {
+        "attachment_id": "3933d74b-4282-44de-82ae-a6412808369d\r\n"
+      },
+      "covers": [
+        {
+          "parameter": "attachment_id",
+          "requirements": [
+            "trailing-line-terminator"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

@@ -1,0 +1,573 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "partial",
+    "pending": [
+      "T01: review and fixture name, announcement, show_announcement, suite_mode, default_role_id, groups container and group id, users container and its exclusive id/user_id union, and users role_id.",
+      "T01: complete nested unknown-field rejection and permission/version fixtures."
+    ],
+    "driver_version": "7.0.0",
+    "driver_commit": "71a80d984aea14713d8eeaf6ac9a0d41c1fba12b",
+    "reviewed_on": "2026-09-10"
+  },
+  "endpoint": {
+    "family_id": "T01",
+    "http_method": "POST",
+    "route": "update_project/{project_id}",
+    "tool": "testrail_update_project",
+    "driver_method": "projects.updateProject"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/modules/projects.ts",
+      "supports": "updateProject forwards JSON payload unchanged."
+    },
+    {
+      "id": "driver-schema",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/schemas/projects.ts",
+      "supports": "ProjectAccessRoleIdPayloadSchema nonnegative integer/null and required per-assignment role_id."
+    },
+    {
+      "id": "testrail-projects",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077792415124-Projects",
+      "supports": "update_project groups/users role_id supports zero Global Role and null clearing the project-specific assignment."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement. Driver passthrough alone does not enforce it."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "Keep the raw project record, including returned users/groups and unknown entity fields."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown ordinary top-level fields before driver invocation."
+    }
+  ],
+  "parameters": [
+    {
+      "id": "project_id",
+      "input_path": [
+        "project_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      },
+      "semantics": "No coercion. Preserve the validated value.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "project_id"
+        ],
+        "encoding": "Decimal path segment."
+      },
+      "sources": [
+        "driver-module"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value at the explicit driver argument and wire location."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a representative value in the documented domain."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a representative invalid value before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing required input."
+        }
+      ]
+    },
+    {
+      "id": "body.groups.*.role_id",
+      "input_path": [
+        "body",
+        "groups",
+        "*",
+        "role_id"
+      ],
+      "scope": "body",
+      "requiredness": "conditional",
+      "domain": {
+        "anyOf": [
+          {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "semantics": "Role 0 chooses Global Role; null clears project-specific role. Required in every supplied group assignment. Omitting groups preserves assignments.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "groups",
+          "*",
+          "role_id"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "role_id"
+        ],
+        "encoding": "Preserve integer zero, positive role ID and explicit null as distinct JSON values."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-projects"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value at the explicit driver argument and wire location."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a representative value in the documented domain."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a representative invalid value before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Preserve omission."
+        },
+        {
+          "id": "zero",
+          "kind": "valid",
+          "description": "Accept the Global Role zero sentinel."
+        },
+        {
+          "id": "null",
+          "kind": "valid",
+          "description": "Accept explicit null for clearing the role."
+        },
+        {
+          "id": "required-in-group",
+          "kind": "required",
+          "description": "Reject an assignment object without role_id."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "role-positive",
+      "input": {
+        "project_id": 7,
+        "body": {
+          "groups": [
+            {
+              "id": 12,
+              "role_id": 3
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "project_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.groups.*.role_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "projects.updateProject",
+          "arguments": [
+            7,
+            {
+              "groups": [
+                {
+                  "id": 12,
+                  "role_id": 3
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_project/7",
+          "json": {
+            "groups": [
+              {
+                "id": 12,
+                "role_id": 3
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 7,
+            "name": "Example",
+            "suite_mode": 1,
+            "url": "https://fixture.testrail.test/project/7"
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 7,
+            "name": "Example",
+            "suite_mode": 1,
+            "url": "https://fixture.testrail.test/project/7"
+          }
+        }
+      }
+    },
+    {
+      "id": "role-zero",
+      "input": {
+        "project_id": 7,
+        "body": {
+          "groups": [
+            {
+              "id": 12,
+              "role_id": 0
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "project_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.groups.*.role_id",
+          "requirements": [
+            "zero"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "projects.updateProject",
+          "arguments": [
+            7,
+            {
+              "groups": [
+                {
+                  "id": 12,
+                  "role_id": 0
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_project/7",
+          "json": {
+            "groups": [
+              {
+                "id": 12,
+                "role_id": 0
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 7,
+            "name": "Example",
+            "suite_mode": 1,
+            "url": "https://fixture.testrail.test/project/7"
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 7,
+            "name": "Example",
+            "suite_mode": 1,
+            "url": "https://fixture.testrail.test/project/7"
+          }
+        }
+      }
+    },
+    {
+      "id": "role-null",
+      "input": {
+        "project_id": 7,
+        "body": {
+          "groups": [
+            {
+              "id": 12,
+              "role_id": null
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "project_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.groups.*.role_id",
+          "requirements": [
+            "null"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "projects.updateProject",
+          "arguments": [
+            7,
+            {
+              "groups": [
+                {
+                  "id": 12,
+                  "role_id": null
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_project/7",
+          "json": {
+            "groups": [
+              {
+                "id": 12,
+                "role_id": null
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 7,
+            "name": "Example",
+            "suite_mode": 1,
+            "url": "https://fixture.testrail.test/project/7"
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 7,
+            "name": "Example",
+            "suite_mode": 1,
+            "url": "https://fixture.testrail.test/project/7"
+          }
+        }
+      }
+    },
+    {
+      "id": "assignments-omitted",
+      "input": {
+        "project_id": 7,
+        "body": {}
+      },
+      "covers": [
+        {
+          "parameter": "body.groups.*.role_id",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "projects.updateProject",
+          "arguments": [
+            7,
+            {}
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_project/7",
+          "json": {}
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 7,
+            "name": "Example",
+            "suite_mode": 1,
+            "url": "https://fixture.testrail.test/project/7"
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 7,
+            "name": "Example",
+            "suite_mode": 1,
+            "url": "https://fixture.testrail.test/project/7"
+          }
+        }
+      }
+    },
+    {
+      "id": "missing-project",
+      "input": {
+        "body": {}
+      },
+      "covers": [
+        {
+          "parameter": "project_id",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-project",
+      "input": {
+        "project_id": 0,
+        "body": {}
+      },
+      "covers": [
+        {
+          "parameter": "project_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-role",
+      "input": {
+        "project_id": 7,
+        "body": {
+          "groups": [
+            {
+              "id": 12,
+              "role_id": -1
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.groups.*.role_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-role",
+      "input": {
+        "project_id": 7,
+        "body": {
+          "groups": [
+            {
+              "id": 12
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.groups.*.role_id",
+          "requirements": [
+            "required-in-group"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "project_id": 7,
+        "body": {},
+        "unexpected": true
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}
