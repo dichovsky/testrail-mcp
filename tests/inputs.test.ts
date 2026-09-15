@@ -91,6 +91,7 @@ describe('endpoint input domains', () => {
       { file_path: '/tmp/test file.txt', filename: 'test file.txt', content_type: 'text/plain' },
       { file_path: 'C:\\upload\\file', filename: 'result.json', content_type: 'application/json; charset=utf-8' },
       { file_path: '/tmp/file', filename: 'é.txt', content_type: 'text/plain; profile="https://example.test/a"' },
+      { file_path: '/tmp/📄', filename: '📄.txt', content_type: 'text/plain' },
     ], [
       { file_path: '/tmp/file', filename: '../file', content_type: 'text/plain' },
       { file_path: '/tmp/file', filename: 'a\\b', content_type: 'text/plain' },
@@ -109,6 +110,77 @@ describe('endpoint input domains', () => {
     acceptsBoth(strictObject({ filename: bddFilenameSchema }), [{ filename: 'test.feature' }], [
       { filename: 'test.txt' }, { filename: '../test.feature' }, { filename: 'test.feature\n' },
     ]);
+  });
+});
+
+describe('faithful input schema export', () => {
+  it.each([
+    ['case-insensitive', /^abc$/iu, 'ABC'],
+    ['multiline', /^abc$/mu, 'before\nabc\nafter'],
+    ['dot-all', /^a.b$/su, 'a\nb'],
+    ['global', /abc/gu, 'abc'],
+    ['sticky', /abc/uy, 'abc'],
+    ['match indices', /abc/du, 'abc'],
+    ['Unicode sets', new RegExp('^abc$', 'v'), 'abc'],
+  ] as const)('rejects %s regex flags that JSON Schema cannot carry', (_label, pattern, value) => {
+    const schema = strictObject({ body: strictObject({ value: z.string().regex(pattern) }).optional() });
+    expect(schema.safeParse({ body: { value } }).success).toBe(true);
+    expect(() => inputJsonSchema(schema)).toThrow('regex patterns require only the Unicode u flag');
+  });
+
+  it('requires explicit Unicode mode rather than silently changing code-unit matching', () => {
+    const schema = strictObject({ value: z.string().regex(/^.$/) });
+    expect(schema.safeParse({ value: '😀' }).success).toBe(false);
+    expect(() => inputJsonSchema(schema)).toThrow('regex patterns require only the Unicode u flag');
+    acceptsBoth(strictObject({ value: z.string().regex(/^.$/u) }), [{ value: 'a' }, { value: '😀' }], [{ value: 'ab' }, { value: '' }]);
+    acceptsBoth(strictObject({ value: z.string().regex(/^abc$/u) }), [{ value: 'abc' }], [{ value: 'ABC' }]);
+  });
+
+  it('checks patterns on standalone string formats and adapted driver fields', () => {
+    expect(() => inputJsonSchema(strictObject({ value: z.email({ pattern: /^abc$/iu }) }))).toThrow('regex patterns');
+    const source = z.object({ email: z.string().regex(/^abc$/i) });
+    expect(() => inputJsonSchema(strictObject({ body: payloadInput(source) }))).toThrow('regex patterns');
+    acceptsBoth(strictObject({ body: payloadInput(source, { fields: { email: z.string().regex(/^[aA][bB][cC]$/u) } }) }), [
+      { body: { email: 'abc' } }, { body: { email: 'ABC' } },
+    ], [{ body: { email: 'def' } }]);
+    // Adapting an endpoint must not rewrite the public driver's original schema.
+    expect(source.safeParse({ email: 'ABC' }).success).toBe(true);
+  });
+
+  it.each([
+    ['fractional divisor', z.number().multipleOf(0.1), 0.3],
+    ['unsafe integer value', z.number().multipleOf(3), 9_007_199_254_740_992],
+    ['large integral multiple', z.number().multipleOf(1), 1e25],
+    ['safe integer tolerance', z.number().int().multipleOf(2), Number.MAX_SAFE_INTEGER],
+  ] as const)('rejects multipleOf with unreviewed numerical parity: %s', (_label, field, value) => {
+    const schema = strictObject({ value: field });
+    expect(schema.safeParse({ value }).success).toBe(true);
+    expect(() => inputJsonSchema(schema)).toThrow('multipleOf has no reviewed JSON Schema equivalent');
+  });
+
+  it('rejects metadata that changes structural validation or reference resolution', () => {
+    const widened = strictObject({ value: z.string().max(1).meta({ maxLength: 4 }) });
+    expect(widened.safeParse({ value: 'abc' }).success).toBe(false);
+    expect(() => inputJsonSchema(widened)).toThrow('metadata has no reviewed JSON Schema equivalent: maxLength');
+    for (const metadata of [
+      { pattern: '^anything$' }, { anyOf: [{ type: 'number' }] }, { type: 'number' },
+      { $ref: '#/anything' }, { id: 'replacement' }, { minimum: 1 }, { default: 'a' },
+    ]) {
+      expect(() => inputJsonSchema(strictObject({ value: z.string().meta(metadata) }))).toThrow('metadata has no reviewed JSON Schema equivalent');
+    }
+    expect(() => inputJsonSchema(strictObject({ value: z.string() }).meta({ additionalProperties: true }))).toThrow('metadata has no reviewed JSON Schema equivalent');
+  });
+
+  it('retains annotations and only the structural metadata tied to reviewed refinements', () => {
+    const schema = strictObject({ value: z.string().max(1).meta({
+      title: 'Value', description: 'A short value.', examples: ['a'],
+      deprecated: false, readOnly: false, writeOnly: false, $comment: 'An annotation.',
+    }) });
+    acceptsBoth(schema, [{ value: 'a' }], [{ value: 'abc' }, {}]);
+    expect(inputJsonSchema(schema).properties?.value).toMatchObject({ title: 'Value', description: 'A short value.', maxLength: 1 });
+    const reviewed = payloadInput(EditResultPayloadSchema, { extensions: 'custom' }).describe('Correct a result.');
+    acceptsBoth(strictObject({ body: reviewed }), [{ body: { custom_value: 0 } }], [{ body: {} }, { body: { unexpected: 1 } }]);
+    expect(() => inputJsonSchema(strictObject({ body: reviewed.meta({ ...reviewed.meta(), maxProperties: 3 }) }))).toThrow('metadata has no reviewed JSON Schema equivalent: maxProperties');
   });
 });
 

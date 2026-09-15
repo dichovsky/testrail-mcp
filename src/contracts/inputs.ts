@@ -13,27 +13,27 @@ export const nonnegativeIntegerSchema = z.number().int().nonnegative();
 // without imposing UUID version or variant bits. Numeric attachment strings are
 // rejected by the public driver; CLI-only normalization is not an API feature.
 export const entryIdSchema = z.string().regex(
-  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?![\s\S])/,
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?![\s\S])/u,
 );
 export const attachmentIdSchema = z.union([positiveIdSchema, entryIdSchema]);
 export const refsSchema = z.union([z.string(), z.array(z.string())]);
 export const jsonValueSchema = z.json();
 
 // eslint-disable-next-line no-control-regex -- Control bytes must be excluded from multipart names.
-export const filenameSchema = z.string().regex(/^(?!\.{1,2}$)(?![a-zA-Z]:)[^/\\\x00-\x1f\x7f-\x9f]+(?![\s\S])/);
-export const bddFilenameSchema = filenameSchema.regex(/\.feature(?![\s\S])/);
+export const filenameSchema = z.string().regex(/^(?!\.{1,2}$)(?![a-zA-Z]:)[^/\\\x00-\x1f\x7f-\x9f]+(?![\s\S])/u);
+export const bddFilenameSchema = filenameSchema.regex(/\.feature(?![\s\S])/u);
 
 // RFC token type/subtype and optional token/quoted parameter values. A slash is
 // valid in a media type and in a quoted parameter, never in a filename.
 const mediaToken = "[!#$%&'*+.^_`|~0-9A-Za-z-]+";
 const quotedValue = '"(?:[\\x20-\\x21\\x23-\\x5b\\x5d-\\x7e]|\\\\[\\x20-\\x7e])*"';
 export const contentTypeSchema = z.string().regex(new RegExp(
-  `^${mediaToken}/${mediaToken}(?: *; *${mediaToken} *= *(?:${mediaToken}|${quotedValue}))*(?![\\s\\S])`,
+  `^${mediaToken}/${mediaToken}(?: *; *${mediaToken} *= *(?:${mediaToken}|${quotedValue}))*(?![\\s\\S])`, 'u',
 ));
 
 /** Host-specific absolute-path checks and authority belong to the file layer. */
 // eslint-disable-next-line no-control-regex -- Control bytes are never valid path inputs here.
-export const filePathSchema = z.string().min(1).regex(/^[^\x00-\x1f\x7f-\x9f]+(?![\s\S])/);
+export const filePathSchema = z.string().min(1).regex(/^[^\x00-\x1f\x7f-\x9f]+(?![\s\S])/u);
 
 export function strictObject<Shape extends InputShape>(shape: Shape) {
   return z.strictObject(shape);
@@ -131,7 +131,7 @@ function adaptPayload(source: z.ZodType, options: PayloadOptions<InputShape> = {
     }
     if (options.extensions === 'custom') {
       const names = new Set(Object.keys(shape));
-      const customName = /^custom_[\s\S]+/;
+      const customName = /^custom_[\s\S]+/u;
       // Zod 4.6 intersections intentionally suppress a record key rejection
       // when the other branch owns that key, unlike JSON Schema allOf. Pair
       // this check directly with propertyNames instead of such an intersection.
@@ -279,6 +279,10 @@ function children(schema: z.ZodType): z.ZodType[] {
   return [];
 }
 
+const annotationMetadata = new Set([
+  'title', 'description', 'examples', 'deprecated', 'readOnly', 'writeOnly', '$comment',
+]);
+
 /** Generate SDK-compatible object schemas without silently dropping refinements. */
 export function inputJsonSchema(schema: z.ZodType<object>): Tool['inputSchema'] {
   const seen = new Set<z.ZodType>();
@@ -287,6 +291,27 @@ export function inputJsonSchema(schema: z.ZodType<object>): Tool['inputSchema'] 
     seen.add(current);
     if (customChecks(current).some((check) => !refinementIsRepresented(check, current))) {
       throw new Error('Input refinement has no reviewed JSON Schema equivalent');
+    }
+    for (const [key, value] of Object.entries(current.meta() ?? {})) {
+      if (!annotationMetadata.has(key) && !customChecks(current).some((check) => {
+        const reviewed = representedRefinements.get(check);
+        return reviewed !== undefined && Object.hasOwn(reviewed, key)
+          && JSON.stringify(reviewed[key]) === JSON.stringify(value);
+      })) {
+        throw new Error(`Input metadata has no reviewed JSON Schema equivalent: ${key}`);
+      }
+    }
+    for (const definition of [current.def, ...(current.def.checks ?? []).map((check) => check._zod.def)]) {
+      // JSON Schema carries pattern.source only; the SDK validator uses Unicode
+      // matching. Require that exact mode rather than changing runtime patterns.
+      if ('pattern' in definition && definition.pattern instanceof RegExp && definition.pattern.flags !== 'u') {
+        throw new Error('Input regex patterns require only the Unicode u flag for JSON Schema parity');
+      }
+      // Zod's floating-point tolerance differs from Ajv for both fractional
+      // divisors and large integer values, including within safe-integer bounds.
+      if ('check' in definition && definition.check === 'multiple_of') {
+        throw new Error('Input multipleOf has no reviewed JSON Schema equivalent');
+      }
     }
     if ('coerce' in current.def && current.def.coerce === true) {
       throw new Error('Input coercion is not supported');

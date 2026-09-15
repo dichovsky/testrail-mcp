@@ -22,6 +22,8 @@ Use the utilities in `src/contracts/inputs.ts`. Path IDs, attachment IDs, entry 
 
 `inputJsonSchema` produces an SDK-validated object schema and rejects unsupported refinements, coercion and default transforms. The two existing driver payload refinements with reviewed structural equivalents are supported explicitly. A new refinement requires an equivalent JSON Schema rule and tests through both Zod and the SDK's independent Ajv validator; do not advertise a wider schema than the runtime accepts.
 
+Regex constraints must use only the `u` flag so runtime and JSON Schema use the same Unicode matching rules. `multipleOf` constraints are unsupported because the validators disagree on floating-point divisibility, including large values with integer divisors. Metadata may add descriptive annotations; validation keywords require a tracked, reviewed refinement equivalent. If an exported driver field uses an unsupported constraint, provide an explicit, independently tested field override before registering it.
+
 ## Effects and results
 
 Record TestRail effects separately from local files. Report GETs initiate work and may send email; their hints are non-read-only/non-idempotent and their driver policy is `never`. Attachment downloads remain ordinary TestRail reads but create distinct persistent local files, so their hints are non-read-only, non-destructive and non-idempotent. The registry validates these exceptions. Other mutations require individually reviewed destructive/idempotent hints. All tools have `openWorldHint: true`; there is no enabled/confirmation/unlock field.
