@@ -4,7 +4,7 @@ A local stdio MCP server for the complete TestRail 10.7.0 API, powered by [`@dic
 
 The accepted design exposes **133 endpoint tools**, enabled by default, for Codex desktop/CLI, Claude Code and GitHub Copilot CLI. It preserves TestRail fields and custom fields, supports bounded pagination, and manages attachment and BDD files within configured local directories. Older TestRail versions are best effort.
 
-**Status:** the package foundation and registry/input infrastructure are implemented, with help/version commands and build, schema, test and packaging checks. The MCP runtime, endpoint tools and release qualification remain in the implementation backlog. Client configuration examples describe the intended release.
+**Status:** the package foundation, registry/input infrastructure and environment/driver configuration modules are implemented, with help/version commands and build, schema, test and packaging checks. The MCP runtime, endpoint tools and release qualification remain in the implementation backlog. Client configuration examples describe the intended release.
 
 ## Development
 
@@ -27,6 +27,7 @@ Source ownership follows the [component boundaries](src/README.md). The initial 
 - [Architecture](docs/architecture.md) and [precise implementation contracts](docs/implementation-contracts.md)
 - [Full endpoint coverage](docs/api-coverage.md) and [machine-readable inventory](docs/operation-inventory.json)
 - [Registry authoring](docs/registry-authoring.md), [generated operation reference](docs/operation-reference.md) and [independent parameter fixtures](docs/parameter-manifest.md)
+- [Startup configuration implementation and remaining runtime work](docs/startup-configuration.md)
 - [Client configuration and verification](docs/client-compatibility.md)
 - [Domain glossary](CONTEXT.md), [design decision](docs/adr/0001-endpoint-tools.md) and [research sources](docs/research-notes.md)
 

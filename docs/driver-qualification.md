@@ -21,6 +21,8 @@ This is an unpublished candidate. These results establish implementation progres
 
 ## Remaining qualification
 
+Rechecked on 2026-09-15: upstream PR #275 remains open at the same candidate commit; npm's latest published driver remains 7.1.0 with the version, commit and integrity recorded above. No new release is available to qualify. F03 configuration preparation can proceed, but its runtime completion remains blocked on this prerequisite.
+
 After the upstream changes are merged and published, install the exact release into an isolated harness, record its version, commit and npm integrity, and run every F01 acceptance check against that installed artifact. Include endpoint/helper parity, both report methods under cache/coalescing/retry scenarios, and settlement after deferred DNS, fetch, body cancellation, multipart cleanup and shared requests. Source tests or an unpublished packed candidate alone do not satisfy this release gate.
 
 F03 then pins the qualified published package and lockfile. F01 and its dependent release gates stay open until that evidence exists.

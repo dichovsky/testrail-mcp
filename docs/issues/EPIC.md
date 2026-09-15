@@ -14,9 +14,9 @@ Implement the full TestRail MCP server in this repository using the public `@dic
 ## Implementation checklist
 
 - [ ] [[F01] Qualify and pin a published TestRail driver with required runtime fixes](https://github.com/dichovsky/testrail-mcp/issues/2)
-- [ ] [[F02] Scaffold the TypeScript ESM package and baseline CI](https://github.com/dichovsky/testrail-mcp/issues/3)
+- [x] [[F02] Scaffold the TypeScript ESM package and baseline CI](https://github.com/dichovsky/testrail-mcp/issues/3)
 - [ ] [[F03] Implement configuration, driver ownership and bounded invocation lifetime](https://github.com/dichovsky/testrail-mcp/issues/4)
-- [ ] [[F04] Build the operation registry, strict inputs and parameter manifest](https://github.com/dichovsky/testrail-mcp/issues/5)
+- [x] [[F04] Build the operation registry, strict inputs and parameter manifest](https://github.com/dichovsky/testrail-mcp/issues/5)
 - [ ] [[F05] Implement preserved results, per-call warnings and truthful errors](https://github.com/dichovsky/testrail-mcp/issues/6)
 - [ ] [[F06] Implement page defaults and bounded complete aggregation](https://github.com/dichovsky/testrail-mcp/issues/7)
 - [ ] [[F07] Implement shared upload staging and persistent attachment downloads](https://github.com/dichovsky/testrail-mcp/issues/8)
