@@ -15,3 +15,11 @@ export class ConfigurationError extends Error {
     this.name = 'ConfigurationError';
   }
 }
+
+/** A setting this adapter fixes was rejected; the operator has no key to correct. */
+export class DriverSettingsError extends Error {
+  constructor() {
+    super('Driver rejected the adapter transport settings.');
+    this.name = 'DriverSettingsError';
+  }
+}

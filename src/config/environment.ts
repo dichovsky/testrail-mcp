@@ -5,6 +5,7 @@ import { isAbsolute, join, parse } from 'node:path';
 import { TestRailConfigSchema } from '@dichovsky/testrail-api-client';
 import { ConfigurationError, type ConfigurationKey } from './errors.js';
 import { parseLimits, type Limits } from './limits.js';
+import { assertDriverConfiguration } from '../driver/configuration.js';
 
 export { ConfigurationError } from './errors.js';
 export type Environment = Readonly<Record<string, string | undefined>>;
@@ -102,7 +103,7 @@ async function uploadRoots(raw: string): Promise<readonly string[]> {
   return Object.freeze([...new Set(resolved)]);
 }
 
-/** Read explicit keys and validate local directories; no .env or network access. */
+/** Read explicit keys, validate local directories and apply the driver's URL policy; no .env or network access. */
 export async function loadConfiguration(environment: Environment): Promise<Configuration> {
   const allowPrivateHosts = boolean(environment, 'TESTRAIL_ALLOW_PRIVATE_HOSTS');
   const allowInsecure = boolean(environment, 'TESTRAIL_ALLOW_INSECURE');
@@ -119,6 +120,10 @@ export async function loadConfiguration(environment: Environment): Promise<Confi
   const downloadDirectory = await directory(
     downloadPath, 'TESTRAIL_MCP_DOWNLOAD_DIR', true,
   );
-  return Object.freeze({ baseUrl, email, apiKey, allowPrivateHosts, allowInsecure,
+  const configuration = Object.freeze({ baseUrl, email, apiKey, allowPrivateHosts, allowInsecure,
     uploadRoots: roots, downloadDirectory, limits });
+  // Private/loopback host and protocol rules live in the driver and are not exported.
+  // Applying them here means no caller can hold a Configuration that skipped them.
+  assertDriverConfiguration(configuration);
+  return configuration;
 }

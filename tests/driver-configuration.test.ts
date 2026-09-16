@@ -1,9 +1,9 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TestRailClient } from '@dichovsky/testrail-api-client';
+import { TestRailClient, TestRailConfigSchema } from '@dichovsky/testrail-api-client';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { ConfigurationError, loadConfiguration } from '../src/config/environment.js';
+import { ConfigurationError, loadConfiguration, type Configuration } from '../src/config/environment.js';
 import { createConfiguredDriver, driverOptions } from '../src/driver/configuration.js';
 
 let directory: string;
@@ -147,12 +147,46 @@ describe('driver construction preparation', () => {
   });
 
   it('preserves unrelated constructor failures instead of mislabeling them as configuration', async () => {
-    const failure = new Error('Synthetic warning-system failure');
-    vi.spyOn(process, 'emitWarning').mockImplementation(() => { throw failure; });
+    // Load first: configuration load now constructs a probe client, so a spy installed
+    // beforehand would fire there instead of at the construction under test.
     const config = await configuration({
       TESTRAIL_BASE_URL: 'http://example.testrail.io/installation',
       TESTRAIL_ALLOW_INSECURE: 'true',
     });
+    const failure = new Error('Synthetic warning-system failure');
+    vi.spyOn(process, 'emitWarning').mockImplementation(() => { throw failure; });
     expect(() => createConfiguredDriver(config)).toThrow(failure);
+  });
+
+  it('applies the driver network policy during configuration load, before any driver is built', async () => {
+    await expect(configuration({ TESTRAIL_BASE_URL: 'https://127.0.0.1/installation' }))
+      .rejects.toThrow('Invalid configuration: TESTRAIL_BASE_URL.');
+    await expect(configuration({ TESTRAIL_BASE_URL: 'https://[::1]/installation' }))
+      .rejects.toThrow('Invalid configuration: TESTRAIL_BASE_URL.');
+    await expect(configuration({
+      TESTRAIL_BASE_URL: 'https://127.0.0.1/installation',
+      TESTRAIL_ALLOW_PRIVATE_HOSTS: 'true',
+    })).resolves.toMatchObject({ allowPrivateHosts: true });
+  });
+
+  it('attributes a driver field rejection to that field own environment key', async () => {
+    const loaded = await configuration();
+    for (const [override, key] of [
+      [{ email: 'not-an-email' }, 'TESTRAIL_EMAIL'],
+      [{ apiKey: '' }, 'TESTRAIL_API_KEY'],
+    ] as const) {
+      const config = { ...loaded, ...override } as Configuration;
+      expect(() => createConfiguredDriver(config)).toThrow(`Invalid configuration: ${key}.`);
+    }
+  });
+
+  it('never relabels an adapter-owned transport rejection as operator configuration', async () => {
+    const config = { ...(await configuration()), baseUrl: 'https://127.0.0.1/x' } as Configuration;
+    // A driver bump could tighten a field this adapter fixes; the operator cannot correct it.
+    vi.spyOn(TestRailConfigSchema, 'safeParse').mockReturnValue(
+      { success: false, error: { issues: [{ path: ['timeout'] }] } } as never,
+    );
+    expect(() => createConfiguredDriver(config)).toThrow('Driver rejected the adapter transport settings.');
+    expect(() => createConfiguredDriver(config)).not.toThrow(ConfigurationError);
   });
 });
