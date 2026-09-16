@@ -6,9 +6,9 @@
       "T02: review and fixture section_id, title, template_id, type_id, priority_id, estimate, milestone_id, refs, labels, is_legacy and the explicitly exported legacy custom_fields payload field.",
       "T02: complete individual custom-field value variants and all normal-body constraints against the current endpoint schema."
     ],
-    "driver_version": "7.0.0",
-    "driver_commit": "71a80d984aea14713d8eeaf6ac9a0d41c1fba12b",
-    "reviewed_on": "2026-09-10"
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-17"
   },
   "endpoint": {
     "family_id": "T02",
@@ -20,17 +20,17 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/modules/cases.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts",
       "supports": "updateCase forwards JSON payload unchanged."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/schemas/cases.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/cases.ts",
       "supports": "UpdateCasePayloadSchema known fields and custom-field passthrough."
     },
     {
       "id": "driver-common",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/schemas/common.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/common.ts",
       "supports": "zObject uses passthrough; the MCP boundary must reject ordinary unknown fields separately."
     }
   ],

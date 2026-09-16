@@ -1,28 +1,31 @@
 # Driver qualification
 
-F01 remains open. No published driver has yet been qualified against every required runtime contract, and the MCP development dependency remains exactly `7.0.0` until F03 adopts the qualified release.
+F01 is qualified except for one recorded deviation. The MCP package pins the published release `@dichovsky/testrail-api-client@7.2.0`, and its acceptance checks run as standing tests in [`tests/driver-qualification.test.ts`](../tests/driver-qualification.test.ts) against the installed artifact rather than a sibling checkout.
 
-## Published 7.1.0 audit — 2026-09-10
+## Qualified release — 7.2.0, verified 2026-09-17
 
-- [Release 7.1.0](https://github.com/dichovsky/testrail-api-client/releases/tag/release/7.1.0) was published on 2026-09-09 at 22:01:07 UTC from commit `2b70e26c67e1356ab8de21e79da6d051b6038fc7`.
-- It includes the network-guard fixes from [upstream PR #266](https://github.com/dichovsky/testrail-api-client/pull/266), merged at `89f636e276ea701412bb06039e3b963d83126ea1`.
-- An isolated installation used the exact npm package with integrity `sha512-BLZWFPx+jtsZD4TddhGbtYaIKNyfGkqreGBje2klL5jF0xD3jnWdMANxZOAXRfuSoFyl0Vumcbw1PG19HvgxDA==`. Its public client exposes all 133 endpoint methods and 48 page/all helpers referenced by the MCP inventory.
-- `trackOperation` is absent. Two sequential `reports.runReport` calls with an injected fetch made only one upstream request, confirming the report cache defect remains in this release. These checks used synthetic credentials and no live TestRail instance.
+- [Release 7.2.0](https://github.com/dichovsky/testrail-api-client/releases/tag/release/7.2.0), tag commit `cc7751c01c3d3956d061073283bee6b23bf33422`, published from [upstream PR #275](https://github.com/dichovsky/testrail-api-client/pull/275) (merged as `9d402e589d8937dda62b69fe74eac113b075a3f9`).
+- npm integrity `sha512-OAVJ1uJtxC0Wzh0jaafBRRcJFhwis/jAPZP3u1441a6wGrtKiZ4JsGtPVERl2wcenKVhqHnxwjkJJExPUB6HHQ==`, matching the committed lockfile. The pin and integrity are asserted by test, so a drifted lockfile fails CI.
+- All 133 endpoint bindings and 48 page/all helpers named by the [operation inventory](operation-inventory.json) resolve to functions on the constructed client.
+- `trackOperation(callback)` returns `{ result, settled }`. A result deadline that loses a race leaves `settled` pending while the fetch descendant is in flight, and `settled` resolves only after the descendant completes. A lost deadline is therefore not treated as settlement.
+- Report generation executes independently: two sequential `reports.runReport` calls issue two upstream requests with caching both disabled and enabled, and three concurrent calls issue three requests, so neither the GET cache nor request coalescing suppresses a generation.
+- Report generation is not retried on a network error, 500 or 503 — one upstream request each — while an ordinary read retries the same failure, confirming the policy belongs to the report methods rather than a shared cap.
 
-The network prerequisite is now published; report execution and operation settlement still require a new release. This audit does not qualify 7.1.0 for F03 or production.
+### Recorded deviation: rate-limited report retries
 
-## Upstream implementation candidate
+F01 requires zero report retries on "network, 429 and 5xx failures". 7.2.0 satisfies this for network errors and 5xx but **not for 429**: a rate-limited `runReport` is re-sent four times, because 7.2.0 handles 429 in the rate limiter, above the per-method retry policy.
 
-[Driver PR #275](https://github.com/dichovsky/testrail-api-client/pull/275), commit `234dc8075e425d9f7084feb0b7f0785952d84be7`, adds independent report execution and the public `trackOperation` result/settlement handle. It owns deadline losers, shared requests and multipart cleanup without changing ordinary result semantics. Fresh independent review found a header-timeout regression; the fix and two regression tests were reviewed, with no remaining actionable findings. The branch incorporates upstream's subsequent publication-workflow change; its changelog conflict was resolved by preserving both entries.
+TestRail rejects a rate-limited request before handling it, so the re-send cannot duplicate report generation or a template-configured email — the harm the retry ban exists to prevent. The behavior is asserted by test so that any upstream change is visible. Whether to tighten the driver or amend the criterion with this rationale is an open decision recorded on [F01](https://github.com/dichovsky/testrail-mcp/issues/2); until it is settled, F01 stays open.
 
-Local candidate verification passed 4,343 tests with 23 skipped and the unchanged coverage floors, including 98.02% branch coverage. All 60 new report, settlement and upload tests passed on Node 22.13.0 and 24.20.0. Packed consumer/CLI checks passed on Node 22, 24 and 26, including public handle types, deferred-DNS settlement and independent report execution. Both TypeScript checks, lint, formatting and generated-file checks passed. The PR runs the expanded Node 22/24 checks on Linux, macOS and Windows.
+### Fixture provenance
 
-This is an unpublished candidate. These results establish implementation progress and do not complete published-artifact qualification.
+The five parameter fixtures were re-reviewed against 7.2.0 rather than re-stamped. Evidence: `dist/types.d.ts` is byte-identical between release commits `71a80d98` and `cc7751c`; all 53 exported payload schemas have identical field sets; and none of the eight driver source files the fixtures cite appear among the 54 files changed between those commits. Their `review` blocks and source links now point at `cc7751c`.
 
-## Remaining qualification
+## Superseded audits
 
-Rechecked on 2026-09-15: upstream PR #275 remains open at the same candidate commit; npm's latest published driver remains 7.1.0 with the version, commit and integrity recorded above. No new release is available to qualify. F03 configuration preparation can proceed, but its runtime completion remains blocked on this prerequisite.
+- **7.1.0, 2026-09-10.** Included the network-guard fixes from [upstream PR #266](https://github.com/dichovsky/testrail-api-client/pull/266) and all 181 endpoint/helper bindings, but had no `trackOperation`, and two sequential `reports.runReport` calls made only one upstream request. Not qualified.
+- **7.0.0.** The original development baseline, release commit `71a80d984aea14713d8eeaf6ac9a0d41c1fba12b`, without the network-guard fixes.
 
-After the upstream changes are merged and published, install the exact release into an isolated harness, record its version, commit and npm integrity, and run every F01 acceptance check against that installed artifact. Include endpoint/helper parity, both report methods under cache/coalescing/retry scenarios, and settlement after deferred DNS, fetch, body cancellation, multipart cleanup and shared requests. Source tests or an unpublished packed candidate alone do not satisfy this release gate.
+## Remaining release dependencies
 
-F03 then pins the qualified published package and lockfile. F01 and its dependent release gates stay open until that evidence exists.
+Qualification covers the driver contract only. R03 still requires live TestRail 10.7.0 evidence, and a later driver upgrade requires an exact dependency review, inventory/parameter diff and a repeat of the checks above against the newly installed artifact.
