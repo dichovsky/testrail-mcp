@@ -6,9 +6,9 @@
       "T01: review and fixture name, announcement, show_announcement, suite_mode, default_role_id, groups container and group id, users container and its exclusive id/user_id union, and users role_id.",
       "T01: complete nested unknown-field rejection and permission/version fixtures."
     ],
-    "driver_version": "7.0.0",
-    "driver_commit": "71a80d984aea14713d8eeaf6ac9a0d41c1fba12b",
-    "reviewed_on": "2026-09-10"
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-17"
   },
   "endpoint": {
     "family_id": "T01",
@@ -20,12 +20,12 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/modules/projects.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/projects.ts",
       "supports": "updateProject forwards JSON payload unchanged."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/schemas/projects.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/projects.ts",
       "supports": "ProjectAccessRoleIdPayloadSchema nonnegative integer/null and required per-assignment role_id."
     },
     {

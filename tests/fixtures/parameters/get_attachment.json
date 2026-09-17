@@ -3,9 +3,9 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "7.0.0",
-    "driver_commit": "71a80d984aea14713d8eeaf6ac9a0d41c1fba12b",
-    "reviewed_on": "2026-09-10"
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-17"
   },
   "endpoint": {
     "family_id": "T12",
@@ -17,12 +17,12 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/modules/attachments.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/attachments.ts",
       "supports": "getAttachment uses responseKind binary and validates the number/UUID union."
     },
     {
       "id": "driver-validation",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/validation.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/validation.ts",
       "supports": "validateAttachmentId rejects numeric strings and arbitrary paths."
     }
   ],

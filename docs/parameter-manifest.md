@@ -2,7 +2,7 @@
 
 F04 provides a test-only fixture format and reviewed examples. Endpoint families T01–T12 must finish the manifests and adapter contract tests before R01. A manifest's `complete` review status means that its parameter requirements have been reviewed and represented in fixtures; it does not certify an implemented tool, file policy, client compatibility or a live TestRail instance.
 
-The examples use the installed development driver `7.0.0`, source commit [`71a80d984aea14713d8eeaf6ac9a0d41c1fba12b`](https://github.com/dichovsky/testrail-api-client/tree/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b). F01 must qualify the later production driver independently. Updating a package pin does not automatically update reviewed fixture provenance.
+The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d061073283bee6b23bf33422`](https://github.com/dichovsky/testrail-api-client/tree/cc7751c01c3d3956d061073283bee6b23bf33422). Updating a package pin does not automatically update reviewed fixture provenance: a version gate fails until each manifest is re-reviewed against the installed driver, and the re-review must cite evidence, not restate the new version.
 
 | Endpoint | Reviewed parameters | Fixture cases | Review status |
 | --- | ---: | ---: | --- |
