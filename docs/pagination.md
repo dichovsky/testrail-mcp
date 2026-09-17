@@ -12,7 +12,7 @@ A list returns one page of 50 unless the caller says otherwise, up to a supporte
 
 The driver's page type supplies `_links`, not parsed controls. This layer validates a next link into caller-controllable arguments and exposes **only the validated numbers** — host and path are discarded, so the caller's original filters are reused rather than whatever the link happens to encode.
 
-`URLSearchParams` reads both link forms TestRail emits. A conventional `?offset=50&limit=25` parses directly, and so does the path-style `?/api/v2/get_cases/1&limit=50&offset=50`, because splitting on `&` leaves the resource path as a key that is neither `limit` nor `offset`. A control repeated across both forms appears twice and is rejected rather than silently preferred.
+Controls are read from both places TestRail puts them. A conventional link carries `?offset=50&limit=25` in the query. The real `_links.next`, however, carries **no question mark at all** — it is the fragment a client appends after its own `index.php?`, as in `/api/v2/get_cases/1&limit=250&offset=250`. A URL parse puts that entirely in `pathname` and leaves `search` empty, so reading only the query would discard every genuine continuation. Both locations are read and validated together, which also means a control repeated across the two forms is seen twice and rejected rather than silently preferred.
 
 A continuation is accepted only with exactly one canonical non-negative offset, at most one positive limit no greater than 250, and an offset that strictly advances past what this page already returned (`next > current` and `next - current >= returned`). Replaying or overlapping a continuation would silently duplicate items, which is worse than reporting that manual paging is unavailable.
 
@@ -28,4 +28,6 @@ A terminal legacy array is reported as `source: "legacy_array"` with `has_more: 
 
 `tests/pagination.test.ts` covers both link forms, cross-form duplicates, non-canonical numbers, out-of-range limits, the advance/overlap rule, response-driven suppression, legacy arrays and the control mapping.
 
-Mutation-checked: dropping the advance/overlap requirement, reporting the driver `size` as `returned`, and permitting manual continuation on a response-driven list each fail a test. A fourth mutation — parsing only real query parameters — did **not** fail, which showed the original hand-rolled splitter was reimplementing `URLSearchParams`; it was replaced by the standard call.
+Mutation-checked: dropping the advance/overlap requirement, reporting the driver `size` as `returned`, permitting manual continuation on a response-driven list, reading controls only from the query, and hardcoding `limit`/`offset` instead of reading the page each fail a test.
+
+Two of those checks were earned the hard way. An early mutation that did *not* fail showed a hand-rolled splitter was reimplementing `URLSearchParams`, which replaced it. Review then found the remaining parser read only `url.search`, while the shape TestRail actually emits has no `?` — so it was internally consistent, tested against a fixture that TestRail never sends, and would have returned no continuation in production.

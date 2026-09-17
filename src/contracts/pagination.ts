@@ -34,19 +34,22 @@ export interface Continuation {
 /**
  * Collect limit/offset from a page link.
  *
- * TestRail emits both conventional query links and path-style links whose controls
- * trail the resource path after `&`, as in `?/api/v2/get_cases/1&limit=50&offset=50`.
- * URLSearchParams reads both: it splits on `&` regardless, so the leading path segment
- * simply becomes a key that is neither `limit` nor `offset`. A control repeated across
- * the two forms therefore appears twice and is rejected rather than silently preferred.
+ * TestRail's real next link carries no `?` at all: the controls trail the resource path,
+ * as in `/api/v2/get_cases/1&limit=250&offset=250`, so a URL parse puts the whole thing
+ * in `pathname` and leaves `search` empty. Conventional links put them in `search`
+ * instead. Both locations are read and the combined values validated together, so a
+ * control repeated across the two forms is seen twice and rejected rather than silently
+ * preferred. This mirrors how the driver reads its own continuations.
  *
  * A value that is not a canonical decimal integer becomes NaN so validation rejects the
  * whole link, instead of being coerced into a request target.
  */
-function collectControls(search: string): { offsets: number[]; limits: number[] } {
-  const parameters = new URLSearchParams(search);
+function collectControls(url: URL): { offsets: number[]; limits: number[] } {
+  const pathControls = url.pathname.indexOf('&');
+  const fromPath = new URLSearchParams(pathControls === -1 ? '' : url.pathname.slice(pathControls + 1));
   const read = (key: 'offset' | 'limit'): number[] =>
-    parameters.getAll(key).map((raw) => (/^\d+$/u.test(raw) ? Number(raw) : Number.NaN));
+    [...url.searchParams.getAll(key), ...fromPath.getAll(key)]
+      .map((raw) => (/^\d+$/u.test(raw) ? Number(raw) : Number.NaN));
   return { offsets: read('offset'), limits: read('limit') };
 }
 
@@ -64,13 +67,13 @@ export function parseContinuation(
   current: { readonly offset: number; readonly returned: number },
 ): Continuation | null {
   if (next === null) return null;
-  let search: string;
+  let url: URL;
   try {
-    search = new URL(next, 'https://testrail.invalid').search;
+    url = new URL(next, 'https://testrail.invalid');
   } catch {
     return null;
   }
-  const { offsets, limits } = collectControls(search);
+  const { offsets, limits } = collectControls(url);
   if (offsets.length !== 1 || limits.length > 1) return null;
 
   const offset = offsets[0] ?? Number.NaN;

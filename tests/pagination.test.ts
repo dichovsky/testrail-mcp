@@ -34,10 +34,23 @@ describe('continuation parsing', () => {
       .toEqual({ offset: 50, limit: 25 });
   });
 
-  it('reads a TestRail path-style link whose controls trail the resource path', () => {
-    // The controls are not real query parameters: everything after `?` is one path.
+  it('reads the real TestRail path-style link, which carries no question mark', () => {
+    // This is the shape TestRail actually emits in _links.next. A URL parse puts the
+    // whole thing in pathname and leaves search empty, so reading only search finds
+    // nothing and every real continuation would be discarded.
+    expect(parseContinuation('/api/v2/get_cases/1&limit=250&offset=250', at(0, 250)))
+      .toEqual({ offset: 250, limit: 250 });
+    expect(parseContinuation('/api/v2/get_cases/1&offset=50', at(0, 50))).toEqual({ offset: 50 });
+  });
+
+  it('reads controls that trail a path after a question mark as well', () => {
     expect(parseContinuation('/index.php?/api/v2/get_cases/1&limit=50&offset=50', at(0, 50)))
       .toEqual({ offset: 50, limit: 50 });
+  });
+
+  it('rejects a control repeated across the path and the query', () => {
+    expect(parseContinuation('/api/v2/get_cases/1&offset=50?offset=60', at(0, 50))).toBeNull();
+    expect(parseContinuation('/api/v2/get_cases/1&limit=25&offset=50?limit=25', at(0, 50))).toBeNull();
   });
 
   it('rejects a control that appears in both forms rather than preferring one', () => {
@@ -87,6 +100,12 @@ describe('page metadata', () => {
     const meta = pageMetadata(envelope({ items: [1, 2], size: 987 }), { responseDriven: false });
     expect(meta.returned).toBe(2);
     expect(meta.driver).toMatchObject({ size: 987 });
+  });
+
+  it('passes the driver page limit and offset through unchanged', () => {
+    const meta = pageMetadata(envelope({ offset: 100, limit: 25, items: [1] }), { responseDriven: false });
+    expect(meta.limit).toBe(25);
+    expect(meta.offset).toBe(100);
   });
 
   it('describes a terminal envelope page as finished', () => {
