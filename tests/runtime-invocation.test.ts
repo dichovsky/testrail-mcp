@@ -33,9 +33,9 @@ function client(fetch: typeof globalThis.fetch): TestRailClient {
 
 /** A watchdog the test fires by hand, so no suite waits 60 seconds. */
 function manualDelay() {
-  const pending: { fire: () => void; cancelled: boolean }[] = [];
-  const delay = (): Delay => {
-    const entry = { fire: () => undefined as void, cancelled: false };
+  const pending: { ms: number; fire: () => void; cancelled: boolean }[] = [];
+  const delay = (ms: number): Delay => {
+    const entry = { ms, fire: () => undefined as void, cancelled: false };
     const promise = new Promise<void>((resolve) => { entry.fire = resolve; });
     pending.push(entry);
     return { promise, cancel: () => { entry.cancelled = true; } };
@@ -139,6 +139,8 @@ describe('runtime admission and invocation', () => {
 
     const call = runtime.invoke((instance) => instance.projects.getProject(1));
     await waitFor(() => upstream.calls === 1, 'the dispatched request');
+    // Pin the budget itself, not just that some timer fires.
+    expect(watchdog.pending[0]?.ms).toBe(60_000);
     watchdog.fireAll();
     await expect(call).rejects.toMatchObject({ code: 'TIMEOUT' });
 
@@ -192,6 +194,8 @@ describe('runtime admission and invocation', () => {
     const ordinary = runtime.invoke((instance) => instance.projects.getProject(2));
     await waitFor(() => upstream.calls === 2, 'the ordinary request');
     expect(runtime.stats().active).toBe(2);
+    // The ordinary call must not have consumed the download slot.
+    expect(runtime.stats().binary).toBe(1);
 
     upstream.releaseAll();
     await Promise.all([download, ordinary]);
@@ -215,6 +219,22 @@ describe('runtime admission and invocation', () => {
     expect(runtime.stats().active).toBe(1);
     finishCleanup();
     await waitFor(() => runtime.stats().active === 0, 'slots released');
+    await runtime.shutdown();
+  });
+
+  it('survives an adapter cleanup that throws synchronously', async () => {
+    const upstream = gatedFetch();
+    const runtime = createRuntime({ client: client(upstream.fetch), limits: DEFAULT_LIMITS });
+    // Declared as returning a promise but written without async, which is assignable.
+    // The throw happens before any returned promise exists, so a .catch on the return
+    // value would never see it and the rejection would take the process down.
+    const cleanup = (): Promise<void> => { throw new Error('staged file is locked'); };
+
+    const call = runtime.invoke((instance) => instance.projects.getProject(1), { cleanup });
+    await waitFor(() => upstream.calls === 1, 'the dispatched request');
+    upstream.releaseAll();
+    await expect(call).resolves.toMatchObject({ id: 1 });
+    await waitFor(() => runtime.stats().active === 0, 'the slot released despite the fault');
     await runtime.shutdown();
   });
 
@@ -248,6 +268,7 @@ describe('runtime admission and invocation', () => {
     const shutdown = runtime.shutdown();
     // The call's watchdog is pending; wait for shutdown to register the drain as well.
     await waitFor(() => drain.pending.length >= 2, 'the drain window');
+    expect(drain.pending[1]?.ms).toBe(5_000);
     drain.fireAll(); // shutdown proceeds on the drain window rather than the stuck call
     await shutdown;
     expect(destroy).toHaveBeenCalledTimes(1);

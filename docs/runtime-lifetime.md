@@ -20,6 +20,8 @@ Before dispatch, an aborted call starts no upstream request and returns `CANCELL
 
 The response-wait watchdog is a fixed 60 seconds. It bounds how long the adapter waits, and reports `TIMEOUT`. It does not abort upstream work and must never be described as a hard deadline.
 
+A slot release must never be able to fail. Adapter cleanup is declared as returning a promise, but a function written without `async` is still assignable and can throw before any promise exists, so a `.catch` on its return value would not see it. The whole release body is wrapped instead: a late descendant failure or a cleanup fault is observed and discarded rather than escaping as an unhandled rejection, which under Node's default would terminate the server.
+
 ## Shutdown
 
 Shutdown stops admission first, then waits for outstanding work up to the fixed 5-second drain window, then destroys the client exactly once. Destroy zeroes the shared credential, so a second protocol consumer calling shutdown must not tear down a client another one is still using. A call still stuck when the drain expires does not block exit; the adapter stops waiting for it without claiming the upstream work stopped.

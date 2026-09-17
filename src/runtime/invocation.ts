@@ -92,8 +92,13 @@ export function createRuntime({ client, limits, delay = timerDelay }: RuntimeDep
      * the previous one has not finished, which is exactly what the slot limit prevents.
      */
     const slot = (async () => {
-      await handle.settled.catch(() => undefined);
-      if (options.cleanup !== undefined) await options.cleanup().catch(() => undefined);
+      try {
+        await handle.settled;
+        await options.cleanup?.();
+      } catch {
+        // Observed, never surfaced. A late descendant failure or a cleanup fault must
+        // not escape as an unhandled rejection and terminate the server.
+      }
     })().finally(() => {
       active -= 1;
       if (wantsBinary) binary -= 1;
@@ -125,8 +130,8 @@ export function createRuntime({ client, limits, delay = timerDelay }: RuntimeDep
       await Promise.race([Promise.allSettled([...retained]).then(() => undefined), drain.promise]);
       drain.cancel();
     }
-    // Destroy exactly once: it zeroes the shared credential, so a second consumer
-    // calling shutdown must not tear down a client another one is still using.
+    // Shutdown is idempotent: stdin closure, SIGINT and SIGTERM can all fire, and
+    // destroy zeroes the shared credential, so it must run exactly once.
     if (!destroyed) {
       destroyed = true;
       client.destroy();
