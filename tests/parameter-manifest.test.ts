@@ -161,7 +161,7 @@ describe('independent parameter manifest format', () => {
     const manifest = example();
     manifest.parameters = manifest.parameters.map((parameter) => ({
       ...parameter,
-      requirements: parameter.requirements.filter(({ kind }) => kind !== 'mapping'),
+      requirements: (parameter.requirements ?? []).filter(({ kind }) => kind !== 'mapping'),
     }));
     expect(auditParameterManifests([manifest])).toContain('testrail_get_attachment: Parameter attachment_id has no mapping requirement');
   });

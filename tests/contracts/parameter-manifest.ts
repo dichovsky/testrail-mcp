@@ -1,8 +1,10 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { z } from 'zod';
+import { loadDomainLibrary, type DomainLibrary } from './domains.js';
 
 const identifier = z.string().min(1);
 const jsonObject = z.record(z.string(), z.json());
+type JsonObject = z.infer<typeof jsonObject>;
 const requirementSchema = z.strictObject({
   id: identifier,
   kind: z.enum(['mapping', 'valid', 'invalid', 'required', 'omitted']),
@@ -73,13 +75,26 @@ export const ParameterManifestSchema = z.strictObject({
   requirements: z.array(requirementSchema).min(1),
   // Future file-family harnesses materialize only these declared synthetic files.
   files: z.array(z.strictObject({ token: identifier, filename: identifier, utf8: z.string() })).optional(),
+  /**
+   * An accepted case whose input a referenced domain mutates at exactly one path to
+   * derive its rejections. Required once any parameter uses `domain_ref`, because a
+   * rejection is only attributable when everything else in the input stayed valid.
+   */
+  baseline: identifier.optional(),
   parameters: z.array(z.strictObject({
     id: identifier,
     input_path: z.array(identifier).min(1),
     scope: z.enum(['path', 'query', 'body', 'file', 'mcp']),
     requiredness: z.enum(['required', 'optional', 'conditional']),
+    /**
+     * A shared domain from the library, in place of an inline `domain` and
+     * `requirements`. The library is authored from the driver's validation source and
+     * each of its values is proven against a public driver method, so a reference is
+     * evidence rather than a shortcut. Exactly one of `domain_ref` or `domain` is given.
+     */
+    domain_ref: identifier.optional(),
     // Independently authored JSON Schema fragment, never exported from the registry.
-    domain: jsonObject,
+    domain: jsonObject.optional(),
     semantics: identifier,
     driver: z.union([
       z.strictObject({ argument: z.number().int().nonnegative(), path: z.array(identifier) }),
@@ -91,11 +106,15 @@ export const ParameterManifestSchema = z.strictObject({
       encoding: identifier,
     }),
     sources: z.array(identifier).min(1),
-    requirements: z.array(requirementSchema).min(1),
+    requirements: z.array(requirementSchema).min(1).optional(),
   }).refine((parameter) => parameter.driver !== null
     || (parameter.scope === 'mcp' && parameter.wire.location === 'adapter_only'), {
     message: 'A null driver mapping is only valid for an adapter-only MCP control',
     path: ['driver'],
+  }).refine((parameter) => (parameter.domain_ref === undefined)
+    !== (parameter.domain === undefined && parameter.requirements === undefined), {
+    message: 'Give exactly one of domain_ref or an inline domain with requirements',
+    path: ['domain_ref'],
   })),
   cases: z.array(z.strictObject({
     id: identifier,
@@ -112,12 +131,86 @@ export type ParameterManifest = z.infer<typeof ParameterManifestSchema>;
 export type ParameterFixture = ParameterManifest['cases'][number];
 export type EndpointIdentity = ParameterManifest['endpoint'];
 
+function replaceAt(input: JsonObject, path: readonly string[], value: JsonObject[string]): JsonObject {
+  const [head, ...rest] = path;
+  if (head === undefined) throw new Error('Empty input path');
+  const nested = input[head];
+  return {
+    ...input,
+    [head]: rest.length === 0
+      ? value
+      : replaceAt(typeof nested === 'object' && nested !== null && !Array.isArray(nested) ? nested : {}, rest, value),
+  };
+}
+
+function removeAt(input: JsonObject, path: readonly string[]): JsonObject {
+  const [head, ...rest] = path;
+  if (head === undefined) throw new Error('Empty input path');
+  if (rest.length === 0) {
+    return Object.fromEntries(Object.entries(input).filter(([key]) => key !== head));
+  }
+  const nested = input[head];
+  if (typeof nested !== 'object' || nested === null || Array.isArray(nested)) return input;
+  return { ...input, [head]: removeAt(nested, rest) };
+}
+
+/**
+ * Inline every referenced domain, so the audits below see one complete shape whether a
+ * manifest wrote its parameter out or referenced the shared library.
+ *
+ * Rejections are derived by mutating the declared baseline at exactly one input path.
+ * That is what makes a derived case attributable: everything else in the input stayed
+ * valid, so the refusal can only have come from the parameter under test.
+ */
+function resolveDomains(manifest: ParameterManifest, library: DomainLibrary): ParameterManifest {
+  const referencing = manifest.parameters.filter(({ domain_ref: reference }) => reference !== undefined);
+  if (referencing.length === 0) return manifest;
+
+  const baseline = manifest.cases.find(({ id }) => id === manifest.baseline);
+  if (baseline === undefined || baseline.expect.kind !== 'accepted') {
+    throw new Error(`${manifest.endpoint.tool}: a domain reference requires an accepted baseline case`);
+  }
+
+  const derived: ParameterManifest['cases'] = [];
+  const parameters = manifest.parameters.map((parameter) => {
+    const reference = parameter.domain_ref;
+    if (reference === undefined) return parameter;
+    const domain = library.domains[reference];
+    if (domain === undefined) throw new Error(`${manifest.endpoint.tool}: unknown domain ${reference}`);
+
+    for (const invalid of domain.invalid) {
+      derived.push({
+        id: `${parameter.id}:${invalid.id}`,
+        input: replaceAt(baseline.input, parameter.input_path, invalid.value),
+        covers: [{ parameter: parameter.id, requirements: invalid.requirements }],
+        expect: { kind: 'rejected', code: 'INVALID_ARGUMENT' },
+      });
+    }
+    if (domain.omitted !== undefined && parameter.requiredness === 'required') {
+      derived.push({
+        id: `${parameter.id}:${domain.omitted.id}`,
+        input: removeAt(baseline.input, parameter.input_path),
+        covers: [{ parameter: parameter.id, requirements: domain.omitted.requirements }],
+        expect: { kind: 'rejected', code: 'INVALID_ARGUMENT' },
+      });
+    }
+    // An optional control has no required-omission case, so drop that requirement
+    // rather than leaving one nothing covers.
+    const requirements = domain.requirements.filter(({ kind }) =>
+      parameter.requiredness === 'required' || (kind !== 'required' && kind !== 'omitted'));
+    return { ...parameter, domain: domain.domain, requirements };
+  });
+
+  return { ...manifest, parameters, cases: [...manifest.cases, ...derived] };
+}
+
 export async function loadParameterManifests(): Promise<ParameterManifest[]> {
   const directory = new URL('../fixtures/parameters/', import.meta.url);
   const names = (await readdir(directory)).filter((name) => name.endsWith('.json')).sort();
+  const library = await loadDomainLibrary();
   return Promise.all(names.map(async (name) => {
     const raw: unknown = JSON.parse(await readFile(new URL(name, directory), 'utf8'));
-    return ParameterManifestSchema.parse(raw);
+    return resolveDomains(ParameterManifestSchema.parse(raw), library);
   }));
 }
 
@@ -175,15 +268,18 @@ export function auditParameterManifests(
     ];
     const requirements = new Map<string, z.infer<typeof requirementSchema>>();
     for (const target of targets) {
-      for (const duplicate of duplicates(target.requirements.map(({ id }) => id))) {
+      // Domain references are inlined at load, so an absent list means a manifest was
+      // audited without resolution rather than a parameter having no requirements.
+      const declared = target.requirements ?? [];
+      for (const duplicate of duplicates(declared.map(({ id }) => id))) {
         fail(`Duplicate requirement: ${target.id}/${duplicate}`);
       }
-      for (const requirement of target.requirements) requirements.set(`${target.id}/${requirement.id}`, requirement);
+      for (const requirement of declared) requirements.set(`${target.id}/${requirement.id}`, requirement);
     }
     for (const parameter of manifest.parameters) {
       if (parameter.id === '$input') fail('Parameter uses reserved ID $input');
       for (const source of parameter.sources) if (!sources.has(source)) fail(`Unknown source: ${source}`);
-      const kinds = new Set(parameter.requirements.map(({ kind }) => kind));
+      const kinds = new Set((parameter.requirements ?? []).map(({ kind }) => kind));
       for (const kind of ['mapping', 'valid', 'invalid'] as const) {
         if (!kinds.has(kind)) fail(`Parameter ${parameter.id} has no ${kind} requirement`);
       }
