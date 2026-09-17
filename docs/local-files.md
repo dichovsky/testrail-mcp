@@ -24,6 +24,10 @@ The size limit is enforced **while copying**, not from the initial `stat`, becau
 
 Where inode identity is meaningful, the opened handle is checked against the path it came from, so a file swapped between resolution and open is caught. `O_NOFOLLOW` guards the final component where the platform provides it; Windows reports no usable inode and no such flag, so containment carries the check there.
 
+The source is opened non-blocking, and that is what makes the regular-file check reachable at all. Opening a FIFO for reading blocks until a writer connects — before anything can observe the file type — so a caller naming a pipe inside an allowed root would hold a libuv worker indefinitely. Four such calls exhaust the default threadpool and stall every other async operation in the process, not merely this tool. A named pipe is an ordinary artifact that can sit innocently under a directory an operator points a root at, so this needs no hostile local process. `O_NONBLOCK` is a no-op for regular files, so nothing else changes.
+
+One bound is still missing and belongs with F08: the copy loop ends only at EOF or on exceeding the byte limit, so a file that grows slowly while staying under the limit can hold a call slot for a long time. The invocation runtime is where that deadline belongs, since it already owns the response-wait budget.
+
 ## Recovery deletes only what it can prove
 
 An abandoned staging directory is removed only with positive evidence: our marker, a recorded owner PID, and proof that the owner is gone. `ESRCH` is the only proof of absence — `EPERM` means the process exists under another user, and anything unreadable or unmarked is left alone. A stale directory wastes an inode; deleting a live one destroys an upload in flight, and PID reuse makes that a real possibility. Completed downloads are never inspected.
@@ -39,5 +43,7 @@ Repeating a download creates another distinct retained file. That local additive
 `tests/files.test.ts` uses disposable directories only. It covers component-versus-prefix containment, traversal, symlink escape and symlink-within-root, non-regular sources, source replacement after staging, a file that lies about its size, handle-close counting, idempotent disposal, recovery's four refusal cases, and download exclusivity with cleanup on write and close failure.
 
 Mutation-checked: string-prefix containment, skipping `realpath`, forwarding the source path instead of copying, trusting the initial size, opening downloads with `w` instead of `wx`, and ignoring the ownership marker each fail a test.
+
+Security review added two more that now fail: removing `O_NONBLOCK`, and removing the explicit regular-file guard. The second had previously been uncatchable — the only non-regular case tested was a directory, and reading a directory throws `EISDIR` on its own, producing the same refusal the test asserted. The guard could have been deleted with the suite still green. A pipe case closes that.
 
 One of those mutations exposed a flaw in the tests themselves. The symlink-escape case originally survived removal of `realpath`, because on macOS the unresolved candidate failed to match the resolved root — it rejected for the wrong reason. The fixture now resolves its base directory, so the symlink is the only variable and the test fails when the protection is removed.

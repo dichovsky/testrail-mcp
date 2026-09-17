@@ -1,5 +1,7 @@
 import { mkdtemp, mkdir, open, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
 import { tmpdir } from 'node:os';
+import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -7,6 +9,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 // implementation is imported separately for the wrappers below.
 vi.mock('node:fs/promises', { spy: true });
 const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+const run = promisify(execFile);
 import { containedRealPath, isWithin } from '../src/files/containment.js';
 import { writeDownload } from '../src/files/download.js';
 import { createStagingArea, recoverAbandonedStaging, stageUpload } from '../src/files/staging.js';
@@ -153,6 +156,21 @@ describe('upload staging', () => {
       .rejects.toMatchObject({ code: 'FILE_ACCESS_DENIED' });
     await area.dispose();
   });
+
+  it.skipIf(process.platform === 'win32')('rejects a pipe without waiting for a writer', async () => {
+    const area = await createStagingArea(staging);
+    const pipe = join(root, 'a-pipe');
+    await run('mkfifo', [pipe]);
+
+    // Opening a FIFO for reading blocks until a writer connects. Without a
+    // non-blocking open this call never returns, the regular-file check below is
+    // never reached, and the call holds a libuv worker forever.
+    const started = Date.now();
+    await expect(stageUpload(pipe, { roots: [root], maxBytes: 1_024, stagingDirectory: area.directory }))
+      .rejects.toMatchObject({ code: 'FILE_ACCESS_DENIED' });
+    expect(Date.now() - started).toBeLessThan(2_000);
+    await area.dispose();
+  }, 10_000);
 
   it('rejects a source outside the roots before opening anything', async () => {
     const area = await createStagingArea(staging);

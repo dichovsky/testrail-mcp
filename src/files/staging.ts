@@ -66,9 +66,17 @@ export async function stageUpload(
 ): Promise<StagedUpload> {
   const resolved = await containedRealPath(source, options.roots);
 
-  // O_NOFOLLOW guards the final component against a symlink swapped in after the
-  // realpath above; it is unavailable on Windows, where containment carries the check.
-  const readFlags = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0);
+  /*
+   * O_NOFOLLOW guards the final component against a symlink swapped in after the
+   * realpath above; it is unavailable on Windows, where containment carries the check.
+   *
+   * O_NONBLOCK is what makes the regular-file check below reachable. Opening a FIFO
+   * for reading blocks until a writer connects, and that happens before anything can
+   * observe the file type, so a caller naming a pipe inside an allowed root would hold
+   * a libuv worker forever. Four such calls exhaust the default threadpool and stall
+   * every other async operation in the process. It is a no-op for regular files.
+   */
+  const readFlags = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
   const handle = await open(resolved, readFlags).catch(() => {
     throw new AdapterError('FILE_ACCESS_DENIED');
   });
