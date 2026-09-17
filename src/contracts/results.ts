@@ -5,7 +5,7 @@ import { AdapterError, type SafeError } from './errors.js';
 
 export interface ResultWrapper {
   readonly data: unknown;
-  readonly pagination?: Readonly<Record<string, unknown>>;
+  readonly pagination?: object;
   readonly warnings?: readonly ResultWarning[];
 }
 
