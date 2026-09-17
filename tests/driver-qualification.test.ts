@@ -22,7 +22,13 @@ const qualified = {
 function client(fetch: typeof globalThis.fetch, overrides: Record<string, unknown> = {}): TestRailClient {
   return new TestRailClient({
     baseUrl: 'https://qualification.testrail.io', email: 'user@example.com', apiKey: 'synthetic',
-    fetch, registerProcessHandlers: false, ...overrides,
+    fetch, registerProcessHandlers: false,
+    // Inject DNS. Without it these assertions depend on real resolution of a hostname
+    // this project does not own: a lookup failure means the driver never dispatches, so
+    // a request-count assertion fails while the deadline assertion above still passes
+    // for the wrong reason.
+    dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
+    ...overrides,
   });
 }
 
