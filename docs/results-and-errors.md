@@ -34,7 +34,7 @@ Status 0 and status 200 both map to `INVALID_RESPONSE`. A status-zero failure is
 
 Every error on an operation that mutates TestRail or initiates report generation carries a `write_outcome`, and it is never inferred from MCP annotations — an attachment download has local file effects but does not mutate TestRail, so it carries none.
 
-- `not_started` — the adapter can prove nothing was dispatched: input validation, capacity rejection, cancellation before invocation.
+- `not_started` — the adapter can prove nothing was dispatched: input validation, capacity rejection, cancellation before invocation. It is derived only from what the adapter observed, never from the error code: a pre-dispatch code reaching a post-dispatch failure must not be allowed to claim nothing was sent.
 - `unknown` — invocation began and failed without a usable acknowledgment. This never claims no change occurred and never advises an unconditional retry.
 - `acknowledged` — the driver resolved and a later adapter stage failed. It records acknowledgment, not atomic success of every item in a bulk call.
 

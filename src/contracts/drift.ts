@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import type { ResponseContract } from '../operations/registry.js';
 
 export const WARNING_CODES = ['SCHEMA_DRIFT'] as const;
 export type WarningCode = (typeof WARNING_CODES)[number];
@@ -27,7 +28,7 @@ export const MAX_WARNING_COUNT = 1_000;
  */
 export function advisoryWarnings(
   entitySchema: z.ZodType | null,
-  shape: string,
+  shape: ResponseContract['shape'],
   value: unknown,
 ): readonly ResultWarning[] {
   if (entitySchema === null) return [];

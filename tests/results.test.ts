@@ -203,6 +203,16 @@ describe('write outcome', () => {
     expect(classifyError(new AdapterError('INVALID_ARGUMENT'), write({ dispatched: false })).write_outcome).toBe('not_started');
   });
 
+  it('never lets an error code override what the adapter observed', () => {
+    // A pre-dispatch code reaching a post-dispatch failure must not claim nothing was
+    // sent. Unknown is the conservative answer; not_started is a claim about reality.
+    for (const error of [new RuntimeError('BUSY', 'x'), new AdapterError('INVALID_ARGUMENT')]) {
+      expect(classifyError(error, write({ dispatched: true })).write_outcome).toBe('unknown');
+      expect(classifyError(error, write({ dispatched: true, acknowledged: true })).write_outcome)
+        .toBe('acknowledged');
+    }
+  });
+
   it('reports unknown for an ambiguous failure after dispatch', () => {
     for (const error of [new TestRailApiError(500, 'x'), new RuntimeError('TIMEOUT', 'x'), new RuntimeError('CANCELLED', 'x')]) {
       expect(classifyError(error, write()).write_outcome).toBe('unknown');
@@ -227,6 +237,12 @@ describe('error envelope', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toBe(JSON.stringify(result.structuredContent));
     expect(structured(result).error).toMatchObject({ code: 'NOT_FOUND', http_status: 404 });
+  });
+
+  it('fails rather than emit an envelope that is still oversized after degrading', () => {
+    expect(() => errorResult({
+      code: 'INTERNAL_ERROR', message: 'm'.repeat(FIXED_BUDGETS.max_error_bytes * 2),
+    })).toThrow(expect.objectContaining({ code: 'INTERNAL_ERROR' }));
   });
 
   it('stays within its fixed budget by dropping metadata before the outcome', () => {

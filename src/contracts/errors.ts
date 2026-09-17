@@ -47,6 +47,7 @@ export interface SafeError {
   readonly code: ErrorCode;
   readonly message: string;
   readonly http_status?: number;
+  /** Allowlisted by the contract; populated only if the driver ever exposes validated retry metadata. */
   readonly retry_after_ms?: number;
   readonly reason?: string;
   readonly pages_fetched?: number;
@@ -101,12 +102,14 @@ function codeFor(error: unknown): ErrorCode {
   return 'INTERNAL_ERROR';
 }
 
-function writeOutcome(code: ErrorCode, context: ErrorContext): WriteOutcome | undefined {
+function writeOutcome(context: ErrorContext): WriteOutcome | undefined {
   if (!context.mutates) return undefined;
-  if (!context.dispatched || code === 'BUSY' || code === 'INVALID_ARGUMENT') return 'not_started';
+  // Derived only from what the adapter observed, never keyed off the error code. A
+  // code-keyed shortcut would let a post-dispatch failure that happens to carry a
+  // pre-dispatch code report that nothing was sent, which is the one claim this
+  // classification must never make wrongly. Unknown is the conservative fallback.
+  if (!context.dispatched) return 'not_started';
   if (context.acknowledged) return 'acknowledged';
-  // Everything else began upstream and failed without a usable acknowledgment.
-  // Never report that no change occurred, and never advise an unconditional retry.
   return 'unknown';
 }
 
@@ -122,7 +125,7 @@ export function classifyError(error: unknown, context: ErrorContext): SafeError 
     if (Number.isSafeInteger(error.pagesFetched)) safe.pages_fetched = error.pagesFetched;
     if (Number.isSafeInteger(error.itemsFetched)) safe.items_fetched = error.itemsFetched;
   }
-  const outcome = writeOutcome(code, context);
+  const outcome = writeOutcome(context);
   if (outcome !== undefined) safe.write_outcome = outcome;
   return Object.freeze(safe);
 }

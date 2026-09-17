@@ -77,11 +77,18 @@ export function errorResult(error: SafeError): ToolResult {
   };
   const full = build({ error: { ...error } });
   if (utf8Bytes(serialize(full)) <= FIXED_BUDGETS.max_error_bytes) return full;
-  return build({
+  const degraded = build({
     error: {
       code: error.code,
       message: error.message,
       ...(error.write_outcome === undefined ? {} : { write_outcome: error.write_outcome }),
     },
   });
+  // Messages are fixed constants today, so this cannot fire; a caller supplying its
+  // own message could break the guarantee, and silently exceeding it is worse than
+  // failing here, where the caller still controls what to emit instead.
+  if (utf8Bytes(serialize(degraded)) > FIXED_BUDGETS.max_error_bytes) {
+    throw new AdapterError('INTERNAL_ERROR');
+  }
+  return degraded;
 }
