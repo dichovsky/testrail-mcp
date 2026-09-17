@@ -117,26 +117,52 @@ describe('F01 published driver qualification', () => {
     expect(await requests((instance) => instance.reports.runReport(1), () => Promise.resolve(json({ error: 'rate' }, 429)))).toBe(4);
   }, 20_000);
 
-  it('keeps settlement pending after the result deadline loses, then resolves it', async () => {
+  it('rejects an aggregate at its own deadline while settlement stays pending', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let fetches = 0;
+    const instance = client(async () => {
+      fetches += 1;
+      await gate;
+      return json([{ id: 1, name: 'Project' }]);
+    }, { maxRetries: 0 });
+
+    // The aggregate deadline is the mechanism F01 names. A request timeout cannot stand
+    // in for it: the driver delivers that one through the fetch AbortSignal, so it can
+    // never reject ahead of the fetch it is waiting on.
+    const handle = instance.trackOperation(() => instance.projects.getAllProjects({ maxDurationMs: 50 }));
+    expect(Object.keys(handle).sort()).toEqual(['result', 'settled']);
+
+    let settled = false;
+    void handle.settled.then(() => { settled = true; }, () => { settled = true; });
+
+    await expect(handle.result).rejects.toThrow(/maxDurationMs/u);
+    await new Promise((resolve) => { setTimeout(resolve, 40); });
+    // The descendant fetch is still in flight, so a rejected result is not settlement.
+    expect(settled).toBe(false);
+    // The rejected aggregate must not start further upstream work.
+    expect(fetches).toBe(1);
+
+    release();
+    await expect(handle.settled).resolves.toBeUndefined();
+    expect(fetches).toBe(1);
+  });
+
+  it('settles an ordinary call only after its descendant completes', async () => {
     let release: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const instance = client(async () => { await gate; return json({ id: 1, name: 'Project' }); });
 
     const handle = instance.trackOperation(() => instance.projects.getProject(1));
-    expect(Object.keys(handle).sort()).toEqual(['result', 'settled']);
-
     let settled = false;
     void handle.settled.then(() => { settled = true; }, () => { settled = true; });
-    const winner = await Promise.race([
-      handle.result.then(() => 'result', () => 'result'),
-      new Promise((resolve) => { setTimeout(() => { resolve('deadline'); }, 100); }),
-    ]);
-    expect(winner).toBe('deadline');
-    // A lost deadline is not settlement: the fetch descendant is still in flight.
+
+    await new Promise((resolve) => { setTimeout(resolve, 50); });
     expect(settled).toBe(false);
 
     release();
-    await expect(handle.settled).resolves.toBeUndefined();
     await expect(handle.result).resolves.toMatchObject({ id: 1 });
+    await expect(handle.settled).resolves.toBeUndefined();
   });
+
 });
