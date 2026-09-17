@@ -110,7 +110,8 @@ describe('runtime admission and invocation', () => {
       runtime.invoke((instance) => instance.projects.getAllProjects({ maxDurationMs: 50 }))));
     for (const outcome of outcomes) {
       expect(outcome.status).toBe('rejected');
-      expect(String((outcome as PromiseRejectedResult).reason)).toMatch(/maxDurationMs/u);
+      // Either deadline mechanism is correct here; see driver-qualification.test.ts.
+      expect(String((outcome as PromiseRejectedResult).reason)).toMatch(/maxDurationMs|deadline exceeded/iu);
     }
 
     // Rejected results, but the descendants are still running: the slots stay taken.

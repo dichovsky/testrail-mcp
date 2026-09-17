@@ -142,7 +142,11 @@ describe('F01 published driver qualification', () => {
     let settled = false;
     void handle.settled.then(() => { settled = true; }, () => { settled = true; });
 
-    await expect(handle.result).rejects.toThrow(/maxDurationMs/u);
+    // Either deadline mechanism is a correct rejection: the driver derives each
+    // request's timeout from the remaining aggregate budget, so a short budget can
+    // surface as the pagination policy stop or as a 408 on the request it bounded.
+    // The property under test is that result rejects while a descendant continues.
+    await expect(handle.result).rejects.toThrow(/maxDurationMs|deadline exceeded/iu);
     await new Promise((resolve) => { setTimeout(resolve, 40); });
     // The descendant fetch is still in flight, so a rejected result is not settlement.
     expect(settled).toBe(false);
