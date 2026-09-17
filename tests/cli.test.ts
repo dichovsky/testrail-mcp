@@ -23,13 +23,13 @@ function invoke(args: string[], env = environment) {
   });
 }
 
-describe('executable before server implementation', () => {
+describe('packaged executable', () => {
   it.each(['--help', '-h'])('shows %s without TestRail configuration', (flag) => {
     const result = invoke([flag]);
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('Usage: testrail-mcp');
-    expect(result.stdout).toContain('does not yet serve MCP');
+    expect(result.stdout).toContain('protocol messages only');
   });
 
   it.each(['--version', '-v'])('prints the package version for %s', (flag) => {
@@ -62,10 +62,27 @@ describe('executable before server implementation', () => {
     }
   });
 
-  it('does not pretend to expose an empty MCP catalog before the runtime is implemented', () => {
+  it('fails before serving when required configuration is missing, naming only the key', () => {
     const result = invoke([]);
     expect(result.status).toBe(1);
+    // Nothing reaches stdout: a server that cannot start must not emit a protocol
+    // message it has no means to honour.
     expect(result.stdout).toBe('');
-    expect(result.stderr).toBe('This development build does not yet serve MCP.\n');
+    expect(result.stderr).toBe('Invalid configuration: TESTRAIL_BASE_URL.\n');
+  });
+
+  it('reports a startup failure without echoing any configured value', () => {
+    const result = invoke([], {
+      ...environment,
+      TESTRAIL_BASE_URL: 'https://example.testrail.io',
+      TESTRAIL_EMAIL: 'user@example.com',
+      TESTRAIL_API_KEY: 'synthetic-secret-must-not-appear',
+      TESTRAIL_MCP_UPLOAD_ROOTS: 'not-json',
+      TESTRAIL_MCP_DOWNLOAD_DIR: '/nonexistent-download-directory',
+    });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toBe('Invalid configuration: TESTRAIL_MCP_UPLOAD_ROOTS.\n');
+    expect(result.stderr).not.toContain('synthetic-secret');
   });
 });
