@@ -1,5 +1,6 @@
+import { t01 } from './families/t01.js';
 import { createRegistry } from './registry.js';
 
-// T01–T12 add independently verified endpoint implementations here. The CLI
-// continues to reject serving until F08 provides the real MCP runtime.
-export const operationRegistry = createRegistry();
+// One entry per family, spread in order. T02–T12 add theirs alongside; keeping a
+// file per family means parallel work edits disjoint files rather than this one.
+export const operationRegistry = createRegistry(...t01);

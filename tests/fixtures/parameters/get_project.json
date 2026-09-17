@@ -1,0 +1,223 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-18"
+  },
+  "endpoint": {
+    "family_id": "T01",
+    "http_method": "GET",
+    "route": "get_project/{project_id}",
+    "tool": "testrail_get_project",
+    "driver_method": "projects.getProject"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/projects.ts",
+      "supports": "getProject takes a single numeric project ID and returns the project record unchanged."
+    },
+    {
+      "id": "driver-validation",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/validation.ts",
+      "supports": "Positive-integer ID validation rejects zero, negatives, fractions and numeric strings."
+    },
+    {
+      "id": "testrail-projects",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077792415124-Projects",
+      "supports": "get_project takes the project ID as its only path segment."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement. The driver accepts the ID positionally and performs no top-level object validation of its own."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "The driver returns the project object. Entity fields are validated advisorily, so an unexpected field type warns rather than failing the call."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    }
+  ],
+  "parameters": [
+    {
+      "id": "project_id",
+      "input_path": ["project_id"],
+      "scope": "path",
+      "requiredness": "required",
+      "domain": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      },
+      "semantics": "No coercion. The validated number is passed positionally and appears verbatim in the path.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": ["project_id"],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": ["driver-module", "driver-validation", "testrail-projects"],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value at driver argument 0 and in the request path."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a representative positive integer."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a representative invalid value before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing required input."
+        },
+        {
+          "id": "upper-bound",
+          "kind": "valid",
+          "description": "Accept the largest safe integer, which is the largest value that can round-trip through JSON."
+        },
+        {
+          "id": "above-upper-bound",
+          "kind": "invalid",
+          "description": "Reject a value above the largest safe integer, since it cannot round-trip through JSON and would address a different project than the caller named."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-id",
+      "input": { "project_id": 7 },
+      "covers": [{ "parameter": "project_id", "requirements": ["mapping", "valid"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "projects.getProject", "arguments": [7] },
+        "wire": { "method": "GET", "endpoint": "get_project/7" },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 7,
+            "name": "Fixture project",
+            "announcement": null,
+            "show_announcement": false,
+            "is_completed": false,
+            "completed_on": null,
+            "suite_mode": 1,
+            "url": "https://fixture.testrail.test/index.php?/projects/overview/7"
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 7,
+            "name": "Fixture project",
+            "announcement": null,
+            "show_announcement": false,
+            "is_completed": false,
+            "completed_on": null,
+            "suite_mode": 1,
+            "url": "https://fixture.testrail.test/index.php?/projects/overview/7"
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": { "project_id": 9007199254740991 },
+      "covers": [{ "parameter": "project_id", "requirements": ["upper-bound"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "projects.getProject", "arguments": [9007199254740991] },
+        "wire": { "method": "GET", "endpoint": "get_project/9007199254740991" },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 9007199254740991,
+            "name": "Boundary project",
+            "announcement": null,
+            "show_announcement": false,
+            "is_completed": false,
+            "completed_on": null,
+            "suite_mode": 1,
+            "url": "https://fixture.testrail.test/index.php?/projects/overview/9007199254740991"
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 9007199254740991,
+            "name": "Boundary project",
+            "announcement": null,
+            "show_announcement": false,
+            "is_completed": false,
+            "completed_on": null,
+            "suite_mode": 1,
+            "url": "https://fixture.testrail.test/index.php?/projects/overview/9007199254740991"
+          }
+        }
+      }
+    },
+    {
+      "id": "missing-id",
+      "input": {},
+      "covers": [{ "parameter": "project_id", "requirements": ["required"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "zero-id",
+      "input": { "project_id": 0 },
+      "covers": [{ "parameter": "project_id", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "negative-id",
+      "input": { "project_id": -1 },
+      "covers": [{ "parameter": "project_id", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "fractional-id",
+      "input": { "project_id": 1.5 },
+      "covers": [{ "parameter": "project_id", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "numeric-string-id",
+      "input": { "project_id": "7" },
+      "covers": [{ "parameter": "project_id", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "above-safe-integer-id",
+      "input": { "project_id": 9007199254740992 },
+      "covers": [{ "parameter": "project_id", "requirements": ["above-upper-bound"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": { "project_id": 7, "unexpected": true },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    }
+  ]
+}
