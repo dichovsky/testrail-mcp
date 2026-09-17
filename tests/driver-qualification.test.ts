@@ -108,11 +108,12 @@ describe('F01 published driver qualification', () => {
     )).toBe(2);
   });
 
-  it('still retries a rate-limited report generation, the one F01 case not yet met', async () => {
+  it('retries a rate-limited report generation, which F01 accepts as safe', async () => {
     // 7.2.0 handles 429 in the rate limiter, above the per-method retry policy, so a
-    // report generation is re-sent. TestRail rejects a rate-limited request before
-    // handling it, so this cannot duplicate generation or template email; F01's
-    // "zero retries on 429" wording is under review. Asserted so a driver change is visible.
+    // report generation is re-sent. Accepted 2026-09-17: TestRail rejects a rate-limited
+    // request before handling it, so a re-send cannot generate the report twice or send a
+    // duplicate template email. A 5xx stays non-retryable because generation may have
+    // begun. Asserted so that an upstream change to this returns for a fresh decision.
     expect(await requests((instance) => instance.reports.runReport(1), () => Promise.resolve(json({ error: 'rate' }, 429)))).toBe(4);
   }, 20_000);
 

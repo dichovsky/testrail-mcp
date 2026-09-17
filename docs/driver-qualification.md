@@ -1,6 +1,6 @@
 # Driver qualification
 
-F01 is qualified except for one recorded deviation. The MCP package pins the published release `@dichovsky/testrail-api-client@7.2.0`, and its acceptance checks run as standing tests in [`tests/driver-qualification.test.ts`](../tests/driver-qualification.test.ts) against the installed artifact rather than a sibling checkout.
+F01 is qualified. The MCP package pins the published release `@dichovsky/testrail-api-client@7.2.0`, and its acceptance checks run as standing tests in [`tests/driver-qualification.test.ts`](../tests/driver-qualification.test.ts) against the installed artifact rather than a sibling checkout.
 
 ## Qualified release — 7.2.0, verified 2026-09-17
 
@@ -11,11 +11,11 @@ F01 is qualified except for one recorded deviation. The MCP package pins the pub
 - Report generation executes independently: two sequential `reports.runReport` calls issue two upstream requests with caching both disabled and enabled, and three concurrent calls issue three requests, so neither the GET cache nor request coalescing suppresses a generation.
 - Report generation is not retried on a network error, 500 or 503 — one upstream request each — while an ordinary read retries the same failure, confirming the policy belongs to the report methods rather than a shared cap.
 
-### Recorded deviation: rate-limited report retries
+### Accepted behavior: rate-limited report retries
 
-F01 requires zero report retries on "network, 429 and 5xx failures". 7.2.0 satisfies this for network errors and 5xx but **not for 429**: a rate-limited `runReport` is re-sent four times, because 7.2.0 handles 429 in the rate limiter, above the per-method retry policy.
+7.2.0 handles 429 in the rate limiter, above the per-method retry policy, so a rate-limited `runReport` is re-sent. This was reviewed on 2026-09-17 and accepted; the F01 criterion, originally written as "zero retries on network, 429 and 5xx", was amended to exempt 429.
 
-TestRail rejects a rate-limited request before handling it, so the re-send cannot duplicate report generation or a template-configured email — the harm the retry ban exists to prevent. The behavior is asserted by test so that any upstream change is visible. Whether to tighten the driver or amend the criterion with this rationale is an open decision recorded on [F01](https://github.com/dichovsky/testrail-mcp/issues/2); until it is settled, F01 stays open.
+TestRail rejects a rate-limited request before handling it, so the re-send cannot generate the report twice or send a duplicate template-configured email — the harm the retry ban exists to prevent. A 5xx is not exempt, because the server may already have begun generating. The behavior is asserted by test, so an upstream change to it fails CI.
 
 ### Fixture provenance
 
