@@ -5,7 +5,8 @@ import { AdapterError } from '../contracts/errors.js';
 import { isWithin } from './containment.js';
 
 export interface DownloadResult {
-  readonly attachment_id: number;
+  /** The caller's validated id, unchanged. TestRail accepts a number or a UUID. */
+  readonly attachment_id: number | string;
   readonly file_path: string;
   readonly bytes: number;
 }
@@ -26,7 +27,11 @@ export interface DownloadResult {
  */
 export async function writeDownload(
   content: ArrayBuffer | Uint8Array,
-  options: { readonly directory: string; readonly maxBytes: number; readonly attachmentId: number },
+  options: {
+    readonly directory: string;
+    readonly maxBytes: number;
+    readonly attachmentId: number | string;
+  },
 ): Promise<DownloadResult> {
   const bytes = content instanceof Uint8Array ? content : new Uint8Array(content);
   if (bytes.byteLength > options.maxBytes) throw new AdapterError('FILE_TOO_LARGE');

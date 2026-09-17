@@ -34,11 +34,14 @@ function controls(input: unknown): AdapterControls {
   return typeof mcp === 'object' && mcp !== null && !Array.isArray(mcp) ? mcp : {};
 }
 
+/**
+ * The registry reserves these as flat top-level inputs for upload operations
+ * (`validateInputLayout` allows exactly `file_path`, `filename` and `content_type`),
+ * so they are read in that shape rather than as a nested object.
+ */
 function uploadRequest(input: unknown): { path: string; filename?: string; mediaType?: string } | undefined {
   if (typeof input !== 'object' || input === null) return undefined;
-  const file = (input as { file?: unknown }).file;
-  if (typeof file !== 'object' || file === null) return undefined;
-  const { path, filename, media_type: mediaType } = file as Record<string, unknown>;
+  const { file_path: path, filename, content_type: mediaType } = input as Record<string, unknown>;
   if (typeof path !== 'string') return undefined;
   return {
     path,
@@ -47,11 +50,17 @@ function uploadRequest(input: unknown): { path: string; filename?: string; media
   };
 }
 
-function attachmentId(input: unknown): number {
+/**
+ * The caller's validated identifier, unchanged. TestRail accepts a positive integer or
+ * a UUID, so a string is as valid as a number and must not be coerced: the download
+ * result promises the original id, and substituting a placeholder would break any
+ * caller matching a batch of downloads back to what it asked for.
+ */
+function attachmentId(input: unknown): number | string | undefined {
   const value = typeof input === 'object' && input !== null
     ? (input as { attachment_id?: unknown }).attachment_id
     : undefined;
-  return typeof value === 'number' ? value : 0;
+  return typeof value === 'number' || typeof value === 'string' ? value : undefined;
 }
 
 function selectMode(operation: Operation, input: unknown): Mode {
@@ -137,10 +146,14 @@ export async function executeToolCall(
     let pagination: object | undefined;
 
     if (operation.files.kind === 'download') {
+      const identifier = attachmentId(input);
+      // A download operation whose input carries no identifier cannot honour the
+      // result contract. That is an adapter registration fault, not a caller error.
+      if (identifier === undefined) throw new AdapterError('INTERNAL_ERROR');
       data = await writeDownload(value as ArrayBuffer, {
         directory: configuration.downloadDirectory,
         maxBytes: limits.max_file_bytes,
-        attachmentId: attachmentId(input),
+        attachmentId: identifier,
       });
     } else if (mode === 'page') {
       validateOuter(operation.response.outerSchema, value);
@@ -175,6 +188,14 @@ export async function executeToolCall(
     });
     return result;
   } catch (error) {
+    /*
+     * Dispose the staged copy here as well. The runtime rejects BUSY and
+     * pre-dispatch cancellation before it creates the slot that would run cleanup,
+     * so a call refused at admission would otherwise leave its copy in the staging
+     * directory until the process exits. Disposal is idempotent, so the settled path
+     * running it too is harmless.
+     */
+    if (staged !== undefined) await staged.dispose().catch(() => undefined);
     const safe = classifyError(error, { mutates, dispatched, acknowledged });
     logEvent('tool_call', {
       correlation, tool: operation.tool, outcome: 'error',

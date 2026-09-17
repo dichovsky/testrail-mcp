@@ -42,7 +42,19 @@ Configuration is loaded before any transport exists, so a misconfigured server n
 
 `tests/transport/lifecycle.test.ts` drives the **packaged executable**: stdout is parsed line by line and every line must be a protocol message, diagnostics appear on stderr with no configured value, stdin closure exits zero, an unknown method returns `-32601`, and a malformed line is skipped without ending the session.
 
-Mutation-checked: routing diagnostics to stdout fails the lifecycle test, and advertising the Zod schema instead of the reviewed document fails both the discovery test and the argument-rejection test.
+`tests/transport/tool-call.test.ts` covers the pipeline directly with synthetic download and upload operations: a caller's identifier survives unchanged whether it is a number or a UUID, and a staged copy is gone after a call refused at admission.
+
+Mutation-checked: routing diagnostics to stdout fails the lifecycle test; advertising the Zod schema instead of the reviewed document fails both the discovery and argument-rejection tests; coercing a non-numeric attachment id, dropping the staged disposal, and reading a nested `file` object instead of the reserved flat inputs each fail a tool-call test.
+
+## Two corrections review found here
+
+Both were real and neither would have surfaced until an endpoint family landed.
+
+**Identifiers were coerced.** TestRail accepts a positive integer **or a UUID** for an attachment id — the driver's own signature is `getAttachment(attachmentId: number | string)`. The download branch collapsed anything non-numeric to `0`, which would have labelled every UUID download with a placeholder and broken any caller matching a batch of downloads back to what it requested. The validated value now passes through untouched, and an operation registered without an identifier raises an internal error rather than inventing one.
+
+**Staged uploads leaked on refusal.** The runtime rejects `BUSY` and pre-dispatch cancellation *before* it creates the slot that runs cleanup, so a call refused at admission left its staged copy in the staging directory for the life of the process. The catch now disposes it; disposal is idempotent, so the settled path running it too is harmless.
+
+A third fault surfaced while writing the test for the second: the reserved upload inputs are **flat** — `file_path`, `filename`, `content_type` — and the pipeline was reading a nested `file` object it had invented. It would never have matched a real registered upload, so staging would silently never have happened. The registry's own layout check caught it.
 
 ## Not in this layer
 
