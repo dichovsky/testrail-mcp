@@ -38,7 +38,7 @@
     {
       "id": "testrail-suites",
       "url": "https://support.testrail.com/hc/en-us/articles/7077936624276-Suites",
-      "supports": "get_suites/{project_id} takes limit (default and maximum 250) and offset on TestRail 9.3.1 or later and answers with an offset/limit/size/_links envelope around suites; earlier versions ignore both and return a bare array."
+      "supports": "get_suites/{project_id} takes limit (default and maximum 250) and offset on TestRail 9.3.1 or later and answers with an offset/limit/size/_links envelope around suites; the article states that earlier versions did not accept either and returned a bare array."
     }
   ],
   "input_policy": {

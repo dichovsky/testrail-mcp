@@ -169,7 +169,7 @@ function removeAt(input: JsonObject, path: readonly string[]): JsonObject {
  * That is what makes a derived case attributable: everything else in the input stayed
  * valid, so the refusal can only have come from the parameter under test.
  */
-function resolveDomains(manifest: ParameterManifest, library: DomainLibrary): ParameterManifest {
+export function resolveDomains(manifest: ParameterManifest, library: DomainLibrary): ParameterManifest {
   const referencing = manifest.parameters.filter(({ domain_ref: reference }) => reference !== undefined);
   if (referencing.length === 0) return manifest;
 
@@ -189,6 +189,17 @@ function resolveDomains(manifest: ParameterManifest, library: DomainLibrary): Pa
     const domain = library.domains[reference];
     if (domain === undefined) throw new Error(`${manifest.endpoint.tool}: unknown domain ${reference}`);
     const baseline = baselineFor(parameter);
+    // A control is live only in its own call mode. Mutating a case of the other mode
+    // is refused by the mode mismatch and proves nothing about the parameter, so the
+    // derived rejections would pass vacuously for a registration that stopped
+    // enforcing the domain.
+    const control = baseline.input._mcp;
+    const allMode = typeof control === 'object' && control !== null && !Array.isArray(control) && control.pagination === 'all';
+    const wantsAll = parameter.scope === 'mcp';
+    const wantsPage = parameter.scope === 'query' && ['limit', 'offset'].includes(parameter.input_path[1] ?? '');
+    if ((wantsAll && !allMode) || (wantsPage && allMode)) {
+      throw new Error(`${manifest.endpoint.tool}: ${parameter.id} baseline is a case of the other call mode`);
+    }
 
     for (const invalid of domain.invalid) {
       derived.push({

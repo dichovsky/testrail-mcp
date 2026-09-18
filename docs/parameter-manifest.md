@@ -6,13 +6,22 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 
 | Endpoint | Reviewed parameters | Fixture cases | Review status |
 | --- | ---: | ---: | --- |
+| `add_project` | 4 | 10 | Complete input manifest |
+| `add_suite` | 3 | 9 | Complete input manifest |
+| `delete_project` | 1 | 3 | Complete input manifest |
+| `delete_suite` | 2 | 7 | Complete input manifest |
 | `get_attachment` | 1 | 12 | Complete input manifest |
 | `get_attachments_for_plan_entry` | 2 | 11 | Complete input manifest |
 | `get_cases` | 2 | 9 | Partial: project ID and refs variants |
+| `get_project` | 1 | 3 | Complete input manifest |
+| `get_projects` | 10 | 18 | Complete input manifest |
+| `get_suite` | 1 | 3 | Complete input manifest |
+| `get_suites` | 10 | 16 | Complete input manifest |
 | `update_case` | 3 | 8 | Partial: case ID, body container and custom-field extension point |
-| `update_project` | 2 | 9 | Partial: project ID and group role sentinel values |
+| `update_project` | 11 | 29 | Complete input manifest |
+| `update_suite` | 3 | 8 | Complete input manifest |
 
-There are **128 endpoints without a manifest**, **3 partial manifests**, and **2 complete input manifests**. The partial files name their remaining fields under `review.pending`. `parameterCoverageReport()` returns the exact sorted tool names in each group; its test compares their union with all 133 inventory names. Completing a manifest requires reviewing the endpoint's entire parameter surface against sources, not merely deleting its pending text.
+Case counts are authored cases; a parameter that references the shared domain library ([tests/fixtures/domains.json](../tests/fixtures/domains.json)) derives further rejections at load, one per proven invalid value. There are **119 endpoints without a manifest**, **2 partial manifests**, and **12 complete input manifests**. The partial files name their remaining fields under `review.pending`. `parameterCoverageReport()` returns the exact sorted tool names in each group; its test compares their union with all 133 inventory names. Completing a manifest requires reviewing the endpoint's entire parameter surface against sources, not merely deleting its pending text.
 
 ## Format and integration
 

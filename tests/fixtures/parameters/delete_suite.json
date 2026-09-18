@@ -18,7 +18,7 @@
     {
       "id": "driver-module",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/suites.ts",
-      "supports": "deleteSuite validates the suite ID, appends soft=1 only when the soft option is true, resolves with no value after a deletion and with the parsed preview after a soft request."
+      "supports": "deleteSuite validates the suite ID, appends soft=1 only when the soft option is true, resolves with no value after a deletion and with the parsed preview after a soft request. The driver documents soft mode as TestRail 6.5 or later."
     },
     {
       "id": "driver-schema",
@@ -39,7 +39,7 @@
   "outer_result": {
     "driver": "record_or_void",
     "tool_data": "record_or_null",
-    "notes": "After a deletion the method resolves with no value and the wrapper reports data: null. After a preview it resolves with TestRail's affected-entity counts, which vary by TestRail version and are not drift-checked against an entity schema. Deletion removes the suite's sections, cases and active runs and results with it."
+    "notes": "After a deletion the method resolves with no value and the wrapper reports data: null. After a preview it resolves with TestRail's affected-entity counts, which vary by TestRail version and are not drift-checked against an entity schema; every count is optional in the driver's schema, so an empty reply to soft=1 is reported as an empty preview rather than as an error. Previews need TestRail 6.5 or later. Deletion removes the suite's sections, cases and active runs and results with it."
   },
   "requirements": [
     {

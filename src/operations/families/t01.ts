@@ -319,7 +319,7 @@ export const deleteSuite = defineOperation({
   route: 'delete_suite/{suite_id}',
   family: 'T01',
   driverBinding: 'suites.deleteSuite',
-  summary: 'Delete a TestRail test suite with its sections, cases and active runs and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything.',
+  summary: 'Delete a TestRail test suite with its sections, cases and active runs and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later).',
   inputSchema: deleteSuiteInput,
   argumentMap: [
     { input: 'suite_id', call: 'single', argument: 0, serialization: 'path' },

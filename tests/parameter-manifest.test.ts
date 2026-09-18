@@ -9,11 +9,13 @@ import {
 } from '@dichovsky/testrail-api-client';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { loadDomainLibrary } from './contracts/domains.js';
 import {
   auditParameterManifests,
   loadParameterManifests,
   parameterCoverageReport,
   ParameterManifestSchema,
+  resolveDomains,
 } from './contracts/parameter-manifest.js';
 import type { ParameterFixture } from './contracts/parameter-manifest.js';
 
@@ -171,6 +173,23 @@ describe('independent parameter manifest format', () => {
     expect(derived('_mcp.page_size:above-maximum')).toEqual({ project_id: 7, _mcp: { pagination: 'all', page_size: 251 } });
     expect(derived('query.limit:zero')).toEqual({ project_id: 7, query: { limit: 0, offset: 50 } });
     expect(derived('project_id:missing')).toEqual({ query: { limit: 50, offset: 50 } });
+  });
+
+  it('refuses a baseline from the other call mode, which would make derived rejections vacuous', async () => {
+    const raw: unknown = JSON.parse(await readFile(new URL('./fixtures/parameters/get_suites.json', import.meta.url), 'utf8'));
+    const suites = ParameterManifestSchema.parse(raw);
+    const library = await loadDomainLibrary();
+    const rebase = (id: string, baseline: string) => ({
+      ...suites,
+      parameters: suites.parameters.map((parameter) => parameter.id === id ? { ...parameter, baseline } : parameter),
+    });
+    // The mode union would refuse these mutations whatever the registration enforced.
+    expect(() => resolveDomains(rebase('_mcp.max_items', 'page-controls'), library))
+      .toThrow('_mcp.max_items baseline is a case of the other call mode');
+    expect(() => resolveDomains(rebase('query.limit', 'all-defaults'), library))
+      .toThrow('query.limit baseline is a case of the other call mode');
+    expect(() => resolveDomains(rebase('_mcp.max_items', 'largest-safe-project'), library)).toThrow();
+    expect(() => resolveDomains(suites, library)).not.toThrow();
   });
 
   it('detects a removed union-branch fixture instead of merely counting endpoints', () => {

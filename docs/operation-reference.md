@@ -170,7 +170,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_delete_suite
 
-Delete a TestRail test suite with its sections, cases and active runs and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything. Required path arguments: suite_id. Changes TestRail data.
+Delete a TestRail test suite with its sections, cases and active runs and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later). Required path arguments: suite_id. Changes TestRail data.
 
 REST: `POST delete_suite/{suite_id}`. Driver: `suites.deleteSuite`. Family: T01.
 
