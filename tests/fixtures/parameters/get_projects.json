@@ -437,6 +437,7 @@
         "_mcp": { "pagination": "all", "page_size": 25, "start_offset": 100, "max_items": 10, "max_pages": 2, "max_bytes": 1024, "max_duration_ms": 5000 }
       },
       "covers": [
+        { "parameter": "query.is_completed", "requirements": ["mapping"] },
         { "parameter": "_mcp.page_size", "requirements": ["mapping", "valid"] },
         { "parameter": "_mcp.start_offset", "requirements": ["mapping", "valid"] },
         { "parameter": "_mcp.max_items", "requirements": ["mapping", "valid"] },

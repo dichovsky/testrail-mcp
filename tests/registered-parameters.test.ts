@@ -208,6 +208,26 @@ describe('production registrations send what their fixtures promise', () => {
   }
 });
 
+describe('configured limits reach the aggregate', () => {
+  // Every fixture is invoked with the default limits, so the fixtures alone cannot tell
+  // context.limits apart from a hard-coded DEFAULT_LIMITS. This can.
+  it('forwards the operator\'s bounds, not the built-in defaults, when the caller sets none', async () => {
+    const operation = operationRegistry.get('testrail_get_projects');
+    if (operation?.pagination.kind !== 'controlled') throw new Error('Missing controlled get_projects registration');
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(
+      JSON.stringify({ offset: 0, limit: 250, size: 0, _links: { next: null, prev: null }, projects: [] }),
+      { headers: { 'content-type': 'application/json' } },
+    ));
+    const client = new TestRailClient({ baseUrl: 'https://example.test', email: 'fixture@example.test', apiKey: 'synthetic', allowPrivateHosts: true, fetch });
+    const all = vi.spyOn(client.projects, 'getAllProjects');
+    try {
+      const limits = { ...DEFAULT_LIMITS, max_all_items: 5, max_all_pages: 2, max_all_bytes: 512, max_all_duration_ms: 1_000 };
+      await operation.pagination.all.invoke(client, { _mcp: { pagination: 'all' } }, { limits });
+      expect(all.mock.calls).toEqual([[{ maxItems: 5, maxPages: 2, maxBytes: 512, maxDurationMs: 1_000 }]]);
+    } finally { client.destroy(); }
+  });
+});
+
 describe('independent fixture → schema → real public driver', () => {
   for (const fixture of attachment.cases) {
     it(fixture.id, async () => {

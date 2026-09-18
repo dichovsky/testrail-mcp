@@ -34,7 +34,7 @@
   "input_policy": {
     "ordinary_fields": "reject",
     "custom_fields": "reject",
-    "notes": "The driver's payload schema permits additional properties at every depth; the adapter closes the body, each group assignment and each user assignment. TestRail's own article is inconsistent here (it lists name as required while stating partial updates are supported, and shows is_completed only in responses), so the driver's schema is the contract this manifest reviews."
+    "notes": "The driver's payload schema permits additional properties at every depth; the adapter closes the body, each group assignment and each user assignment. TestRail's own article is inconsistent here: it lists name as required while stating partial updates are supported, and shows is_completed and default_role_id in its update_project example blocks but not in its request-field table. The driver's schema is therefore the contract this manifest reviews: it accepts default_role_id and not is_completed."
   },
   "outer_result": {
     "driver": "record",
@@ -50,7 +50,7 @@
     {
       "id": "unknown-body-field",
       "kind": "invalid",
-      "description": "Reject an unknown body field, which the driver's own schema would pass through unchecked."
+      "description": "Reject a body field the driver's schema does not declare, which the driver itself would pass through unchecked. is_completed is the notable one: TestRail's article shows it in an update_project example, driver 7.2.0 does not accept it, and the adapter reports that rather than forwarding it. Should the driver add the field, this case flips and must be rewritten."
     },
     {
       "id": "unknown-group-field",
@@ -75,7 +75,7 @@
     {
       "id": "body-required",
       "kind": "required",
-      "description": "Reject a call with no body rather than sending an empty update."
+      "description": "Reject a call without a body key rather than inventing one. An explicitly empty body is the caller's choice and is sent as the partial update TestRail documents."
     }
   ],
   "baseline": "assignments-omitted",
@@ -169,7 +169,7 @@
       "scope": "body",
       "requiredness": "optional",
       "domain": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-      "semantics": "The driver's nonnegative integer, kept as is: TestRail documents the field only in responses, so no narrower domain is asserted here.",
+      "semantics": "The driver's nonnegative integer, kept as is: TestRail's article shows the field in an example block but never tabulates it as a request field, so no narrower domain is asserted here.",
       "driver": { "argument": 1, "path": ["default_role_id"] },
       "wire": { "location": "json", "names": ["default_role_id"], "encoding": "JSON integer in the request body." },
       "sources": ["driver-schema", "testrail-projects"],
