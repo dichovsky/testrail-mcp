@@ -3,7 +3,9 @@ import {
   TestRailClient,
   UpdateCasePayloadSchema,
   AddProjectPayloadSchema,
+  AddSuitePayloadSchema,
   UpdateProjectPayloadSchema,
+  UpdateSuitePayloadSchema,
 } from '@dichovsky/testrail-api-client';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -140,18 +142,35 @@ describe('independent parameter manifest format', () => {
     const report = parameterCoverageReport(manifests, inventory);
     expect(report.completeEndpoints).toEqual([
       'testrail_add_project',
+      'testrail_add_suite',
       'testrail_delete_project',
+      'testrail_delete_suite',
       'testrail_get_attachment',
       'testrail_get_attachments_for_plan_entry',
       'testrail_get_project',
       'testrail_get_projects',
+      'testrail_get_suite',
+      'testrail_get_suites',
       'testrail_update_project',
+      'testrail_update_suite',
     ]);
     expect(report.partialEndpoints).toEqual(['testrail_get_cases', 'testrail_update_case']);
-    expect(report.pendingEndpoints).toHaveLength(124);
+    expect(report.pendingEndpoints).toHaveLength(119);
     expect([...report.reviewedEndpoints, ...report.pendingEndpoints].sort())
       .toEqual(inventory.map(({ tool }) => tool).sort());
     expect(report.pendingEndpoints).toContain('testrail_add_case');
+  });
+
+  it('derives a control\'s rejections from the baseline of its own call mode', () => {
+    const suites = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_get_suites');
+    if (!suites) throw new Error('Required get_suites manifest is missing');
+    const derived = (id: string) => suites.cases.find((fixture) => fixture.id === id)?.input;
+    // An aggregate bound mutates the all-mode case; a page control mutates the page-mode
+    // baseline. Mutating the wrong one would still be refused, but by the mode mismatch.
+    expect(derived('_mcp.max_items:zero')).toEqual({ project_id: 7, _mcp: { pagination: 'all', max_items: 0 } });
+    expect(derived('_mcp.page_size:above-maximum')).toEqual({ project_id: 7, _mcp: { pagination: 'all', page_size: 251 } });
+    expect(derived('query.limit:zero')).toEqual({ project_id: 7, query: { limit: 0, offset: 50 } });
+    expect(derived('project_id:missing')).toEqual({ query: { limit: 50, offset: 50 } });
   });
 
   it('detects a removed union-branch fixture instead of merely counting endpoints', () => {
@@ -284,6 +303,40 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
     case 'projects.updateProject': {
       const [projectId, payload] = z.tuple([z.number(), UpdateProjectPayloadSchema]).parse(expected.driver.arguments);
       return client.projects.updateProject(projectId, payload);
+    }
+    case 'suites.getSuite': {
+      const [suiteId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.suites.getSuite(suiteId);
+    }
+    case 'suites.getSuitesPage': {
+      const [projectId, options] = z.tuple([z.number(), z.strictObject({ limit: z.number(), offset: z.number() })])
+        .parse(expected.driver.arguments);
+      return client.suites.getSuitesPage(projectId, options);
+    }
+    case 'suites.getAllSuites': {
+      const [projectId, options] = z.tuple([z.number(), z.strictObject({
+        pageSize: z.number().optional(), startOffset: z.number().optional(),
+        maxItems: z.number(), maxPages: z.number(), maxBytes: z.number(), maxDurationMs: z.number(),
+      })]).parse(expected.driver.arguments);
+      const { pageSize, startOffset, ...bounds } = options;
+      return client.suites.getAllSuites(projectId, {
+        ...bounds,
+        ...(pageSize === undefined ? {} : { pageSize }),
+        ...(startOffset === undefined ? {} : { startOffset }),
+      });
+    }
+    case 'suites.addSuite': {
+      const [projectId, payload] = z.tuple([z.number(), AddSuitePayloadSchema]).parse(expected.driver.arguments);
+      return client.suites.addSuite(projectId, payload);
+    }
+    case 'suites.updateSuite': {
+      const [suiteId, payload] = z.tuple([z.number(), UpdateSuitePayloadSchema]).parse(expected.driver.arguments);
+      return client.suites.updateSuite(suiteId, payload);
+    }
+    case 'suites.deleteSuite': {
+      const [suiteId, options] = z.tuple([z.number(), z.strictObject({ soft: z.boolean() }).optional()])
+        .parse(expected.driver.arguments);
+      return options === undefined ? client.suites.deleteSuite(suiteId) : client.suites.deleteSuite(suiteId, options);
     }
     default: throw new Error(`Missing independent driver evidence harness: ${expected.driver.binding}`);
   }

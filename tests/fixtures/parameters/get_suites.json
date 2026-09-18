@@ -1,0 +1,489 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-19"
+  },
+  "endpoint": {
+    "family_id": "T01",
+    "http_method": "GET",
+    "route": "get_suites/{project_id}",
+    "tool": "testrail_get_suites",
+    "driver_method": "suites.getSuites"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/suites.ts",
+      "supports": "getSuitesPage and getAllSuites validate the project ID and place it as the only path segment; neither takes a filter. The page helper decodes one response; the all helper collects under the safety bounds."
+    },
+    {
+      "id": "driver-paginated-list",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/paginated-list.ts",
+      "supports": "The page helper validates limit and offset before dispatch and appends them after the path. The all helper copies only pageSize, startOffset, maxPages, maxItems, maxDurationMs and maxBytes from its options."
+    },
+    {
+      "id": "driver-pagination",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
+      "supports": "collectAllPages validates every bound before the first request, defaults pageSize to 250 and startOffset to 0, requires the first envelope offset to equal startOffset, and stops when _links.next is null."
+    },
+    {
+      "id": "driver-url",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/url.ts",
+      "supports": "buildEndpoint appends controls path-style after an ampersand and skips undefined values."
+    },
+    {
+      "id": "testrail-suites",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077936624276-Suites",
+      "supports": "get_suites/{project_id} takes limit (default and maximum 250) and offset on TestRail 9.3.1 or later and answers with an offset/limit/size/_links envelope around suites; earlier versions ignore both and return a bare array."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement at every depth: the top level, query and _mcp are each closed. The endpoint has no filters, so query carries only the page controls. The two call modes are a union, so a page control in all mode or an aggregate bound in page mode is a caller mistake reported before dispatch."
+  },
+  "outer_result": {
+    "driver": "page",
+    "tool_data": "array",
+    "notes": "Page mode returns the driver's decoded page; the wrapper carries its items as data and describes the rest as pagination metadata. All mode returns the collected array. These fixtures use the envelope TestRail 9.3.1 or later sends; the bare array of earlier versions is decoded as one terminal page."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-query",
+      "kind": "invalid",
+      "description": "Reject an unsupported query key rather than discarding it; this endpoint has no filters."
+    },
+    {
+      "id": "unknown-control",
+      "kind": "invalid",
+      "description": "Reject an unknown _mcp control rather than discarding it."
+    },
+    {
+      "id": "page-controls-in-all",
+      "kind": "invalid",
+      "description": "Reject query.limit or query.offset together with pagination all; page_size and start_offset are the only paging controls of an aggregate."
+    },
+    {
+      "id": "all-controls-in-page",
+      "kind": "invalid",
+      "description": "Reject an aggregate bound in page mode, where nothing would apply it."
+    }
+  ],
+  "baseline": "page-controls",
+  "parameters": [
+    {
+      "id": "project_id",
+      "input_path": ["project_id"],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "No coercion. The validated number is passed positionally to either helper and appears verbatim in the path of every request.",
+      "driver": { "argument": 0, "path": [] },
+      "wire": {
+        "location": "path",
+        "names": ["project_id"],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": ["driver-module", "testrail-suites"]
+    },
+    {
+      "id": "query.limit",
+      "input_path": ["query", "limit"],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain_ref": "pagination_limit",
+      "semantics": "Page mode only. Sent explicitly on every page request: the caller's value, or 50 when omitted.",
+      "driver": { "argument": 1, "path": ["limit"] },
+      "wire": { "location": "query", "names": ["limit"], "encoding": "Decimal integer appended path-style after the project ID." },
+      "sources": ["driver-paginated-list", "driver-url", "testrail-suites"]
+    },
+    {
+      "id": "query.offset",
+      "input_path": ["query", "offset"],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain_ref": "pagination_offset",
+      "semantics": "Page mode only. Sent explicitly on every page request: the caller's value, or 0 when omitted.",
+      "driver": { "argument": 1, "path": ["offset"] },
+      "wire": { "location": "query", "names": ["offset"], "encoding": "Decimal integer appended path-style after limit." },
+      "sources": ["driver-paginated-list", "driver-url", "testrail-suites"]
+    },
+    {
+      "id": "_mcp.pagination",
+      "input_path": ["_mcp", "pagination"],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain": { "enum": ["page", "all"] },
+      "semantics": "Selects the public page helper or the bounded all helper. Never passed to the driver.",
+      "driver": null,
+      "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized upstream." },
+      "sources": ["driver-module"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Select getSuitesPage for page and getAllSuites for all." },
+        { "id": "page", "kind": "valid", "description": "Accept an explicit page mode." },
+        { "id": "all", "kind": "valid", "description": "Accept all mode." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject an unknown mode before driver invocation." },
+        { "id": "omitted", "kind": "omitted", "description": "Use page mode when omitted." }
+      ]
+    },
+    {
+      "id": "_mcp.page_size",
+      "input_path": ["_mcp", "page_size"],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_page_size",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded as the driver's pageSize when supplied; the driver's own default of 250 applies when omitted.",
+      "driver": { "argument": 1, "path": ["pageSize"] },
+      "wire": { "location": "query", "names": ["limit"], "encoding": "Sent as the limit control of every request the aggregate issues." },
+      "sources": ["driver-paginated-list", "driver-pagination"]
+    },
+    {
+      "id": "_mcp.start_offset",
+      "input_path": ["_mcp", "start_offset"],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_start_offset",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded as the driver's startOffset when supplied; the aggregate starts at 0 when omitted.",
+      "driver": { "argument": 1, "path": ["startOffset"] },
+      "wire": { "location": "query", "names": ["offset"], "encoding": "Sent as the offset of the first request; later offsets follow the continuation links." },
+      "sources": ["driver-paginated-list", "driver-pagination"]
+    },
+    {
+      "id": "_mcp.max_items",
+      "input_path": ["_mcp", "max_items"],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_items",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": { "argument": 1, "path": ["maxItems"] },
+      "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the collection inside the driver." },
+      "sources": ["driver-pagination"]
+    },
+    {
+      "id": "_mcp.max_pages",
+      "input_path": ["_mcp", "max_pages"],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_pages",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": { "argument": 1, "path": ["maxPages"] },
+      "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the collection inside the driver." },
+      "sources": ["driver-pagination"]
+    },
+    {
+      "id": "_mcp.max_bytes",
+      "input_path": ["_mcp", "max_bytes"],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_bytes",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": { "argument": 1, "path": ["maxBytes"] },
+      "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the serialized item bytes inside the driver." },
+      "sources": ["driver-pagination"]
+    },
+    {
+      "id": "_mcp.max_duration_ms",
+      "input_path": ["_mcp", "max_duration_ms"],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_duration_ms",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": { "argument": 1, "path": ["maxDurationMs"] },
+      "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the aggregate's wall-clock time inside the driver." },
+      "sources": ["driver-pagination"]
+    }
+  ],
+  "cases": [
+    {
+      "id": "defaults",
+      "input": { "project_id": 7 },
+      "covers": [
+        { "parameter": "query.limit", "requirements": ["omitted"] },
+        { "parameter": "query.offset", "requirements": ["omitted"] },
+        { "parameter": "_mcp.pagination", "requirements": ["omitted"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "suites.getSuitesPage", "arguments": [7, { "limit": 50, "offset": 0 }] },
+        "wire": { "method": "GET", "endpoint": "get_suites/7&limit=50&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0, "limit": 50, "size": 1, "_links": { "next": null, "prev": null },
+            "suites": [{ "id": 3, "name": "Setup & Installation", "description": "Tests covering installation and initial setup.", "project_id": 7, "is_master": false, "is_baseline": false, "is_completed": false, "completed_on": null, "url": "https://fixture.testrail.test/index.php?/suites/view/3" }]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [{ "id": 3, "name": "Setup & Installation", "description": "Tests covering installation and initial setup.", "project_id": 7, "is_master": false, "is_baseline": false, "is_completed": false, "completed_on": null, "url": "https://fixture.testrail.test/index.php?/suites/view/3" }],
+            "offset": 0, "limit": 50, "size": 1, "_links": { "next": null, "prev": null }
+          }
+        }
+      }
+    },
+    {
+      "id": "page-controls",
+      "input": { "project_id": 7, "query": { "limit": 50, "offset": 50 } },
+      "covers": [
+        { "parameter": "project_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.limit", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.offset", "requirements": ["mapping", "valid"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "suites.getSuitesPage", "arguments": [7, { "limit": 50, "offset": 50 }] },
+        "wire": { "method": "GET", "endpoint": "get_suites/7&limit=50&offset=50" },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 50, "limit": 50, "size": 1, "_links": { "next": null, "prev": "/api/v2/get_suites/7&limit=50&offset=0" },
+            "suites": [{ "id": 53, "name": "Import and Export", "description": "Tests covering import and export workflows.", "project_id": 7, "is_master": false, "is_baseline": false, "is_completed": false, "completed_on": null, "url": "https://fixture.testrail.test/index.php?/suites/view/53" }]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [{ "id": 53, "name": "Import and Export", "description": "Tests covering import and export workflows.", "project_id": 7, "is_master": false, "is_baseline": false, "is_completed": false, "completed_on": null, "url": "https://fixture.testrail.test/index.php?/suites/view/53" }],
+            "offset": 50, "limit": 50, "size": 1, "_links": { "next": null, "prev": "/api/v2/get_suites/7&limit=50&offset=0" }
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-page",
+      "input": { "project_id": 7, "query": { "limit": 250 } },
+      "covers": [{ "parameter": "query.limit", "requirements": ["upper-bound"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "suites.getSuitesPage", "arguments": [7, { "limit": 250, "offset": 0 }] },
+        "wire": { "method": "GET", "endpoint": "get_suites/7&limit=250&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "offset": 0, "limit": 250, "size": 0, "_links": { "next": null, "prev": null }, "suites": [] }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": { "kind": "envelope", "items": [], "offset": 0, "limit": 250, "size": 0, "_links": { "next": null, "prev": null } }
+        }
+      }
+    },
+    {
+      "id": "first-page-by-name",
+      "input": { "project_id": 7, "query": { "offset": 0 }, "_mcp": { "pagination": "page" } },
+      "covers": [
+        { "parameter": "query.offset", "requirements": ["zero"] },
+        { "parameter": "_mcp.pagination", "requirements": ["mapping", "page"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "suites.getSuitesPage", "arguments": [7, { "limit": 50, "offset": 0 }] },
+        "wire": { "method": "GET", "endpoint": "get_suites/7&limit=50&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "offset": 0, "limit": 50, "size": 0, "_links": { "next": null, "prev": null }, "suites": [] }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": { "kind": "envelope", "items": [], "offset": 0, "limit": 50, "size": 0, "_links": { "next": null, "prev": null } }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-project",
+      "input": { "project_id": 9007199254740991 },
+      "covers": [{ "parameter": "project_id", "requirements": ["upper-bound"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "suites.getSuitesPage", "arguments": [9007199254740991, { "limit": 50, "offset": 0 }] },
+        "wire": { "method": "GET", "endpoint": "get_suites/9007199254740991&limit=50&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "offset": 0, "limit": 50, "size": 0, "_links": { "next": null, "prev": null }, "suites": [] }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": { "kind": "envelope", "items": [], "offset": 0, "limit": 50, "size": 0, "_links": { "next": null, "prev": null } }
+        }
+      }
+    },
+    {
+      "id": "all-defaults",
+      "input": { "project_id": 7, "_mcp": { "pagination": "all" } },
+      "covers": [
+        { "parameter": "_mcp.pagination", "requirements": ["mapping", "all"] },
+        { "parameter": "_mcp.page_size", "requirements": ["omitted"] },
+        { "parameter": "_mcp.start_offset", "requirements": ["omitted"] },
+        { "parameter": "_mcp.max_items", "requirements": ["omitted"] },
+        { "parameter": "_mcp.max_pages", "requirements": ["omitted"] },
+        { "parameter": "_mcp.max_bytes", "requirements": ["omitted"] },
+        { "parameter": "_mcp.max_duration_ms", "requirements": ["omitted"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "suites.getAllSuites",
+          "arguments": [7, { "maxItems": 1000, "maxPages": 20, "maxBytes": 1048576, "maxDurationMs": 45000 }]
+        },
+        "wire": { "method": "GET", "endpoint": "get_suites/7&limit=250&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0, "limit": 250, "size": 1, "_links": { "next": null, "prev": null },
+            "suites": [{ "id": 3, "name": "Setup & Installation", "description": "Tests covering installation and initial setup.", "project_id": 7, "is_master": false, "is_baseline": false, "is_completed": false, "completed_on": null, "url": "https://fixture.testrail.test/index.php?/suites/view/3" }]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [{ "id": 3, "name": "Setup & Installation", "description": "Tests covering installation and initial setup.", "project_id": 7, "is_master": false, "is_baseline": false, "is_completed": false, "completed_on": null, "url": "https://fixture.testrail.test/index.php?/suites/view/3" }]
+        }
+      }
+    },
+    {
+      "id": "all-controls",
+      "input": {
+        "project_id": 7,
+        "_mcp": { "pagination": "all", "page_size": 25, "start_offset": 100, "max_items": 10, "max_pages": 2, "max_bytes": 1024, "max_duration_ms": 5000 }
+      },
+      "covers": [
+        { "parameter": "_mcp.page_size", "requirements": ["mapping", "valid"] },
+        { "parameter": "_mcp.start_offset", "requirements": ["mapping", "valid"] },
+        { "parameter": "_mcp.max_items", "requirements": ["mapping", "valid"] },
+        { "parameter": "_mcp.max_pages", "requirements": ["mapping", "valid"] },
+        { "parameter": "_mcp.max_bytes", "requirements": ["mapping", "valid"] },
+        { "parameter": "_mcp.max_duration_ms", "requirements": ["mapping", "valid"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "suites.getAllSuites",
+          "arguments": [7, { "pageSize": 25, "startOffset": 100, "maxItems": 10, "maxPages": 2, "maxBytes": 1024, "maxDurationMs": 5000 }]
+        },
+        "wire": { "method": "GET", "endpoint": "get_suites/7&limit=25&offset=100" },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 100, "limit": 25, "size": 1, "_links": { "next": null, "prev": "/api/v2/get_suites/7&limit=25&offset=75" },
+            "suites": [{ "id": 103, "name": "Document Editing", "description": "Tests covering document-editing features.", "project_id": 7, "is_master": false, "is_baseline": false, "is_completed": false, "completed_on": null, "url": "https://fixture.testrail.test/index.php?/suites/view/103" }]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [{ "id": 103, "name": "Document Editing", "description": "Tests covering document-editing features.", "project_id": 7, "is_master": false, "is_baseline": false, "is_completed": false, "completed_on": null, "url": "https://fixture.testrail.test/index.php?/suites/view/103" }]
+        }
+      }
+    },
+    {
+      "id": "all-ceilings",
+      "input": { "project_id": 7, "_mcp": { "pagination": "all", "max_items": 1000, "max_pages": 20, "max_bytes": 1048576, "max_duration_ms": 45000 } },
+      "covers": [
+        { "parameter": "_mcp.max_items", "requirements": ["ceiling"] },
+        { "parameter": "_mcp.max_pages", "requirements": ["ceiling"] },
+        { "parameter": "_mcp.max_bytes", "requirements": ["ceiling"] },
+        { "parameter": "_mcp.max_duration_ms", "requirements": ["ceiling"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "suites.getAllSuites",
+          "arguments": [7, { "maxItems": 1000, "maxPages": 20, "maxBytes": 1048576, "maxDurationMs": 45000 }]
+        },
+        "wire": { "method": "GET", "endpoint": "get_suites/7&limit=250&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "offset": 0, "limit": 250, "size": 0, "_links": { "next": null, "prev": null }, "suites": [] }
+        },
+        "driver_result": { "kind": "json", "value": [] }
+      }
+    },
+    {
+      "id": "largest-aggregate-page",
+      "input": { "project_id": 7, "_mcp": { "pagination": "all", "page_size": 250 } },
+      "covers": [{ "parameter": "_mcp.page_size", "requirements": ["upper-bound"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "suites.getAllSuites",
+          "arguments": [7, { "pageSize": 250, "maxItems": 1000, "maxPages": 20, "maxBytes": 1048576, "maxDurationMs": 45000 }]
+        },
+        "wire": { "method": "GET", "endpoint": "get_suites/7&limit=250&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "offset": 0, "limit": 250, "size": 0, "_links": { "next": null, "prev": null }, "suites": [] }
+        },
+        "driver_result": { "kind": "json", "value": [] }
+      }
+    },
+    {
+      "id": "aggregate-from-start",
+      "input": { "project_id": 7, "_mcp": { "pagination": "all", "start_offset": 0 } },
+      "covers": [{ "parameter": "_mcp.start_offset", "requirements": ["zero"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "suites.getAllSuites",
+          "arguments": [7, { "startOffset": 0, "maxItems": 1000, "maxPages": 20, "maxBytes": 1048576, "maxDurationMs": 45000 }]
+        },
+        "wire": { "method": "GET", "endpoint": "get_suites/7&limit=250&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "offset": 0, "limit": 250, "size": 0, "_links": { "next": null, "prev": null }, "suites": [] }
+        },
+        "driver_result": { "kind": "json", "value": [] }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": { "project_id": 7, "unexpected": true },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-query",
+      "input": { "project_id": 7, "query": { "is_completed": true } },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-query"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-control",
+      "input": { "project_id": 7, "_mcp": { "pagination": "all", "unexpected": 1 } },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-control"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "page-controls-in-all",
+      "input": { "project_id": 7, "query": { "limit": 50 }, "_mcp": { "pagination": "all" } },
+      "covers": [{ "parameter": "$input", "requirements": ["page-controls-in-all"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "all-controls-in-page",
+      "input": { "project_id": 7, "_mcp": { "pagination": "page", "max_items": 5 } },
+      "covers": [{ "parameter": "$input", "requirements": ["all-controls-in-page"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "pagination-unknown-mode",
+      "input": { "project_id": 7, "_mcp": { "pagination": "stream" } },
+      "covers": [{ "parameter": "_mcp.pagination", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    }
+  ]
+}

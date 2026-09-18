@@ -178,6 +178,187 @@
         { "id": "fractional", "value": 1.5, "requirements": ["invalid"], "rejected_by": "driver" },
         { "id": "numeric-string", "value": "50", "requirements": ["invalid"], "rejected_by": "driver" }
       ]
+    },
+    "aggregate_page_size": {
+      "source": {
+        "id": "driver-pagination",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
+        "supports": "resolveCollectionOptions validates pageSize as a positive integer not exceeding 250 before the first request, and defaults it to 250."
+      },
+      "probe": {
+        "binding": "projects.getAllProjects",
+        "note": "The public aggregate helper carries every bound, so each is proven where the driver applies it rather than against the page helper's separate validator."
+      },
+      "domain": { "type": "integer", "minimum": 1, "maximum": 250 },
+      "semantics": "All mode only. Forwarded as the driver's pageSize when supplied; the driver's own default of 250 applies when omitted, and the adapter does not invent one.",
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the pageSize option of the aggregate helper." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative page size." },
+        { "id": "upper-bound", "kind": "valid", "description": "Accept the documented maximum page size." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-positive page size before driver invocation." },
+        { "id": "above-upper-bound", "kind": "invalid", "description": "Reject a page size above the documented maximum rather than letting the server clamp it." },
+        { "id": "omitted", "kind": "omitted", "description": "Forward no pageSize when the caller did not supply one." }
+      ],
+      "valid": [
+        { "id": "representative", "value": 25, "requirements": ["mapping", "valid"] },
+        { "id": "maximum", "value": 250, "requirements": ["upper-bound"] }
+      ],
+      "invalid": [
+        { "id": "zero", "value": 0, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "negative", "value": -1, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "fractional", "value": 1.5, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "above-maximum", "value": 251, "requirements": ["above-upper-bound"], "rejected_by": "driver" }
+      ]
+    },
+    "aggregate_start_offset": {
+      "source": {
+        "id": "driver-pagination",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
+        "supports": "resolveCollectionOptions validates startOffset as a non-negative safe integer before the first request, defaults it to 0, and requires the first envelope's offset to equal it."
+      },
+      "probe": {
+        "binding": "projects.getAllProjects",
+        "note": "The public aggregate helper carries every bound, so each is proven where the driver applies it."
+      },
+      "domain": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+      "semantics": "All mode only. Forwarded as the driver's startOffset when supplied; the aggregate starts at 0 when omitted. Zero is a meaningful value and is not treated as absent.",
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the startOffset option of the aggregate helper." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative starting offset." },
+        { "id": "zero", "kind": "valid", "description": "Forward an explicit zero rather than discarding it as a falsy value." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a negative or non-integer offset before driver invocation." },
+        { "id": "omitted", "kind": "omitted", "description": "Forward no startOffset when the caller did not supply one." }
+      ],
+      "valid": [
+        { "id": "representative", "value": 100, "requirements": ["mapping", "valid"] },
+        { "id": "explicit-zero", "value": 0, "requirements": ["zero"] }
+      ],
+      "invalid": [
+        { "id": "negative", "value": -1, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "fractional", "value": 1.5, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "numeric-string", "value": "100", "requirements": ["invalid"], "rejected_by": "driver" }
+      ]
+    },
+    "aggregate_max_items": {
+      "source": {
+        "id": "driver-pagination",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
+        "supports": "resolveCollectionOptions validates maxItems as a positive safe integer before the first request and defaults it to 25,000. The adapter's aggregateLimitDefaults (src/contracts/inputs.ts) caps what a caller may request at 1,000, and DEFAULT_LIMITS forwards 1,000 when the caller sets none."
+      },
+      "probe": {
+        "binding": "projects.getAllProjects",
+        "note": "The public aggregate helper carries every bound. A value above the adapter ceiling is accepted by the driver, which is why that rejection is recorded as the adapter's."
+      },
+      "domain": { "type": "integer", "minimum": 1, "maximum": 1000 },
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (1,000 by default) is forwarded when omitted, so an aggregate never runs under the driver's own default. The ceiling the schema enforces is the built-in default, not the operator's configured value.",
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxItems option of the aggregate helper." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
+        { "id": "ceiling", "kind": "valid", "description": "Accept the configured ceiling itself." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-positive bound before driver invocation." },
+        { "id": "above-ceiling", "kind": "invalid", "description": "Reject a bound above the configured ceiling rather than letting a caller raise the operator's limit." },
+        { "id": "omitted", "kind": "omitted", "description": "Forward the configured limit when the caller did not supply one." }
+      ],
+      "valid": [
+        { "id": "representative", "value": 10, "requirements": ["mapping", "valid"] },
+        { "id": "ceiling", "value": 1000, "requirements": ["ceiling"] }
+      ],
+      "invalid": [
+        { "id": "zero", "value": 0, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "negative", "value": -1, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "fractional", "value": 1.5, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "above-ceiling", "value": 1001, "requirements": ["above-ceiling"], "rejected_by": "adapter" }
+      ]
+    },
+    "aggregate_max_pages": {
+      "source": {
+        "id": "driver-pagination",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
+        "supports": "resolveCollectionOptions validates maxPages as a positive safe integer before the first request and defaults it to 100. The adapter's aggregateLimitDefaults caps what a caller may request at 20, and DEFAULT_LIMITS forwards 20 when the caller sets none."
+      },
+      "probe": {
+        "binding": "projects.getAllProjects",
+        "note": "The public aggregate helper carries every bound. A value above the adapter ceiling is accepted by the driver."
+      },
+      "domain": { "type": "integer", "minimum": 1, "maximum": 20 },
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (20 by default) is forwarded when omitted, so an aggregate never runs under the driver's own default.",
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxPages option of the aggregate helper." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
+        { "id": "ceiling", "kind": "valid", "description": "Accept the configured ceiling itself." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-positive bound before driver invocation." },
+        { "id": "above-ceiling", "kind": "invalid", "description": "Reject a bound above the configured ceiling." },
+        { "id": "omitted", "kind": "omitted", "description": "Forward the configured limit when the caller did not supply one." }
+      ],
+      "valid": [
+        { "id": "representative", "value": 2, "requirements": ["mapping", "valid"] },
+        { "id": "ceiling", "value": 20, "requirements": ["ceiling"] }
+      ],
+      "invalid": [
+        { "id": "zero", "value": 0, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "fractional", "value": 1.5, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "above-ceiling", "value": 21, "requirements": ["above-ceiling"], "rejected_by": "adapter" }
+      ]
+    },
+    "aggregate_max_bytes": {
+      "source": {
+        "id": "driver-pagination",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
+        "supports": "resolveCollectionOptions validates maxBytes as a positive safe integer not exceeding 1 GiB before the first request and defaults it to 100 MiB. The adapter's aggregateLimitDefaults caps what a caller may request at 1 MiB, and DEFAULT_LIMITS forwards 1 MiB when the caller sets none."
+      },
+      "probe": {
+        "binding": "projects.getAllProjects",
+        "note": "The public aggregate helper carries every bound. A value above the adapter ceiling is accepted by the driver."
+      },
+      "domain": { "type": "integer", "minimum": 1, "maximum": 1048576 },
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (1 MiB by default) is forwarded when omitted, so an aggregate never runs under the driver's own default. Bounds the UTF-8 bytes of the serialized items.",
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxBytes option of the aggregate helper." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
+        { "id": "ceiling", "kind": "valid", "description": "Accept the configured ceiling itself." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-positive bound before driver invocation." },
+        { "id": "above-ceiling", "kind": "invalid", "description": "Reject a bound above the configured ceiling." },
+        { "id": "omitted", "kind": "omitted", "description": "Forward the configured limit when the caller did not supply one." }
+      ],
+      "valid": [
+        { "id": "representative", "value": 1024, "requirements": ["mapping", "valid"] },
+        { "id": "ceiling", "value": 1048576, "requirements": ["ceiling"] }
+      ],
+      "invalid": [
+        { "id": "zero", "value": 0, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "fractional", "value": 1.5, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "above-ceiling", "value": 1048577, "requirements": ["above-ceiling"], "rejected_by": "adapter" }
+      ]
+    },
+    "aggregate_max_duration_ms": {
+      "source": {
+        "id": "driver-pagination",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
+        "supports": "resolveCollectionOptions validates maxDurationMs as a positive safe integer not exceeding five minutes before the first request and defaults it to five minutes. The adapter's aggregateLimitDefaults caps what a caller may request at 45,000 ms, and DEFAULT_LIMITS forwards 45,000 when the caller sets none."
+      },
+      "probe": {
+        "binding": "projects.getAllProjects",
+        "note": "The public aggregate helper carries every bound. A value above the adapter ceiling is accepted by the driver."
+      },
+      "domain": { "type": "integer", "minimum": 1, "maximum": 45000 },
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (45,000 ms by default) is forwarded when omitted, so an aggregate never runs under the driver's own default. Bounds the aggregate's wall-clock time.",
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxDurationMs option of the aggregate helper." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
+        { "id": "ceiling", "kind": "valid", "description": "Accept the configured ceiling itself." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-positive bound before driver invocation." },
+        { "id": "above-ceiling", "kind": "invalid", "description": "Reject a bound above the configured ceiling." },
+        { "id": "omitted", "kind": "omitted", "description": "Forward the configured limit when the caller did not supply one." }
+      ],
+      "valid": [
+        { "id": "representative", "value": 5000, "requirements": ["mapping", "valid"] },
+        { "id": "ceiling", "value": 45000, "requirements": ["ceiling"] }
+      ],
+      "invalid": [
+        { "id": "zero", "value": 0, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "fractional", "value": 1.5, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "above-ceiling", "value": 45001, "requirements": ["above-ceiling"], "rejected_by": "adapter" }
+      ]
     }
   }
 }

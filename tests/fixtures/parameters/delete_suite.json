@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-19"
+  },
+  "endpoint": {
+    "family_id": "T01",
+    "http_method": "POST",
+    "route": "delete_suite/{suite_id}",
+    "tool": "testrail_delete_suite",
+    "driver_method": "suites.deleteSuite"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/suites.ts",
+      "supports": "deleteSuite validates the suite ID, appends soft=1 only when the soft option is true, resolves with no value after a deletion and with the parsed preview after a soft request."
+    },
+    {
+      "id": "driver-schema",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/cases.ts",
+      "supports": "SoftDeletePreviewSchema describes the affected_tests, affected_cases, affected_sections, affected_runs, affected_milestones, affected_plans and affected_suites counts, each optional."
+    },
+    {
+      "id": "testrail-suites",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077936624276-Suites",
+      "supports": "delete_suite/{suite_id} deletes the suite with its active runs and results and cannot be undone. Omitting soft or sending soft=0 deletes; soft=1 returns the affected counts and deletes nothing."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement. No body is sent; the only control is the soft preview flag, and any other query key is a caller mistake."
+  },
+  "outer_result": {
+    "driver": "record_or_void",
+    "tool_data": "record_or_null",
+    "notes": "After a deletion the method resolves with no value and the wrapper reports data: null. After a preview it resolves with TestRail's affected-entity counts, which vary by TestRail version and are not drift-checked against an entity schema. Deletion removes the suite's sections, cases and active runs and results with it."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-query",
+      "kind": "invalid",
+      "description": "Reject an unsupported query key rather than discarding it."
+    },
+    {
+      "id": "no-cascade",
+      "kind": "mapping",
+      "description": "Send exactly one request. The adapter never follows up with additional calls to enumerate or clean up what the deletion removed."
+    }
+  ],
+  "baseline": "representative-id",
+  "parameters": [
+    {
+      "id": "suite_id",
+      "input_path": ["suite_id"],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "No coercion. The validated number is passed positionally and appears verbatim in the path.",
+      "driver": { "argument": 0, "path": [] },
+      "wire": {
+        "location": "path",
+        "names": ["suite_id"],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": ["driver-module", "testrail-suites"]
+    },
+    {
+      "id": "query.soft",
+      "input_path": ["query", "soft"],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain": { "type": "boolean" },
+      "semantics": "true requests TestRail's server-side preview: the affected counts are returned and nothing is deleted. false or omitted deletes. An explicit false is accepted but never sent, since the driver only ever emits soft=1; TestRail documents soft=0 and an absent soft as equivalent.",
+      "driver": { "argument": 1, "path": ["soft"] },
+      "wire": { "location": "query", "names": ["soft"], "encoding": "soft=1 appended path-style when true; nothing is appended when false or omitted." },
+      "sources": ["driver-module", "testrail-suites"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the soft option at driver argument 1." },
+        { "id": "valid", "kind": "valid", "description": "Accept true, send soft=1 and return the preview counts." },
+        { "id": "false-not-sent", "kind": "valid", "description": "Accept an explicit false, delete, and append nothing to the endpoint." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a numeric stand-in for the boolean before driver invocation." },
+        { "id": "omitted", "kind": "omitted", "description": "Delete, sending no soft control, when the caller did not supply one." }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-id",
+      "input": { "suite_id": 3 },
+      "covers": [
+        { "parameter": "suite_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.soft", "requirements": ["omitted"] },
+        { "parameter": "$input", "requirements": ["no-cascade"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "suites.deleteSuite", "arguments": [3] },
+        "wire": { "method": "POST", "endpoint": "delete_suite/3" },
+        "upstream_response": { "kind": "json", "body": {} },
+        "driver_result": { "kind": "void" }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": { "suite_id": 9007199254740991 },
+      "covers": [{ "parameter": "suite_id", "requirements": ["upper-bound"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "suites.deleteSuite", "arguments": [9007199254740991] },
+        "wire": { "method": "POST", "endpoint": "delete_suite/9007199254740991" },
+        "upstream_response": { "kind": "json", "body": {} },
+        "driver_result": { "kind": "void" }
+      }
+    },
+    {
+      "id": "preview",
+      "input": { "suite_id": 3, "query": { "soft": true } },
+      "covers": [{ "parameter": "query.soft", "requirements": ["mapping", "valid"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "suites.deleteSuite", "arguments": [3, { "soft": true }] },
+        "wire": { "method": "POST", "endpoint": "delete_suite/3&soft=1" },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "affected_tests": 12, "affected_cases": 5, "affected_sections": 2, "affected_runs": 1, "affected_milestones": 0, "affected_plans": 0, "affected_suites": 1 }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": { "affected_tests": 12, "affected_cases": 5, "affected_sections": 2, "affected_runs": 1, "affected_milestones": 0, "affected_plans": 0, "affected_suites": 1 }
+        }
+      }
+    },
+    {
+      "id": "explicit-hard-delete",
+      "input": { "suite_id": 3, "query": { "soft": false } },
+      "covers": [{ "parameter": "query.soft", "requirements": ["false-not-sent"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "suites.deleteSuite", "arguments": [3, { "soft": false }] },
+        "wire": { "method": "POST", "endpoint": "delete_suite/3" },
+        "upstream_response": { "kind": "json", "body": {} },
+        "driver_result": { "kind": "void" }
+      }
+    },
+    {
+      "id": "soft-numeric",
+      "input": { "suite_id": 3, "query": { "soft": 1 } },
+      "covers": [{ "parameter": "query.soft", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-query",
+      "input": { "suite_id": 3, "query": { "force": true } },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-query"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": { "suite_id": 3, "soft": 1 },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    }
+  ]
+}

@@ -93,6 +93,13 @@ export const ParameterManifestSchema = z.strictObject({
      * evidence rather than a shortcut. Exactly one of `domain_ref` or `domain` is given.
      */
     domain_ref: identifier.optional(),
+    /**
+     * The accepted case this parameter's derived rejections mutate, when the manifest
+     * baseline is in the other call mode: an aggregate control must be mutated on an
+     * all-mode case, a page control on a page-mode one, or the refusal would come from
+     * the mode mismatch rather than from the parameter under test.
+     */
+    baseline: identifier.optional(),
     // Independently authored JSON Schema fragment, never exported from the registry.
     domain: jsonObject.optional(),
     semantics: identifier,
@@ -166,10 +173,14 @@ function resolveDomains(manifest: ParameterManifest, library: DomainLibrary): Pa
   const referencing = manifest.parameters.filter(({ domain_ref: reference }) => reference !== undefined);
   if (referencing.length === 0) return manifest;
 
-  const baseline = manifest.cases.find(({ id }) => id === manifest.baseline);
-  if (baseline === undefined || baseline.expect.kind !== 'accepted') {
-    throw new Error(`${manifest.endpoint.tool}: a domain reference requires an accepted baseline case`);
-  }
+  const baselineFor = (parameter: ParameterManifest['parameters'][number]): ParameterManifest['cases'][number] => {
+    const id = parameter.baseline ?? manifest.baseline;
+    const baseline = manifest.cases.find((candidate) => candidate.id === id);
+    if (baseline === undefined || baseline.expect.kind !== 'accepted') {
+      throw new Error(`${manifest.endpoint.tool}: ${parameter.id} requires an accepted baseline case`);
+    }
+    return baseline;
+  };
 
   const derived: ParameterManifest['cases'] = [];
   const parameters = manifest.parameters.map((parameter) => {
@@ -177,6 +188,7 @@ function resolveDomains(manifest: ParameterManifest, library: DomainLibrary): Pa
     if (reference === undefined) return parameter;
     const domain = library.domains[reference];
     if (domain === undefined) throw new Error(`${manifest.endpoint.tool}: unknown domain ${reference}`);
+    const baseline = baselineFor(parameter);
 
     for (const invalid of domain.invalid) {
       derived.push({
