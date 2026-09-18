@@ -1,0 +1,240 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-18"
+  },
+  "endpoint": {
+    "family_id": "T01",
+    "http_method": "POST",
+    "route": "add_project",
+    "tool": "testrail_add_project",
+    "driver_method": "projects.addProject"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/projects.ts",
+      "supports": "addProject takes the payload as its only argument and sends it as the JSON body."
+    },
+    {
+      "id": "driver-schema",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/projects.ts",
+      "supports": "AddProjectPayloadSchema requires name and leaves announcement, show_announcement and suite_mode optional; it permits additional properties."
+    },
+    {
+      "id": "testrail-projects",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077792415124-Projects",
+      "supports": "add_project documents suite_mode 1 for a single suite, 2 for a single suite with baselines and 3 for multiple suites."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "The driver's payload schema permits additional properties; the adapter closes it. A field TestRail does not accept is a caller mistake worth reporting rather than forwarding, and this endpoint has no documented custom fields."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "The created project is returned with its assigned id. Repeating the call creates another project, which is why the tool is not marked idempotent."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-body-field",
+      "kind": "invalid",
+      "description": "Reject an unknown field inside the body, which the driver's own schema would pass through unchecked."
+    },
+    {
+      "id": "body-required",
+      "kind": "required",
+      "description": "Reject a call with no body rather than sending an empty object."
+    }
+  ],
+  "parameters": [
+    {
+      "id": "name",
+      "input_path": ["body", "name"],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": { "type": "string" },
+      "semantics": "Sent verbatim. Not trimmed, and an empty string is passed on for TestRail to judge.",
+      "driver": { "argument": 0, "path": ["name"] },
+      "wire": { "location": "json", "names": ["name"], "encoding": "JSON string in the request body." },
+      "sources": ["driver-schema", "testrail-projects"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value at driver argument 0 under the name key." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative project name." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-string name before driver invocation." },
+        { "id": "required", "kind": "required", "description": "Reject a body without a name." }
+      ]
+    },
+    {
+      "id": "announcement",
+      "input_path": ["body", "announcement"],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": { "type": "string" },
+      "semantics": "Sent verbatim when supplied. Omitted entirely when absent rather than sent as null.",
+      "driver": { "argument": 0, "path": ["announcement"] },
+      "wire": { "location": "json", "names": ["announcement"], "encoding": "JSON string in the request body." },
+      "sources": ["driver-schema"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value at driver argument 0 under the announcement key." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative announcement." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-string announcement before driver invocation." },
+        { "id": "omitted", "kind": "omitted", "description": "Omit the field entirely when the caller did not supply it." }
+      ]
+    },
+    {
+      "id": "show_announcement",
+      "input_path": ["body", "show_announcement"],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": { "type": "boolean" },
+      "semantics": "A real boolean. Neither 0/1 nor the strings true/false are accepted or coerced.",
+      "driver": { "argument": 0, "path": ["show_announcement"] },
+      "wire": { "location": "json", "names": ["show_announcement"], "encoding": "JSON boolean in the request body." },
+      "sources": ["driver-schema"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value at driver argument 0 under the show_announcement key." },
+        { "id": "valid", "kind": "valid", "description": "Accept an explicit false, which is meaningful rather than absent." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a numeric or string stand-in for a boolean." },
+        { "id": "omitted", "kind": "omitted", "description": "Omit the field entirely when the caller did not supply it." }
+      ]
+    },
+    {
+      "id": "suite_mode",
+      "input_path": ["body", "suite_mode"],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": { "type": "number" },
+      "semantics": "TestRail documents 1 for a single suite, 2 for a single suite with baselines and 3 for multiple suites. The domain stays the driver's number rather than an enumeration, so a mode TestRail adds later is not rejected on this adapter's stale assumption; TestRail remains the authority on which values it accepts.",
+      "driver": { "argument": 0, "path": ["suite_mode"] },
+      "wire": { "location": "json", "names": ["suite_mode"], "encoding": "JSON number in the request body." },
+      "sources": ["driver-schema", "testrail-projects"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value at driver argument 0 under the suite_mode key." },
+        { "id": "valid", "kind": "valid", "description": "Accept a documented suite mode." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-numeric suite mode before driver invocation." },
+        { "id": "omitted", "kind": "omitted", "description": "Omit the field entirely when the caller did not supply it, leaving TestRail's own default in force." }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "name-only",
+      "input": { "body": { "name": "Fixture project" } },
+      "covers": [
+        { "parameter": "name", "requirements": ["mapping", "valid"] },
+        { "parameter": "announcement", "requirements": ["omitted"] },
+        { "parameter": "show_announcement", "requirements": ["omitted"] },
+        { "parameter": "suite_mode", "requirements": ["omitted"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "projects.addProject", "arguments": [{ "name": "Fixture project" }] },
+        "wire": { "method": "POST", "endpoint": "add_project", "json": { "name": "Fixture project" } },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "id": 12, "name": "Fixture project", "announcement": null, "show_announcement": false, "is_completed": false, "completed_on": null, "suite_mode": 1, "url": "https://fixture.testrail.test/index.php?/projects/overview/12" }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": { "id": 12, "name": "Fixture project", "announcement": null, "show_announcement": false, "is_completed": false, "completed_on": null, "suite_mode": 1, "url": "https://fixture.testrail.test/index.php?/projects/overview/12" }
+        }
+      }
+    },
+    {
+      "id": "every-field",
+      "input": {
+        "body": {
+          "name": "Complete project",
+          "announcement": "Read me first",
+          "show_announcement": false,
+          "suite_mode": 3
+        }
+      },
+      "covers": [
+        { "parameter": "announcement", "requirements": ["mapping", "valid"] },
+        { "parameter": "show_announcement", "requirements": ["mapping", "valid"] },
+        { "parameter": "suite_mode", "requirements": ["mapping", "valid"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "projects.addProject",
+          "arguments": [{ "name": "Complete project", "announcement": "Read me first", "show_announcement": false, "suite_mode": 3 }]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_project",
+          "json": { "name": "Complete project", "announcement": "Read me first", "show_announcement": false, "suite_mode": 3 }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "id": 13, "name": "Complete project", "announcement": "Read me first", "show_announcement": false, "is_completed": false, "completed_on": null, "suite_mode": 3, "url": "https://fixture.testrail.test/index.php?/projects/overview/13" }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": { "id": 13, "name": "Complete project", "announcement": "Read me first", "show_announcement": false, "is_completed": false, "completed_on": null, "suite_mode": 3, "url": "https://fixture.testrail.test/index.php?/projects/overview/13" }
+        }
+      }
+    },
+    {
+      "id": "missing-body",
+      "input": {},
+      "covers": [{ "parameter": "$input", "requirements": ["body-required"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "missing-name",
+      "input": { "body": { "announcement": "No name given" } },
+      "covers": [{ "parameter": "name", "requirements": ["required"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "name-wrong-type",
+      "input": { "body": { "name": 7 } },
+      "covers": [{ "parameter": "name", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "announcement-wrong-type",
+      "input": { "body": { "name": "Fixture project", "announcement": 7 } },
+      "covers": [{ "parameter": "announcement", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "show-announcement-numeric",
+      "input": { "body": { "name": "Fixture project", "show_announcement": 1 } },
+      "covers": [{ "parameter": "show_announcement", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "suite-mode-string",
+      "input": { "body": { "name": "Fixture project", "suite_mode": "3" } },
+      "covers": [{ "parameter": "suite_mode", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-body-field",
+      "input": { "body": { "name": "Fixture project", "unexpected": true } },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-body-field"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": { "body": { "name": "Fixture project" }, "project_id": 7 },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    }
+  ]
+}

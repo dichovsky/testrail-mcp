@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import {
   TestRailClient,
   UpdateCasePayloadSchema,
+  AddProjectPayloadSchema,
   UpdateProjectPayloadSchema,
 } from '@dichovsky/testrail-api-client';
 import { describe, expect, it, vi } from 'vitest';
@@ -138,13 +139,16 @@ describe('independent parameter manifest format', () => {
   it('reports every unreviewed endpoint and partial endpoint separately', () => {
     const report = parameterCoverageReport(manifests, inventory);
     expect(report.completeEndpoints).toEqual([
+      'testrail_add_project',
+      'testrail_delete_project',
       'testrail_get_attachment',
       'testrail_get_attachments_for_plan_entry',
+      'testrail_get_project',
+      'testrail_get_projects',
+      'testrail_update_project',
     ]);
-    expect(report.partialEndpoints).toEqual([
-      'testrail_get_cases', 'testrail_update_case', 'testrail_update_project',
-    ]);
-    expect(report.pendingEndpoints).toHaveLength(128);
+    expect(report.partialEndpoints).toEqual(['testrail_get_cases', 'testrail_update_case']);
+    expect(report.pendingEndpoints).toHaveLength(124);
     expect([...report.reviewedEndpoints, ...report.pendingEndpoints].sort())
       .toEqual(inventory.map(({ tool }) => tool).sort());
     expect(report.pendingEndpoints).toContain('testrail_add_case');
@@ -160,7 +164,7 @@ describe('independent parameter manifest format', () => {
     const manifest = example();
     manifest.parameters = manifest.parameters.map((parameter) => ({
       ...parameter,
-      requirements: parameter.requirements.filter(({ kind }) => kind !== 'mapping'),
+      requirements: (parameter.requirements ?? []).filter(({ kind }) => kind !== 'mapping'),
     }));
     expect(auditParameterManifests([manifest])).toContain('testrail_get_attachment: Parameter attachment_id has no mapping requirement');
   });
@@ -242,6 +246,40 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
     case 'cases.updateCase': {
       const [caseId, payload] = z.tuple([z.number(), UpdateCasePayloadSchema]).parse(expected.driver.arguments);
       return client.cases.updateCase(caseId, payload);
+    }
+    case 'projects.getProject': {
+      const [projectId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.projects.getProject(projectId);
+    }
+    case 'projects.getProjectsPage': {
+      const [options] = z.tuple([z.strictObject({
+        isCompleted: z.boolean().optional(), limit: z.number(), offset: z.number(),
+      })]).parse(expected.driver.arguments);
+      return client.projects.getProjectsPage({
+        limit: options.limit, offset: options.offset,
+        ...(options.isCompleted === undefined ? {} : { isCompleted: options.isCompleted }),
+      });
+    }
+    case 'projects.getAllProjects': {
+      const [options] = z.tuple([z.strictObject({
+        isCompleted: z.boolean().optional(), pageSize: z.number().optional(), startOffset: z.number().optional(),
+        maxItems: z.number(), maxPages: z.number(), maxBytes: z.number(), maxDurationMs: z.number(),
+      })]).parse(expected.driver.arguments);
+      const { isCompleted, pageSize, startOffset, ...bounds } = options;
+      return client.projects.getAllProjects({
+        ...bounds,
+        ...(isCompleted === undefined ? {} : { isCompleted }),
+        ...(pageSize === undefined ? {} : { pageSize }),
+        ...(startOffset === undefined ? {} : { startOffset }),
+      });
+    }
+    case 'projects.deleteProject': {
+      const [projectId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.projects.deleteProject(projectId);
+    }
+    case 'projects.addProject': {
+      const [payload] = z.tuple([AddProjectPayloadSchema]).parse(expected.driver.arguments);
+      return client.projects.addProject(payload);
     }
     case 'projects.updateProject': {
       const [projectId, payload] = z.tuple([z.number(), UpdateProjectPayloadSchema]).parse(expected.driver.arguments);

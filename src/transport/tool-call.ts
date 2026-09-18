@@ -126,7 +126,7 @@ export async function executeToolCall(
       // ownership impossible to guarantee across platforms.
       upload = { path: staged.path, ...(request.mediaType === undefined ? {} : { type: request.mediaType }) };
     }
-    const context: CallContext = upload === undefined ? {} : { upload };
+    const context: CallContext = upload === undefined ? { limits } : { upload, limits };
 
     const value = await runtime.invoke(
       (client: TestRailClient) => {

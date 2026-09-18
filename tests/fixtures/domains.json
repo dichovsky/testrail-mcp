@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "review": {
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-18"
+  },
+  "domains": {
+    "positive_id": {
+      "source": {
+        "id": "driver-validation",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/validation.ts",
+        "supports": "validateId(id, name) rejects non-numbers, non-integers and values at or below zero. Its name argument only shapes the message, so every identifier in the API shares one domain; it is applied at 129 call sites."
+      },
+      "probe": {
+        "binding": "projects.getProject",
+        "note": "A public method taking a single identifier, used to prove this domain against the driver rather than against an internal validator the package does not export."
+      },
+      "domain": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      },
+      "semantics": "No coercion. The validated number is passed positionally and appears verbatim in the request path.",
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value at its explicit driver argument and wire location."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a representative positive integer."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a representative invalid value before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing required input."
+        },
+        {
+          "id": "upper-bound",
+          "kind": "valid",
+          "description": "Accept the largest safe integer, which is the largest value that can round-trip through JSON."
+        },
+        {
+          "id": "above-upper-bound",
+          "kind": "invalid",
+          "description": "Reject a value above the largest safe integer. The driver accepts it, because it checks Number.isInteger rather than Number.isSafeInteger, so this is an MCP boundary check: a value that cannot round-trip through JSON would address a different record than the caller named."
+        }
+      ],
+      "valid": [
+        { "id": "representative", "value": 7, "requirements": ["mapping", "valid"] },
+        { "id": "largest-safe", "value": 9007199254740991, "requirements": ["upper-bound"] }
+      ],
+      "invalid": [
+        { "id": "zero", "value": 0, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "negative", "value": -1, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "fractional", "value": 1.5, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "numeric-string", "value": "7", "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "above-safe-integer", "value": 9007199254740992, "requirements": ["above-upper-bound"], "rejected_by": "adapter" }
+      ],
+      "omitted": { "id": "missing", "requirements": ["required"] }
+    },
+    "pagination_limit": {
+      "source": {
+        "id": "driver-validation",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/validation.ts",
+        "supports": "validatePaginationParams rejects a limit that is not a positive integer, and one above the documented maximum of 250."
+      },
+      "probe": {
+        "binding": "projects.getProjectsPage",
+        "note": "The public page helper carries limit and offset, so the domain is proven where the driver actually applies it."
+      },
+      "domain": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 250
+      },
+      "semantics": "No coercion. Sent as a path-style query control, never as a JSON body field.",
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value at its explicit driver argument and wire location."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a representative page size."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a representative invalid page size before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "When omitted, send the adapter's page default of 50 explicitly rather than leaving TestRail to choose, so the page returned is the page the metadata describes."
+        },
+        {
+          "id": "upper-bound",
+          "kind": "valid",
+          "description": "Accept the documented maximum page size."
+        },
+        {
+          "id": "above-upper-bound",
+          "kind": "invalid",
+          "description": "Reject a page size above the documented maximum rather than letting the server silently clamp it."
+        }
+      ],
+      "valid": [
+        { "id": "representative", "value": 50, "requirements": ["mapping", "valid"] },
+        { "id": "maximum", "value": 250, "requirements": ["upper-bound"] }
+      ],
+      "invalid": [
+        { "id": "zero", "value": 0, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "negative", "value": -1, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "fractional", "value": 1.5, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "above-maximum", "value": 251, "requirements": ["above-upper-bound"], "rejected_by": "driver" }
+      ]
+    },
+    "pagination_offset": {
+      "source": {
+        "id": "driver-validation",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/validation.ts",
+        "supports": "validatePaginationParams rejects an offset that is not a non-negative integer. Zero is valid and means the first page."
+      },
+      "probe": {
+        "binding": "projects.getProjectsPage",
+        "note": "The public page helper carries limit and offset, so the domain is proven where the driver actually applies it."
+      },
+      "domain": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "semantics": "No coercion. Zero is a meaningful value and is not treated as absent.",
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value at its explicit driver argument and wire location."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a representative offset."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a representative invalid offset before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "When omitted, send offset 0 explicitly so the first page is requested by name rather than by default."
+        },
+        {
+          "id": "zero",
+          "kind": "valid",
+          "description": "Accept an explicit zero offset as the first page rather than discarding it as a falsy value."
+        }
+      ],
+      "valid": [
+        { "id": "representative", "value": 50, "requirements": ["mapping", "valid"] },
+        { "id": "explicit-zero", "value": 0, "requirements": ["zero"] }
+      ],
+      "invalid": [
+        { "id": "negative", "value": -1, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "fractional", "value": 1.5, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "numeric-string", "value": "50", "requirements": ["invalid"], "rejected_by": "driver" }
+      ]
+    }
+  }
+}

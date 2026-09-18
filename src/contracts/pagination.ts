@@ -142,13 +142,16 @@ export function aggregateMetadata(
   });
 }
 
+// Values may be explicitly undefined for the same reason as pageRequestDefaults: a
+// list input is a union of branches, and reading the all branch's controls totally
+// yields undefined for each one the caller left out.
 export interface AllControls {
-  readonly page_size?: number;
-  readonly start_offset?: number;
-  readonly max_items?: number;
-  readonly max_pages?: number;
-  readonly max_bytes?: number;
-  readonly max_duration_ms?: number;
+  readonly page_size?: number | undefined;
+  readonly start_offset?: number | undefined;
+  readonly max_items?: number | undefined;
+  readonly max_pages?: number | undefined;
+  readonly max_bytes?: number | undefined;
+  readonly max_duration_ms?: number | undefined;
 }
 
 /** Map adapter controls to the public aggregate helper. Configured maxima are the defaults. */
@@ -165,7 +168,9 @@ export function driverAllOptions(controls: AllControls, limits: Limits): Readonl
 
 /** Page mode defaults: one page of 50 from the start unless the caller says otherwise. */
 export function pageRequestDefaults(
-  query: { readonly limit?: number; readonly offset?: number } | undefined,
+  // Values may be explicitly undefined: a list input is a union of the page and all
+  // branches, so a caller reading one branch's controls gets undefined for the other's.
+  query: { readonly limit?: number | undefined; readonly offset?: number | undefined } | undefined,
 ): { readonly limit: number; readonly offset: number } {
   return Object.freeze({ limit: query?.limit ?? DEFAULT_PAGE_SIZE, offset: query?.offset ?? 0 });
 }
