@@ -1,11 +1,17 @@
-import { ProjectSchema } from '@dichovsky/testrail-api-client';
+import { AddProjectPayloadSchema, ProjectSchema, UpdateProjectPayloadSchema } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
-import { positiveIdSchema, strictObject } from '../../contracts/inputs.js';
+import { createListInput, payloadInput, positiveIdSchema, strictObject } from '../../contracts/inputs.js';
+import { pageRequestDefaults } from '../../contracts/pagination.js';
 import { driverCall } from '../driver-call.js';
 import { defineOperation, type OperationDefinition } from '../registry.js';
 
 /** A usable JSON object response; entity fields are checked advisorily, not here. */
 const recordResponse = z.record(z.string(), z.unknown());
+/** The driver's normalized page, whichever shape TestRail actually returned. */
+const pageResponse = z.object({
+  kind: z.enum(['envelope', 'legacy-array']),
+  items: z.array(z.unknown()),
+});
 
 const getProjectInput = strictObject({ project_id: positiveIdSchema });
 
@@ -28,5 +34,165 @@ export const getProject = defineOperation({
   retry: 'ordinary-read',
 } as const satisfies OperationDefinition);
 
+const getProjectsInput = createListInput({
+  query: { is_completed: z.boolean().optional() },
+  pagination: 'controlled',
+});
+
+/**
+ * Read one control from a validated list input.
+ *
+ * The input type is a union of the page and all branches, so a field present in one is
+ * absent from the other. These read it totally instead of asserting a shape: an
+ * assertion here could hide a genuine mismatch, while the argument map declares the
+ * mapping independently and the fixtures check the arguments actually sent.
+ */
+function control(source: object | undefined, name: string): number | undefined {
+  const value = (source as Record<string, unknown> | undefined)?.[name];
+  return typeof value === 'number' ? value : undefined;
+}
+
+function flag(source: object | undefined, name: string): boolean | undefined {
+  const value = (source as Record<string, unknown> | undefined)?.[name];
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+/** Renamed filter: the REST field is snake_case, the driver option is camelCase. */
+function projectFilter(query: object | undefined): { isCompleted?: boolean } {
+  const isCompleted = flag(query, 'is_completed');
+  return isCompleted === undefined ? {} : { isCompleted };
+}
+
+/** Forward only the bounds the caller supplied; the driver applies its own otherwise. */
+function aggregateControls(mcp: object | undefined): Record<string, number> {
+  const mapped: [string, string][] = [
+    ['page_size', 'pageSize'], ['start_offset', 'startOffset'], ['max_items', 'maxItems'],
+    ['max_pages', 'maxPages'], ['max_bytes', 'maxBytes'], ['max_duration_ms', 'maxDurationMs'],
+  ];
+  return Object.fromEntries(mapped
+    .map(([input, option]) => [option, control(mcp, input)] as const)
+    .filter((entry): entry is readonly [string, number] => entry[1] !== undefined));
+}
+
+export const getProjects = defineOperation({
+  token: 'get_projects',
+  method: 'GET',
+  route: 'get_projects',
+  family: 'T01',
+  driverBinding: 'projects.getProjects',
+  summary: 'List TestRail projects, optionally filtered by completion state.',
+  inputSchema: getProjectsInput,
+  argumentMap: [
+    { input: 'query.is_completed', call: 'page', argument: 0, property: 'isCompleted', serialization: 'query-scalar' },
+    { input: 'query.limit', call: 'page', argument: 0, property: 'limit', serialization: 'query-scalar' },
+    { input: 'query.offset', call: 'page', argument: 0, property: 'offset', serialization: 'query-scalar' },
+    { input: 'query.is_completed', call: 'all', argument: 0, property: 'isCompleted', serialization: 'query-scalar' },
+    { input: '_mcp.page_size', call: 'all', argument: 0, property: 'pageSize', serialization: 'aggregate-control' },
+    { input: '_mcp.start_offset', call: 'all', argument: 0, property: 'startOffset', serialization: 'aggregate-control' },
+    { input: '_mcp.max_items', call: 'all', argument: 0, property: 'maxItems', serialization: 'aggregate-control' },
+    { input: '_mcp.max_pages', call: 'all', argument: 0, property: 'maxPages', serialization: 'aggregate-control' },
+    { input: '_mcp.max_bytes', call: 'all', argument: 0, property: 'maxBytes', serialization: 'aggregate-control' },
+    { input: '_mcp.max_duration_ms', call: 'all', argument: 0, property: 'maxDurationMs', serialization: 'aggregate-control' },
+  ],
+  response: { shape: 'page', outerSchema: pageResponse, entitySchema: ProjectSchema },
+  pagination: {
+    kind: 'controlled',
+    // The page helper is used rather than the convenience method, which discards the
+    // metadata the result needs to describe continuation honestly.
+    page: driverCall(getProjectsInput, 'projects.getProjectsPage', (method, input) => method({
+      ...projectFilter(input.query),
+      ...pageRequestDefaults({
+        ...(control(input.query, 'limit') === undefined ? {} : { limit: control(input.query, 'limit') }),
+        ...(control(input.query, 'offset') === undefined ? {} : { offset: control(input.query, 'offset') }),
+      }),
+    })),
+    // Only controls the caller actually supplied are forwarded. The driver applies its
+    // own bounds otherwise, so absent controls are not invented here.
+    all: driverCall(getProjectsInput, 'projects.getAllProjects', (method, input) => method({
+      ...projectFilter(input.query),
+      ...aggregateControls(input._mcp),
+    })),
+  },
+  files: { kind: 'none' },
+  effects: { testRail: 'read', destructive: false, idempotent: true },
+  retry: 'ordinary-read',
+} as const satisfies OperationDefinition);
+
+const addProjectInput = strictObject({ body: payloadInput(AddProjectPayloadSchema) });
+
+export const addProject = defineOperation({
+  token: 'add_project',
+  method: 'POST',
+  route: 'add_project',
+  family: 'T01',
+  driverBinding: 'projects.addProject',
+  summary: 'Create a TestRail project.',
+  inputSchema: addProjectInput,
+  argumentMap: [{ input: 'body', call: 'single', argument: 0, serialization: 'json-body' }],
+  response: { shape: 'record', outerSchema: recordResponse, entitySchema: ProjectSchema },
+  pagination: {
+    kind: 'none',
+    single: driverCall(addProjectInput, 'projects.addProject', (method, input) => method(input.body)),
+  },
+  files: { kind: 'none' },
+  // Repeating the call creates another project, so this is not idempotent.
+  effects: { testRail: 'write', destructive: false, idempotent: false },
+  retry: 'json-write',
+} as const satisfies OperationDefinition);
+
+const updateProjectInput = strictObject({
+  project_id: positiveIdSchema,
+  body: payloadInput(UpdateProjectPayloadSchema),
+});
+
+export const updateProject = defineOperation({
+  token: 'update_project',
+  method: 'POST',
+  route: 'update_project/{project_id}',
+  family: 'T01',
+  driverBinding: 'projects.updateProject',
+  summary: 'Update a TestRail project. Supplied fields replace their current values.',
+  inputSchema: updateProjectInput,
+  argumentMap: [
+    { input: 'project_id', call: 'single', argument: 0, serialization: 'path' },
+    { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
+  ],
+  response: { shape: 'record', outerSchema: recordResponse, entitySchema: ProjectSchema },
+  pagination: {
+    kind: 'none',
+    single: driverCall(updateProjectInput, 'projects.updateProject',
+      (method, input) => method(input.project_id, input.body)),
+  },
+  files: { kind: 'none' },
+  // Applying the same field values again leaves the project in the same state.
+  effects: { testRail: 'write', destructive: false, idempotent: true },
+  retry: 'json-write',
+} as const satisfies OperationDefinition);
+
+const deleteProjectInput = strictObject({ project_id: positiveIdSchema });
+
+export const deleteProject = defineOperation({
+  token: 'delete_project',
+  method: 'POST',
+  route: 'delete_project/{project_id}',
+  family: 'T01',
+  driverBinding: 'projects.deleteProject',
+  summary: 'Delete a TestRail project and everything it contains. This cannot be undone.',
+  inputSchema: deleteProjectInput,
+  argumentMap: [{ input: 'project_id', call: 'single', argument: 0, serialization: 'path' }],
+  // The method resolves with no value; the wrapper reports that as data: null.
+  response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
+  pagination: {
+    kind: 'none',
+    single: driverCall(deleteProjectInput, 'projects.deleteProject',
+      (method, input) => method(input.project_id)),
+  },
+  files: { kind: 'none' },
+  // Removing a project removes its suites, cases, runs and results with it. A repeat
+  // call does not restore anything, so it is neither reversible nor idempotent.
+  effects: { testRail: 'write', destructive: true, idempotent: false },
+  retry: 'json-write',
+} as const satisfies OperationDefinition);
+
 /** Registered in tool-name order by the registry; listed here in reviewed order. */
-export const t01 = [getProject] as const;
+export const t01 = [getProject, getProjects, addProject, updateProject, deleteProject] as const;

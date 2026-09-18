@@ -165,7 +165,9 @@ export function driverAllOptions(controls: AllControls, limits: Limits): Readonl
 
 /** Page mode defaults: one page of 50 from the start unless the caller says otherwise. */
 export function pageRequestDefaults(
-  query: { readonly limit?: number; readonly offset?: number } | undefined,
+  // Values may be explicitly undefined: a list input is a union of the page and all
+  // branches, so a caller reading one branch's controls gets undefined for the other's.
+  query: { readonly limit?: number | undefined; readonly offset?: number | undefined } | undefined,
 ): { readonly limit: number; readonly offset: number } {
   return Object.freeze({ limit: query?.limit ?? DEFAULT_PAGE_SIZE, offset: query?.offset ?? 0 });
 }

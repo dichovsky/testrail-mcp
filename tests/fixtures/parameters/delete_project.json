@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-18"
+  },
+  "endpoint": {
+    "family_id": "T01",
+    "http_method": "POST",
+    "route": "delete_project/{project_id}",
+    "tool": "testrail_delete_project",
+    "driver_method": "projects.deleteProject"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/projects.ts",
+      "supports": "deleteProject takes only the project ID and resolves with no value; it exposes no soft-delete preview option."
+    },
+    {
+      "id": "testrail-projects",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077792415124-Projects",
+      "supports": "delete_project is a POST that removes the project and everything it contains."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement. No body is sent, so an unknown field could only be a caller mistake."
+  },
+  "outer_result": {
+    "driver": "void",
+    "tool_data": "null",
+    "notes": "The method resolves with no value. The wrapper reports data: null rather than omitting the key, so a caller can tell success from an absent result. Deletion removes the project's suites, cases, runs and results with it and cannot be undone."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "no-cascade",
+      "kind": "mapping",
+      "description": "Send exactly one request. The adapter never follows up with additional calls to enumerate or clean up what the deletion removed."
+    }
+  ],
+  "baseline": "representative-id",
+  "parameters": [
+    {
+      "id": "project_id",
+      "input_path": ["project_id"],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "No coercion. The validated number is passed positionally and appears verbatim in the path.",
+      "driver": { "argument": 0, "path": [] },
+      "wire": {
+        "location": "path",
+        "names": ["project_id"],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": ["driver-module", "testrail-projects"]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-id",
+      "input": { "project_id": 7 },
+      "covers": [
+        { "parameter": "project_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "$input", "requirements": ["no-cascade"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "projects.deleteProject", "arguments": [7] },
+        "wire": { "method": "POST", "endpoint": "delete_project/7" },
+        "upstream_response": { "kind": "json", "body": {} },
+        "driver_result": { "kind": "void" }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": { "project_id": 9007199254740991 },
+      "covers": [{ "parameter": "project_id", "requirements": ["upper-bound"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "projects.deleteProject", "arguments": [9007199254740991] },
+        "wire": { "method": "POST", "endpoint": "delete_project/9007199254740991" },
+        "upstream_response": { "kind": "json", "body": {} },
+        "driver_result": { "kind": "void" }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": { "project_id": 7, "soft": 1 },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    }
+  ]
+}

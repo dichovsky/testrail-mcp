@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import {
   TestRailClient,
   UpdateCasePayloadSchema,
+  AddProjectPayloadSchema,
   UpdateProjectPayloadSchema,
 } from '@dichovsky/testrail-api-client';
 import { describe, expect, it, vi } from 'vitest';
@@ -138,6 +139,8 @@ describe('independent parameter manifest format', () => {
   it('reports every unreviewed endpoint and partial endpoint separately', () => {
     const report = parameterCoverageReport(manifests, inventory);
     expect(report.completeEndpoints).toEqual([
+      'testrail_add_project',
+      'testrail_delete_project',
       'testrail_get_attachment',
       'testrail_get_attachments_for_plan_entry',
       'testrail_get_project',
@@ -145,7 +148,7 @@ describe('independent parameter manifest format', () => {
     expect(report.partialEndpoints).toEqual([
       'testrail_get_cases', 'testrail_update_case', 'testrail_update_project',
     ]);
-    expect(report.pendingEndpoints).toHaveLength(127);
+    expect(report.pendingEndpoints).toHaveLength(125);
     expect([...report.reviewedEndpoints, ...report.pendingEndpoints].sort())
       .toEqual(inventory.map(({ tool }) => tool).sort());
     expect(report.pendingEndpoints).toContain('testrail_add_case');
@@ -247,6 +250,14 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
     case 'projects.getProject': {
       const [projectId] = z.tuple([z.number()]).parse(expected.driver.arguments);
       return client.projects.getProject(projectId);
+    }
+    case 'projects.deleteProject': {
+      const [projectId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.projects.deleteProject(projectId);
+    }
+    case 'projects.addProject': {
+      const [payload] = z.tuple([AddProjectPayloadSchema]).parse(expected.driver.arguments);
+      return client.projects.addProject(payload);
     }
     case 'projects.updateProject': {
       const [projectId, payload] = z.tuple([z.number(), UpdateProjectPayloadSchema]).parse(expected.driver.arguments);
