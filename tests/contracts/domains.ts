@@ -100,17 +100,20 @@ export function auditDomainLibrary(library: DomainLibrary): string[] {
         referenced.add(requirement);
         const kind = domain.requirements.find(({ id }) => id === requirement)?.kind;
         // A value must satisfy a requirement of matching polarity, so an acceptance
-        // can never stand in as evidence for a rejection or the reverse.
+        // can never stand in as evidence for a rejection or the reverse. An omitted
+        // entry derives a rejection for a required parameter, never an acceptance.
         const expected = entry.polarity === 'valid'
           ? ['mapping', 'valid']
-          : entry.polarity === 'invalid' ? ['invalid'] : ['required', 'omitted'];
+          : entry.polarity === 'invalid' ? ['invalid'] : ['required'];
         if (kind !== undefined && !expected.includes(kind)) {
           fail(`Value ${entry.id} has wrong polarity for ${requirement}`);
         }
       }
     }
-    for (const { id } of domain.requirements) {
-      if (!referenced.has(id)) fail(`Requirement ${id} has no value covering it`);
+    for (const { id, kind } of domain.requirements) {
+      // Presence belongs to the parameter, not to a value: an omitted-kind requirement
+      // is covered by the manifest case that leaves the parameter out.
+      if (kind !== 'omitted' && !referenced.has(id)) fail(`Requirement ${id} has no value covering it`);
     }
   }
   return errors;

@@ -102,7 +102,7 @@
         {
           "id": "omitted",
           "kind": "omitted",
-          "description": "Omit the control entirely rather than sending a default the caller did not choose."
+          "description": "When omitted, send the adapter's page default of 50 explicitly rather than leaving TestRail to choose, so the page returned is the page the metadata describes."
         },
         {
           "id": "upper-bound",
@@ -124,8 +124,7 @@
         { "id": "negative", "value": -1, "requirements": ["invalid"], "rejected_by": "driver" },
         { "id": "fractional", "value": 1.5, "requirements": ["invalid"], "rejected_by": "driver" },
         { "id": "above-maximum", "value": 251, "requirements": ["above-upper-bound"], "rejected_by": "driver" }
-      ],
-      "omitted": { "id": "absent", "requirements": ["omitted"] }
+      ]
     },
     "pagination_offset": {
       "source": {
@@ -162,7 +161,7 @@
         {
           "id": "omitted",
           "kind": "omitted",
-          "description": "Omit the control entirely rather than sending a default the caller did not choose."
+          "description": "When omitted, send offset 0 explicitly so the first page is requested by name rather than by default."
         },
         {
           "id": "zero",
@@ -178,8 +177,7 @@
         { "id": "negative", "value": -1, "requirements": ["invalid"], "rejected_by": "driver" },
         { "id": "fractional", "value": 1.5, "requirements": ["invalid"], "rejected_by": "driver" },
         { "id": "numeric-string", "value": "50", "requirements": ["invalid"], "rejected_by": "driver" }
-      ],
-      "omitted": { "id": "absent", "requirements": ["omitted"] }
+      ]
     }
   }
 }

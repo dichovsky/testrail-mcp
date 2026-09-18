@@ -194,10 +194,11 @@ function resolveDomains(manifest: ParameterManifest, library: DomainLibrary): Pa
         expect: { kind: 'rejected', code: 'INVALID_ARGUMENT' },
       });
     }
-    // An optional control has no required-omission case, so drop that requirement
-    // rather than leaving one nothing covers.
+    // A required parameter is never accepted without a value and an optional one is
+    // never refused for lacking it, so each drops the presence requirement it cannot
+    // cover rather than leaving one nothing covers.
     const requirements = domain.requirements.filter(({ kind }) =>
-      parameter.requiredness === 'required' || (kind !== 'required' && kind !== 'omitted'));
+      kind !== (parameter.requiredness === 'required' ? 'omitted' : 'required'));
     return { ...parameter, domain: domain.domain, requirements };
   });
 

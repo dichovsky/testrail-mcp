@@ -1,7 +1,7 @@
 import { AddProjectPayloadSchema, ProjectSchema, UpdateProjectPayloadSchema } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
 import { createListInput, payloadInput, positiveIdSchema, strictObject } from '../../contracts/inputs.js';
-import { pageRequestDefaults } from '../../contracts/pagination.js';
+import { driverAllOptions, pageRequestDefaults, type AllControls } from '../../contracts/pagination.js';
 import { driverCall } from '../driver-call.js';
 import { defineOperation, type OperationDefinition } from '../registry.js';
 
@@ -63,15 +63,16 @@ function projectFilter(query: object | undefined): { isCompleted?: boolean } {
   return isCompleted === undefined ? {} : { isCompleted };
 }
 
-/** Forward only the bounds the caller supplied; the driver applies its own otherwise. */
-function aggregateControls(mcp: object | undefined): Record<string, number> {
-  const mapped: [string, string][] = [
-    ['page_size', 'pageSize'], ['start_offset', 'startOffset'], ['max_items', 'maxItems'],
-    ['max_pages', 'maxPages'], ['max_bytes', 'maxBytes'], ['max_duration_ms', 'maxDurationMs'],
-  ];
-  return Object.fromEntries(mapped
-    .map(([input, option]) => [option, control(mcp, input)] as const)
-    .filter((entry): entry is readonly [string, number] => entry[1] !== undefined));
+/** Read the caller's aggregate controls; which bounds fill the gaps is decided below. */
+function allControls(mcp: object | undefined): AllControls {
+  return {
+    page_size: control(mcp, 'page_size'),
+    start_offset: control(mcp, 'start_offset'),
+    max_items: control(mcp, 'max_items'),
+    max_pages: control(mcp, 'max_pages'),
+    max_bytes: control(mcp, 'max_bytes'),
+    max_duration_ms: control(mcp, 'max_duration_ms'),
+  };
 }
 
 export const getProjects = defineOperation({
@@ -106,11 +107,11 @@ export const getProjects = defineOperation({
         ...(control(input.query, 'offset') === undefined ? {} : { offset: control(input.query, 'offset') }),
       }),
     })),
-    // Only controls the caller actually supplied are forwarded. The driver applies its
-    // own bounds otherwise, so absent controls are not invented here.
-    all: driverCall(getProjectsInput, 'projects.getAllProjects', (method, input) => method({
+    // A bound the caller left unset falls back to the configured limit, never to the
+    // driver's own far larger default. Paging controls are forwarded only when supplied.
+    all: driverCall(getProjectsInput, 'projects.getAllProjects', (method, input, context) => method({
       ...projectFilter(input.query),
-      ...aggregateControls(input._mcp),
+      ...driverAllOptions(allControls(input._mcp), context.limits),
     })),
   },
   files: { kind: 'none' },

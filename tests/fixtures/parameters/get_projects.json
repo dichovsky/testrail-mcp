@@ -1,0 +1,635 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-18"
+  },
+  "endpoint": {
+    "family_id": "T01",
+    "http_method": "GET",
+    "route": "get_projects",
+    "tool": "testrail_get_projects",
+    "driver_method": "projects.getProjects"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/projects.ts",
+      "supports": "getProjectsPage and getAllProjects share one request preparation that maps isCompleted to the is_completed query control as 1 or 0. The page helper decodes one response; the all helper collects under the safety bounds."
+    },
+    {
+      "id": "driver-paginated-list",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/paginated-list.ts",
+      "supports": "The page helper validates limit and offset before dispatch and appends them after the filter. The all helper copies only pageSize, startOffset, maxPages, maxItems, maxDurationMs and maxBytes from its options."
+    },
+    {
+      "id": "driver-pagination",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
+      "supports": "collectAllPages validates every bound as a positive safe integer before the first request, defaults pageSize to 250 and startOffset to 0, requires the first envelope offset to equal startOffset, and stops when _links.next is null."
+    },
+    {
+      "id": "driver-url",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/url.ts",
+      "supports": "buildEndpoint appends controls path-style after an ampersand and skips undefined values, so an unfiltered request carries only limit and offset."
+    },
+    {
+      "id": "adapter-limits",
+      "url": "https://github.com/dichovsky/testrail-mcp/blob/main/src/contracts/inputs.ts",
+      "supports": "aggregateLimitDefaults caps each _mcp bound a caller may request at 1,000 items, 20 pages, 1 MiB and 45,000 ms, and DEFAULT_LIMITS in src/config/limits.ts forwards the same values when the caller sets none."
+    },
+    {
+      "id": "testrail-projects",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077792415124-Projects",
+      "supports": "get_projects takes is_completed as 1 or 0, limit (250 by default) and offset, and on TestRail 6.7 or later answers with an offset/limit/size/_links envelope around projects."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement at every depth: the top level, query and _mcp are each closed. The two call modes are a union, so a page control in all mode or an aggregate bound in page mode is a caller mistake reported before dispatch rather than a field silently dropped."
+  },
+  "outer_result": {
+    "driver": "page",
+    "tool_data": "array",
+    "notes": "Page mode returns the driver's decoded page; the wrapper carries its items as data and describes the rest as pagination metadata. All mode returns the collected array. These fixtures use the envelope TestRail 6.7 or later sends; a legacy bare array is decoded as one terminal page."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-query",
+      "kind": "invalid",
+      "description": "Reject an unsupported query key rather than discarding it."
+    },
+    {
+      "id": "unknown-control",
+      "kind": "invalid",
+      "description": "Reject an unknown _mcp control rather than discarding it."
+    },
+    {
+      "id": "page-controls-in-all",
+      "kind": "invalid",
+      "description": "Reject query.limit or query.offset together with pagination all; page_size and start_offset are the only paging controls of an aggregate."
+    },
+    {
+      "id": "all-controls-in-page",
+      "kind": "invalid",
+      "description": "Reject an aggregate bound in page mode, where nothing would apply it."
+    }
+  ],
+  "baseline": "page-controls",
+  "parameters": [
+    {
+      "id": "query.is_completed",
+      "input_path": ["query", "is_completed"],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain": { "type": "boolean" },
+      "semantics": "A real boolean, sent as 1 or 0. Neither 0/1 nor the strings true/false are accepted as input. Omitted entirely when absent, which lists every project.",
+      "driver": { "argument": 0, "path": ["isCompleted"] },
+      "wire": { "location": "query", "names": ["is_completed"], "encoding": "1 for true and 0 for false, appended path-style before the paging controls." },
+      "sources": ["driver-module", "testrail-projects"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the isCompleted option of the selected helper." },
+        { "id": "valid", "kind": "valid", "description": "Accept true and send it as 1." },
+        { "id": "false-is-sent", "kind": "valid", "description": "Send an explicit false as 0 rather than treating it as absent." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a numeric stand-in for a boolean before driver invocation." },
+        { "id": "omitted", "kind": "omitted", "description": "Send no filter when the caller did not supply one." }
+      ]
+    },
+    {
+      "id": "query.limit",
+      "input_path": ["query", "limit"],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain_ref": "pagination_limit",
+      "semantics": "Page mode only. Sent explicitly on every page request: the caller's value, or 50 when omitted.",
+      "driver": { "argument": 0, "path": ["limit"] },
+      "wire": { "location": "query", "names": ["limit"], "encoding": "Decimal integer appended path-style after the filter." },
+      "sources": ["driver-paginated-list", "driver-url", "testrail-projects"]
+    },
+    {
+      "id": "query.offset",
+      "input_path": ["query", "offset"],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain_ref": "pagination_offset",
+      "semantics": "Page mode only. Sent explicitly on every page request: the caller's value, or 0 when omitted.",
+      "driver": { "argument": 0, "path": ["offset"] },
+      "wire": { "location": "query", "names": ["offset"], "encoding": "Decimal integer appended path-style after limit." },
+      "sources": ["driver-paginated-list", "driver-url", "testrail-projects"]
+    },
+    {
+      "id": "_mcp.pagination",
+      "input_path": ["_mcp", "pagination"],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain": { "enum": ["page", "all"] },
+      "semantics": "Selects the public page helper or the bounded all helper. Never passed to the driver.",
+      "driver": null,
+      "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized upstream." },
+      "sources": ["driver-module"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Select getProjectsPage for page and getAllProjects for all." },
+        { "id": "page", "kind": "valid", "description": "Accept an explicit page mode." },
+        { "id": "all", "kind": "valid", "description": "Accept all mode." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject an unknown mode before driver invocation." },
+        { "id": "omitted", "kind": "omitted", "description": "Use page mode when omitted." }
+      ]
+    },
+    {
+      "id": "_mcp.page_size",
+      "input_path": ["_mcp", "page_size"],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain": { "type": "integer", "minimum": 1, "maximum": 250 },
+      "semantics": "All mode only. Forwarded as the driver's pageSize when supplied; the driver's own default of 250 applies when omitted, and the adapter does not invent one.",
+      "driver": { "argument": 0, "path": ["pageSize"] },
+      "wire": { "location": "query", "names": ["limit"], "encoding": "Sent as the limit control of every request the aggregate issues." },
+      "sources": ["driver-paginated-list", "driver-pagination"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the pageSize option of getAllProjects." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative page size." },
+        { "id": "upper-bound", "kind": "valid", "description": "Accept the documented maximum page size." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-positive page size before driver invocation." },
+        { "id": "above-upper-bound", "kind": "invalid", "description": "Reject a page size above the documented maximum rather than letting the server clamp it." },
+        { "id": "omitted", "kind": "omitted", "description": "Forward no pageSize when the caller did not supply one." }
+      ]
+    },
+    {
+      "id": "_mcp.start_offset",
+      "input_path": ["_mcp", "start_offset"],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+      "semantics": "All mode only. Forwarded as the driver's startOffset when supplied; the aggregate starts at 0 when omitted. Zero is a meaningful value and is not treated as absent.",
+      "driver": { "argument": 0, "path": ["startOffset"] },
+      "wire": { "location": "query", "names": ["offset"], "encoding": "Sent as the offset of the first request; later offsets follow the continuation links." },
+      "sources": ["driver-paginated-list", "driver-pagination"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the startOffset option of getAllProjects." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative starting offset." },
+        { "id": "zero", "kind": "valid", "description": "Forward an explicit zero rather than discarding it as a falsy value." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a negative offset before driver invocation." },
+        { "id": "omitted", "kind": "omitted", "description": "Forward no startOffset when the caller did not supply one." }
+      ]
+    },
+    {
+      "id": "_mcp.max_items",
+      "input_path": ["_mcp", "max_items"],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain": { "type": "integer", "minimum": 1, "maximum": 1000 },
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (1,000 by default) is forwarded when omitted, so an aggregate never runs under the driver's own default of 25,000. The ceiling the schema enforces is the built-in default, not the operator's configured value.",
+      "driver": { "argument": 0, "path": ["maxItems"] },
+      "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the collection inside the driver." },
+      "sources": ["driver-pagination", "adapter-limits"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxItems option of getAllProjects." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
+        { "id": "ceiling", "kind": "valid", "description": "Accept the configured ceiling itself." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-positive bound before driver invocation." },
+        { "id": "above-ceiling", "kind": "invalid", "description": "Reject a bound above the configured ceiling rather than letting a caller raise the operator's limit." },
+        { "id": "omitted", "kind": "omitted", "description": "Forward the configured limit when the caller did not supply one." }
+      ]
+    },
+    {
+      "id": "_mcp.max_pages",
+      "input_path": ["_mcp", "max_pages"],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain": { "type": "integer", "minimum": 1, "maximum": 20 },
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (20 by default) is forwarded when omitted, so an aggregate never runs under the driver's own default of 100.",
+      "driver": { "argument": 0, "path": ["maxPages"] },
+      "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the collection inside the driver." },
+      "sources": ["driver-pagination", "adapter-limits"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxPages option of getAllProjects." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
+        { "id": "ceiling", "kind": "valid", "description": "Accept the configured ceiling itself." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-positive bound before driver invocation." },
+        { "id": "above-ceiling", "kind": "invalid", "description": "Reject a bound above the configured ceiling." },
+        { "id": "omitted", "kind": "omitted", "description": "Forward the configured limit when the caller did not supply one." }
+      ]
+    },
+    {
+      "id": "_mcp.max_bytes",
+      "input_path": ["_mcp", "max_bytes"],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain": { "type": "integer", "minimum": 1, "maximum": 1048576 },
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (1 MiB by default) is forwarded when omitted, so an aggregate never runs under the driver's own default of 100 MiB.",
+      "driver": { "argument": 0, "path": ["maxBytes"] },
+      "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the serialized item bytes inside the driver." },
+      "sources": ["driver-pagination", "adapter-limits"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxBytes option of getAllProjects." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
+        { "id": "ceiling", "kind": "valid", "description": "Accept the configured ceiling itself." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-positive bound before driver invocation." },
+        { "id": "above-ceiling", "kind": "invalid", "description": "Reject a bound above the configured ceiling." },
+        { "id": "omitted", "kind": "omitted", "description": "Forward the configured limit when the caller did not supply one." }
+      ]
+    },
+    {
+      "id": "_mcp.max_duration_ms",
+      "input_path": ["_mcp", "max_duration_ms"],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain": { "type": "integer", "minimum": 1, "maximum": 45000 },
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (45,000 ms by default) is forwarded when omitted, so an aggregate never runs under the driver's own default of five minutes.",
+      "driver": { "argument": 0, "path": ["maxDurationMs"] },
+      "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the aggregate's wall-clock time inside the driver." },
+      "sources": ["driver-pagination", "adapter-limits"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxDurationMs option of getAllProjects." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
+        { "id": "ceiling", "kind": "valid", "description": "Accept the configured ceiling itself." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-positive bound before driver invocation." },
+        { "id": "above-ceiling", "kind": "invalid", "description": "Reject a bound above the configured ceiling." },
+        { "id": "omitted", "kind": "omitted", "description": "Forward the configured limit when the caller did not supply one." }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "defaults",
+      "input": {},
+      "covers": [
+        { "parameter": "query.is_completed", "requirements": ["omitted"] },
+        { "parameter": "query.limit", "requirements": ["omitted"] },
+        { "parameter": "query.offset", "requirements": ["omitted"] },
+        { "parameter": "_mcp.pagination", "requirements": ["omitted"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "projects.getProjectsPage", "arguments": [{ "limit": 50, "offset": 0 }] },
+        "wire": { "method": "GET", "endpoint": "get_projects&limit=50&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0, "limit": 50, "size": 1, "_links": { "next": null, "prev": null },
+            "projects": [{ "id": 7, "name": "Fixture project", "announcement": null, "show_announcement": false, "is_completed": false, "completed_on": null, "suite_mode": 1, "url": "https://fixture.testrail.test/index.php?/projects/overview/7" }]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [{ "id": 7, "name": "Fixture project", "announcement": null, "show_announcement": false, "is_completed": false, "completed_on": null, "suite_mode": 1, "url": "https://fixture.testrail.test/index.php?/projects/overview/7" }],
+            "offset": 0, "limit": 50, "size": 1, "_links": { "next": null, "prev": null }
+          }
+        }
+      }
+    },
+    {
+      "id": "page-controls",
+      "input": { "query": { "limit": 50, "offset": 50 } },
+      "covers": [
+        { "parameter": "query.limit", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.offset", "requirements": ["mapping", "valid"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "projects.getProjectsPage", "arguments": [{ "limit": 50, "offset": 50 }] },
+        "wire": { "method": "GET", "endpoint": "get_projects&limit=50&offset=50" },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 50, "limit": 50, "size": 1, "_links": { "next": null, "prev": "/api/v2/get_projects&limit=50&offset=0" },
+            "projects": [{ "id": 57, "name": "Second-page project", "announcement": null, "show_announcement": false, "is_completed": false, "completed_on": null, "suite_mode": 1, "url": "https://fixture.testrail.test/index.php?/projects/overview/57" }]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [{ "id": 57, "name": "Second-page project", "announcement": null, "show_announcement": false, "is_completed": false, "completed_on": null, "suite_mode": 1, "url": "https://fixture.testrail.test/index.php?/projects/overview/57" }],
+            "offset": 50, "limit": 50, "size": 1, "_links": { "next": null, "prev": "/api/v2/get_projects&limit=50&offset=0" }
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-page",
+      "input": { "query": { "limit": 250 } },
+      "covers": [{ "parameter": "query.limit", "requirements": ["upper-bound"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "projects.getProjectsPage", "arguments": [{ "limit": 250, "offset": 0 }] },
+        "wire": { "method": "GET", "endpoint": "get_projects&limit=250&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "offset": 0, "limit": 250, "size": 0, "_links": { "next": null, "prev": null }, "projects": [] }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": { "kind": "envelope", "items": [], "offset": 0, "limit": 250, "size": 0, "_links": { "next": null, "prev": null } }
+        }
+      }
+    },
+    {
+      "id": "first-page-by-name",
+      "input": { "query": { "offset": 0 }, "_mcp": { "pagination": "page" } },
+      "covers": [
+        { "parameter": "query.offset", "requirements": ["zero"] },
+        { "parameter": "_mcp.pagination", "requirements": ["mapping", "page"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "projects.getProjectsPage", "arguments": [{ "limit": 50, "offset": 0 }] },
+        "wire": { "method": "GET", "endpoint": "get_projects&limit=50&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "offset": 0, "limit": 50, "size": 0, "_links": { "next": null, "prev": null }, "projects": [] }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": { "kind": "envelope", "items": [], "offset": 0, "limit": 50, "size": 0, "_links": { "next": null, "prev": null } }
+        }
+      }
+    },
+    {
+      "id": "completed-only",
+      "input": { "query": { "is_completed": true } },
+      "covers": [{ "parameter": "query.is_completed", "requirements": ["mapping", "valid"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "projects.getProjectsPage", "arguments": [{ "isCompleted": true, "limit": 50, "offset": 0 }] },
+        "wire": { "method": "GET", "endpoint": "get_projects&is_completed=1&limit=50&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0, "limit": 50, "size": 1, "_links": { "next": null, "prev": null },
+            "projects": [{ "id": 8, "name": "Archived project", "announcement": null, "show_announcement": false, "is_completed": true, "completed_on": 1389968184, "suite_mode": 1, "url": "https://fixture.testrail.test/index.php?/projects/overview/8" }]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [{ "id": 8, "name": "Archived project", "announcement": null, "show_announcement": false, "is_completed": true, "completed_on": 1389968184, "suite_mode": 1, "url": "https://fixture.testrail.test/index.php?/projects/overview/8" }],
+            "offset": 0, "limit": 50, "size": 1, "_links": { "next": null, "prev": null }
+          }
+        }
+      }
+    },
+    {
+      "id": "active-only",
+      "input": { "query": { "is_completed": false } },
+      "covers": [{ "parameter": "query.is_completed", "requirements": ["false-is-sent"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "projects.getProjectsPage", "arguments": [{ "isCompleted": false, "limit": 50, "offset": 0 }] },
+        "wire": { "method": "GET", "endpoint": "get_projects&is_completed=0&limit=50&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "offset": 0, "limit": 50, "size": 0, "_links": { "next": null, "prev": null }, "projects": [] }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": { "kind": "envelope", "items": [], "offset": 0, "limit": 50, "size": 0, "_links": { "next": null, "prev": null } }
+        }
+      }
+    },
+    {
+      "id": "all-defaults",
+      "input": { "_mcp": { "pagination": "all" } },
+      "covers": [
+        { "parameter": "_mcp.pagination", "requirements": ["mapping", "all"] },
+        { "parameter": "_mcp.page_size", "requirements": ["omitted"] },
+        { "parameter": "_mcp.start_offset", "requirements": ["omitted"] },
+        { "parameter": "_mcp.max_items", "requirements": ["omitted"] },
+        { "parameter": "_mcp.max_pages", "requirements": ["omitted"] },
+        { "parameter": "_mcp.max_bytes", "requirements": ["omitted"] },
+        { "parameter": "_mcp.max_duration_ms", "requirements": ["omitted"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "projects.getAllProjects",
+          "arguments": [{ "maxItems": 1000, "maxPages": 20, "maxBytes": 1048576, "maxDurationMs": 45000 }]
+        },
+        "wire": { "method": "GET", "endpoint": "get_projects&limit=250&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0, "limit": 250, "size": 1, "_links": { "next": null, "prev": null },
+            "projects": [{ "id": 7, "name": "Fixture project", "announcement": null, "show_announcement": false, "is_completed": false, "completed_on": null, "suite_mode": 1, "url": "https://fixture.testrail.test/index.php?/projects/overview/7" }]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [{ "id": 7, "name": "Fixture project", "announcement": null, "show_announcement": false, "is_completed": false, "completed_on": null, "suite_mode": 1, "url": "https://fixture.testrail.test/index.php?/projects/overview/7" }]
+        }
+      }
+    },
+    {
+      "id": "all-controls",
+      "input": {
+        "query": { "is_completed": true },
+        "_mcp": { "pagination": "all", "page_size": 25, "start_offset": 100, "max_items": 10, "max_pages": 2, "max_bytes": 1024, "max_duration_ms": 5000 }
+      },
+      "covers": [
+        { "parameter": "_mcp.page_size", "requirements": ["mapping", "valid"] },
+        { "parameter": "_mcp.start_offset", "requirements": ["mapping", "valid"] },
+        { "parameter": "_mcp.max_items", "requirements": ["mapping", "valid"] },
+        { "parameter": "_mcp.max_pages", "requirements": ["mapping", "valid"] },
+        { "parameter": "_mcp.max_bytes", "requirements": ["mapping", "valid"] },
+        { "parameter": "_mcp.max_duration_ms", "requirements": ["mapping", "valid"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "projects.getAllProjects",
+          "arguments": [{ "isCompleted": true, "pageSize": 25, "startOffset": 100, "maxItems": 10, "maxPages": 2, "maxBytes": 1024, "maxDurationMs": 5000 }]
+        },
+        "wire": { "method": "GET", "endpoint": "get_projects&is_completed=1&limit=25&offset=100" },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 100, "limit": 25, "size": 1, "_links": { "next": null, "prev": "/api/v2/get_projects&is_completed=1&limit=25&offset=75" },
+            "projects": [{ "id": 8, "name": "Archived project", "announcement": null, "show_announcement": false, "is_completed": true, "completed_on": 1389968184, "suite_mode": 1, "url": "https://fixture.testrail.test/index.php?/projects/overview/8" }]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [{ "id": 8, "name": "Archived project", "announcement": null, "show_announcement": false, "is_completed": true, "completed_on": 1389968184, "suite_mode": 1, "url": "https://fixture.testrail.test/index.php?/projects/overview/8" }]
+        }
+      }
+    },
+    {
+      "id": "all-ceilings",
+      "input": { "_mcp": { "pagination": "all", "max_items": 1000, "max_pages": 20, "max_bytes": 1048576, "max_duration_ms": 45000 } },
+      "covers": [
+        { "parameter": "_mcp.max_items", "requirements": ["ceiling"] },
+        { "parameter": "_mcp.max_pages", "requirements": ["ceiling"] },
+        { "parameter": "_mcp.max_bytes", "requirements": ["ceiling"] },
+        { "parameter": "_mcp.max_duration_ms", "requirements": ["ceiling"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "projects.getAllProjects",
+          "arguments": [{ "maxItems": 1000, "maxPages": 20, "maxBytes": 1048576, "maxDurationMs": 45000 }]
+        },
+        "wire": { "method": "GET", "endpoint": "get_projects&limit=250&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "offset": 0, "limit": 250, "size": 0, "_links": { "next": null, "prev": null }, "projects": [] }
+        },
+        "driver_result": { "kind": "json", "value": [] }
+      }
+    },
+    {
+      "id": "largest-aggregate-page",
+      "input": { "_mcp": { "pagination": "all", "page_size": 250 } },
+      "covers": [{ "parameter": "_mcp.page_size", "requirements": ["upper-bound"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "projects.getAllProjects",
+          "arguments": [{ "pageSize": 250, "maxItems": 1000, "maxPages": 20, "maxBytes": 1048576, "maxDurationMs": 45000 }]
+        },
+        "wire": { "method": "GET", "endpoint": "get_projects&limit=250&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "offset": 0, "limit": 250, "size": 0, "_links": { "next": null, "prev": null }, "projects": [] }
+        },
+        "driver_result": { "kind": "json", "value": [] }
+      }
+    },
+    {
+      "id": "aggregate-from-start",
+      "input": { "_mcp": { "pagination": "all", "start_offset": 0 } },
+      "covers": [{ "parameter": "_mcp.start_offset", "requirements": ["zero"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "projects.getAllProjects",
+          "arguments": [{ "startOffset": 0, "maxItems": 1000, "maxPages": 20, "maxBytes": 1048576, "maxDurationMs": 45000 }]
+        },
+        "wire": { "method": "GET", "endpoint": "get_projects&limit=250&offset=0" },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "offset": 0, "limit": 250, "size": 0, "_links": { "next": null, "prev": null }, "projects": [] }
+        },
+        "driver_result": { "kind": "json", "value": [] }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": { "unexpected": true },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-query",
+      "input": { "query": { "name": "Fixture project" } },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-query"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-control",
+      "input": { "_mcp": { "pagination": "all", "unexpected": 1 } },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-control"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "page-controls-in-all",
+      "input": { "query": { "limit": 50 }, "_mcp": { "pagination": "all" } },
+      "covers": [{ "parameter": "$input", "requirements": ["page-controls-in-all"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "all-controls-in-page",
+      "input": { "_mcp": { "pagination": "page", "max_items": 5 } },
+      "covers": [{ "parameter": "$input", "requirements": ["all-controls-in-page"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "is-completed-numeric",
+      "input": { "query": { "is_completed": 1 } },
+      "covers": [{ "parameter": "query.is_completed", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "pagination-unknown-mode",
+      "input": { "_mcp": { "pagination": "stream" } },
+      "covers": [{ "parameter": "_mcp.pagination", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "page-size-zero",
+      "input": { "_mcp": { "pagination": "all", "page_size": 0 } },
+      "covers": [{ "parameter": "_mcp.page_size", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "page-size-above-maximum",
+      "input": { "_mcp": { "pagination": "all", "page_size": 251 } },
+      "covers": [{ "parameter": "_mcp.page_size", "requirements": ["above-upper-bound"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "start-offset-negative",
+      "input": { "_mcp": { "pagination": "all", "start_offset": -1 } },
+      "covers": [{ "parameter": "_mcp.start_offset", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "max-items-zero",
+      "input": { "_mcp": { "pagination": "all", "max_items": 0 } },
+      "covers": [{ "parameter": "_mcp.max_items", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "max-items-above-ceiling",
+      "input": { "_mcp": { "pagination": "all", "max_items": 1001 } },
+      "covers": [{ "parameter": "_mcp.max_items", "requirements": ["above-ceiling"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "max-pages-zero",
+      "input": { "_mcp": { "pagination": "all", "max_pages": 0 } },
+      "covers": [{ "parameter": "_mcp.max_pages", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "max-pages-above-ceiling",
+      "input": { "_mcp": { "pagination": "all", "max_pages": 21 } },
+      "covers": [{ "parameter": "_mcp.max_pages", "requirements": ["above-ceiling"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "max-bytes-zero",
+      "input": { "_mcp": { "pagination": "all", "max_bytes": 0 } },
+      "covers": [{ "parameter": "_mcp.max_bytes", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "max-bytes-above-ceiling",
+      "input": { "_mcp": { "pagination": "all", "max_bytes": 1048577 } },
+      "covers": [{ "parameter": "_mcp.max_bytes", "requirements": ["above-ceiling"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "max-duration-zero",
+      "input": { "_mcp": { "pagination": "all", "max_duration_ms": 0 } },
+      "covers": [{ "parameter": "_mcp.max_duration_ms", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "max-duration-above-ceiling",
+      "input": { "_mcp": { "pagination": "all", "max_duration_ms": 45001 } },
+      "covers": [{ "parameter": "_mcp.max_duration_ms", "requirements": ["above-ceiling"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    }
+  ]
+}

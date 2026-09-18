@@ -1,5 +1,6 @@
 import type { TestRailClient, UploadFilePathInput } from '@dichovsky/testrail-api-client';
 import type { z } from 'zod';
+import type { Limits } from '../config/limits.js';
 import { inputJsonSchema } from '../contracts/inputs.js';
 
 export const driverModules = [
@@ -25,6 +26,8 @@ export type DriverMethod<B extends DriverBinding> = B extends `${infer M extends
 /** F07 supplies an owned staged path, never a caller-owned file descriptor. */
 export interface CallContext {
   readonly upload?: UploadFilePathInput;
+  /** Configured bounds. An aggregate the caller left unbounded runs under these, not the driver's. */
+  readonly limits: Limits;
 }
 
 export interface DriverCall {

@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { TestRailClient, ProjectSchema, UpdateCasePayloadSchema } from '@dichovsky/testrail-api-client';
 import { describe, expect, it, vi } from 'vitest';
+import { DEFAULT_LIMITS } from '../src/config/limits.js';
 import { z } from 'zod';
 import { createListInput, payloadInput, positiveIdSchema, strictObject } from '../src/contracts/inputs.js';
 import { driverCall } from '../src/operations/driver-call.js';
@@ -107,7 +108,7 @@ describe('driver mapping boundary', () => {
     const client = new TestRailClient({ baseUrl: 'https://example.test', email: 'fixture@example.test', apiKey: 'synthetic', allowPrivateHosts: true, fetch });
     const raw: unknown = JSON.parse('{"case_id":1,"body":{"custom_value":{"__proto__":{"preserved":true},"safe":1}}}');
     try {
-      await call.invoke(client, raw, {});
+      await call.invoke(client, raw, { limits: DEFAULT_LIMITS });
       expect(fetch.mock.calls[0]?.[1]?.body).toBe('{"custom_value":{"__proto__":{"preserved":true},"safe":1}}');
     } finally { client.destroy(); }
   });
@@ -118,10 +119,10 @@ describe('driver mapping boundary', () => {
     const client = new TestRailClient({ baseUrl: 'https://example.test/testrail', email: 'fixture@example.test', apiKey: 'synthetic', allowPrivateHosts: true, fetch });
     try {
       const call = getProjectDefinition.pagination.single;
-      await expect(call.invoke(client, { project_id: '42' }, {})).rejects.toThrow();
-      await expect(call.invoke(client, { project_id: 42, api_key: 'extra' }, {})).rejects.toThrow();
+      await expect(call.invoke(client, { project_id: '42' }, { limits: DEFAULT_LIMITS })).rejects.toThrow();
+      await expect(call.invoke(client, { project_id: 42, api_key: 'extra' }, { limits: DEFAULT_LIMITS })).rejects.toThrow();
       expect(fetch).not.toHaveBeenCalled();
-      expect(await call.invoke(client, { project_id: 42 }, {})).toEqual(raw);
+      expect(await call.invoke(client, { project_id: 42 }, { limits: DEFAULT_LIMITS })).toEqual(raw);
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(fetch.mock.calls[0]?.[0]).toBe('https://example.test/testrail/index.php?/api/v2/get_project/42');
     } finally { client.destroy(); }
@@ -135,7 +136,7 @@ describe('driver mapping boundary', () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response('[]'));
     const client = new TestRailClient({ baseUrl: 'https://example.test', email: 'fixture@example.test', apiKey: 'synthetic', allowPrivateHosts: true, fetch });
     try {
-      await call.invoke(client, { query: { is_completed: false, limit: 12 } }, {});
+      await call.invoke(client, { query: { is_completed: false, limit: 12 } }, { limits: DEFAULT_LIMITS });
       expect(fetch.mock.calls[0]?.[0]).toBe('https://example.test/index.php?/api/v2/get_projects&is_completed=0&limit=12');
     } finally { client.destroy(); }
   });

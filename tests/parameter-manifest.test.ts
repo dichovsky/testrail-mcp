@@ -144,11 +144,11 @@ describe('independent parameter manifest format', () => {
       'testrail_get_attachment',
       'testrail_get_attachments_for_plan_entry',
       'testrail_get_project',
+      'testrail_get_projects',
+      'testrail_update_project',
     ]);
-    expect(report.partialEndpoints).toEqual([
-      'testrail_get_cases', 'testrail_update_case', 'testrail_update_project',
-    ]);
-    expect(report.pendingEndpoints).toHaveLength(125);
+    expect(report.partialEndpoints).toEqual(['testrail_get_cases', 'testrail_update_case']);
+    expect(report.pendingEndpoints).toHaveLength(124);
     expect([...report.reviewedEndpoints, ...report.pendingEndpoints].sort())
       .toEqual(inventory.map(({ tool }) => tool).sort());
     expect(report.pendingEndpoints).toContain('testrail_add_case');
@@ -250,6 +250,28 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
     case 'projects.getProject': {
       const [projectId] = z.tuple([z.number()]).parse(expected.driver.arguments);
       return client.projects.getProject(projectId);
+    }
+    case 'projects.getProjectsPage': {
+      const [options] = z.tuple([z.strictObject({
+        isCompleted: z.boolean().optional(), limit: z.number(), offset: z.number(),
+      })]).parse(expected.driver.arguments);
+      return client.projects.getProjectsPage({
+        limit: options.limit, offset: options.offset,
+        ...(options.isCompleted === undefined ? {} : { isCompleted: options.isCompleted }),
+      });
+    }
+    case 'projects.getAllProjects': {
+      const [options] = z.tuple([z.strictObject({
+        isCompleted: z.boolean().optional(), pageSize: z.number().optional(), startOffset: z.number().optional(),
+        maxItems: z.number(), maxPages: z.number(), maxBytes: z.number(), maxDurationMs: z.number(),
+      })]).parse(expected.driver.arguments);
+      const { isCompleted, pageSize, startOffset, ...bounds } = options;
+      return client.projects.getAllProjects({
+        ...bounds,
+        ...(isCompleted === undefined ? {} : { isCompleted }),
+        ...(pageSize === undefined ? {} : { pageSize }),
+        ...(startOffset === undefined ? {} : { startOffset }),
+      });
     }
     case 'projects.deleteProject': {
       const [projectId] = z.tuple([z.number()]).parse(expected.driver.arguments);

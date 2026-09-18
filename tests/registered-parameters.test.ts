@@ -2,6 +2,7 @@ import { TestRailClient } from '@dichovsky/testrail-api-client';
 import type { JsonSchemaType } from '@modelcontextprotocol/server';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
 import { describe, expect, it, vi } from 'vitest';
+import { DEFAULT_LIMITS } from '../src/config/limits.js';
 import { z } from 'zod';
 import { attachmentIdSchema, createListInput, positiveIdSchema, refsSchema, strictObject } from '../src/contracts/inputs.js';
 import { operationRegistry } from '../src/operations/catalog.js';
@@ -98,19 +99,6 @@ describe('registered parameter coverage gate', () => {
     ]);
   });
 
-  it('allows a reviewed whole-body mapping to carry nested wildcard fields', () => {
-    const nested = manifests.find((manifest) => manifest.endpoint.tool === 'testrail_update_project');
-    if (!nested) throw new Error('Missing nested-field manifest');
-    // Exercise mapping audit independently; this partial endpoint is not a production registration.
-    const mapped = { ...operation, tool: 'testrail_update_project' as const, argumentMap: [
-      { input: 'project_id', call: 'single' as const, argument: 0, serialization: 'path' as const },
-      { input: 'body', call: 'single' as const, argument: 1, serialization: 'json-body' as const },
-    ] };
-    const errors = auditRegisteredParameters({ entries: [mapped], get: () => mapped }, [nested]);
-    expect(errors).toContain('testrail_update_project: parameter review is incomplete');
-    expect(errors.filter((error) => error.includes('argument mapping'))).toEqual([]);
-  });
-
   it('detects missing all-mode filters and reviewed fields omitted from schemas', () => {
     for (const includeRefs of [true, false]) {
       const listInput = createListInput({ path: { project_id: positiveIdSchema }, query: includeRefs ? { refs: refsSchema.optional() } : {}, pagination: 'controlled' });
@@ -168,6 +156,58 @@ describe('registered parameter coverage gate', () => {
   });
 });
 
+/*
+ * The audit above proves a mapping is declared; this proves the registration honours it.
+ * Every production registration is driven with every fixture of its manifest, and what
+ * reaches the public driver method and the wire is compared with what the fixture
+ * promised. A manifest argument nothing checks against the adapter would be a claim.
+ */
+describe('production registrations send what their fixtures promise', () => {
+  for (const operation of operationRegistry.entries) {
+    const manifest = manifests.find((candidate) => candidate.endpoint.tool === operation.tool);
+    for (const fixture of manifest?.cases ?? []) {
+      it(`${operation.tool}: ${fixture.id}`, async () => {
+        const expected = fixture.expect;
+        const calls: { url: string; method: string | undefined; body: unknown }[] = [];
+        const fetch = vi.fn<typeof globalThis.fetch>((target, init) => {
+          const url = typeof target === 'string' ? target : target instanceof URL ? target.href : target.url;
+          calls.push({ url, method: init?.method, body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body });
+          const body = expected.kind === 'accepted' && expected.upstream_response.kind === 'json' ? expected.upstream_response.body : {};
+          return Promise.resolve(new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } }));
+        });
+        const client = new TestRailClient({
+          baseUrl: 'https://fixture.testrail.test', email: 'fixture@example.test', apiKey: 'synthetic',
+          registerProcessHandlers: false, enableCache: false, maxRetries: 0, fetch,
+          dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
+        });
+        const control = fixture.input._mcp;
+        const all = typeof control === 'object' && control !== null && !Array.isArray(control) && control.pagination === 'all';
+        const call = operation.pagination.kind === 'none' ? operation.pagination.single
+          : all ? operation.pagination.all : operation.pagination.page;
+        const [moduleName = '', methodName = ''] = call.binding.split('.');
+        const owner: unknown = Reflect.get(client, moduleName);
+        const publicMethod = vi.spyOn(owner as Record<string, (...args: never[]) => unknown>, methodName);
+        try {
+          if (expected.kind === 'rejected') {
+            await expect(call.invoke(client, fixture.input, { limits: DEFAULT_LIMITS })).rejects.toThrow();
+            expect(publicMethod).not.toHaveBeenCalled();
+            expect(calls).toEqual([]);
+            return;
+          }
+          const result = await call.invoke(client, fixture.input, { limits: DEFAULT_LIMITS });
+          expect(publicMethod.mock.calls).toEqual([expected.driver.arguments]);
+          expect(calls).toEqual([{
+            url: `https://fixture.testrail.test/index.php?/api/v2/${expected.wire.endpoint}`,
+            method: expected.wire.method,
+            body: expected.wire.json,
+          }]);
+          expect(result).toEqual(expected.driver_result.kind === 'json' ? expected.driver_result.value : undefined);
+        } finally { client.destroy(); }
+      });
+    }
+  }
+});
+
 describe('independent fixture → schema → real public driver', () => {
   for (const fixture of attachment.cases) {
     it(fixture.id, async () => {
@@ -180,11 +220,11 @@ describe('independent fixture → schema → real public driver', () => {
         expect(input.safeParse(fixture.input).success).toBe(fixture.expect.kind === 'accepted');
         expect(validateJson(fixture.input).valid).toBe(fixture.expect.kind === 'accepted');
         if (fixture.expect.kind === 'rejected') {
-          await expect(call.invoke(client, fixture.input, {})).rejects.toThrow();
+          await expect(call.invoke(client, fixture.input, { limits: DEFAULT_LIMITS })).rejects.toThrow();
           expect(publicMethod).not.toHaveBeenCalled();
           expect(fetch).not.toHaveBeenCalled();
         } else {
-          const result = await call.invoke(client, fixture.input, {});
+          const result = await call.invoke(client, fixture.input, { limits: DEFAULT_LIMITS });
           expect(publicMethod.mock.calls).toEqual([fixture.expect.driver.arguments]);
           expect(fetch.mock.calls[0]?.[0]).toBe(`https://example.test/index.php?/api/v2/${fixture.expect.wire.endpoint}`);
           expect(fetch.mock.calls[0]?.[1]?.method).toBe(fixture.expect.wire.method);
