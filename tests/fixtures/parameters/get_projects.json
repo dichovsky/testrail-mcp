@@ -148,113 +148,72 @@
       "input_path": ["_mcp", "page_size"],
       "scope": "mcp",
       "requiredness": "optional",
-      "domain": { "type": "integer", "minimum": 1, "maximum": 250 },
-      "semantics": "All mode only. Forwarded as the driver's pageSize when supplied; the driver's own default of 250 applies when omitted, and the adapter does not invent one.",
+      "domain_ref": "aggregate_page_size",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded as the driver's pageSize when supplied; the driver's own default of 250 applies when omitted.",
       "driver": { "argument": 0, "path": ["pageSize"] },
       "wire": { "location": "query", "names": ["limit"], "encoding": "Sent as the limit control of every request the aggregate issues." },
-      "sources": ["driver-paginated-list", "driver-pagination"],
-      "requirements": [
-        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the pageSize option of getAllProjects." },
-        { "id": "valid", "kind": "valid", "description": "Accept a representative page size." },
-        { "id": "upper-bound", "kind": "valid", "description": "Accept the documented maximum page size." },
-        { "id": "invalid", "kind": "invalid", "description": "Reject a non-positive page size before driver invocation." },
-        { "id": "above-upper-bound", "kind": "invalid", "description": "Reject a page size above the documented maximum rather than letting the server clamp it." },
-        { "id": "omitted", "kind": "omitted", "description": "Forward no pageSize when the caller did not supply one." }
-      ]
+      "sources": ["driver-paginated-list", "driver-pagination"]
     },
     {
       "id": "_mcp.start_offset",
       "input_path": ["_mcp", "start_offset"],
       "scope": "mcp",
       "requiredness": "optional",
-      "domain": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-      "semantics": "All mode only. Forwarded as the driver's startOffset when supplied; the aggregate starts at 0 when omitted. Zero is a meaningful value and is not treated as absent.",
+      "domain_ref": "aggregate_start_offset",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded as the driver's startOffset when supplied; the aggregate starts at 0 when omitted.",
       "driver": { "argument": 0, "path": ["startOffset"] },
       "wire": { "location": "query", "names": ["offset"], "encoding": "Sent as the offset of the first request; later offsets follow the continuation links." },
-      "sources": ["driver-paginated-list", "driver-pagination"],
-      "requirements": [
-        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the startOffset option of getAllProjects." },
-        { "id": "valid", "kind": "valid", "description": "Accept a representative starting offset." },
-        { "id": "zero", "kind": "valid", "description": "Forward an explicit zero rather than discarding it as a falsy value." },
-        { "id": "invalid", "kind": "invalid", "description": "Reject a negative offset before driver invocation." },
-        { "id": "omitted", "kind": "omitted", "description": "Forward no startOffset when the caller did not supply one." }
-      ]
+      "sources": ["driver-paginated-list", "driver-pagination"]
     },
     {
       "id": "_mcp.max_items",
       "input_path": ["_mcp", "max_items"],
       "scope": "mcp",
       "requiredness": "optional",
-      "domain": { "type": "integer", "minimum": 1, "maximum": 1000 },
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (1,000 by default) is forwarded when omitted, so an aggregate never runs under the driver's own default of 25,000. The ceiling the schema enforces is the built-in default, not the operator's configured value.",
+      "domain_ref": "aggregate_max_items",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
       "driver": { "argument": 0, "path": ["maxItems"] },
       "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the collection inside the driver." },
-      "sources": ["driver-pagination", "adapter-limits"],
-      "requirements": [
-        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxItems option of getAllProjects." },
-        { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
-        { "id": "ceiling", "kind": "valid", "description": "Accept the configured ceiling itself." },
-        { "id": "invalid", "kind": "invalid", "description": "Reject a non-positive bound before driver invocation." },
-        { "id": "above-ceiling", "kind": "invalid", "description": "Reject a bound above the configured ceiling rather than letting a caller raise the operator's limit." },
-        { "id": "omitted", "kind": "omitted", "description": "Forward the configured limit when the caller did not supply one." }
-      ]
+      "sources": ["driver-pagination", "adapter-limits"]
     },
     {
       "id": "_mcp.max_pages",
       "input_path": ["_mcp", "max_pages"],
       "scope": "mcp",
       "requiredness": "optional",
-      "domain": { "type": "integer", "minimum": 1, "maximum": 20 },
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (20 by default) is forwarded when omitted, so an aggregate never runs under the driver's own default of 100.",
+      "domain_ref": "aggregate_max_pages",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
       "driver": { "argument": 0, "path": ["maxPages"] },
       "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the collection inside the driver." },
-      "sources": ["driver-pagination", "adapter-limits"],
-      "requirements": [
-        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxPages option of getAllProjects." },
-        { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
-        { "id": "ceiling", "kind": "valid", "description": "Accept the configured ceiling itself." },
-        { "id": "invalid", "kind": "invalid", "description": "Reject a non-positive bound before driver invocation." },
-        { "id": "above-ceiling", "kind": "invalid", "description": "Reject a bound above the configured ceiling." },
-        { "id": "omitted", "kind": "omitted", "description": "Forward the configured limit when the caller did not supply one." }
-      ]
+      "sources": ["driver-pagination", "adapter-limits"]
     },
     {
       "id": "_mcp.max_bytes",
       "input_path": ["_mcp", "max_bytes"],
       "scope": "mcp",
       "requiredness": "optional",
-      "domain": { "type": "integer", "minimum": 1, "maximum": 1048576 },
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (1 MiB by default) is forwarded when omitted, so an aggregate never runs under the driver's own default of 100 MiB.",
+      "domain_ref": "aggregate_max_bytes",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
       "driver": { "argument": 0, "path": ["maxBytes"] },
       "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the serialized item bytes inside the driver." },
-      "sources": ["driver-pagination", "adapter-limits"],
-      "requirements": [
-        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxBytes option of getAllProjects." },
-        { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
-        { "id": "ceiling", "kind": "valid", "description": "Accept the configured ceiling itself." },
-        { "id": "invalid", "kind": "invalid", "description": "Reject a non-positive bound before driver invocation." },
-        { "id": "above-ceiling", "kind": "invalid", "description": "Reject a bound above the configured ceiling." },
-        { "id": "omitted", "kind": "omitted", "description": "Forward the configured limit when the caller did not supply one." }
-      ]
+      "sources": ["driver-pagination", "adapter-limits"]
     },
     {
       "id": "_mcp.max_duration_ms",
       "input_path": ["_mcp", "max_duration_ms"],
       "scope": "mcp",
       "requiredness": "optional",
-      "domain": { "type": "integer", "minimum": 1, "maximum": 45000 },
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (45,000 ms by default) is forwarded when omitted, so an aggregate never runs under the driver's own default of five minutes.",
+      "domain_ref": "aggregate_max_duration_ms",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
       "driver": { "argument": 0, "path": ["maxDurationMs"] },
       "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the aggregate's wall-clock time inside the driver." },
-      "sources": ["driver-pagination", "adapter-limits"],
-      "requirements": [
-        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxDurationMs option of getAllProjects." },
-        { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
-        { "id": "ceiling", "kind": "valid", "description": "Accept the configured ceiling itself." },
-        { "id": "invalid", "kind": "invalid", "description": "Reject a non-positive bound before driver invocation." },
-        { "id": "above-ceiling", "kind": "invalid", "description": "Reject a bound above the configured ceiling." },
-        { "id": "omitted", "kind": "omitted", "description": "Forward the configured limit when the caller did not supply one." }
-      ]
+      "sources": ["driver-pagination", "adapter-limits"]
     }
   ],
   "cases": [
@@ -564,72 +523,6 @@
       "id": "pagination-unknown-mode",
       "input": { "_mcp": { "pagination": "stream" } },
       "covers": [{ "parameter": "_mcp.pagination", "requirements": ["invalid"] }],
-      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
-    },
-    {
-      "id": "page-size-zero",
-      "input": { "_mcp": { "pagination": "all", "page_size": 0 } },
-      "covers": [{ "parameter": "_mcp.page_size", "requirements": ["invalid"] }],
-      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
-    },
-    {
-      "id": "page-size-above-maximum",
-      "input": { "_mcp": { "pagination": "all", "page_size": 251 } },
-      "covers": [{ "parameter": "_mcp.page_size", "requirements": ["above-upper-bound"] }],
-      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
-    },
-    {
-      "id": "start-offset-negative",
-      "input": { "_mcp": { "pagination": "all", "start_offset": -1 } },
-      "covers": [{ "parameter": "_mcp.start_offset", "requirements": ["invalid"] }],
-      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
-    },
-    {
-      "id": "max-items-zero",
-      "input": { "_mcp": { "pagination": "all", "max_items": 0 } },
-      "covers": [{ "parameter": "_mcp.max_items", "requirements": ["invalid"] }],
-      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
-    },
-    {
-      "id": "max-items-above-ceiling",
-      "input": { "_mcp": { "pagination": "all", "max_items": 1001 } },
-      "covers": [{ "parameter": "_mcp.max_items", "requirements": ["above-ceiling"] }],
-      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
-    },
-    {
-      "id": "max-pages-zero",
-      "input": { "_mcp": { "pagination": "all", "max_pages": 0 } },
-      "covers": [{ "parameter": "_mcp.max_pages", "requirements": ["invalid"] }],
-      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
-    },
-    {
-      "id": "max-pages-above-ceiling",
-      "input": { "_mcp": { "pagination": "all", "max_pages": 21 } },
-      "covers": [{ "parameter": "_mcp.max_pages", "requirements": ["above-ceiling"] }],
-      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
-    },
-    {
-      "id": "max-bytes-zero",
-      "input": { "_mcp": { "pagination": "all", "max_bytes": 0 } },
-      "covers": [{ "parameter": "_mcp.max_bytes", "requirements": ["invalid"] }],
-      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
-    },
-    {
-      "id": "max-bytes-above-ceiling",
-      "input": { "_mcp": { "pagination": "all", "max_bytes": 1048577 } },
-      "covers": [{ "parameter": "_mcp.max_bytes", "requirements": ["above-ceiling"] }],
-      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
-    },
-    {
-      "id": "max-duration-zero",
-      "input": { "_mcp": { "pagination": "all", "max_duration_ms": 0 } },
-      "covers": [{ "parameter": "_mcp.max_duration_ms", "requirements": ["invalid"] }],
-      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
-    },
-    {
-      "id": "max-duration-above-ceiling",
-      "input": { "_mcp": { "pagination": "all", "max_duration_ms": 45001 } },
-      "covers": [{ "parameter": "_mcp.max_duration_ms", "requirements": ["above-ceiling"] }],
       "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
     }
   ]
