@@ -1,6 +1,7 @@
 import {
-  AddSharedStepPayloadSchema, CaseSchema, SharedStepSchema, StepHistoryEntrySchema,
-  UpdateSharedStepPayloadSchema, type UploadFilePathInput,
+  AddSharedStepPayloadSchema, BddSchema, CaseSchema, SharedStepSchema, StepHistoryEntrySchema,
+  UpdateSharedStepPayloadSchema,
+  type GetBddsOptions, type GetSharedStepsOptions, type UploadFilePathInput,
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
 import { AdapterError } from '../../contracts/errors.js';
@@ -51,7 +52,8 @@ const getBddsInput = createListInput({
   pagination: 'controlled',
 });
 
-type BddFilter = { suiteId?: number; sectionId?: number; labelId?: number | number[]; refs?: string | string[] };
+/** Derived from the driver's own option type, so a rename there fails the build here. */
+type BddFilter = Omit<GetBddsOptions, 'limit' | 'offset'>;
 
 /** Renamed filters, carried over only when supplied so the driver sends nothing for the rest. */
 function bddFilter(query: object | undefined): BddFilter {
@@ -89,9 +91,10 @@ export const getBdds = defineOperation({
     ...bddFilterMappings('all'),
     ...aggregateControlMappings(1),
   ],
-  // The driver's own item schema for this endpoint is an open record, so there is no
-  // field contract to check a row against and no drift warning to raise.
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: null },
+  // The driver's item schema for this endpoint is an open record, so no field of a row
+  // is checked. It still says a row is an object, which is worth keeping: a page of
+  // strings or nulls would otherwise reach the caller with nothing said about it.
+  response: { shape: 'page', outerSchema: pageResponse, entitySchema: BddSchema },
   pagination: {
     kind: 'controlled',
     page: driverCall(getBddsInput, 'bdd.getBddsPage', (method, input) => method(input.project_id, {
@@ -223,10 +226,8 @@ const sharedStepFilterNames = {
   updated_after: 'updatedAfter', updated_before: 'updatedBefore', refs: 'refs',
 } as const;
 
-type SharedStepFilter = {
-  createdAfter?: number; createdBefore?: number; createdBy?: number | number[];
-  updatedAfter?: number; updatedBefore?: number; refs?: string;
-};
+/** Derived from the driver's own option type, so a rename there fails the build here. */
+type SharedStepFilter = Omit<GetSharedStepsOptions, 'limit' | 'offset'>;
 
 function sharedStepFilter(query: object | undefined): SharedStepFilter {
   const source = (query ?? {}) as Record<string, unknown>;

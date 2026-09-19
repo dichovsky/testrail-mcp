@@ -153,9 +153,9 @@
       "requiredness": "required",
       "domain": {
         "type": "string",
-        "pattern": "\\.feature(?![\\s\\S])"
+        "pattern": "^[^/\\\\\"]+\\.feature(?![\\s\\S])"
       },
-      "semantics": "The name TestRail records for the uploaded file. It must end in .feature, and path separators and control characters are refused so the name cannot escape the part it labels.",
+      "semantics": "The name TestRail records for the uploaded file. It must end in .feature. Path separators, control bytes and a double quote are refused: the encoder escapes a quote, so TestRail would record a name the caller never asked for.",
       "driver": {
         "argument": 2,
         "path": []
@@ -192,6 +192,11 @@
           "id": "required",
           "kind": "required",
           "description": "Reject a missing name."
+        },
+        {
+          "id": "quote",
+          "kind": "invalid",
+          "description": "Reject a name containing a double quote, which the multipart encoder percent-escapes, so the recorded name would differ from the one requested."
         }
       ]
     },
@@ -527,6 +532,26 @@
           "parameter": "filename",
           "requirements": [
             "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "filename-with-quote",
+      "input": {
+        "section_id": 188,
+        "file_path": "{{login-feature}}",
+        "filename": "a\";b.feature"
+      },
+      "covers": [
+        {
+          "parameter": "filename",
+          "requirements": [
+            "quote"
           ]
         }
       ],

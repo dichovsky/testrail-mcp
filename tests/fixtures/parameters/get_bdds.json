@@ -18,7 +18,7 @@
     {
       "id": "driver-module",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/bdd.ts",
-      "supports": "getBddsPage and getAllBdds validate the project ID and place it as the only path segment. suiteId and sectionId are validated as identifiers and sent as suite_id and section_id; labelId goes through serializeIdFilter; a string refs is sent as refs and an array as repeated refs[]. The query is built in that fixed order ahead of the paging controls, and the envelope collection is named bdd."
+      "supports": "getBddsPage and getAllBdds validate the project ID and place it as the only path segment. suiteId and sectionId are validated as identifiers and sent as suite_id and section_id; labelId goes through serializeIdFilter; a string refs is sent as refs and an array as repeated refs[], which the option's own documentation attributes to TestRail 10.7 and later. The query is built in that fixed order ahead of the paging controls, and the envelope collection is named bdd."
     },
     {
       "id": "driver-utils",
@@ -54,7 +54,7 @@
   "outer_result": {
     "driver": "page",
     "tool_data": "array",
-    "notes": "Page mode returns the driver's decoded page and all mode the collected array. TestRail does not document the row shape of this endpoint and the driver's item schema for it is an open record, so the rows in these examples stand for any object: what is asserted here is the request and the envelope, not the row fields, and no drift warning can be raised against an open record."
+    "notes": "Page mode returns the driver's decoded page and all mode the collected array. TestRail does not document the row shape of this endpoint and the driver's item schema for it is an open record, so the rows in these examples stand for any object: what is asserted here is the request and the envelope, not the row fields. The open record still requires a row to be an object, so a page of strings or nulls raises an advisory drift warning even though no field is checked."
   },
   "requirements": [
     {

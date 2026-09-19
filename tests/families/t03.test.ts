@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TestRailClient } from '@dichovsky/testrail-api-client';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { createStagingArea, type StagingArea } from '../../src/files/staging.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
@@ -46,6 +46,8 @@ function operation(tool: string) {
   return found;
 }
 
+const TAMPERED = 'Feature: swapped after the file was approved\n';
+
 function client(respond: () => Promise<Response>, calls: { body: unknown }[] = []) {
   return new TestRailClient({
     baseUrl: configuration.baseUrl, email: configuration.email, apiKey: configuration.apiKey,
@@ -69,17 +71,31 @@ describe('T03 feature-file uploads through the transport', () => {
   it('stages a file inside an allowed root, uploads its bytes and leaves nothing behind', async () => {
     const calls: { body: unknown }[] = [];
     const area = await staging();
-    const runtime = createRuntime({
-      client: client(() => Promise.resolve(new Response(JSON.stringify(CASE), { headers: { 'content-type': 'application/json' } })), calls),
-      limits: configuration.limits,
-    });
+    const driver = client(() => Promise.resolve(new Response(JSON.stringify(CASE), { headers: { 'content-type': 'application/json' } })), calls);
+    const upload = vi.spyOn(driver.bdd, 'addBdd');
+    const runtime = createRuntime({ client: driver, limits: configuration.limits });
+    const source = join(roots, 'login.feature');
     try {
       const result = await executeToolCall(operation('testrail_add_bdd'), {
-        section_id: 188, file_path: join(roots, 'login.feature'), filename: 'login.feature', content_type: 'text/plain',
+        section_id: 188, file_path: source, filename: 'login.feature', content_type: 'text/plain',
       }, { runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory) });
 
       expect(result.isError).toBeUndefined();
       expect((result.structuredContent as { data: unknown }).data).toEqual(CASE);
+      /*
+       * The driver must be given the staged copy, not the path the caller named. That
+       * is the whole purpose of staging: the copy is taken through a handle opened at
+       * validation time, so what is uploaded is what was approved. Comparing the
+       * argument with the caller's own path is the only way to see the difference,
+       * since the two files hold identical bytes.
+       */
+      const [, staged] = upload.mock.calls[0] ?? [];
+      // A path, never a descriptor or an in-memory blob: the transport documents that
+      // descriptor ownership cannot be guaranteed across platforms.
+      if (staged === undefined || !('path' in staged)) throw new Error('Expected the driver to receive a staged path');
+      expect(staged.path.startsWith(area.directory)).toBe(true);
+      expect(staged.path).not.toBe(source);
+      expect(staged.type).toBe('text/plain');
       // The part carries the caller's filename and media type, and the file's bytes.
       expect(await describeBody(calls[0]?.body)).toEqual([
         { name: 'attachment', filename: 'login.feature', content_type: 'text/plain', utf8: FEATURE },
@@ -91,6 +107,40 @@ describe('T03 feature-file uploads through the transport', () => {
     } finally {
       await runtime.shutdown();
       await area.dispose();
+    }
+  });
+
+  it('uploads the approved bytes even when the source is replaced after validation', async () => {
+    const calls: { body: unknown }[] = [];
+    const area = await staging();
+    const source = join(roots, 'swapped.feature');
+    await writeFile(source, FEATURE, 'utf8');
+    const driver = client(() => Promise.resolve(new Response(JSON.stringify(CASE), { headers: { 'content-type': 'application/json' } })), calls);
+    /*
+     * Replace the caller's file inside the window the staging exists to close: after
+     * the path was validated and the copy taken, before the driver reads the blob it
+     * was handed. An adapter passing the caller's path along would upload this.
+     */
+    const forward = driver.bdd.addBdd.bind(driver.bdd);
+    vi.spyOn(driver.bdd, 'addBdd').mockImplementation(async (sectionId, file, filename) => {
+      await writeFile(source, TAMPERED, 'utf8');
+      return forward(sectionId, file, filename);
+    });
+    const runtime = createRuntime({ client: driver, limits: configuration.limits });
+    try {
+      const result = await executeToolCall(operation('testrail_add_bdd'), {
+        section_id: 188, file_path: source, filename: 'login.feature',
+      }, { runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory) });
+
+      expect(result.isError).toBeUndefined();
+      expect(await describeBody(calls[0]?.body)).toEqual([
+        { name: 'attachment', filename: 'login.feature', content_type: '', utf8: FEATURE },
+      ]);
+    } finally {
+      vi.restoreAllMocks();
+      await runtime.shutdown();
+      await area.dispose();
+      await rm(source, { force: true });
     }
   });
 

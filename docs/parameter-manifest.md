@@ -6,7 +6,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 
 | Endpoint | Reviewed parameters | Fixture cases | Review status |
 | --- | ---: | ---: | --- |
-| `add_bdd` | 4 | 9 | Complete input manifest |
+| `add_bdd` | 4 | 10 | Complete input manifest |
 | `add_case` | 12 | 16 | Complete input manifest |
 | `add_cases` | 12 | 18 | Complete input manifest |
 | `add_project` | 4 | 10 | Complete input manifest |
@@ -39,7 +39,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `get_suites` | 10 | 16 | Complete input manifest |
 | `move_cases_to_section` | 4 | 6 | Complete input manifest |
 | `move_section` | 3 | 15 | Complete input manifest |
-| `update_bdd` | 4 | 9 | Complete input manifest |
+| `update_bdd` | 4 | 10 | Complete input manifest |
 | `update_case` | 13 | 15 | Complete input manifest |
 | `update_cases` | 14 | 15 | Complete input manifest |
 | `update_project` | 11 | 29 | Complete input manifest |

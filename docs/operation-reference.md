@@ -38,7 +38,7 @@ TestRail effect: `write`. Driver retry policy: `never`. Local file behavior: `up
         "allOf": [
           {
             "type": "string",
-            "pattern": "^(?!\\.{1,2}$)(?![a-zA-Z]:)[^/\\\\\\x00-\\x1f\\x7f-\\x9f]+(?![\\s\\S])"
+            "pattern": "^(?!\\.{1,2}$)(?![a-zA-Z]:)[^/\\\\\"\\x00-\\x1f\\x7f-\\x9f]+(?![\\s\\S])"
           },
           {
             "type": "string",
@@ -4120,7 +4120,7 @@ TestRail effect: `write`. Driver retry policy: `never`. Local file behavior: `up
         "allOf": [
           {
             "type": "string",
-            "pattern": "^(?!\\.{1,2}$)(?![a-zA-Z]:)[^/\\\\\\x00-\\x1f\\x7f-\\x9f]+(?![\\s\\S])"
+            "pattern": "^(?!\\.{1,2}$)(?![a-zA-Z]:)[^/\\\\\"\\x00-\\x1f\\x7f-\\x9f]+(?![\\s\\S])"
           },
           {
             "type": "string",
