@@ -7,17 +7,10 @@ import { z } from 'zod';
 import {
   createListInput, nonnegativeIntegerSchema, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
-import { driverAllOptions, pageRequestDefaults, type AllControls } from '../../contracts/pagination.js';
+import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
 import { driverCall } from '../driver-call.js';
 import { defineOperation, type OperationDefinition } from '../registry.js';
-
-/** A usable JSON object response; entity fields are checked advisorily, not here. */
-const recordResponse = z.record(z.string(), z.unknown());
-/** The driver's normalized page, whichever shape TestRail actually returned. */
-const pageResponse = z.object({
-  kind: z.enum(['envelope', 'legacy-array']),
-  items: z.array(z.unknown()),
-});
+import { allControls, control, flag, pageResponse, recordResponse } from './common.js';
 
 const getProjectInput = strictObject({ project_id: positiveIdSchema });
 
@@ -45,40 +38,10 @@ const getProjectsInput = createListInput({
   pagination: 'controlled',
 });
 
-/**
- * Read one control from a validated list input.
- *
- * The input type is a union of the page and all branches, so a field present in one is
- * absent from the other. These read it totally instead of asserting a shape: an
- * assertion here could hide a genuine mismatch, while the argument map declares the
- * mapping independently and the fixtures check the arguments actually sent.
- */
-function control(source: object | undefined, name: string): number | undefined {
-  const value = (source as Record<string, unknown> | undefined)?.[name];
-  return typeof value === 'number' ? value : undefined;
-}
-
-function flag(source: object | undefined, name: string): boolean | undefined {
-  const value = (source as Record<string, unknown> | undefined)?.[name];
-  return typeof value === 'boolean' ? value : undefined;
-}
-
 /** Renamed filter: the REST field is snake_case, the driver option is camelCase. */
 function projectFilter(query: object | undefined): { isCompleted?: boolean } {
   const isCompleted = flag(query, 'is_completed');
   return isCompleted === undefined ? {} : { isCompleted };
-}
-
-/** Read the caller's aggregate controls; which bounds fill the gaps is decided below. */
-function allControls(mcp: object | undefined): AllControls {
-  return {
-    page_size: control(mcp, 'page_size'),
-    start_offset: control(mcp, 'start_offset'),
-    max_items: control(mcp, 'max_items'),
-    max_pages: control(mcp, 'max_pages'),
-    max_bytes: control(mcp, 'max_bytes'),
-    max_duration_ms: control(mcp, 'max_duration_ms'),
-  };
 }
 
 export const getProjects = defineOperation({
