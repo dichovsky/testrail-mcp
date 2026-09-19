@@ -1,4 +1,4 @@
-import { TestRailClient } from '@dichovsky/testrail-api-client';
+import { TestRailClient, TestRailValidationError } from '@dichovsky/testrail-api-client';
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import {
@@ -105,14 +105,21 @@ describe('shared parameter domains', () => {
       const { client, requests } = probeClient();
       try {
         const attempt = probe(client, domain.probe.binding, positioned(name, invalid.value));
-        if (invalid.rejected_by === 'driver') {
-          await expect(attempt, `${name}/${invalid.id}`).rejects.toThrow();
-          // Refused before dispatch, not merely surfaced as an upstream failure.
-          expect(requests(), `${name}/${invalid.id} issued a request`).toBe(0);
-        } else {
+        if (invalid.rejected_by === 'adapter') {
           // The driver accepts it; only the MCP boundary refuses. Asserting this keeps
           // the library from overstating where the guarantee comes from.
           await attempt;
+        } else {
+          const error: unknown = await attempt.then(() => undefined, (reason: unknown) => reason);
+          expect(error, `${name}/${invalid.id} was accepted`).toBeInstanceOf(Error);
+          // Which kind of refusal it is matters: a stated check is a contract, while an
+          // unguarded crash merely happens to stop the call today. The label is asserted
+          // both ways, so a driver that starts or stops validating fails this test rather
+          // than quietly leaving the library overstating its evidence.
+          expect(error instanceof TestRailValidationError, `${name}/${invalid.id} rejected_by`)
+            .toBe(invalid.rejected_by === 'driver');
+          // Refused before dispatch, not merely surfaced as an upstream failure.
+          expect(requests(), `${name}/${invalid.id} issued a request`).toBe(0);
         }
       } finally { client.destroy(); }
     }

@@ -238,13 +238,25 @@ export async function loadParameterManifests(): Promise<ParameterManifest[]> {
   }));
 }
 
-/** Whether a case input carries a value at the path; a wildcard means any array member. */
-function supplies(value: unknown, path: readonly string[]): boolean {
+/**
+ * Whether a case input carries a value at the path.
+ *
+ * A bare `*` means any array member. A name ending in `*`, such as `custom_*`, is an
+ * extension point rather than a literal key, so any own property with that prefix
+ * satisfies it; reading it literally would report every custom-field example as
+ * supplying nothing.
+ */
+export function supplies(value: unknown, path: readonly string[]): boolean {
   const [head, ...rest] = path;
   if (head === undefined) return true;
   if (head === '*') return Array.isArray(value) && value.some((item) => supplies(item, rest));
-  if (typeof value !== 'object' || value === null || Array.isArray(value) || !Object.hasOwn(value, head)) return false;
-  return supplies((value as Record<string, unknown>)[head], rest);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  if (head.endsWith('*')) {
+    const prefix = head.slice(0, -1);
+    return Object.keys(record).some((name) => name.startsWith(prefix) && supplies(record[name], rest));
+  }
+  return Object.hasOwn(record, head) && supplies(record[head], rest);
 }
 
 function duplicates(values: readonly string[]): string[] {

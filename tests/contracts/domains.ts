@@ -20,11 +20,17 @@ const invalidValueSchema = z.strictObject({
   value: z.json(),
   requirements: z.array(identifier).min(1),
   /**
-   * Which layer refuses the value. `driver` means the pinned client rejects it before
-   * issuing a request; `adapter` means the driver accepts it and only the MCP boundary
-   * refuses. Recording this keeps the library honest about where a guarantee comes from.
+   * Which layer refuses the value, and on what basis.
+   *
+   * `driver` means the pinned client refuses it with its own validation error before
+   * issuing a request. `driver_crash` means the client also stops before any request,
+   * but by throwing from an unguarded operation rather than from a deliberate check:
+   * the refusal is real and observable, yet it is not a contract the client states, so
+   * it could change without notice. `adapter` means the driver accepts the value and
+   * only the MCP boundary refuses it. The probe asserts each of these three separately,
+   * so a label that overstates where a guarantee comes from fails.
    */
-  rejected_by: z.enum(['driver', 'adapter']),
+  rejected_by: z.enum(['driver', 'driver_crash', 'adapter']),
 });
 
 /**

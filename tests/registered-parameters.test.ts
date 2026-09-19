@@ -152,6 +152,9 @@ describe('registered parameter coverage gate', () => {
     // not added to the reviewed family manifest counts or production catalog.
     const sample = {
       ...attachment, endpoint: { ...attachment.endpoint, tool: listing.tool, route: listing.route, driver_method: listing.driverBinding },
+      // This sample lists attachments rather than downloading one, so its outer result is
+      // the array the non-helper method returns, not the reviewed binary download.
+      outer_result: { ...attachment.outer_result, driver: 'array' as const, tool_data: 'array' as const },
       parameters: [
         { ...parameter, id: 'test_id', input_path: ['test_id'] },
         ...['limit', 'offset'].map((name) => ({ ...parameter, id: `query.${name}`, input_path: ['query', name], scope: 'query' as const, driver: { argument: 1, path: [name] } })),
@@ -214,6 +217,11 @@ describe('production registrations send what their fixtures promise', () => {
             body: expected.wire.json,
           }]);
           expect(result).toEqual(expected.driver_result.kind === 'json' ? expected.driver_result.value : undefined);
+          // What the driver returned must also satisfy the contract the registration
+          // declares, or every real call fails in validateOuter while the arguments,
+          // the wire and the result all still match the fixture.
+          if (all) expect(Array.isArray(result), `${operation.tool}: aggregate result`).toBe(true);
+          else expect(operation.response.outerSchema.safeParse(result).success, `${operation.tool}: outer schema`).toBe(true);
         } finally { client.destroy(); }
       });
     }

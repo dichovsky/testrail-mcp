@@ -1,10 +1,27 @@
 import type { JsonSchemaType } from '@modelcontextprotocol/server';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
-import type { CallMode, OperationRegistry } from '../../src/operations/registry.js';
-import type { ParameterManifest } from './parameter-manifest.js';
+import type { CallMode, OperationRegistry, ResponseContract } from '../../src/operations/registry.js';
+import { supplies, type ParameterManifest } from './parameter-manifest.js';
 
 function parts(path: string): string[] {
   return path.replaceAll('[]', '.*').split('.');
+}
+
+/**
+ * The outer driver result each reviewed shape describes. Both of the driver's
+ * two-branch results are a union to the registry, so the mapping is not one to one.
+ */
+const reviewedShapes: Readonly<Record<ParameterManifest['outer_result']['driver'], ResponseContract['shape']>> = {
+  record: 'record', array: 'array', page: 'page', text: 'text', binary: 'binary', void: 'void',
+  record_or_void: 'union', record_or_array: 'union',
+};
+
+/** The call mode a fixture selects, which is how the dispatcher reads its input. */
+function fixtureMode(input: ParameterManifest['cases'][number]['input'], controlled: boolean): CallMode {
+  if (!controlled) return 'single';
+  const control = input._mcp;
+  const all = typeof control === 'object' && control !== null && !Array.isArray(control) && control.pagination === 'all';
+  return all ? 'all' : 'page';
 }
 
 /** Whole-body mappings carry nested fields; filter renames must remain explicit. */
@@ -17,7 +34,14 @@ export function auditRegisteredParameters(registry: OperationRegistry, manifests
       continue;
     }
     if (manifest.review.status !== 'complete') errors.push(`${operation.tool}: parameter review is incomplete`);
+    // A registration whose response contract disagrees with the reviewed outer result
+    // fails every real call in validateOuter while every argument still matches, so the
+    // fixtures alone would never see it.
+    if (reviewedShapes[manifest.outer_result.driver] !== operation.response.shape) {
+      errors.push(`${operation.tool}: response shape ${operation.response.shape} disagrees with reviewed ${manifest.outer_result.driver}`);
+    }
     const modes: CallMode[] = operation.pagination.kind === 'none' ? ['single'] : ['page', 'all'];
+    const controlled = operation.pagination.kind !== 'none';
     for (const parameter of manifest.parameters) {
       const destination = parameter.driver;
       if (destination === null) continue; // Call selection is verified by fixtures, not an upstream argument.
@@ -34,6 +58,12 @@ export function auditRegisteredParameters(registry: OperationRegistry, manifests
           return target.length === destination.path.length && target.every((part, index) => part === destination.path[index]);
         });
         if (!mapped) errors.push(`${operation.tool}: no ${mode} argument mapping for ${parameter.id}`);
+        // Declaring the mapping is not exercising it. Without a fixture that actually
+        // carries the parameter in this mode, a branch that silently drops it still
+        // matches every argument list the manifest promises.
+        const exercised = manifest.cases.some((fixture) => fixture.expect.kind === 'accepted'
+          && fixtureMode(fixture.input, controlled) === mode && supplies(fixture.input, parameter.input_path));
+        if (!exercised) errors.push(`${operation.tool}: no accepted ${mode} fixture supplies ${parameter.id}`);
       }
     }
     const validateJson = new AjvJsonSchemaValidator().getValidator(operation.jsonSchema as unknown as JsonSchemaType);
