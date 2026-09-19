@@ -7,7 +7,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | Endpoint | Reviewed parameters | Fixture cases | Review status |
 | --- | ---: | ---: | --- |
 | `add_project` | 4 | 10 | Complete input manifest |
-| `add_section` | 5 | 11 | Complete input manifest |
+| `add_section` | 5 | 10 | Complete input manifest |
 | `add_suite` | 3 | 9 | Complete input manifest |
 | `delete_project` | 1 | 3 | Complete input manifest |
 | `delete_section` | 2 | 7 | Complete input manifest |
@@ -21,7 +21,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `get_sections` | 11 | 18 | Complete input manifest |
 | `get_suite` | 1 | 3 | Complete input manifest |
 | `get_suites` | 10 | 16 | Complete input manifest |
-| `move_section` | 3 | 10 | Complete input manifest |
+| `move_section` | 3 | 13 | Complete input manifest |
 | `update_case` | 3 | 8 | Partial: case ID, body container and custom-field extension point |
 | `update_project` | 11 | 29 | Complete input manifest |
 | `update_section` | 3 | 8 | Complete input manifest |

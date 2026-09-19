@@ -238,6 +238,15 @@ export async function loadParameterManifests(): Promise<ParameterManifest[]> {
   }));
 }
 
+/** Whether a case input carries a value at the path; a wildcard means any array member. */
+function supplies(value: unknown, path: readonly string[]): boolean {
+  const [head, ...rest] = path;
+  if (head === undefined) return true;
+  if (head === '*') return Array.isArray(value) && value.some((item) => supplies(item, rest));
+  if (typeof value !== 'object' || value === null || Array.isArray(value) || !Object.hasOwn(value, head)) return false;
+  return supplies((value as Record<string, unknown>)[head], rest);
+}
+
 function duplicates(values: readonly string[]): string[] {
   return [...new Set(values.filter((value, index) => values.indexOf(value) !== index))];
 }
@@ -322,6 +331,11 @@ export function auditParameterManifests(
           const shouldReject = requirement.kind === 'invalid' || requirement.kind === 'required';
           if (shouldReject !== (fixture.expect.kind === 'rejected')) {
             fail(`Case ${fixture.id} has wrong outcome for ${reference}`);
+          }
+          // An omission is only evidence when the case actually leaves the parameter out.
+          const parameter = manifest.parameters.find(({ id }) => id === coverage.parameter);
+          if (requirement.kind === 'omitted' && parameter !== undefined && supplies(fixture.input, parameter.input_path)) {
+            fail(`Case ${fixture.id} supplies ${reference} it claims to omit`);
           }
           covered.add(reference);
         }

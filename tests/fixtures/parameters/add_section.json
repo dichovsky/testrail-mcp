@@ -23,7 +23,7 @@
     {
       "id": "driver-schema",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/sections.ts",
-      "supports": "AddSectionPayloadSchema requires name and leaves suite_id, parent_id and description optional; suite_id and parent_id are plain numbers because the suite-mode rule is TestRail's to apply. It permits additional properties."
+      "supports": "AddSectionPayloadSchema requires name and leaves suite_id, parent_id and description optional; suite_id and parent_id are plain numbers in the driver, which leaves the suite-mode rule to TestRail. It permits additional properties."
     },
     {
       "id": "testrail-sections",
@@ -97,34 +97,22 @@
       "input_path": ["body", "suite_id"],
       "scope": "body",
       "requiredness": "optional",
-      "domain": { "type": "number" },
-      "semantics": "The driver's number, kept as is: TestRail decides whether the suite exists and whether the field is required for this project's suite mode. Omitted entirely when absent.",
+      "domain_ref": "positive_id",
+      "semantics": "The suite to create the section in. The driver forwards any number; the adapter holds body identifiers to the same domain as path identifiers, since a fractional, non-positive or unsafe value can never name an existing suite. Whether the field is required for this project's suite mode is TestRail's to decide. Omitted entirely when absent.",
       "driver": { "argument": 1, "path": ["suite_id"] },
-      "wire": { "location": "json", "names": ["suite_id"], "encoding": "JSON number in the request body." },
-      "sources": ["driver-schema", "testrail-sections"],
-      "requirements": [
-        { "id": "mapping", "kind": "mapping", "description": "Preserve the value at driver argument 1 under the suite_id key." },
-        { "id": "valid", "kind": "valid", "description": "Accept a representative suite ID." },
-        { "id": "invalid", "kind": "invalid", "description": "Reject a numeric string before driver invocation rather than coercing it." },
-        { "id": "omitted", "kind": "omitted", "description": "Omit the field entirely when the caller did not supply it." }
-      ]
+      "wire": { "location": "json", "names": ["suite_id"], "encoding": "JSON integer in the request body." },
+      "sources": ["driver-schema", "testrail-sections"]
     },
     {
       "id": "body.parent_id",
       "input_path": ["body", "parent_id"],
       "scope": "body",
       "requiredness": "optional",
-      "domain": { "type": "number" },
-      "semantics": "The parent section under which the new section is created. The driver's number, kept as is; TestRail decides whether the parent exists. Omitted entirely when absent, which creates a root section.",
+      "domain_ref": "positive_id",
+      "semantics": "The parent section under which the new section is created; TestRail decides whether it exists. Held to the identifier domain for the same reason as suite_id. Omitted entirely when absent, which creates a root section.",
       "driver": { "argument": 1, "path": ["parent_id"] },
-      "wire": { "location": "json", "names": ["parent_id"], "encoding": "JSON number in the request body." },
-      "sources": ["driver-schema", "testrail-sections"],
-      "requirements": [
-        { "id": "mapping", "kind": "mapping", "description": "Preserve the value at driver argument 1 under the parent_id key." },
-        { "id": "valid", "kind": "valid", "description": "Accept a representative parent section ID." },
-        { "id": "invalid", "kind": "invalid", "description": "Reject a numeric string before driver invocation rather than coercing it." },
-        { "id": "omitted", "kind": "omitted", "description": "Omit the field entirely when the caller did not supply it." }
-      ]
+      "wire": { "location": "json", "names": ["parent_id"], "encoding": "JSON integer in the request body." },
+      "sources": ["driver-schema", "testrail-sections"]
     },
     {
       "id": "body.description",
@@ -228,16 +216,25 @@
       "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
     },
     {
-      "id": "suite-id-string",
-      "input": { "project_id": 7, "body": { "name": "Fixture section", "suite_id": "3" } },
-      "covers": [{ "parameter": "body.suite_id", "requirements": ["invalid"] }],
-      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
-    },
-    {
-      "id": "parent-id-string",
-      "input": { "project_id": 7, "body": { "name": "Fixture section", "parent_id": "10" } },
-      "covers": [{ "parameter": "body.parent_id", "requirements": ["invalid"] }],
-      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+      "id": "largest-safe-ids",
+      "input": { "project_id": 7, "body": { "name": "Boundary section", "suite_id": 9007199254740991, "parent_id": 9007199254740991 } },
+      "covers": [
+        { "parameter": "body.suite_id", "requirements": ["upper-bound"] },
+        { "parameter": "body.parent_id", "requirements": ["upper-bound"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "sections.addSection", "arguments": [7, { "name": "Boundary section", "suite_id": 9007199254740991, "parent_id": 9007199254740991 }] },
+        "wire": { "method": "POST", "endpoint": "add_section/7", "json": { "name": "Boundary section", "suite_id": 9007199254740991, "parent_id": 9007199254740991 } },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "id": 15, "suite_id": 9007199254740991, "name": "Boundary section", "description": null, "parent_id": 9007199254740991, "display_order": 6, "depth": 1 }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": { "id": 15, "suite_id": 9007199254740991, "name": "Boundary section", "description": null, "parent_id": 9007199254740991, "display_order": 6, "depth": 1 }
+        }
+      }
     },
     {
       "id": "description-wrong-type",

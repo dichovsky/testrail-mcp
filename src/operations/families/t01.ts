@@ -4,7 +4,9 @@ import {
   UpdateProjectPayloadSchema, UpdateSectionPayloadSchema, UpdateSuitePayloadSchema,
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
-import { createListInput, payloadInput, positiveIdSchema, strictObject } from '../../contracts/inputs.js';
+import {
+  createListInput, nonnegativeIntegerSchema, payloadInput, positiveIdSchema, strictObject,
+} from '../../contracts/inputs.js';
 import { driverAllOptions, pageRequestDefaults, type AllControls } from '../../contracts/pagination.js';
 import { driverCall } from '../driver-call.js';
 import { defineOperation, type OperationDefinition } from '../registry.js';
@@ -416,7 +418,14 @@ export const getSections = defineOperation({
   retry: 'ordinary-read',
 } as const satisfies OperationDefinition);
 
-const addSectionInput = strictObject({ project_id: positiveIdSchema, body: payloadInput(AddSectionPayloadSchema) });
+// The driver forwards any number for these; a fractional, non-positive or unsafe value
+// can never name an existing suite or section, so they are held to the identifier domain.
+const addSectionInput = strictObject({
+  project_id: positiveIdSchema,
+  body: payloadInput(AddSectionPayloadSchema, {
+    fields: { suite_id: positiveIdSchema.optional(), parent_id: positiveIdSchema.optional() },
+  }),
+});
 
 export const addSection = defineOperation({
   token: 'add_section',
@@ -466,7 +475,17 @@ export const updateSection = defineOperation({
   retry: 'json-write',
 } as const satisfies OperationDefinition);
 
-const moveSectionInput = strictObject({ section_id: positiveIdSchema, body: payloadInput(MoveSectionPayloadSchema) });
+// Null is an explicit move to the root or the top and zero is a sentinel the driver
+// deliberately keeps for some installs; only values that can never name a section go.
+const moveSectionInput = strictObject({
+  section_id: positiveIdSchema,
+  body: payloadInput(MoveSectionPayloadSchema, {
+    fields: {
+      parent_id: nonnegativeIntegerSchema.nullable().optional(),
+      after_id: nonnegativeIntegerSchema.nullable().optional(),
+    },
+  }),
+});
 
 export const moveSection = defineOperation({
   token: 'move_section',
@@ -474,7 +493,7 @@ export const moveSection = defineOperation({
   route: 'move_section/{section_id}',
   family: 'T01',
   driverBinding: 'sections.moveSection',
-  summary: 'Move a TestRail section under another parent (parent_id, null for the root) and/or after a sibling (after_id, null for the top) within its suite. Omit a field to leave that axis unchanged. Requires TestRail 6.5.2 or later; nothing is returned, so read the section afterwards for its new position.',
+  summary: 'Move a TestRail section under another parent (parent_id, null for the root) and/or after a sibling (after_id, null for the top) within its suite. Omit a field to leave that axis unchanged. Requires TestRail 6.5.2 or later; this tool returns nothing, so read the section afterwards for its new position.',
   inputSchema: moveSectionInput,
   argumentMap: [
     { input: 'section_id', call: 'single', argument: 0, serialization: 'path' },

@@ -18,17 +18,17 @@
     {
       "id": "driver-module",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/sections.ts",
-      "supports": "moveSection validates the section ID, sends the payload as the JSON body and resolves with no value whatever TestRail returns; the driver documents the endpoint as TestRail 6.5.2 or later and recommends a follow-up getSection for the new position."
+      "supports": "moveSection validates the section ID, sends the payload as the JSON body and resolves with no value whatever TestRail returns. The driver's documentation states that parent_id null moves the section to the root, after_id null moves it to the top of its container, an omitted field leaves that axis unchanged, and that the endpoint returns no body on older TestRail versions and the updated section on newer ones, so it recommends a follow-up getSection for the new position."
     },
     {
       "id": "driver-schema",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/sections.ts",
-      "supports": "MoveSectionPayloadSchema makes parent_id and after_id each optional and nullable: null is an explicit move to the root or the top, omission leaves that axis unchanged, and the null-versus-omitted distinction must survive serialization. Values are plain numbers; TestRail validates them. It permits additional properties."
+      "supports": "MoveSectionPayloadSchema makes parent_id and after_id each optional and nullable, and the null-versus-omitted distinction must survive serialization. Values are plain numbers: the driver deliberately imposes no minimum, noting that zero is a useful sentinel in some installs. It permits additional properties."
     },
     {
       "id": "testrail-sections",
       "url": "https://support.testrail.com/hc/en-us/articles/7077918603412-Sections",
-      "supports": "move_section/{section_id} requires TestRail 6.5.2 or later; parent_id may be null to move to the root and must be in the same project and suite, after_id may be null to move to the top."
+      "supports": "move_section/{section_id} requires TestRail 6.5.2 or later. parent_id can be null to move to the root and must be in the same project and suite and not a direct child of the moved section; after_id can be null. The success row says the moved section is returned as part of the response."
     }
   ],
   "input_policy": {
@@ -80,16 +80,17 @@
       "input_path": ["body", "parent_id"],
       "scope": "body",
       "requiredness": "optional",
-      "domain": { "anyOf": [{ "type": "number" }, { "type": "null" }] },
-      "semantics": "A number moves the section under that parent; null moves it to the root; omission leaves the parent unchanged. Null and omission are distinct on the wire. The driver's number is kept as is; TestRail decides whether the parent exists and is not a child of the moved section.",
+      "domain": { "anyOf": [{ "type": "integer", "minimum": 0, "maximum": 9007199254740991 }, { "type": "null" }] },
+      "semantics": "A positive integer moves the section under that parent; null moves it to the root; omission leaves the parent unchanged. Null and omission are distinct on the wire. Zero is accepted because the driver deliberately keeps it as a sentinel some installs use; a fractional, negative or unsafe value can never name a section and is refused. TestRail decides whether the parent exists and is not a child of the moved section.",
       "driver": { "argument": 1, "path": ["parent_id"] },
-      "wire": { "location": "json", "names": ["parent_id"], "encoding": "JSON number or explicit JSON null in the request body; absent when omitted." },
-      "sources": ["driver-schema", "testrail-sections"],
+      "wire": { "location": "json", "names": ["parent_id"], "encoding": "JSON integer or explicit JSON null in the request body; absent when omitted." },
+      "sources": ["driver-module", "driver-schema", "testrail-sections"],
       "requirements": [
         { "id": "mapping", "kind": "mapping", "description": "Preserve the value at driver argument 1 under the parent_id key." },
         { "id": "valid", "kind": "valid", "description": "Accept a representative parent section ID." },
         { "id": "null", "kind": "valid", "description": "Send an explicit null to move the section to the root rather than dropping it." },
-        { "id": "invalid", "kind": "invalid", "description": "Reject a numeric string before driver invocation rather than coercing it." },
+        { "id": "zero", "kind": "valid", "description": "Forward an explicit zero, the sentinel the driver deliberately keeps." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a numeric string, a fractional or a negative value before driver invocation." },
         { "id": "omitted", "kind": "omitted", "description": "Omit the field entirely when the caller did not supply it, leaving the parent unchanged." }
       ]
     },
@@ -98,16 +99,17 @@
       "input_path": ["body", "after_id"],
       "scope": "body",
       "requiredness": "optional",
-      "domain": { "anyOf": [{ "type": "number" }, { "type": "null" }] },
-      "semantics": "A number places the section after that sibling; null places it at the top of its container; omission leaves the position unchanged. Null and omission are distinct on the wire.",
+      "domain": { "anyOf": [{ "type": "integer", "minimum": 0, "maximum": 9007199254740991 }, { "type": "null" }] },
+      "semantics": "A positive integer places the section after that sibling; null places it at the top of its container; omission leaves the position unchanged. Null and omission are distinct on the wire. Zero is accepted for the same reason as on parent_id; a fractional, negative or unsafe value is refused.",
       "driver": { "argument": 1, "path": ["after_id"] },
-      "wire": { "location": "json", "names": ["after_id"], "encoding": "JSON number or explicit JSON null in the request body; absent when omitted." },
-      "sources": ["driver-schema", "testrail-sections"],
+      "wire": { "location": "json", "names": ["after_id"], "encoding": "JSON integer or explicit JSON null in the request body; absent when omitted." },
+      "sources": ["driver-module", "driver-schema", "testrail-sections"],
       "requirements": [
         { "id": "mapping", "kind": "mapping", "description": "Preserve the value at driver argument 1 under the after_id key." },
         { "id": "valid", "kind": "valid", "description": "Accept a representative sibling section ID." },
         { "id": "null", "kind": "valid", "description": "Send an explicit null to move the section to the top rather than dropping it." },
-        { "id": "invalid", "kind": "invalid", "description": "Reject a numeric string before driver invocation rather than coercing it." },
+        { "id": "zero", "kind": "valid", "description": "Forward an explicit zero, the sentinel the driver deliberately keeps." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a numeric string, a fractional or a negative value before driver invocation." },
         { "id": "omitted", "kind": "omitted", "description": "Omit the field entirely when the caller did not supply it, leaving the position unchanged." }
       ]
     }
@@ -172,6 +174,21 @@
       }
     },
     {
+      "id": "sentinel-zero",
+      "input": { "section_id": 5, "body": { "parent_id": 0, "after_id": 0 } },
+      "covers": [
+        { "parameter": "body.parent_id", "requirements": ["zero"] },
+        { "parameter": "body.after_id", "requirements": ["zero"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "sections.moveSection", "arguments": [5, { "parent_id": 0, "after_id": 0 }] },
+        "wire": { "method": "POST", "endpoint": "move_section/5", "json": { "parent_id": 0, "after_id": 0 } },
+        "upstream_response": { "kind": "json", "body": {} },
+        "driver_result": { "kind": "void" }
+      }
+    },
+    {
       "id": "largest-safe-id",
       "input": { "section_id": 9007199254740991, "body": {} },
       "covers": [{ "parameter": "section_id", "requirements": ["upper-bound"] }],
@@ -198,6 +215,18 @@
     {
       "id": "after-id-string",
       "input": { "section_id": 5, "body": { "after_id": "3" } },
+      "covers": [{ "parameter": "body.after_id", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "parent-id-fractional",
+      "input": { "section_id": 5, "body": { "parent_id": 1.5 } },
+      "covers": [{ "parameter": "body.parent_id", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "after-id-negative",
+      "input": { "section_id": 5, "body": { "after_id": -1 } },
       "covers": [{ "parameter": "body.after_id", "requirements": ["invalid"] }],
       "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
     },

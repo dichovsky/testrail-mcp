@@ -93,10 +93,14 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
             "type": "string"
           },
           "suite_id": {
-            "type": "number"
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
           },
           "parent_id": {
-            "type": "number"
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
           },
           "description": {
             "type": "string"
@@ -1105,7 +1109,7 @@ TestRail effect: `read`. Driver retry policy: `ordinary-read`. Local file behavi
 
 ## testrail_move_section
 
-Move a TestRail section under another parent (parent_id, null for the root) and/or after a sibling (after_id, null for the top) within its suite. Omit a field to leave that axis unchanged. Requires TestRail 6.5.2 or later; nothing is returned, so read the section afterwards for its new position. Required path arguments: section_id. Changes TestRail data.
+Move a TestRail section under another parent (parent_id, null for the root) and/or after a sibling (after_id, null for the top) within its suite. Omit a field to leave that axis unchanged. Requires TestRail 6.5.2 or later; this tool returns nothing, so read the section afterwards for its new position. Required path arguments: section_id. Changes TestRail data.
 
 REST: `POST move_section/{section_id}`. Driver: `sections.moveSection`. Family: T01.
 
@@ -1131,15 +1135,27 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
         "type": "object",
         "properties": {
           "parent_id": {
-            "type": [
-              "number",
-              "null"
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "after_id": {
-            "type": [
-              "number",
-              "null"
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
             ]
           }
         },

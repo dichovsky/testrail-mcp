@@ -201,6 +201,16 @@ describe('independent parameter manifest format', () => {
     expect(() => resolveDomains(suites, library)).not.toThrow();
   });
 
+  it('refuses an omission claim from a case that supplies the parameter', () => {
+    const sections = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_get_sections');
+    if (!sections) throw new Error('Required get_sections manifest is missing');
+    const moved = { ...sections, cases: sections.cases.map((fixture) => fixture.id === 'suite-filter'
+      ? { ...fixture, covers: [...fixture.covers, { parameter: 'query.suite_id', requirements: ['omitted'] }] }
+      : fixture) };
+    expect(auditParameterManifests([moved])).toContain('testrail_get_sections: Case suite-filter supplies query.suite_id/omitted it claims to omit');
+    expect(auditParameterManifests([sections])).toEqual([]);
+  });
+
   it('detects a removed union-branch fixture instead of merely counting endpoints', () => {
     const manifest = example();
     manifest.cases = manifest.cases.filter(({ id }) => id !== 'uuid-id');
