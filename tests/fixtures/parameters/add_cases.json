@@ -1,69 +1,1721 @@
 {
   "schema_version": 1,
-  "review": { "status": "complete", "pending": [], "driver_version": "7.2.0", "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-19" },
-  "endpoint": { "family_id": "T02", "http_method": "POST", "route": "add_cases/{section_id}", "tool": "testrail_add_cases", "driver_method": "cases.addCases" },
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-19"
+  },
+  "endpoint": {
+    "family_id": "T02",
+    "http_method": "POST",
+    "route": "add_cases/{section_id}",
+    "tool": "testrail_add_cases",
+    "driver_method": "cases.addCases"
+  },
   "sources": [
-    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts", "supports": "addCases validates the section ID, sends it as the only path segment of add_cases, wraps the array as { cases: [...] } in one JSON request (a bare array is rejected by TestRail, confirmed by the driver's live probe), unwraps TestRail's { cases: [...] } reply, and fails closed with a status-200 API error when a successful reply has any other shape, because the write may already have happened. AddCasesBulkPayloadSchema requires at least one item." },
-    { "id": "driver-schema", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/cases.ts", "supports": "The case payload schemas declare title, template_id, type_id, priority_id, estimate, milestone_id, refs, labels (numbers or strings), is_legacy and a legacy custom_fields record; update payloads add section_id and the bulk update requires case_ids. Every identifier is a plain number in the driver." },
-    { "id": "driver-common", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/common.ts", "supports": "zObject uses passthrough, so the driver forwards unknown and custom_* properties alike; the MCP boundary must reject ordinary unknown names separately." },
-    { "id": "testrail-cases", "url": "https://support.testrail.com/hc/en-us/articles/7077292642580-Cases", "supports": "add_case and update_case take title, template_id, type_id, priority_id, estimate (a timespan such as 30s or 1m 45s), milestone_id, refs (a comma-separated string), labels (an array of IDs or titles) and is_legacy, plus custom fields submitted with their system name prefixed with custom_. update_case supports partial updates and section_id requires TestRail 6.5.2 or later. update_cases applies the same values to every case in case_ids and add_cases takes an array of case objects." }
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts",
+      "supports": "addCases validates the section ID, sends it as the only path segment of add_cases, wraps the array as { cases: [...] } in one JSON request, unwraps TestRail's { cases: [...] } reply, and fails closed with a status-200 API error when a successful reply has any other shape, because the write may already have happened. The wire shape is recorded there as confirmed by a live probe on 2026-06-21: a bare array is rejected with 400 'Field :cases is a required field.'"
+    },
+    {
+      "id": "driver-schema",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/cases.ts",
+      "supports": "AddCasesBulkPayloadSchema is an array of AddCasePayloadSchema with at least one item, so each item declares title, template_id, type_id, priority_id, estimate, milestone_id, refs, labels (numbers or strings), is_legacy and a legacy custom_fields record. These are the exported type's declarations; the public method forwards the payload without parsing it, so every payload rule here is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "driver-common",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/common.ts",
+      "supports": "zObject uses passthrough, so the declared item type admits unknown and custom_* properties alike; the MCP boundary must reject ordinary unknown names separately."
+    },
+    {
+      "id": "testrail-cases",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077292642580-Cases",
+      "supports": "The Cases reference documents add_case's fields, which each item of this endpoint follows: title (required), template_id, type_id, priority_id, estimate (a timespan such as 30s or 1m 45s), milestone_id, refs (a comma-separated string), labels (an array of IDs or titles) and is_legacy, plus custom fields submitted with their system name prefixed with custom_. It does not document add_cases itself, so the request shape of the bulk endpoint rests on the driver's live probe rather than on this article."
+    }
   ],
-  "input_policy": { "ordinary_fields": "reject", "custom_fields": "flat_custom_prefix", "notes": "Strictness is an MCP boundary requirement at every depth. Custom fields are flat custom_* properties with any JSON value; the driver's legacy custom_fields container is refused rather than forwarded because TestRail does not read it." },
-  "outer_result": { "driver": "array", "tool_data": "array", "notes": "The created cases are returned as an array, unwrapped by the driver from TestRail's cases envelope; entity-field drift is advisory. An unrecognized successful reply is an INVALID_RESPONSE error whose write outcome is unknown, never a retry or a split." },
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "flat_custom_prefix",
+    "notes": "Strictness is an MCP boundary requirement at every depth, and here it is the only enforcement: the driver forwards this payload without parsing it. Each item accepts exactly the add_case body. Custom fields are flat custom_* properties with any JSON value; the driver's legacy custom_fields container is refused rather than forwarded because TestRail does not read it."
+  },
+  "outer_result": {
+    "driver": "array",
+    "tool_data": "array",
+    "notes": "The created cases are returned as an array, unwrapped by the driver from TestRail's cases envelope; entity-field drift is advisory. An unrecognized successful reply is an INVALID_RESPONSE error whose write outcome is unknown, never a retry or a split."
+  },
   "requirements": [
-    { "id": "unknown-top-level", "kind": "invalid", "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them." },
-    { "id": "unknown-item-field", "kind": "invalid", "description": "Reject an unknown ordinary field in any item rather than forwarding it; only custom_* names extend an item." },
-    { "id": "item-identifier-domain", "kind": "invalid", "description": "Hold each item's template, type, priority and milestone identifiers to the identifier domain, exactly as add_case does; a representative zero is refused here." },
-    { "id": "legacy-custom-container", "kind": "invalid", "description": "Reject the driver's nested custom_fields object in any item. TestRail reads custom values only as flat custom_* properties, so forwarding the container would drop them silently." },
-    { "id": "no-split", "kind": "mapping", "description": "Send exactly one request carrying every item. The adapter never splits the array or retries on its own." }
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-item-field",
+      "kind": "invalid",
+      "description": "Reject an unknown ordinary field in any item rather than forwarding it; only custom_* names extend an item."
+    },
+    {
+      "id": "legacy-custom-container",
+      "kind": "invalid",
+      "description": "Reject the driver's nested custom_fields object in any item. TestRail reads custom values only as flat custom_* properties, so forwarding the container would drop them silently."
+    },
+    {
+      "id": "no-split",
+      "kind": "mapping",
+      "description": "Send exactly one request carrying every item. The adapter never splits the array or retries on its own."
+    }
   ],
   "baseline": "two-cases",
   "parameters": [
-    { "id": "section_id", "input_path": ["section_id"], "scope": "path", "requiredness": "required", "domain_ref": "positive_id", "semantics": "No coercion. The section every case is created in; passed positionally and sent verbatim as the only path segment.", "driver": { "argument": 0, "path": [] }, "wire": { "location": "path", "names": ["section_id"], "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced." }, "sources": ["driver-module", "testrail-cases"] },
-    { "id": "body", "input_path": ["body"], "scope": "body", "requiredness": "required", "domain": { "type": "array", "minItems": 1 }, "semantics": "No coercion. The array of case objects is passed as the driver's payload argument; each item accepts exactly the add_case body. The driver wraps the array under cases on the wire.", "driver": { "argument": 1, "path": [] }, "wire": { "location": "json", "names": ["cases"], "encoding": "JSON object { cases: [...] } whose array is the body unchanged." }, "sources": ["driver-module", "driver-schema"], "requirements": [ { "id": "mapping", "kind": "mapping", "description": "Preserve the array at driver argument 1 and send it under cases." }, { "id": "valid", "kind": "valid", "description": "Accept an array of case objects." }, { "id": "invalid", "kind": "invalid", "description": "Reject a body that is not an array before driver invocation." }, { "id": "empty", "kind": "invalid", "description": "Reject an empty array; the driver refuses it and TestRail answers 400." }, { "id": "required", "kind": "required", "description": "Reject a missing body." } ] },
-    { "id": "body[].title", "input_path": ["body", "*", "title"], "scope": "body", "requiredness": "required", "domain": { "type": "string" }, "semantics": "Each item's title, required by TestRail. No coercion.", "driver": { "argument": 1, "path": ["*", "title"] }, "wire": { "location": "json", "names": ["title"], "encoding": "JSON string under title in each item." }, "sources": ["driver-schema", "testrail-cases"], "requirements": [ { "id": "mapping", "kind": "mapping", "description": "Preserve each item's title under its own name." }, { "id": "valid", "kind": "valid", "description": "Accept a string in every item." }, { "id": "invalid", "kind": "invalid", "description": "Reject a non-string title in any item before driver invocation." }, { "id": "required", "kind": "required", "description": "Reject an item without a title." } ] },
-    { "id": "body[].custom_*", "input_path": ["body", "*", "custom_*"], "scope": "body", "requiredness": "optional", "domain": {}, "semantics": "Any JSON value under a flat custom_ name in any item, which is how TestRail reads custom fields. Values are preserved as given; an ordinary unknown name is rejected rather than passed through.", "driver": { "argument": 1, "path": ["*", "custom_*"] }, "wire": { "location": "json", "names": ["custom_*"], "encoding": "Flat JSON properties retained under their exact names in each item." }, "sources": ["driver-schema", "driver-common", "testrail-cases"], "requirements": [ { "id": "mapping", "kind": "mapping", "description": "Preserve every custom_* property flat in its item." }, { "id": "valid", "kind": "valid", "description": "Accept a string and a null in an item." }, { "id": "invalid", "kind": "invalid", "description": "Reject an ordinary unknown key used in place of a custom_* key." }, { "id": "omitted", "kind": "omitted", "description": "Send no custom properties for an item that supplied none." } ] }
+    {
+      "id": "section_id",
+      "input_path": [
+        "section_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "No coercion. The section every case is created in; passed positionally and sent verbatim as the only path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "section_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-cases"
+      ]
+    },
+    {
+      "id": "body",
+      "input_path": [
+        "body"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "array",
+        "minItems": 1
+      },
+      "semantics": "No coercion. The array of case objects is passed as the driver's payload argument; each item accepts exactly the add_case body. The driver wraps the array under cases on the wire. The at-least-one rule is declared by the exported array type and enforced at this boundary, since the method does not parse the payload.",
+      "driver": {
+        "argument": 1,
+        "path": []
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "cases"
+        ],
+        "encoding": "JSON object { cases: [...] } whose array is the body unchanged."
+      },
+      "sources": [
+        "driver-module",
+        "driver-schema"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the array at driver argument 1 and send it under cases."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an array of case objects."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a body that is not an array before driver invocation."
+        },
+        {
+          "id": "empty",
+          "kind": "invalid",
+          "description": "Reject an empty array; the exported type requires an item and TestRail answers 400."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing body."
+        }
+      ]
+    },
+    {
+      "id": "body[].title",
+      "input_path": [
+        "body",
+        "*",
+        "title"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "Each item's title, required by TestRail. No coercion.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "*",
+          "title"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "title"
+        ],
+        "encoding": "JSON value under title in each item."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-cases"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve each item's title under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string in every item."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string title in any item before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject an item without a title."
+        }
+      ]
+    },
+    {
+      "id": "body[].template_id",
+      "input_path": [
+        "body",
+        "*",
+        "template_id"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      },
+      "semantics": "The template (field layout) of that item, TestRail 5.2 or later. The driver forwards any number, so the boundary holds it to the identifier domain; sent as a JSON number.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "*",
+          "template_id"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "template_id"
+        ],
+        "encoding": "JSON value under template_id in each item."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-cases"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve each item's template under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an identifier in an item."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-positive, fractional or unsafe template in any item before driver invocation; the driver forwards whatever number it is given."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no template for an item that supplied none."
+        }
+      ]
+    },
+    {
+      "id": "body[].type_id",
+      "input_path": [
+        "body",
+        "*",
+        "type_id"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      },
+      "semantics": "That item's case type. The driver forwards any number, so the boundary holds it to the identifier domain; sent as a JSON number.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "*",
+          "type_id"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "type_id"
+        ],
+        "encoding": "JSON value under type_id in each item."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-cases"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve each item's case type under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an identifier in an item."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-positive, fractional or unsafe case type in any item before driver invocation; the driver forwards whatever number it is given."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no case type for an item that supplied none."
+        }
+      ]
+    },
+    {
+      "id": "body[].priority_id",
+      "input_path": [
+        "body",
+        "*",
+        "priority_id"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      },
+      "semantics": "That item's priority. The driver forwards any number, so the boundary holds it to the identifier domain; sent as a JSON number.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "*",
+          "priority_id"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "priority_id"
+        ],
+        "encoding": "JSON value under priority_id in each item."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-cases"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve each item's priority under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an identifier in an item."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-positive, fractional or unsafe priority in any item before driver invocation; the driver forwards whatever number it is given."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no priority for an item that supplied none."
+        }
+      ]
+    },
+    {
+      "id": "body[].estimate",
+      "input_path": [
+        "body",
+        "*",
+        "estimate"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "That item's estimate: a timespan such as 30s or 1m 45s, as TestRail documents it; the format is TestRail's to check. No coercion.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "*",
+          "estimate"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "estimate"
+        ],
+        "encoding": "JSON value under estimate in each item."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-cases"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve each item's estimate under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a timespan string in an item."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a number of seconds in place of the string before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no estimate for an item that supplied none."
+        }
+      ]
+    },
+    {
+      "id": "body[].milestone_id",
+      "input_path": [
+        "body",
+        "*",
+        "milestone_id"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9007199254740991
+      },
+      "semantics": "The milestone that item is linked to. The driver forwards any number and its declared type admits no null, so the boundary holds it to the identifier domain; sent as a JSON number.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "*",
+          "milestone_id"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "milestone_id"
+        ],
+        "encoding": "JSON value under milestone_id in each item."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-cases"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve each item's milestone under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an identifier in an item."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-positive, fractional or unsafe milestone in any item before driver invocation; the driver forwards whatever number it is given."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no milestone for an item that supplied none."
+        }
+      ]
+    },
+    {
+      "id": "body[].refs",
+      "input_path": [
+        "body",
+        "*",
+        "refs"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "That item's references: a comma-separated list in one string, as TestRail documents it. No coercion; an array is not the documented form and is refused.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "*",
+          "refs"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "refs"
+        ],
+        "encoding": "JSON value under refs in each item."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-cases"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve each item's references string under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a comma-separated string in an item."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject an array of references before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no references for an item that supplied none."
+        }
+      ]
+    },
+    {
+      "id": "body[].labels",
+      "input_path": [
+        "body",
+        "*",
+        "labels"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "array",
+        "items": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "semantics": "That item's labels, named by ID or by title and mixed freely, as TestRail documents. The driver accepts any number for an ID; the boundary holds numeric members to the identifier domain.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "*",
+          "labels"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "labels"
+        ],
+        "encoding": "JSON value under labels in each item."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-cases"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member in order under labels in its item."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an ID and a title together in an item."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a boolean member before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no labels for an item that supplied none."
+        }
+      ]
+    },
+    {
+      "id": "body[].is_legacy",
+      "input_path": [
+        "body",
+        "*",
+        "is_legacy"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "true marks that item's text fields, custom ones included, as Markdown for later conversion to rich text. No coercion.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "*",
+          "is_legacy"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "is_legacy"
+        ],
+        "encoding": "JSON value under is_legacy in each item."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-cases"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve each item's flag under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a boolean in an item."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a numeric stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no flag for an item that supplied none."
+        }
+      ]
+    },
+    {
+      "id": "body[].custom_*",
+      "input_path": [
+        "body",
+        "*",
+        "custom_*"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {},
+      "semantics": "Any JSON value under a flat custom_ name in any item, which is how TestRail reads custom fields. Values are preserved as given, including null; an ordinary unknown name is rejected rather than passed through.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "*",
+          "custom_*"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "custom_*"
+        ],
+        "encoding": "Flat JSON properties retained under their exact names in each item."
+      },
+      "sources": [
+        "driver-schema",
+        "driver-common",
+        "testrail-cases"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every custom_* property flat in its item."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string and a null in an item."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject an ordinary unknown key used in place of a custom_* key."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no custom properties for an item that supplied none."
+        }
+      ]
+    }
   ],
   "cases": [
     {
-      "id": "two-cases", "input": { "section_id": 5, "body": [{ "title": "Print document history", "type_id": 2, "priority_id": 4, "custom_preconds": "These are the preconditions", "custom_null": null }, { "title": "Export as PDF", "estimate": "3m", "labels": [7, "label1"] }] },
+      "id": "two-cases",
+      "input": {
+        "section_id": 5,
+        "body": [
+          {
+            "title": "Print document history",
+            "template_id": 1,
+            "type_id": 2,
+            "priority_id": 4,
+            "estimate": "3m",
+            "milestone_id": 9,
+            "refs": "RF-1, RF-2",
+            "labels": [
+              7,
+              "label1"
+            ],
+            "is_legacy": false,
+            "custom_preconds": "These are the preconditions",
+            "custom_null": null
+          },
+          {
+            "title": "Export as PDF"
+          }
+        ]
+      },
       "covers": [
-        { "parameter": "section_id", "requirements": ["mapping", "valid"] },
-        { "parameter": "body", "requirements": ["mapping", "valid"] },
-        { "parameter": "body[].title", "requirements": ["mapping", "valid"] },
-        { "parameter": "body[].custom_*", "requirements": ["mapping", "valid"] },
-        { "parameter": "$input", "requirements": ["no-split"] }
+        {
+          "parameter": "section_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].title",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].template_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].type_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].priority_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].estimate",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].milestone_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].refs",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].labels",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].is_legacy",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].custom_*",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-split"
+          ]
+        }
       ],
       "expect": {
         "kind": "accepted",
-        "driver": { "binding": "cases.addCases", "arguments": [5, [{ "title": "Print document history", "type_id": 2, "priority_id": 4, "custom_preconds": "These are the preconditions", "custom_null": null }, { "title": "Export as PDF", "estimate": "3m", "labels": [7, "label1"] }]] },
-        "wire": { "method": "POST", "endpoint": "add_cases/5", "json": { "cases": [{ "title": "Print document history", "type_id": 2, "priority_id": 4, "custom_preconds": "These are the preconditions", "custom_null": null }, { "title": "Export as PDF", "estimate": "3m", "labels": [7, "label1"] }] } },
-        "upstream_response": { "kind": "json", "body": { "cases": [{ "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "RF-1, RF-2", "created_by": 1, "created_on": 1646317844, "updated_by": 1, "updated_on": 1646317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": "These are the preconditions", "custom_steps_separated": [{ "content": "Step 1", "expected": "Expected Result 1" }, { "shared_step_id": 3 }], "custom_null": null, "custom_zero": 0, "custom_flag": false, "labels": [{ "id": 7, "title": "label1" }] }, { "id": 43, "title": "Export as PDF", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": null, "refs": null, "created_by": 1, "created_on": 1646317900, "updated_by": 1, "updated_on": 1646317900, "estimate": null, "estimate_forecast": null, "suite_id": 3, "display_order": 2, "is_deleted": 0, "custom_preconds": null, "labels": [] }] } },
-        "driver_result": { "kind": "json", "value": [{ "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "RF-1, RF-2", "created_by": 1, "created_on": 1646317844, "updated_by": 1, "updated_on": 1646317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": "These are the preconditions", "custom_steps_separated": [{ "content": "Step 1", "expected": "Expected Result 1" }, { "shared_step_id": 3 }], "custom_null": null, "custom_zero": 0, "custom_flag": false, "labels": [{ "id": 7, "title": "label1" }] }, { "id": 43, "title": "Export as PDF", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": null, "refs": null, "created_by": 1, "created_on": 1646317900, "updated_by": 1, "updated_on": 1646317900, "estimate": null, "estimate_forecast": null, "suite_id": 3, "display_order": 2, "is_deleted": 0, "custom_preconds": null, "labels": [] }] }
+        "driver": {
+          "binding": "cases.addCases",
+          "arguments": [
+            5,
+            [
+              {
+                "title": "Print document history",
+                "template_id": 1,
+                "type_id": 2,
+                "priority_id": 4,
+                "estimate": "3m",
+                "milestone_id": 9,
+                "refs": "RF-1, RF-2",
+                "labels": [
+                  7,
+                  "label1"
+                ],
+                "is_legacy": false,
+                "custom_preconds": "These are the preconditions",
+                "custom_null": null
+              },
+              {
+                "title": "Export as PDF"
+              }
+            ]
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_cases/5",
+          "json": {
+            "cases": [
+              {
+                "title": "Print document history",
+                "template_id": 1,
+                "type_id": 2,
+                "priority_id": 4,
+                "estimate": "3m",
+                "milestone_id": 9,
+                "refs": "RF-1, RF-2",
+                "labels": [
+                  7,
+                  "label1"
+                ],
+                "is_legacy": false,
+                "custom_preconds": "These are the preconditions",
+                "custom_null": null
+              },
+              {
+                "title": "Export as PDF"
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "cases": [
+              {
+                "id": 42,
+                "title": "Print document history",
+                "section_id": 5,
+                "template_id": 1,
+                "type_id": 2,
+                "priority_id": 4,
+                "milestone_id": 9,
+                "refs": "RF-1, RF-2",
+                "created_by": 1,
+                "created_on": 1646317844,
+                "updated_by": 1,
+                "updated_on": 1646317844,
+                "estimate": "3m",
+                "estimate_forecast": "8m 40s",
+                "suite_id": 3,
+                "display_order": 1,
+                "is_deleted": 0,
+                "custom_preconds": "These are the preconditions",
+                "custom_null": null,
+                "labels": [
+                  {
+                    "id": 7,
+                    "title": "label1"
+                  }
+                ]
+              },
+              {
+                "id": 43,
+                "title": "Export as PDF",
+                "section_id": 5,
+                "template_id": 1,
+                "type_id": 2,
+                "priority_id": 4,
+                "milestone_id": null,
+                "refs": null,
+                "created_by": 1,
+                "created_on": 1646317900,
+                "updated_by": 1,
+                "updated_on": 1646317900,
+                "estimate": null,
+                "estimate_forecast": null,
+                "suite_id": 3,
+                "display_order": 2,
+                "is_deleted": 0,
+                "custom_preconds": null,
+                "labels": []
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 42,
+              "title": "Print document history",
+              "section_id": 5,
+              "template_id": 1,
+              "type_id": 2,
+              "priority_id": 4,
+              "milestone_id": 9,
+              "refs": "RF-1, RF-2",
+              "created_by": 1,
+              "created_on": 1646317844,
+              "updated_by": 1,
+              "updated_on": 1646317844,
+              "estimate": "3m",
+              "estimate_forecast": "8m 40s",
+              "suite_id": 3,
+              "display_order": 1,
+              "is_deleted": 0,
+              "custom_preconds": "These are the preconditions",
+              "custom_null": null,
+              "labels": [
+                {
+                  "id": 7,
+                  "title": "label1"
+                }
+              ]
+            },
+            {
+              "id": 43,
+              "title": "Export as PDF",
+              "section_id": 5,
+              "template_id": 1,
+              "type_id": 2,
+              "priority_id": 4,
+              "milestone_id": null,
+              "refs": null,
+              "created_by": 1,
+              "created_on": 1646317900,
+              "updated_by": 1,
+              "updated_on": 1646317900,
+              "estimate": null,
+              "estimate_forecast": null,
+              "suite_id": 3,
+              "display_order": 2,
+              "is_deleted": 0,
+              "custom_preconds": null,
+              "labels": []
+            }
+          ]
+        }
       }
     },
     {
-      "id": "single-plain-case", "input": { "section_id": 9007199254740991, "body": [{ "title": "Smoke" }] },
+      "id": "single-plain-case",
+      "input": {
+        "section_id": 9007199254740991,
+        "body": [
+          {
+            "title": "Smoke"
+          }
+        ]
+      },
       "covers": [
-        { "parameter": "section_id", "requirements": ["upper-bound"] },
-        { "parameter": "body[].custom_*", "requirements": ["omitted"] }
+        {
+          "parameter": "section_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body[].template_id",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body[].type_id",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body[].priority_id",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body[].estimate",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body[].milestone_id",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body[].refs",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body[].labels",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body[].is_legacy",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body[].custom_*",
+          "requirements": [
+            "omitted"
+          ]
+        }
       ],
       "expect": {
         "kind": "accepted",
-        "driver": { "binding": "cases.addCases", "arguments": [9007199254740991, [{ "title": "Smoke" }]] },
-        "wire": { "method": "POST", "endpoint": "add_cases/9007199254740991", "json": { "cases": [{ "title": "Smoke" }] } },
-        "upstream_response": { "kind": "json", "body": { "cases": [{ "id": 43, "title": "Export as PDF", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": null, "refs": null, "created_by": 1, "created_on": 1646317900, "updated_by": 1, "updated_on": 1646317900, "estimate": null, "estimate_forecast": null, "suite_id": 3, "display_order": 2, "is_deleted": 0, "custom_preconds": null, "labels": [] }] } },
-        "driver_result": { "kind": "json", "value": [{ "id": 43, "title": "Export as PDF", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": null, "refs": null, "created_by": 1, "created_on": 1646317900, "updated_by": 1, "updated_on": 1646317900, "estimate": null, "estimate_forecast": null, "suite_id": 3, "display_order": 2, "is_deleted": 0, "custom_preconds": null, "labels": [] }] }
+        "driver": {
+          "binding": "cases.addCases",
+          "arguments": [
+            9007199254740991,
+            [
+              {
+                "title": "Smoke"
+              }
+            ]
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_cases/9007199254740991",
+          "json": {
+            "cases": [
+              {
+                "title": "Smoke"
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "cases": [
+              {
+                "id": 43,
+                "title": "Export as PDF",
+                "section_id": 5,
+                "template_id": 1,
+                "type_id": 2,
+                "priority_id": 4,
+                "milestone_id": null,
+                "refs": null,
+                "created_by": 1,
+                "created_on": 1646317900,
+                "updated_by": 1,
+                "updated_on": 1646317900,
+                "estimate": null,
+                "estimate_forecast": null,
+                "suite_id": 3,
+                "display_order": 2,
+                "is_deleted": 0,
+                "custom_preconds": null,
+                "labels": []
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 43,
+              "title": "Export as PDF",
+              "section_id": 5,
+              "template_id": 1,
+              "type_id": 2,
+              "priority_id": 4,
+              "milestone_id": null,
+              "refs": null,
+              "created_by": 1,
+              "created_on": 1646317900,
+              "updated_by": 1,
+              "updated_on": 1646317900,
+              "estimate": null,
+              "estimate_forecast": null,
+              "suite_id": 3,
+              "display_order": 2,
+              "is_deleted": 0,
+              "custom_preconds": null,
+              "labels": []
+            }
+          ]
+        }
       }
     },
-    { "id": "missing-body", "input": { "section_id": 5 }, "covers": [{ "parameter": "body", "requirements": ["required"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "empty-body", "input": { "section_id": 5, "body": [] }, "covers": [{ "parameter": "body", "requirements": ["empty"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "invalid-body", "input": { "section_id": 5, "body": { "title": "Smoke" } }, "covers": [{ "parameter": "body", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "missing-item-title", "input": { "section_id": 5, "body": [{ "title": "Smoke" }, {}] }, "covers": [{ "parameter": "body[].title", "requirements": ["required"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "invalid-item-title", "input": { "section_id": 5, "body": [{ "title": 7 }] }, "covers": [{ "parameter": "body[].title", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "unknown-item-field", "input": { "section_id": 5, "body": [{ "title": "Smoke", "unexpected": true }] }, "covers": [{ "parameter": "$input", "requirements": ["unknown-item-field"] }, { "parameter": "body[].custom_*", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "item-zero-id", "input": { "section_id": 5, "body": [{ "title": "Smoke", "type_id": 0 }] }, "covers": [{ "parameter": "$input", "requirements": ["item-identifier-domain"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "legacy-custom-container", "input": { "section_id": 5, "body": [{ "title": "Smoke", "custom_fields": { "custom_preconds": "Signed in" } }] }, "covers": [{ "parameter": "$input", "requirements": ["legacy-custom-container"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "unknown-top-level", "input": { "section_id": 5, "body": [{ "title": "Smoke" }], "cases": [] }, "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } }
+    {
+      "id": "missing-body",
+      "input": {
+        "section_id": 5
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "empty-body",
+      "input": {
+        "section_id": 5,
+        "body": []
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-body",
+      "input": {
+        "section_id": 5,
+        "body": {
+          "title": "Smoke"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-item-title",
+      "input": {
+        "section_id": 5,
+        "body": [
+          {
+            "title": "Print document history",
+            "template_id": 1,
+            "type_id": 2,
+            "priority_id": 4,
+            "estimate": "3m",
+            "milestone_id": 9,
+            "refs": "RF-1, RF-2",
+            "labels": [
+              7,
+              "label1"
+            ],
+            "is_legacy": false,
+            "custom_preconds": "These are the preconditions",
+            "custom_null": null
+          },
+          {}
+        ]
+      },
+      "covers": [
+        {
+          "parameter": "body[].title",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-item-title",
+      "input": {
+        "section_id": 5,
+        "body": [
+          {
+            "title": "Print document history",
+            "template_id": 1,
+            "type_id": 2,
+            "priority_id": 4,
+            "estimate": "3m",
+            "milestone_id": 9,
+            "refs": "RF-1, RF-2",
+            "labels": [
+              7,
+              "label1"
+            ],
+            "is_legacy": false,
+            "custom_preconds": "These are the preconditions",
+            "custom_null": null
+          },
+          {
+            "title": 7
+          }
+        ]
+      },
+      "covers": [
+        {
+          "parameter": "body[].title",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "item-template-id-zero",
+      "input": {
+        "section_id": 5,
+        "body": [
+          {
+            "title": "Print document history",
+            "template_id": 1,
+            "type_id": 2,
+            "priority_id": 4,
+            "estimate": "3m",
+            "milestone_id": 9,
+            "refs": "RF-1, RF-2",
+            "labels": [
+              7,
+              "label1"
+            ],
+            "is_legacy": false,
+            "custom_preconds": "These are the preconditions",
+            "custom_null": null
+          },
+          {
+            "title": "Export as PDF",
+            "template_id": 0
+          }
+        ]
+      },
+      "covers": [
+        {
+          "parameter": "body[].template_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "item-type-id-fractional",
+      "input": {
+        "section_id": 5,
+        "body": [
+          {
+            "title": "Print document history",
+            "template_id": 1,
+            "type_id": 2,
+            "priority_id": 4,
+            "estimate": "3m",
+            "milestone_id": 9,
+            "refs": "RF-1, RF-2",
+            "labels": [
+              7,
+              "label1"
+            ],
+            "is_legacy": false,
+            "custom_preconds": "These are the preconditions",
+            "custom_null": null
+          },
+          {
+            "title": "Export as PDF",
+            "type_id": 1.5
+          }
+        ]
+      },
+      "covers": [
+        {
+          "parameter": "body[].type_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "item-priority-id-negative",
+      "input": {
+        "section_id": 5,
+        "body": [
+          {
+            "title": "Print document history",
+            "template_id": 1,
+            "type_id": 2,
+            "priority_id": 4,
+            "estimate": "3m",
+            "milestone_id": 9,
+            "refs": "RF-1, RF-2",
+            "labels": [
+              7,
+              "label1"
+            ],
+            "is_legacy": false,
+            "custom_preconds": "These are the preconditions",
+            "custom_null": null
+          },
+          {
+            "title": "Export as PDF",
+            "priority_id": -1
+          }
+        ]
+      },
+      "covers": [
+        {
+          "parameter": "body[].priority_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "item-milestone-id-unsafe",
+      "input": {
+        "section_id": 5,
+        "body": [
+          {
+            "title": "Print document history",
+            "template_id": 1,
+            "type_id": 2,
+            "priority_id": 4,
+            "estimate": "3m",
+            "milestone_id": 9,
+            "refs": "RF-1, RF-2",
+            "labels": [
+              7,
+              "label1"
+            ],
+            "is_legacy": false,
+            "custom_preconds": "These are the preconditions",
+            "custom_null": null
+          },
+          {
+            "title": "Export as PDF",
+            "milestone_id": 9007199254740992
+          }
+        ]
+      },
+      "covers": [
+        {
+          "parameter": "body[].milestone_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "item-estimate-numeric",
+      "input": {
+        "section_id": 5,
+        "body": [
+          {
+            "title": "Print document history",
+            "template_id": 1,
+            "type_id": 2,
+            "priority_id": 4,
+            "estimate": "3m",
+            "milestone_id": 9,
+            "refs": "RF-1, RF-2",
+            "labels": [
+              7,
+              "label1"
+            ],
+            "is_legacy": false,
+            "custom_preconds": "These are the preconditions",
+            "custom_null": null
+          },
+          {
+            "title": "Export as PDF",
+            "estimate": 180
+          }
+        ]
+      },
+      "covers": [
+        {
+          "parameter": "body[].estimate",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "item-refs-array",
+      "input": {
+        "section_id": 5,
+        "body": [
+          {
+            "title": "Print document history",
+            "template_id": 1,
+            "type_id": 2,
+            "priority_id": 4,
+            "estimate": "3m",
+            "milestone_id": 9,
+            "refs": "RF-1, RF-2",
+            "labels": [
+              7,
+              "label1"
+            ],
+            "is_legacy": false,
+            "custom_preconds": "These are the preconditions",
+            "custom_null": null
+          },
+          {
+            "title": "Export as PDF",
+            "refs": [
+              "RF-1"
+            ]
+          }
+        ]
+      },
+      "covers": [
+        {
+          "parameter": "body[].refs",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "item-label-boolean",
+      "input": {
+        "section_id": 5,
+        "body": [
+          {
+            "title": "Print document history",
+            "template_id": 1,
+            "type_id": 2,
+            "priority_id": 4,
+            "estimate": "3m",
+            "milestone_id": 9,
+            "refs": "RF-1, RF-2",
+            "labels": [
+              7,
+              "label1"
+            ],
+            "is_legacy": false,
+            "custom_preconds": "These are the preconditions",
+            "custom_null": null
+          },
+          {
+            "title": "Export as PDF",
+            "labels": [
+              true
+            ]
+          }
+        ]
+      },
+      "covers": [
+        {
+          "parameter": "body[].labels",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "item-is-legacy-numeric",
+      "input": {
+        "section_id": 5,
+        "body": [
+          {
+            "title": "Print document history",
+            "template_id": 1,
+            "type_id": 2,
+            "priority_id": 4,
+            "estimate": "3m",
+            "milestone_id": 9,
+            "refs": "RF-1, RF-2",
+            "labels": [
+              7,
+              "label1"
+            ],
+            "is_legacy": false,
+            "custom_preconds": "These are the preconditions",
+            "custom_null": null
+          },
+          {
+            "title": "Export as PDF",
+            "is_legacy": 1
+          }
+        ]
+      },
+      "covers": [
+        {
+          "parameter": "body[].is_legacy",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-item-field",
+      "input": {
+        "section_id": 5,
+        "body": [
+          {
+            "title": "Print document history",
+            "template_id": 1,
+            "type_id": 2,
+            "priority_id": 4,
+            "estimate": "3m",
+            "milestone_id": 9,
+            "refs": "RF-1, RF-2",
+            "labels": [
+              7,
+              "label1"
+            ],
+            "is_legacy": false,
+            "custom_preconds": "These are the preconditions",
+            "custom_null": null
+          },
+          {
+            "title": "Export as PDF",
+            "unexpected": true
+          }
+        ]
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-item-field"
+          ]
+        },
+        {
+          "parameter": "body[].custom_*",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "legacy-custom-container",
+      "input": {
+        "section_id": 5,
+        "body": [
+          {
+            "title": "Print document history",
+            "template_id": 1,
+            "type_id": 2,
+            "priority_id": 4,
+            "estimate": "3m",
+            "milestone_id": 9,
+            "refs": "RF-1, RF-2",
+            "labels": [
+              7,
+              "label1"
+            ],
+            "is_legacy": false,
+            "custom_preconds": "These are the preconditions",
+            "custom_null": null
+          },
+          {
+            "title": "Export as PDF",
+            "custom_fields": {
+              "custom_preconds": "Signed in"
+            }
+          }
+        ]
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "legacy-custom-container"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "section_id": 5,
+        "body": [
+          {
+            "title": "Smoke"
+          }
+        ],
+        "cases": []
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
   ]
 }
