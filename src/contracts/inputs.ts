@@ -23,8 +23,15 @@ export const idFilterSchema = z.union([positiveIdSchema, z.array(positiveIdSchem
 export const caseIdsSchema = z.array(positiveIdSchema).min(1);
 export const jsonValueSchema = z.json();
 
+/**
+ * A name that survives a multipart part header unchanged.
+ *
+ * Separators and control bytes are excluded because they do not belong in a filename,
+ * and a double quote because the encoder percent-escapes it: the name TestRail would
+ * record then differs from the one the caller asked for, which is worse than a refusal.
+ */
 // eslint-disable-next-line no-control-regex -- Control bytes must be excluded from multipart names.
-export const filenameSchema = z.string().regex(/^(?!\.{1,2}$)(?![a-zA-Z]:)[^/\\\x00-\x1f\x7f-\x9f]+(?![\s\S])/u);
+export const filenameSchema = z.string().regex(/^(?!\.{1,2}$)(?![a-zA-Z]:)[^/\\"\x00-\x1f\x7f-\x9f]+(?![\s\S])/u);
 export const bddFilenameSchema = filenameSchema.regex(/\.feature(?![\s\S])/u);
 
 // RFC token type/subtype and optional token/quoted parameter values. A slash is
