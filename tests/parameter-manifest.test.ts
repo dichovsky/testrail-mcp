@@ -611,9 +611,11 @@ describe('published driver evidence for reviewed examples (not adapter qualifica
         const paths = directory === undefined ? {} : await materializeFiles(manifest, directory);
         const expectedCall = substituteTokens(expected, paths);
         const calls: { url: string; method: string | undefined; body: unknown }[] = [];
-        const fetchMock = vi.fn<typeof globalThis.fetch>((input, init) => {
+        const fetchMock = vi.fn<typeof globalThis.fetch>(async (input, init) => {
           const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-          calls.push({ url, method: init?.method, body: init?.body });
+          // Described inside the request: the driver owns an upload's streams and
+          // cancels them once it settles, so a later read would never complete.
+          calls.push({ url, method: init?.method, body: await describeBody(init?.body) });
           const response = expectedCall.upstream_response;
           return Promise.resolve(response.kind === 'json'
             ? new Response(JSON.stringify(response.body), { headers: { 'content-type': 'application/json' } })
@@ -630,7 +632,7 @@ describe('published driver evidence for reviewed examples (not adapter qualifica
         try {
           const result = await invokeDriver(client, expectedCall);
           expect(dnsLookup).toHaveBeenCalled();
-          const sent = await Promise.all(calls.map(async (call) => ({ ...call, body: await describeBody(call.body) })));
+          const sent = calls;
           expect(sent).toEqual([{
             url: `https://fixture.testrail.test/index.php?/api/v2/${expectedCall.wire.endpoint}`,
             method: expectedCall.wire.method,

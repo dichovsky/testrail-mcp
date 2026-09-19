@@ -292,7 +292,7 @@ export const getSharedStepHistory = defineOperation({
   route: 'get_shared_step_history/{shared_step_id}',
   family: 'T03',
   driverBinding: 'sharedSteps.getSharedStepHistory',
-  summary: 'List the change history of a TestRail shared step set (TestRail 7.3 or later). Each entry records who changed the set, when, and the steps as they stood.',
+  summary: 'List the change history of a TestRail shared step set (TestRail 7.3 or later). Each entry records who changed the set, when, and the steps as they stood. This endpoint accepts no paging controls, so the server chooses each page; a complete read that stops at one of its bounds cannot be resumed from where it stopped, and needs a larger bound instead.',
   inputSchema: getSharedStepHistoryInput,
   argumentMap: [
     { input: 'shared_step_id', call: 'page', argument: 0, serialization: 'path' },

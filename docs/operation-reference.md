@@ -3173,7 +3173,7 @@ TestRail effect: `read`. Driver retry policy: `ordinary-read`. Local file behavi
 
 ## testrail_get_shared_step_history
 
-List the change history of a TestRail shared step set (TestRail 7.3 or later). Each entry records who changed the set, when, and the steps as they stood. Required path arguments: shared_step_id. Returns the server-selected first page by default; manual continuation is unavailable. Use _mcp.pagination="all" for bounded complete retrieval.
+List the change history of a TestRail shared step set (TestRail 7.3 or later). Each entry records who changed the set, when, and the steps as they stood. This endpoint accepts no paging controls, so the server chooses each page; a complete read that stops at one of its bounds cannot be resumed from where it stopped, and needs a larger bound instead. Required path arguments: shared_step_id. Returns the server-selected first page by default; manual continuation is unavailable. Use _mcp.pagination="all" for bounded complete retrieval.
 
 REST: `GET get_shared_step_history/{shared_step_id}`. Driver: `sharedSteps.getSharedStepHistory`. Family: T03.
 

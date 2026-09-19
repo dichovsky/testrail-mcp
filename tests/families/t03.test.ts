@@ -53,7 +53,13 @@ function client(respond: () => Promise<Response>, calls: { body: unknown }[] = [
     baseUrl: configuration.baseUrl, email: configuration.email, apiKey: configuration.apiKey,
     registerProcessHandlers: false, maxRetries: 0,
     dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
-    fetch: (_target, init) => { calls.push({ body: init?.body }); return respond(); },
+    /*
+     * The body is described here, inside the request, rather than from the recorded
+     * object afterwards. The driver owns the upload's streams and cancels them once the
+     * request settles, and the staged copy behind them is removed at the same point, so
+     * a later read would hang on a stream nothing will ever fill.
+     */
+    fetch: async (_target, init) => { calls.push({ body: await describeBody(init?.body) }); return respond(); },
   });
 }
 
@@ -97,7 +103,7 @@ describe('T03 feature-file uploads through the transport', () => {
       expect(staged.path).not.toBe(source);
       expect(staged.type).toBe('text/plain');
       // The part carries the caller's filename and media type, and the file's bytes.
-      expect(await describeBody(calls[0]?.body)).toEqual([
+      expect(calls[0]?.body).toEqual([
         { name: 'attachment', filename: 'login.feature', content_type: 'text/plain', utf8: FEATURE },
       ]);
       // Capacity, and with it the staged copy, is held until the call settles rather
@@ -133,8 +139,9 @@ describe('T03 feature-file uploads through the transport', () => {
       }, { runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory) });
 
       expect(result.isError).toBeUndefined();
-      expect(await describeBody(calls[0]?.body)).toEqual([
-        { name: 'attachment', filename: 'login.feature', content_type: '', utf8: FEATURE },
+      expect(calls[0]?.body).toEqual([
+        // No media type was supplied, so the encoder declares the part's own default.
+        { name: 'attachment', filename: 'login.feature', content_type: 'application/octet-stream', utf8: FEATURE },
       ]);
     } finally {
       vi.restoreAllMocks();

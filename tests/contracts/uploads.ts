@@ -50,21 +50,43 @@ export interface MultipartPart {
   readonly utf8: string;
 }
 
+/** One `name="value"` attribute of a part header, decoded as the encoder wrote it. */
+function attribute(header: string, name: string): string | undefined {
+  const match = new RegExp(`${name}="([^"]*)"`, 'u').exec(header);
+  return match?.[1];
+}
+
 /**
  * Describe a request body the way a fixture writes it.
  *
- * A multipart upload reaches fetch as form data whose parts carry their own filename and
- * media type, so it is decoded into those fields rather than compared as an opaque
- * object. Reading the parts is the only way to see what was actually uploaded: the
- * generated boundary differs on every request and says nothing about the content.
+ * A multipart upload is encoded before it is sent, and the encoding is where a name or
+ * a media type can still change: a part with no declared type is written as
+ * application/octet-stream, and a filename is escaped. Reading back the form data
+ * object would show what was handed to the encoder instead, so this serializes the body
+ * and reads the parts out of it. The generated boundary is used to split them and is
+ * never compared, since it differs on every request and says nothing about the content.
  */
 export async function describeBody(body: unknown): Promise<unknown> {
-  if (body instanceof FormData) {
-    return Promise.all([...body.entries()].map(async ([name, value]): Promise<MultipartPart | { name: string; value: File | string }> => (
-      value instanceof File
-        ? { name, filename: value.name, content_type: value.type, utf8: await value.text() }
-        : { name, value }
-    )));
-  }
-  return typeof body === 'string' ? JSON.parse(body) : body;
+  if (!(body instanceof FormData)) return typeof body === 'string' ? JSON.parse(body) : body;
+
+  const encoded = new Response(body);
+  const boundary = /boundary=(?<value>[^;]+)/u.exec(encoded.headers.get('content-type') ?? '')?.groups?.value;
+  if (boundary === undefined) throw new Error('Multipart body carries no boundary');
+  const text = await encoded.text();
+
+  return text
+    .split(`--${boundary}`)
+    .map((section) => section.replace(/^\r\n/u, '').replace(/\r\n$/u, ''))
+    .filter((section) => section.length > 0 && section !== '--')
+    .map((section): MultipartPart => {
+      const separator = section.indexOf('\r\n\r\n');
+      if (separator === -1) throw new Error('Multipart part carries no header');
+      const headers = section.slice(0, separator);
+      return {
+        name: attribute(headers, 'name') ?? '',
+        filename: attribute(headers, 'filename') ?? '',
+        content_type: /content-type: *(?<value>[^\r\n]+)/iu.exec(headers)?.groups?.value ?? '',
+        utf8: section.slice(separator + 4),
+      };
+    });
 }

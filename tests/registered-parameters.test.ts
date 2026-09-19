@@ -197,9 +197,11 @@ describe('production registrations send what their fixtures promise', () => {
         const input = substituteTokens(fixture.input, paths);
         const expected = substituteTokens(fixture.expect, paths);
         const calls: { url: string; method: string | undefined; body: unknown }[] = [];
-        const fetch = vi.fn<typeof globalThis.fetch>((target, init) => {
+        const fetch = vi.fn<typeof globalThis.fetch>(async (target, init) => {
           const url = typeof target === 'string' ? target : target instanceof URL ? target.href : target.url;
-          calls.push({ url, method: init?.method, body: init?.body });
+          // Described inside the request: the driver owns an upload's streams and
+          // cancels them once it settles, so a later read would never complete.
+          calls.push({ url, method: init?.method, body: await describeBody(init?.body) });
           // Answer in the shape the fixture declares: one endpoint of this API returns
           // text rather than JSON, and a JSON reply would be read as the feature file.
           const response = expected.kind === 'accepted' ? expected.upstream_response : { kind: 'json' as const, body: {} };
@@ -242,7 +244,7 @@ describe('production registrations send what their fixtures promise', () => {
           }
           const result = await call.invoke(client, input, context);
           expect(publicMethod.mock.calls).toEqual([expected.driver.arguments]);
-          const sent = await Promise.all(calls.map(async (entry) => ({ ...entry, body: await describeBody(entry.body) })));
+          const sent = calls;
           expect(sent).toEqual([{
             url: `https://fixture.testrail.test/index.php?/api/v2/${expected.wire.endpoint}`,
             method: expected.wire.method,

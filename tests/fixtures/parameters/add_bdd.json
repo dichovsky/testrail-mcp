@@ -101,7 +101,8 @@
       "requiredness": "required",
       "domain": {
         "type": "string",
-        "minLength": 1
+        "minLength": 1,
+        "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+(?![\\s\\S])"
       },
       "semantics": "The caller's path to a Gherkin feature file. The transport stages an owned copy within the configured upload roots and the driver receives that copy's path, so this value never reaches TestRail; the file's contents do.",
       "driver": {
@@ -208,9 +209,10 @@
       "scope": "file",
       "requiredness": "optional",
       "domain": {
-        "type": "string"
+        "type": "string",
+        "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+/[!#$%&'*+.^_`|~0-9A-Za-z-]+(?: *; *[!#$%&'*+.^_`|~0-9A-Za-z-]+ *= *(?:[!#$%&'*+.^_`|~0-9A-Za-z-]+|\"[^\"]*\"))*(?![\\s\\S])"
       },
-      "semantics": "The media type recorded for the part. Omitting it sends a part with an empty media type and leaves the reading of the file to TestRail; a supplied value becomes the staged copy's type.",
+      "semantics": "The media type recorded for the part, as a type and subtype with optional parameters. Omitting it leaves the part's type undeclared, which the encoder writes as application/octet-stream and leaves the reading of the file to TestRail; a supplied value becomes the staged copy's type.",
       "driver": {
         "argument": 1,
         "path": [
@@ -222,7 +224,7 @@
         "names": [
           "attachment"
         ],
-        "encoding": "Sent as the attachment part's content type, and empty when the caller supplied none."
+        "encoding": "Sent as the attachment part's content type. With none supplied the part carries application/octet-stream, which is what the encoder writes for a blob with no declared type."
       },
       "sources": [
         "driver-client"
@@ -246,7 +248,7 @@
         {
           "id": "omitted",
           "kind": "omitted",
-          "description": "Send a part with an empty media type when the caller supplied none."
+          "description": "Declare no type on the staged copy when the caller supplied none, leaving the encoder's application/octet-stream on the part."
         }
       ]
     }
@@ -409,7 +411,7 @@
             {
               "name": "attachment",
               "filename": "login.feature",
-              "content_type": "",
+              "content_type": "application/octet-stream",
               "utf8": "@APP-1\nFeature: Users cannot login with invalid credentials\n\n  Scenario: User cannot login with invalid password\n    Given I have entered \"invalid\" into the password field\n    When I click the login button\n    Then I see I am not logged in\n"
             }
           ]

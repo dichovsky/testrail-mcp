@@ -23,12 +23,12 @@
     {
       "id": "driver-paginated-list",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/paginated-list.ts",
-      "supports": "The page helper validates limit and offset before dispatch and appends them after the filters; an executor declared without request controls sends neither of them. The all helper copies only pageSize, startOffset, maxPages, maxItems, maxDurationMs and maxBytes from its options."
+      "supports": "This executor is declared without request controls, so the page helper appends neither a limit nor an offset and the aggregate is built on the envelope-only branch, whose options type excludes pageSize and startOffset outright. The all helper copies only maxPages, maxItems, maxDurationMs and maxBytes."
     },
     {
       "id": "driver-pagination",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
-      "supports": "collectAllPages validates every bound before the first request, defaults pageSize to 250 and startOffset to 0, requires the first envelope offset to equal startOffset, and stops when _links.next is null."
+      "supports": "collectAllPages validates every bound before the first request and stops when _links.next is null. On the envelope-only branch it requests no page size and no start offset, so the page size default of 250 and the first-offset check that govern a controlled list do not apply here."
     },
     {
       "id": "driver-url",
@@ -54,7 +54,7 @@
   "outer_result": {
     "driver": "page",
     "tool_data": "array",
-    "notes": "Page mode returns the server-selected page as the driver decoded it. Because the endpoint takes no controls, a continuation cannot be requested by offset and the wrapper says so; the bounded aggregate is the way to read further. All mode returns the collected array."
+    "notes": "Page mode returns the server-selected page as the driver decoded it. Because the endpoint takes no controls, a continuation cannot be requested by offset and the wrapper says so; the bounded aggregate is the way to read further. All mode returns the collected array. Because the endpoint takes no controls, an aggregate that stops at one of its bounds cannot be resumed from where it stopped: there is no offset to start from, so reading further means raising the bound rather than continuing."
   },
   "requirements": [
     {
