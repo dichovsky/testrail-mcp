@@ -1,4 +1,6 @@
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   TestRailClient,
   AddCasePayloadSchema,
@@ -12,8 +14,10 @@ import {
   MoveSectionPayloadSchema,
   UpdateCasePayloadSchema,
   UpdateCasesPayloadSchema,
+  AddSharedStepPayloadSchema,
   UpdateProjectPayloadSchema,
   UpdateSectionPayloadSchema,
+  UpdateSharedStepPayloadSchema,
   UpdateSuitePayloadSchema,
 } from '@dichovsky/testrail-api-client';
 import { describe, expect, it, vi } from 'vitest';
@@ -27,6 +31,7 @@ import {
   resolveDomains,
 } from './contracts/parameter-manifest.js';
 import type { ParameterFixture } from './contracts/parameter-manifest.js';
+import { describeBody, materializeFiles, substituteTokens } from './contracts/uploads.js';
 
 const manifests = await loadParameterManifests();
 const rawInventory: unknown = JSON.parse(await readFile(new URL('../docs/operation-inventory.json', import.meta.url), 'utf8'));
@@ -152,19 +157,24 @@ describe('independent parameter manifest format', () => {
   it('reports every unreviewed endpoint and partial endpoint separately', () => {
     const report = parameterCoverageReport(manifests, inventory);
     expect(report.completeEndpoints).toEqual([
+      'testrail_add_bdd',
       'testrail_add_case',
       'testrail_add_cases',
       'testrail_add_project',
       'testrail_add_section',
+      'testrail_add_shared_step',
       'testrail_add_suite',
       'testrail_copy_cases_to_section',
       'testrail_delete_case',
       'testrail_delete_cases',
       'testrail_delete_project',
       'testrail_delete_section',
+      'testrail_delete_shared_step',
       'testrail_delete_suite',
       'testrail_get_attachment',
       'testrail_get_attachments_for_plan_entry',
+      'testrail_get_bdd',
+      'testrail_get_bdds',
       'testrail_get_case',
       'testrail_get_case_titles',
       'testrail_get_cases',
@@ -173,18 +183,23 @@ describe('independent parameter manifest format', () => {
       'testrail_get_projects',
       'testrail_get_section',
       'testrail_get_sections',
+      'testrail_get_shared_step',
+      'testrail_get_shared_step_history',
+      'testrail_get_shared_steps',
       'testrail_get_suite',
       'testrail_get_suites',
       'testrail_move_cases_to_section',
       'testrail_move_section',
+      'testrail_update_bdd',
       'testrail_update_case',
       'testrail_update_cases',
       'testrail_update_project',
       'testrail_update_section',
+      'testrail_update_shared_step',
       'testrail_update_suite',
     ]);
     expect(report.partialEndpoints).toEqual([]);
-    expect(report.pendingEndpoints).toHaveLength(103);
+    expect(report.pendingEndpoints).toHaveLength(93);
     expect([...report.reviewedEndpoints, ...report.pendingEndpoints].sort())
       .toEqual(inventory.map(({ tool }) => tool).sort());
     expect(report.pendingEndpoints).toContain('testrail_add_run');
@@ -305,6 +320,18 @@ const caseFilterOptions = z.strictObject({
   updatedAfter: z.number().optional(), updatedBefore: z.number().optional(), updatedBy: idOrList.optional(),
   labelId: idOrList.optional(), refs: z.union([z.string(), z.array(z.string())]).optional(),
 });
+/** The BDD filters under the driver's option names, as a fixture writes them. */
+const bddFilterOptions = z.strictObject({
+  suiteId: z.number().optional(), sectionId: z.number().optional(),
+  labelId: idOrList.optional(), refs: z.union([z.string(), z.array(z.string())]).optional(),
+});
+/** The shared-step filters under the driver's option names. */
+const sharedStepFilterOptions = z.strictObject({
+  createdAfter: z.number().optional(), createdBefore: z.number().optional(), createdBy: idOrList.optional(),
+  updatedAfter: z.number().optional(), updatedBefore: z.number().optional(), refs: z.string().optional(),
+});
+/** A staged upload as the adapter hands it to the driver. */
+const uploadFile = z.strictObject({ path: z.string(), type: z.string().optional() });
 const aggregateOptions = {
   pageSize: z.number().optional(), startOffset: z.number().optional(),
   maxItems: z.number(), maxPages: z.number(), maxBytes: z.number(), maxDurationMs: z.number(),
@@ -328,6 +355,65 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
     case 'attachments.getAttachmentsForPlanEntry': {
       const [planId, entryId] = z.tuple([z.number(), z.string()]).parse(expected.driver.arguments);
       return client.attachments.getAttachmentsForPlanEntry(planId, entryId);
+    }
+    case 'bdd.getBdd': {
+      const [caseId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.bdd.getBdd(caseId);
+    }
+    case 'bdd.getBddsPage': {
+      const [projectId, options] = z.tuple([z.number(), bddFilterOptions.extend({ limit: z.number(), offset: z.number() })])
+        .parse(expected.driver.arguments);
+      return client.bdd.getBddsPage(projectId, present(options));
+    }
+    case 'bdd.getAllBdds': {
+      const [projectId, options] = z.tuple([z.number(), bddFilterOptions.extend(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.bdd.getAllBdds(projectId, present(options));
+    }
+    case 'bdd.addBdd': {
+      const [sectionId, file, filename] = z.tuple([z.number(), uploadFile, z.string()]).parse(expected.driver.arguments);
+      return client.bdd.addBdd(sectionId, present(file), filename);
+    }
+    case 'bdd.updateBdd': {
+      const [caseId, file, filename] = z.tuple([z.number(), uploadFile, z.string()]).parse(expected.driver.arguments);
+      return client.bdd.updateBdd(caseId, present(file), filename);
+    }
+    case 'sharedSteps.getSharedStep': {
+      const [sharedStepId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.sharedSteps.getSharedStep(sharedStepId);
+    }
+    case 'sharedSteps.getSharedStepsPage': {
+      const [projectId, options] = z.tuple([z.number(), sharedStepFilterOptions.extend({ limit: z.number(), offset: z.number() })])
+        .parse(expected.driver.arguments);
+      return client.sharedSteps.getSharedStepsPage(projectId, present(options));
+    }
+    case 'sharedSteps.getAllSharedSteps': {
+      const [projectId, options] = z.tuple([z.number(), sharedStepFilterOptions.extend(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.sharedSteps.getAllSharedSteps(projectId, present(options));
+    }
+    case 'sharedSteps.getSharedStepHistoryPage': {
+      const [sharedStepId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.sharedSteps.getSharedStepHistoryPage(sharedStepId);
+    }
+    case 'sharedSteps.getAllSharedStepHistory': {
+      const [sharedStepId, options] = z.tuple([z.number(), z.strictObject({
+        maxItems: z.number(), maxPages: z.number(), maxBytes: z.number(), maxDurationMs: z.number(),
+      })]).parse(expected.driver.arguments);
+      return client.sharedSteps.getAllSharedStepHistory(sharedStepId, options);
+    }
+    case 'sharedSteps.addSharedStep': {
+      const [projectId, payload] = z.tuple([z.number(), AddSharedStepPayloadSchema]).parse(expected.driver.arguments);
+      return client.sharedSteps.addSharedStep(projectId, payload);
+    }
+    case 'sharedSteps.updateSharedStep': {
+      const [sharedStepId, payload] = z.tuple([z.number(), UpdateSharedStepPayloadSchema]).parse(expected.driver.arguments);
+      return client.sharedSteps.updateSharedStep(sharedStepId, payload);
+    }
+    case 'sharedSteps.deleteSharedStep': {
+      const [sharedStepId, options] = z.tuple([z.number(), z.strictObject({ keepInCases: z.boolean() }).optional()])
+        .parse(expected.driver.arguments);
+      return options === undefined
+        ? client.sharedSteps.deleteSharedStep(sharedStepId)
+        : client.sharedSteps.deleteSharedStep(sharedStepId, options);
     }
     case 'cases.getCase': {
       const [caseId] = z.tuple([z.number()]).parse(expected.driver.arguments);
@@ -517,12 +603,18 @@ describe('published driver evidence for reviewed examples (not adapter qualifica
       if (fixture.expect.kind !== 'accepted') continue;
       const expected = fixture.expect;
       it(`${manifest.endpoint.tool}: ${fixture.id}`, async () => {
+        // An upload fixture declares its file's contents rather than a path, so the
+        // file is real for the length of this case and its token stands for that path.
+        const directory = (manifest.files ?? []).length === 0
+          ? undefined
+          : await mkdtemp(join(tmpdir(), 'testrail-mcp-fixture-'));
+        const paths = directory === undefined ? {} : await materializeFiles(manifest, directory);
+        const expectedCall = substituteTokens(expected, paths);
         const calls: { url: string; method: string | undefined; body: unknown }[] = [];
         const fetchMock = vi.fn<typeof globalThis.fetch>((input, init) => {
-          const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body;
           const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-          calls.push({ url, method: init?.method, body });
-          const response = expected.upstream_response;
+          calls.push({ url, method: init?.method, body: init?.body });
+          const response = expectedCall.upstream_response;
           return Promise.resolve(response.kind === 'json'
             ? new Response(JSON.stringify(response.body), { headers: { 'content-type': 'application/json' } })
             : response.kind === 'text'
@@ -536,24 +628,27 @@ describe('published driver evidence for reviewed examples (not adapter qualifica
           fetch: fetchMock, dnsLookup,
         });
         try {
-          const result = await invokeDriver(client, expected);
+          const result = await invokeDriver(client, expectedCall);
           expect(dnsLookup).toHaveBeenCalled();
-          expect(calls).toEqual([{
-            url: `https://fixture.testrail.test/index.php?/api/v2/${expected.wire.endpoint}`,
-            method: expected.wire.method,
-            body: expected.wire.json,
+          const sent = await Promise.all(calls.map(async (call) => ({ ...call, body: await describeBody(call.body) })));
+          expect(sent).toEqual([{
+            url: `https://fixture.testrail.test/index.php?/api/v2/${expectedCall.wire.endpoint}`,
+            method: expectedCall.wire.method,
+            // A multipart upload is compared part by part; everything else by its JSON.
+            body: expectedCall.wire.multipart ?? expectedCall.wire.json,
           }]);
-          if (expected.driver_result.kind === 'binary') {
+          if (expectedCall.driver_result.kind === 'binary') {
             expect(result).toBeInstanceOf(ArrayBuffer);
             if (!(result instanceof ArrayBuffer)) throw new Error('Expected binary driver result');
-            expect(Buffer.from(result)).toEqual(Buffer.from(expected.driver_result.utf8));
-          } else if (expected.driver_result.kind === 'void') {
+            expect(Buffer.from(result)).toEqual(Buffer.from(expectedCall.driver_result.utf8));
+          } else if (expectedCall.driver_result.kind === 'void') {
             expect(result).toBeUndefined();
           } else {
-            expect(result).toEqual(expected.driver_result.value);
+            expect(result).toEqual(expectedCall.driver_result.value);
           }
         } finally {
           client.destroy();
+          if (directory !== undefined) await rm(directory, { recursive: true, force: true });
         }
       });
     }

@@ -40,14 +40,27 @@ export function allControls(mcp: object | undefined): AllControls {
   };
 }
 
+/**
+ * The safety bounds every aggregate accepts, whichever paging the endpoint supports.
+ *
+ * A response-driven list takes only these: it has no documented request controls, so
+ * the driver chooses each page itself and a page size or start offset would be a
+ * control the endpoint does not have.
+ */
+export function safetyControlMappings(argument: number): readonly ArgumentMapping[] {
+  return [
+    { input: '_mcp.max_items', call: 'all', argument, property: 'maxItems', serialization: 'aggregate-control' },
+    { input: '_mcp.max_pages', call: 'all', argument, property: 'maxPages', serialization: 'aggregate-control' },
+    { input: '_mcp.max_bytes', call: 'all', argument, property: 'maxBytes', serialization: 'aggregate-control' },
+    { input: '_mcp.max_duration_ms', call: 'all', argument, property: 'maxDurationMs', serialization: 'aggregate-control' },
+  ];
+}
+
 /** The aggregate bounds reach the same driver option names on every controlled list. */
 export function aggregateControlMappings(argument: number): readonly ArgumentMapping[] {
   return [
     { input: '_mcp.page_size', call: 'all', argument, property: 'pageSize', serialization: 'aggregate-control' },
     { input: '_mcp.start_offset', call: 'all', argument, property: 'startOffset', serialization: 'aggregate-control' },
-    { input: '_mcp.max_items', call: 'all', argument, property: 'maxItems', serialization: 'aggregate-control' },
-    { input: '_mcp.max_pages', call: 'all', argument, property: 'maxPages', serialization: 'aggregate-control' },
-    { input: '_mcp.max_bytes', call: 'all', argument, property: 'maxBytes', serialization: 'aggregate-control' },
-    { input: '_mcp.max_duration_ms', call: 'all', argument, property: 'maxDurationMs', serialization: 'aggregate-control' },
+    ...safetyControlMappings(argument),
   ];
 }

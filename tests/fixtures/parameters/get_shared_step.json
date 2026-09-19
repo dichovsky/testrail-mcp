@@ -1,0 +1,271 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-19"
+  },
+  "endpoint": {
+    "family_id": "T03",
+    "http_method": "GET",
+    "route": "get_shared_step/{shared_step_id}",
+    "tool": "testrail_get_shared_step",
+    "driver_method": "sharedSteps.getSharedStep"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/sharedSteps.ts",
+      "supports": "getSharedStep validates the shared-step ID, places it as the only path segment and parses the reply advisorily against SharedStepSchema."
+    },
+    {
+      "id": "driver-schema",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/sharedSteps.ts",
+      "supports": "AddSharedStepPayloadSchema requires title and accepts an optional custom_steps_separated array whose entries are open records; the update payload makes both optional. SharedStepSchema requires only id and title, because the list form of the endpoint returns just those two. StepHistoryEntrySchema accepts id and user_id as either an integer or a string, since TestRail Cloud returns integers where the documentation says string."
+    },
+    {
+      "id": "testrail-shared-steps",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077919815572-Shared-Steps",
+      "supports": "get_shared_step/{shared_step_id} takes the set's ID alone and returns id, title, project_id, created_by, created_on, updated_by, updated_on, custom_steps_separated and case_ids. Each separated step carries content, additional_info, expected and refs. The endpoint requires TestRail 7.0 or later, and the separated-steps field name may differ on an instance where it was removed and recreated."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement. The identifier is the only input; there is no query or body."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "The shared step set is returned as the driver received it, including its separated steps and the cases using it; entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    }
+  ],
+  "baseline": "representative-id",
+  "parameters": [
+    {
+      "id": "shared_step_id",
+      "input_path": [
+        "shared_step_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "No coercion. The validated number is passed positionally and appears verbatim in the path.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "shared_step_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-shared-steps"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-id",
+      "input": {
+        "shared_step_id": 1
+      },
+      "covers": [
+        {
+          "parameter": "shared_step_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "sharedSteps.getSharedStep",
+          "arguments": [
+            1
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_shared_step/1"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "title": "Default Login",
+            "project_id": 2,
+            "created_by": 1,
+            "created_on": 1612555977,
+            "updated_by": 1,
+            "updated_on": 1612555977,
+            "custom_steps_separated": [
+              {
+                "content": "Navigate to the login page",
+                "additional_info": null,
+                "expected": "Login screen loads",
+                "refs": "TR-123"
+              },
+              {
+                "content": "Enter valid credentials",
+                "additional_info": null,
+                "expected": "Logged in",
+                "refs": null
+              }
+            ],
+            "case_ids": [
+              25
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "title": "Default Login",
+            "project_id": 2,
+            "created_by": 1,
+            "created_on": 1612555977,
+            "updated_by": 1,
+            "updated_on": 1612555977,
+            "custom_steps_separated": [
+              {
+                "content": "Navigate to the login page",
+                "additional_info": null,
+                "expected": "Login screen loads",
+                "refs": "TR-123"
+              },
+              {
+                "content": "Enter valid credentials",
+                "additional_info": null,
+                "expected": "Logged in",
+                "refs": null
+              }
+            ],
+            "case_ids": [
+              25
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": {
+        "shared_step_id": 9007199254740991
+      },
+      "covers": [
+        {
+          "parameter": "shared_step_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "sharedSteps.getSharedStep",
+          "arguments": [
+            9007199254740991
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_shared_step/9007199254740991"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "title": "Default Login",
+            "project_id": 2,
+            "created_by": 1,
+            "created_on": 1612555977,
+            "updated_by": 1,
+            "updated_on": 1612555977,
+            "custom_steps_separated": [
+              {
+                "content": "Navigate to the login page",
+                "additional_info": null,
+                "expected": "Login screen loads",
+                "refs": "TR-123"
+              },
+              {
+                "content": "Enter valid credentials",
+                "additional_info": null,
+                "expected": "Logged in",
+                "refs": null
+              }
+            ],
+            "case_ids": [
+              25
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "title": "Default Login",
+            "project_id": 2,
+            "created_by": 1,
+            "created_on": 1612555977,
+            "updated_by": 1,
+            "updated_on": 1612555977,
+            "custom_steps_separated": [
+              {
+                "content": "Navigate to the login page",
+                "additional_info": null,
+                "expected": "Login screen loads",
+                "refs": "TR-123"
+              },
+              {
+                "content": "Enter valid credentials",
+                "additional_info": null,
+                "expected": "Logged in",
+                "refs": null
+              }
+            ],
+            "case_ids": [
+              25
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "shared_step_id": 1,
+        "project_id": 2
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

@@ -1,0 +1,903 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-19"
+  },
+  "endpoint": {
+    "family_id": "T03",
+    "http_method": "POST",
+    "route": "add_shared_step/{project_id}",
+    "tool": "testrail_add_shared_step",
+    "driver_method": "sharedSteps.addSharedStep"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/sharedSteps.ts",
+      "supports": "addSharedStep validates the project ID, places it as the only path segment of add_shared_step, forwards the JSON payload unchanged and parses the reply advisorily against SharedStepSchema."
+    },
+    {
+      "id": "driver-schema",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/sharedSteps.ts",
+      "supports": "AddSharedStepPayloadSchema requires title and accepts an optional custom_steps_separated array whose entries are open records; UpdateSharedStepPayloadSchema makes both optional, and its documentation records that TestRail accepts an empty object as a no-op. Neither is parsed by the public method, so every payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "driver-common",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/common.ts",
+      "supports": "zObject uses passthrough, so the declared payload type admits unknown and custom_ properties alike; the MCP boundary must reject ordinary unknown names separately."
+    },
+    {
+      "id": "testrail-shared-steps",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077919815572-Shared-Steps",
+      "supports": "add_shared_step/{project_id} requires title and accepts an optional custom_steps_separated array; each entry should carry at least one of content, additional_info, expected or refs. update_shared_step/{shared_step_id} supports the same fields and replaces every existing step when custom_steps_separated is submitted. Both answer with the set in the get_shared_step format. The separated-steps field carries the default system name, which differs on an instance where the field was removed and recreated. The request-body tables of both methods also repeat the list filters of get_shared_steps, which the driver's payloads do not carry and which TestRail's own examples never send."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "flat_custom_prefix",
+    "notes": "Strictness is an MCP boundary requirement at every depth, and here it is the only enforcement: the driver forwards this payload without parsing it. Flat custom_ names are admitted because TestRail's separated-steps field is a custom field whose system name is per-instance; step entries themselves stay open, since TestRail accepts a step carrying only some of its fields."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the created set in the get_shared_step format, returned as the driver received it; entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-body",
+      "kind": "invalid",
+      "description": "Reject an unknown ordinary body field rather than forwarding it; only custom_ names extend the payload."
+    },
+    {
+      "id": "renamed-steps-field",
+      "kind": "valid",
+      "description": "Accept a flat custom_ field beside the documented one, so an instance whose separated-steps field was recreated under another system name remains usable."
+    }
+  ],
+  "baseline": "full-body",
+  "parameters": [
+    {
+      "id": "project_id",
+      "input_path": [
+        "project_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "No coercion. The project the set is created in; passed positionally and sent verbatim as the only path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "project_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-shared-steps"
+      ]
+    },
+    {
+      "id": "body",
+      "input_path": [
+        "body"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "object"
+      },
+      "semantics": "No coercion. The JSON object is passed as the driver's payload argument and sent unchanged.",
+      "driver": {
+        "argument": 1,
+        "path": []
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "body"
+        ],
+        "encoding": "JSON object sent unchanged."
+      },
+      "sources": [
+        "driver-module",
+        "driver-schema"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the object at driver argument 1 as the JSON request body."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an object."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a body that is not an object before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing body."
+        }
+      ]
+    },
+    {
+      "id": "body.title",
+      "input_path": [
+        "body",
+        "title"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The title of the set, required by TestRail. No coercion.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "title"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "title"
+        ],
+        "encoding": "JSON string under title."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-shared-steps"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the title under its own name in the body."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string title before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a body without a title."
+        }
+      ]
+    },
+    {
+      "id": "body.custom_steps_separated",
+      "input_path": [
+        "body",
+        "custom_steps_separated"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      },
+      "semantics": "The separated steps, each an object carrying content, expected, additional_info or refs. The entries are forwarded as given, since TestRail allows a step to supply only some of those fields and an administrator may have renamed the field itself.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "custom_steps_separated"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "custom_steps_separated"
+        ],
+        "encoding": "JSON array of objects under custom_steps_separated."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-shared-steps"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every entry in order under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept entries carrying all four documented fields and entries carrying only one."
+        },
+        {
+          "id": "empty",
+          "kind": "valid",
+          "description": "Accept an empty array and send it as such, which clears the steps."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject an entry that is not an object before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no steps when the caller did not supply them."
+        }
+      ]
+    },
+    {
+      "id": "body.custom_*",
+      "input_path": [
+        "body",
+        "custom_*"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {},
+      "semantics": "Any JSON value under a flat custom_ name. TestRail's separated-steps field is itself a custom field whose system name differs on an instance where it was removed and recreated, so the payload admits those names rather than refusing a set of steps it cannot name in advance.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "custom_*"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "custom_*"
+        ],
+        "encoding": "Flat JSON properties retained under their exact names."
+      },
+      "sources": [
+        "driver-schema",
+        "driver-common",
+        "testrail-shared-steps"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every custom_ property flat in the body."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a renamed separated-steps field."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject an ordinary unknown key used in place of a custom_ key."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no custom properties when the caller supplied none."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "full-body",
+      "input": {
+        "project_id": 2,
+        "body": {
+          "title": "Default Login",
+          "custom_steps_separated": [
+            {
+              "content": "Navigate to the login page",
+              "additional_info": "Must be a new browser session",
+              "expected": "Login screen loads",
+              "refs": "TR-123"
+            },
+            {
+              "content": "Enter valid credentials"
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "project_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.title",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.custom_steps_separated",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "sharedSteps.addSharedStep",
+          "arguments": [
+            2,
+            {
+              "title": "Default Login",
+              "custom_steps_separated": [
+                {
+                  "content": "Navigate to the login page",
+                  "additional_info": "Must be a new browser session",
+                  "expected": "Login screen loads",
+                  "refs": "TR-123"
+                },
+                {
+                  "content": "Enter valid credentials"
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_shared_step/2",
+          "json": {
+            "title": "Default Login",
+            "custom_steps_separated": [
+              {
+                "content": "Navigate to the login page",
+                "additional_info": "Must be a new browser session",
+                "expected": "Login screen loads",
+                "refs": "TR-123"
+              },
+              {
+                "content": "Enter valid credentials"
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "title": "Default Login",
+            "project_id": 2,
+            "created_by": 1,
+            "created_on": 1612555977,
+            "updated_by": 1,
+            "updated_on": 1612555977,
+            "custom_steps_separated": [
+              {
+                "content": "Navigate to the login page",
+                "additional_info": "Must be a new browser session",
+                "expected": "Login screen loads",
+                "refs": "TR-123"
+              },
+              {
+                "content": "Enter valid credentials"
+              }
+            ],
+            "case_ids": [
+              25
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "title": "Default Login",
+            "project_id": 2,
+            "created_by": 1,
+            "created_on": 1612555977,
+            "updated_by": 1,
+            "updated_on": 1612555977,
+            "custom_steps_separated": [
+              {
+                "content": "Navigate to the login page",
+                "additional_info": "Must be a new browser session",
+                "expected": "Login screen loads",
+                "refs": "TR-123"
+              },
+              {
+                "content": "Enter valid credentials"
+              }
+            ],
+            "case_ids": [
+              25
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "title-only",
+      "input": {
+        "project_id": 9007199254740991,
+        "body": {
+          "title": "Login"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "project_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body.custom_steps_separated",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.custom_*",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "sharedSteps.addSharedStep",
+          "arguments": [
+            9007199254740991,
+            {
+              "title": "Login"
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_shared_step/9007199254740991",
+          "json": {
+            "title": "Login"
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "title": "Default Login",
+            "project_id": 2,
+            "created_by": 1,
+            "created_on": 1612555977,
+            "updated_by": 1,
+            "updated_on": 1612555977,
+            "custom_steps_separated": [
+              {
+                "content": "Navigate to the login page",
+                "additional_info": "Must be a new browser session",
+                "expected": "Login screen loads",
+                "refs": "TR-123"
+              },
+              {
+                "content": "Enter valid credentials"
+              }
+            ],
+            "case_ids": [
+              25
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "title": "Default Login",
+            "project_id": 2,
+            "created_by": 1,
+            "created_on": 1612555977,
+            "updated_by": 1,
+            "updated_on": 1612555977,
+            "custom_steps_separated": [
+              {
+                "content": "Navigate to the login page",
+                "additional_info": "Must be a new browser session",
+                "expected": "Login screen loads",
+                "refs": "TR-123"
+              },
+              {
+                "content": "Enter valid credentials"
+              }
+            ],
+            "case_ids": [
+              25
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "empty-steps",
+      "input": {
+        "project_id": 2,
+        "body": {
+          "title": "Login",
+          "custom_steps_separated": []
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.custom_steps_separated",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "sharedSteps.addSharedStep",
+          "arguments": [
+            2,
+            {
+              "title": "Login",
+              "custom_steps_separated": []
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_shared_step/2",
+          "json": {
+            "title": "Login",
+            "custom_steps_separated": []
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "title": "Default Login",
+            "project_id": 2,
+            "created_by": 1,
+            "created_on": 1612555977,
+            "updated_by": 1,
+            "updated_on": 1612555977,
+            "custom_steps_separated": [
+              {
+                "content": "Navigate to the login page",
+                "additional_info": "Must be a new browser session",
+                "expected": "Login screen loads",
+                "refs": "TR-123"
+              },
+              {
+                "content": "Enter valid credentials"
+              }
+            ],
+            "case_ids": [
+              25
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "title": "Default Login",
+            "project_id": 2,
+            "created_by": 1,
+            "created_on": 1612555977,
+            "updated_by": 1,
+            "updated_on": 1612555977,
+            "custom_steps_separated": [
+              {
+                "content": "Navigate to the login page",
+                "additional_info": "Must be a new browser session",
+                "expected": "Login screen loads",
+                "refs": "TR-123"
+              },
+              {
+                "content": "Enter valid credentials"
+              }
+            ],
+            "case_ids": [
+              25
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "renamed-steps-field",
+      "input": {
+        "project_id": 2,
+        "body": {
+          "title": "Login",
+          "custom_steps_renamed": [
+            {
+              "content": "Enter valid credentials"
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.custom_*",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "$input",
+          "requirements": [
+            "renamed-steps-field"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "sharedSteps.addSharedStep",
+          "arguments": [
+            2,
+            {
+              "title": "Login",
+              "custom_steps_renamed": [
+                {
+                  "content": "Enter valid credentials"
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_shared_step/2",
+          "json": {
+            "title": "Login",
+            "custom_steps_renamed": [
+              {
+                "content": "Enter valid credentials"
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "title": "Default Login",
+            "project_id": 2,
+            "created_by": 1,
+            "created_on": 1612555977,
+            "updated_by": 1,
+            "updated_on": 1612555977,
+            "custom_steps_separated": [
+              {
+                "content": "Navigate to the login page",
+                "additional_info": "Must be a new browser session",
+                "expected": "Login screen loads",
+                "refs": "TR-123"
+              },
+              {
+                "content": "Enter valid credentials"
+              }
+            ],
+            "case_ids": [
+              25
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "title": "Default Login",
+            "project_id": 2,
+            "created_by": 1,
+            "created_on": 1612555977,
+            "updated_by": 1,
+            "updated_on": 1612555977,
+            "custom_steps_separated": [
+              {
+                "content": "Navigate to the login page",
+                "additional_info": "Must be a new browser session",
+                "expected": "Login screen loads",
+                "refs": "TR-123"
+              },
+              {
+                "content": "Enter valid credentials"
+              }
+            ],
+            "case_ids": [
+              25
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "missing-body",
+      "input": {
+        "project_id": 2
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-body",
+      "input": {
+        "project_id": 2,
+        "body": []
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-title",
+      "input": {
+        "project_id": 2,
+        "body": {}
+      },
+      "covers": [
+        {
+          "parameter": "body.title",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-title",
+      "input": {
+        "project_id": 2,
+        "body": {
+          "title": 7
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.title",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-step",
+      "input": {
+        "project_id": 2,
+        "body": {
+          "title": "Login",
+          "custom_steps_separated": [
+            "Open the page"
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.custom_steps_separated",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-body",
+      "input": {
+        "project_id": 2,
+        "body": {
+          "title": "Login",
+          "refs": "TR-1"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-body"
+          ]
+        },
+        {
+          "parameter": "body.custom_*",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "project_id": 2,
+        "body": {
+          "title": "Login"
+        },
+        "title": "Login"
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

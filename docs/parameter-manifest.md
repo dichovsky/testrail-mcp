@@ -6,19 +6,24 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 
 | Endpoint | Reviewed parameters | Fixture cases | Review status |
 | --- | ---: | ---: | --- |
+| `add_bdd` | 4 | 9 | Complete input manifest |
 | `add_case` | 12 | 16 | Complete input manifest |
 | `add_cases` | 12 | 18 | Complete input manifest |
 | `add_project` | 4 | 10 | Complete input manifest |
 | `add_section` | 5 | 10 | Complete input manifest |
+| `add_shared_step` | 5 | 11 | Complete input manifest |
 | `add_suite` | 3 | 9 | Complete input manifest |
 | `copy_cases_to_section` | 3 | 6 | Complete input manifest |
 | `delete_case` | 2 | 7 | Complete input manifest |
 | `delete_cases` | 5 | 11 | Complete input manifest |
 | `delete_project` | 1 | 3 | Complete input manifest |
 | `delete_section` | 2 | 7 | Complete input manifest |
+| `delete_shared_step` | 2 | 7 | Complete input manifest |
 | `delete_suite` | 2 | 7 | Complete input manifest |
 | `get_attachment` | 1 | 12 | Complete input manifest |
 | `get_attachments_for_plan_entry` | 2 | 11 | Complete input manifest |
+| `get_bdd` | 1 | 4 | Complete input manifest |
+| `get_bdds` | 14 | 19 | Complete input manifest |
 | `get_case` | 1 | 3 | Complete input manifest |
 | `get_case_titles` | 1 | 5 | Complete input manifest |
 | `get_cases` | 25 | 24 | Complete input manifest |
@@ -27,17 +32,22 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `get_projects` | 10 | 18 | Complete input manifest |
 | `get_section` | 1 | 3 | Complete input manifest |
 | `get_sections` | 11 | 18 | Complete input manifest |
+| `get_shared_step` | 1 | 3 | Complete input manifest |
+| `get_shared_step_history` | 6 | 10 | Complete input manifest |
+| `get_shared_steps` | 16 | 19 | Complete input manifest |
 | `get_suite` | 1 | 3 | Complete input manifest |
 | `get_suites` | 10 | 16 | Complete input manifest |
 | `move_cases_to_section` | 4 | 6 | Complete input manifest |
 | `move_section` | 3 | 15 | Complete input manifest |
+| `update_bdd` | 4 | 9 | Complete input manifest |
 | `update_case` | 13 | 15 | Complete input manifest |
 | `update_cases` | 14 | 15 | Complete input manifest |
 | `update_project` | 11 | 29 | Complete input manifest |
 | `update_section` | 3 | 8 | Complete input manifest |
+| `update_shared_step` | 5 | 10 | Complete input manifest |
 | `update_suite` | 3 | 8 | Complete input manifest |
 
-Case counts are authored cases; a parameter that references the shared domain library ([tests/fixtures/domains.json](../tests/fixtures/domains.json)) derives further rejections at load, one per proven invalid value. There are **103 endpoints without a manifest**, **no partial manifests**, and **30 complete input manifests**. A partial file names its remaining fields under `review.pending`. `parameterCoverageReport()` returns the exact sorted tool names in each group; its test compares their union with all 133 inventory names. Completing a manifest requires reviewing the endpoint's entire parameter surface against sources, not merely deleting its pending text.
+Case counts are authored cases; a parameter that references the shared domain library ([tests/fixtures/domains.json](../tests/fixtures/domains.json)) derives further rejections at load, one per proven invalid value. There are **93 endpoints without a manifest**, **no partial manifests**, and **40 complete input manifests**. A partial file names its remaining fields under `review.pending`. `parameterCoverageReport()` returns the exact sorted tool names in each group; its test compares their union with all 133 inventory names. Completing a manifest requires reviewing the endpoint's entire parameter surface against sources, not merely deleting its pending text.
 
 ## Format and integration
 
@@ -57,7 +67,7 @@ Endpoints without inputs use `parameters: []`, an accepted empty-object fixture 
 
 `parameterCoverageReport(manifests, inventory)` lists reviewed, complete, partial and absent endpoints. A family contract suite should load its files, validate each literal input with both the production runtime schema and emitted JSON Schema, assert rejected inputs cause no driver invocation, and compare accepted calls and injected-fetch requests with the fixture's literal expectations. Runtime schemas, generated schema acceptance, driver arguments and wire serialization are separate assertions. Do not generate expected requests or domains from the registry being tested.
 
-The format also represents text responses, JSON/void outer variants and multipart fields. Multipart expectations describe decoded part name, filename, media type and synthetic UTF-8 contents, independently of a generated boundary string. Optional `files` entries reserve explicit fixture tokens, filenames and contents for the T12/F07 disposable-file harness. That harness must define token substitution and staged-file assertions when those examples are added; no current fixture creates or uploads a local file. A case cannot declare both JSON and multipart request bodies.
+The format also represents text responses, JSON/void outer variants and multipart fields. `get_bdd` is the one endpoint of this API that answers with text rather than JSON, and `get_shared_step_history` the one whose paging is response-driven: it documents no request controls, so its fixtures send none and its page result says a continuation cannot be requested by offset. Multipart expectations describe decoded part name, filename, media type and synthetic UTF-8 contents, independently of a generated boundary string. `files` entries declare the synthetic files an upload fixture needs: a token, a filename and the contents. A manifest cannot name an absolute path, because it is authored by hand and read on every machine that runs the suite, so [tests/contracts/uploads.ts](../tests/contracts/uploads.ts) materializes each declared file into a temporary directory for the length of one case and substitutes `{{token}}` with that path wherever it appears, in the fixture's input and in its expected driver arguments alike. The BDD upload examples are the first to use this. A multipart request body is compared part by part rather than as an opaque object, since the boundary string is generated per request and says nothing about what was sent; a part whose media type the caller left unset records the empty string. A case cannot declare both JSON and multipart request bodies.
 
 ## Reviewed source decisions
 

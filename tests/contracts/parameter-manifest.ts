@@ -25,11 +25,13 @@ const acceptedSchema = z.strictObject({
     // Literal TestRail endpoint including encoded path-style query parameters.
     endpoint: identifier,
     json: z.json().optional(),
-    // Inspect multipart fields independently of the generated boundary string.
+    // Inspect multipart fields independently of the generated boundary string. A part
+    // whose media type the caller left unset is sent with an empty one, which a fixture
+    // records as the empty string rather than leaving unsaid.
     multipart: z.array(z.strictObject({
       name: identifier,
       filename: identifier,
-      content_type: identifier,
+      content_type: z.string(),
       utf8: z.string(),
     })).min(1).optional(),
   }),

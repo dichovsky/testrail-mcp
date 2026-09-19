@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-19"
+  },
+  "endpoint": {
+    "family_id": "T03",
+    "http_method": "GET",
+    "route": "get_bdd/{case_id}",
+    "tool": "testrail_get_bdd",
+    "driver_method": "bdd.getBdd"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/bdd.ts",
+      "supports": "getBdd validates the case ID, places it as the only path segment and dispatches with responseKind 'text', which keeps the retry, rate-limit and timeout pipeline of a JSON read but reads the body as text. The method is documented as returning the feature file body, an empty string when the case has no scenario."
+    },
+    {
+      "id": "driver-client",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/client-core.ts",
+      "supports": "The text pipeline returns the raw response body without parsing it, so nothing between TestRail and the caller can alter the Gherkin."
+    },
+    {
+      "id": "testrail-bdd",
+      "url": "https://support.testrail.com/hc/en-us/articles/7832161593620-BDDs",
+      "supports": "get_bdd/{case_id} exports a case's BDD scenario as a .feature file and takes the case ID alone. Its response is the feature text itself rather than JSON."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement. The identifier is the only input; there is no query or body."
+  },
+  "outer_result": {
+    "driver": "text",
+    "tool_data": "text",
+    "notes": "The only endpoint of this API that answers with text. The Gherkin is carried through unchanged, including an empty string for a case with no scenario, which is a real answer rather than an error. There is no entity schema to drift-check text against."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "empty-scenario",
+      "kind": "valid",
+      "description": "Report a case with no scenario as the empty string the endpoint returns, rather than as an error or a null."
+    }
+  ],
+  "baseline": "representative-id",
+  "parameters": [
+    {
+      "id": "case_id",
+      "input_path": [
+        "case_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "No coercion. The validated number is passed positionally and appears verbatim in the path.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "case_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-bdd"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-id",
+      "input": {
+        "case_id": 2133
+      },
+      "covers": [
+        {
+          "parameter": "case_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "bdd.getBdd",
+          "arguments": [
+            2133
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_bdd/2133"
+        },
+        "upstream_response": {
+          "kind": "text",
+          "text": "@APP-1\nFeature: Users cannot login with invalid credentials\n\n  Scenario: User cannot login with invalid password\n    Given I have entered \"invalid\" into the password field\n    When I click the login button\n    Then I see I am not logged in\n"
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": "@APP-1\nFeature: Users cannot login with invalid credentials\n\n  Scenario: User cannot login with invalid password\n    Given I have entered \"invalid\" into the password field\n    When I click the login button\n    Then I see I am not logged in\n"
+        }
+      }
+    },
+    {
+      "id": "no-scenario",
+      "input": {
+        "case_id": 2134
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "empty-scenario"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "bdd.getBdd",
+          "arguments": [
+            2134
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_bdd/2134"
+        },
+        "upstream_response": {
+          "kind": "text",
+          "text": ""
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": ""
+        }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": {
+        "case_id": 9007199254740991
+      },
+      "covers": [
+        {
+          "parameter": "case_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "bdd.getBdd",
+          "arguments": [
+            9007199254740991
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_bdd/9007199254740991"
+        },
+        "upstream_response": {
+          "kind": "text",
+          "text": ""
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": ""
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "case_id": 2133,
+        "section_id": 188
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}
