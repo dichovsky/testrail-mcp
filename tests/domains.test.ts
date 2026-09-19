@@ -1,7 +1,7 @@
 import { TestRailClient } from '@dichovsky/testrail-api-client';
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
-import { nonnegativeIntegerSchema, positiveIdSchema } from '../src/contracts/inputs.js';
+import { aggregateLimitDefaults, nonnegativeIntegerSchema, positiveIdSchema } from '../src/contracts/inputs.js';
 import { auditDomainLibrary, loadDomainLibrary, type ParameterDomain } from './contracts/domains.js';
 
 const library = await loadDomainLibrary();
@@ -30,16 +30,29 @@ async function probe(client: TestRailClient, binding: string, value: unknown): P
     case 'projects.getProjectsPage':
       await client.projects.getProjectsPage(value as { limit?: number; offset?: number });
       return;
+    case 'projects.getAllProjects':
+      await client.projects.getAllProjects(value as { pageSize?: number; maxItems?: number });
+      return;
     default:
       throw new Error(`No probe harness for binding ${binding}`);
   }
 }
 
-/** Page controls are carried in an options object; an identifier is positional. */
+/** Controls are carried in an options object under the driver's name; an identifier is positional. */
+const optionNames: Readonly<Record<string, string>> = {
+  pagination_limit: 'limit',
+  pagination_offset: 'offset',
+  aggregate_page_size: 'pageSize',
+  aggregate_start_offset: 'startOffset',
+  aggregate_max_items: 'maxItems',
+  aggregate_max_pages: 'maxPages',
+  aggregate_max_bytes: 'maxBytes',
+  aggregate_max_duration_ms: 'maxDurationMs',
+};
+
 function positioned(name: string, value: unknown): unknown {
-  if (name === 'pagination_limit') return { limit: value };
-  if (name === 'pagination_offset') return { offset: value };
-  return value;
+  const option = optionNames[name];
+  return option === undefined ? value : { [option]: value };
 }
 
 /** The adapter schema each domain claims to describe. */
@@ -47,6 +60,12 @@ const adapterSchema: Readonly<Record<string, z.ZodType>> = {
   positive_id: positiveIdSchema,
   pagination_limit: positiveIdSchema.max(250),
   pagination_offset: nonnegativeIntegerSchema,
+  aggregate_page_size: positiveIdSchema.max(250),
+  aggregate_start_offset: nonnegativeIntegerSchema,
+  aggregate_max_items: positiveIdSchema.max(aggregateLimitDefaults.max_items),
+  aggregate_max_pages: positiveIdSchema.max(aggregateLimitDefaults.max_pages),
+  aggregate_max_bytes: positiveIdSchema.max(aggregateLimitDefaults.max_bytes),
+  aggregate_max_duration_ms: positiveIdSchema.max(aggregateLimitDefaults.max_duration_ms),
 };
 
 describe('shared parameter domains', () => {

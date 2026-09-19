@@ -1,4 +1,7 @@
-import { AddProjectPayloadSchema, ProjectSchema, UpdateProjectPayloadSchema } from '@dichovsky/testrail-api-client';
+import {
+  AddProjectPayloadSchema, AddSuitePayloadSchema, ProjectSchema, SuiteSchema,
+  UpdateProjectPayloadSchema, UpdateSuitePayloadSchema,
+} from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
 import { createListInput, payloadInput, positiveIdSchema, strictObject } from '../../contracts/inputs.js';
 import { driverAllOptions, pageRequestDefaults, type AllControls } from '../../contracts/pagination.js';
@@ -195,5 +198,153 @@ export const deleteProject = defineOperation({
   retry: 'json-write',
 } as const satisfies OperationDefinition);
 
+const getSuiteInput = strictObject({ suite_id: positiveIdSchema });
+
+export const getSuite = defineOperation({
+  token: 'get_suite',
+  method: 'GET',
+  route: 'get_suite/{suite_id}',
+  family: 'T01',
+  driverBinding: 'suites.getSuite',
+  summary: 'Get a single TestRail test suite by its ID.',
+  inputSchema: getSuiteInput,
+  argumentMap: [{ input: 'suite_id', call: 'single', argument: 0, serialization: 'path' }],
+  response: { shape: 'record', outerSchema: recordResponse, entitySchema: SuiteSchema },
+  pagination: {
+    kind: 'none',
+    single: driverCall(getSuiteInput, 'suites.getSuite', (method, input) => method(input.suite_id)),
+  },
+  files: { kind: 'none' },
+  effects: { testRail: 'read', destructive: false, idempotent: true },
+  retry: 'ordinary-read',
+} as const satisfies OperationDefinition);
+
+const getSuitesInput = createListInput({ path: { project_id: positiveIdSchema }, pagination: 'controlled' });
+
+export const getSuites = defineOperation({
+  token: 'get_suites',
+  method: 'GET',
+  route: 'get_suites/{project_id}',
+  family: 'T01',
+  driverBinding: 'suites.getSuites',
+  summary: 'List the test suites of a TestRail project.',
+  inputSchema: getSuitesInput,
+  argumentMap: [
+    { input: 'project_id', call: 'page', argument: 0, serialization: 'path' },
+    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
+    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
+    { input: 'project_id', call: 'all', argument: 0, serialization: 'path' },
+    { input: '_mcp.page_size', call: 'all', argument: 1, property: 'pageSize', serialization: 'aggregate-control' },
+    { input: '_mcp.start_offset', call: 'all', argument: 1, property: 'startOffset', serialization: 'aggregate-control' },
+    { input: '_mcp.max_items', call: 'all', argument: 1, property: 'maxItems', serialization: 'aggregate-control' },
+    { input: '_mcp.max_pages', call: 'all', argument: 1, property: 'maxPages', serialization: 'aggregate-control' },
+    { input: '_mcp.max_bytes', call: 'all', argument: 1, property: 'maxBytes', serialization: 'aggregate-control' },
+    { input: '_mcp.max_duration_ms', call: 'all', argument: 1, property: 'maxDurationMs', serialization: 'aggregate-control' },
+  ],
+  response: { shape: 'page', outerSchema: pageResponse, entitySchema: SuiteSchema },
+  pagination: {
+    kind: 'controlled',
+    page: driverCall(getSuitesInput, 'suites.getSuitesPage', (method, input) => method(
+      input.project_id,
+      pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
+    )),
+    all: driverCall(getSuitesInput, 'suites.getAllSuites', (method, input, context) => method(
+      input.project_id,
+      driverAllOptions(allControls(input._mcp), context.limits),
+    )),
+  },
+  files: { kind: 'none' },
+  effects: { testRail: 'read', destructive: false, idempotent: true },
+  retry: 'ordinary-read',
+} as const satisfies OperationDefinition);
+
+const addSuiteInput = strictObject({ project_id: positiveIdSchema, body: payloadInput(AddSuitePayloadSchema) });
+
+export const addSuite = defineOperation({
+  token: 'add_suite',
+  method: 'POST',
+  route: 'add_suite/{project_id}',
+  family: 'T01',
+  driverBinding: 'suites.addSuite',
+  summary: 'Create a test suite in a TestRail project.',
+  inputSchema: addSuiteInput,
+  argumentMap: [
+    { input: 'project_id', call: 'single', argument: 0, serialization: 'path' },
+    { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
+  ],
+  response: { shape: 'record', outerSchema: recordResponse, entitySchema: SuiteSchema },
+  pagination: {
+    kind: 'none',
+    single: driverCall(addSuiteInput, 'suites.addSuite', (method, input) => method(input.project_id, input.body)),
+  },
+  files: { kind: 'none' },
+  // Repeating the call creates another suite, so this is not idempotent.
+  effects: { testRail: 'write', destructive: false, idempotent: false },
+  retry: 'json-write',
+} as const satisfies OperationDefinition);
+
+const updateSuiteInput = strictObject({ suite_id: positiveIdSchema, body: payloadInput(UpdateSuitePayloadSchema) });
+
+export const updateSuite = defineOperation({
+  token: 'update_suite',
+  method: 'POST',
+  route: 'update_suite/{suite_id}',
+  family: 'T01',
+  driverBinding: 'suites.updateSuite',
+  summary: 'Update a TestRail test suite. Supplied fields replace their current values.',
+  inputSchema: updateSuiteInput,
+  argumentMap: [
+    { input: 'suite_id', call: 'single', argument: 0, serialization: 'path' },
+    { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
+  ],
+  response: { shape: 'record', outerSchema: recordResponse, entitySchema: SuiteSchema },
+  pagination: {
+    kind: 'none',
+    single: driverCall(updateSuiteInput, 'suites.updateSuite', (method, input) => method(input.suite_id, input.body)),
+  },
+  files: { kind: 'none' },
+  // Applying the same field values again leaves the suite in the same state.
+  effects: { testRail: 'write', destructive: false, idempotent: true },
+  retry: 'json-write',
+} as const satisfies OperationDefinition);
+
+const deleteSuiteInput = strictObject({
+  suite_id: positiveIdSchema,
+  query: strictObject({ soft: z.boolean().optional() }).optional(),
+});
+
+export const deleteSuite = defineOperation({
+  token: 'delete_suite',
+  method: 'POST',
+  route: 'delete_suite/{suite_id}',
+  family: 'T01',
+  driverBinding: 'suites.deleteSuite',
+  summary: 'Delete a TestRail test suite with its sections, cases and active runs and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later).',
+  inputSchema: deleteSuiteInput,
+  argumentMap: [
+    { input: 'suite_id', call: 'single', argument: 0, serialization: 'path' },
+    { input: 'query.soft', call: 'single', argument: 1, property: 'soft', serialization: 'query-scalar' },
+  ],
+  // Void after a deletion; TestRail's affected-entity counts after a preview. The
+  // counts vary by TestRail version and are the driver's own parse, so they are not
+  // drift-checked against an entity schema here.
+  response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null },
+  pagination: {
+    kind: 'none',
+    single: driverCall(deleteSuiteInput, 'suites.deleteSuite', (method, input) => {
+      const soft = flag(input.query, 'soft');
+      return soft === undefined ? method(input.suite_id) : method(input.suite_id, { soft });
+    }),
+  },
+  files: { kind: 'none' },
+  // Removing a suite removes its sections, cases and active runs with it. A preview
+  // is possible, but the tool as a whole is destructive and never idempotent.
+  effects: { testRail: 'write', destructive: true, idempotent: false },
+  retry: 'json-write',
+} as const satisfies OperationDefinition);
+
 /** Registered in tool-name order by the registry; listed here in reviewed order. */
-export const t01 = [getProject, getProjects, addProject, updateProject, deleteProject] as const;
+export const t01 = [
+  getProject, getProjects, addProject, updateProject, deleteProject,
+  getSuite, getSuites, addSuite, updateSuite, deleteSuite,
+] as const;

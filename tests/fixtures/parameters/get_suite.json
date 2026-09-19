@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-19"
+  },
+  "endpoint": {
+    "family_id": "T01",
+    "http_method": "GET",
+    "route": "get_suite/{suite_id}",
+    "tool": "testrail_get_suite",
+    "driver_method": "suites.getSuite"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/suites.ts",
+      "supports": "getSuite validates the suite ID, places it as the only path segment and returns the suite record unchanged."
+    },
+    {
+      "id": "testrail-suites",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077936624276-Suites",
+      "supports": "get_suite takes the suite ID as its only path segment, returns one suite and does not support pagination."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement. The driver accepts the ID positionally and performs no top-level object validation of its own."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "The driver returns the suite object. Entity fields are validated advisorily, so an unexpected field type warns rather than failing the call."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    }
+  ],
+  "baseline": "representative-id",
+  "parameters": [
+    {
+      "id": "suite_id",
+      "input_path": ["suite_id"],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "No coercion. The validated number is passed positionally and appears verbatim in the path.",
+      "driver": { "argument": 0, "path": [] },
+      "wire": {
+        "location": "path",
+        "names": ["suite_id"],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": ["driver-module", "testrail-suites"]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-id",
+      "input": { "suite_id": 3 },
+      "covers": [{ "parameter": "suite_id", "requirements": ["mapping", "valid"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "suites.getSuite", "arguments": [3] },
+        "wire": { "method": "GET", "endpoint": "get_suite/3" },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "id": 3, "name": "Setup & Installation", "description": "Tests covering installation and initial setup.", "project_id": 7, "is_master": false, "is_baseline": false, "is_completed": false, "completed_on": null, "url": "https://fixture.testrail.test/index.php?/suites/view/3" }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": { "id": 3, "name": "Setup & Installation", "description": "Tests covering installation and initial setup.", "project_id": 7, "is_master": false, "is_baseline": false, "is_completed": false, "completed_on": null, "url": "https://fixture.testrail.test/index.php?/suites/view/3" }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": { "suite_id": 9007199254740991 },
+      "covers": [{ "parameter": "suite_id", "requirements": ["upper-bound"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "suites.getSuite", "arguments": [9007199254740991] },
+        "wire": { "method": "GET", "endpoint": "get_suite/9007199254740991" },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "id": 9007199254740991, "name": "Boundary suite", "description": null, "project_id": 7, "is_master": false, "is_baseline": false, "is_completed": false, "completed_on": null, "url": "https://fixture.testrail.test/index.php?/suites/view/9007199254740991" }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": { "id": 9007199254740991, "name": "Boundary suite", "description": null, "project_id": 7, "is_master": false, "is_baseline": false, "is_completed": false, "completed_on": null, "url": "https://fixture.testrail.test/index.php?/suites/view/9007199254740991" }
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": { "suite_id": 3, "unexpected": true },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    }
+  ]
+}
