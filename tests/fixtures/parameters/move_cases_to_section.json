@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "review": { "status": "complete", "pending": [], "driver_version": "7.2.0", "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-19" },
+  "endpoint": { "family_id": "T02", "http_method": "POST", "route": "move_cases_to_section/{section_id}", "tool": "testrail_move_cases_to_section", "driver_method": "cases.moveCasesToSection" },
+  "sources": [
+    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts", "supports": "moveCasesToSection validates the section ID, sends it as the only path segment, forwards the JSON body unchanged and resolves with no value. The driver documents suite_id as required even for a same-suite move and section_id as path-only, never in the body." },
+    { "id": "driver-schema", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/cases.ts", "supports": "MoveCasesToSectionPayloadSchema declares case_ids as an array of numbers and suite_id as a required number." },
+    { "id": "testrail-cases", "url": "https://support.testrail.com/hc/en-us/articles/7077292642580-Cases", "supports": "move_cases_to_section/{section_id} moves cases to another suite or section; section_id is the target section, suite_id the target suite and case_ids the list of cases, all required." }
+  ],
+  "input_policy": { "ordinary_fields": "reject", "custom_fields": "reject", "notes": "Strictness is an MCP boundary requirement at every depth. The body carries the case identifiers and the target suite only; the target section is the path argument and is refused in the body." },
+  "outer_result": { "driver": "void", "tool_data": "null", "notes": "The method resolves with no value and the wrapper reports data: null; a moved case must be read afterwards for its new section. One request moves every listed case." },
+  "requirements": [
+    { "id": "unknown-top-level", "kind": "invalid", "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them." },
+    { "id": "unknown-body", "kind": "invalid", "description": "Reject an unknown body field rather than forwarding it, including a section_id that belongs in the path." },
+    { "id": "no-cascade", "kind": "mapping", "description": "Send exactly one request, however many cases are listed. The adapter never splits the list or reads the moved cases back." }
+  ],
+  "baseline": "representative",
+  "parameters": [
+    {
+      "id": "section_id", "input_path": ["section_id"], "scope": "path", "requiredness": "required", "domain_ref": "positive_id",
+      "semantics": "No coercion. The target section; passed positionally and sent verbatim as the only path segment.",
+      "driver": { "argument": 0, "path": [] },
+      "wire": { "location": "path", "names": ["section_id"], "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced." },
+      "sources": ["driver-module", "testrail-cases"]
+    },
+    {
+      "id": "body", "input_path": ["body"], "scope": "body", "requiredness": "required", "domain": { "type": "object" },
+      "semantics": "No coercion. The JSON object is passed as the driver's second argument and sent unchanged.",
+      "driver": { "argument": 1, "path": [] },
+      "wire": { "location": "json", "names": ["body"], "encoding": "JSON object sent unchanged." },
+      "sources": ["driver-module", "driver-schema"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the object at driver argument 1 as the JSON request body." },
+        { "id": "valid", "kind": "valid", "description": "Accept an object carrying the case list and the target suite." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a body that is not an object before driver invocation." },
+        { "id": "required", "kind": "required", "description": "Reject a missing body." }
+      ]
+    },
+    {
+      "id": "body.case_ids", "input_path": ["body", "case_ids"], "scope": "body", "requiredness": "required", "domain_ref": "case_ids",
+      "semantics": "The cases to move. The driver forwards the payload unchecked, so the boundary holds every member to the identifier domain and requires at least one; the list is sent as a JSON array.",
+      "driver": { "argument": 1, "path": ["case_ids"] },
+      "wire": { "location": "json", "names": ["case_ids"], "encoding": "JSON array of integers under case_ids." },
+      "sources": ["driver-module", "driver-schema", "testrail-cases"]
+    },
+    {
+      "id": "body.suite_id", "input_path": ["body", "suite_id"], "scope": "body", "requiredness": "required", "domain_ref": "positive_id",
+      "semantics": "The suite the target section belongs to, required even for a move within the same suite. The driver forwards any number, so the boundary holds it to the identifier domain; sent as a JSON number.",
+      "driver": { "argument": 1, "path": ["suite_id"] },
+      "wire": { "location": "json", "names": ["suite_id"], "encoding": "JSON integer under suite_id." },
+      "sources": ["driver-module", "driver-schema", "testrail-cases"]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative", "input": { "section_id": 5, "body": { "case_ids": [42, 43], "suite_id": 3 } },
+      "covers": [
+        { "parameter": "section_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "body", "requirements": ["mapping", "valid"] },
+        { "parameter": "body.case_ids", "requirements": ["mapping", "valid"] },
+        { "parameter": "body.suite_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "$input", "requirements": ["no-cascade"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "cases.moveCasesToSection", "arguments": [5, { "case_ids": [42, 43], "suite_id": 3 }] },
+        "wire": { "method": "POST", "endpoint": "move_cases_to_section/5", "json": { "case_ids": [42, 43], "suite_id": 3 } },
+        "upstream_response": { "kind": "json", "body": {} },
+        "driver_result": { "kind": "void" }
+      }
+    },
+    {
+      "id": "largest-safe-ids", "input": { "section_id": 9007199254740991, "body": { "case_ids": [9007199254740991], "suite_id": 9007199254740991 } },
+      "covers": [
+        { "parameter": "section_id", "requirements": ["upper-bound"] },
+        { "parameter": "body.case_ids", "requirements": ["upper-bound"] },
+        { "parameter": "body.suite_id", "requirements": ["upper-bound"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "cases.moveCasesToSection", "arguments": [9007199254740991, { "case_ids": [9007199254740991], "suite_id": 9007199254740991 }] },
+        "wire": { "method": "POST", "endpoint": "move_cases_to_section/9007199254740991", "json": { "case_ids": [9007199254740991], "suite_id": 9007199254740991 } },
+        "upstream_response": { "kind": "json", "body": {} },
+        "driver_result": { "kind": "void" }
+      }
+    },
+    { "id": "missing-body", "input": { "section_id": 5 }, "covers": [{ "parameter": "body", "requirements": ["required"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "invalid-body", "input": { "section_id": 5, "body": [42] }, "covers": [{ "parameter": "body", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "unknown-body", "input": { "section_id": 5, "body": { "case_ids": [42], "suite_id": 3, "section_id": 5 } }, "covers": [{ "parameter": "$input", "requirements": ["unknown-body"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "unknown-top-level", "input": { "section_id": 5, "body": { "case_ids": [42], "suite_id": 3 }, "suite_id": 3 }, "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } }
+  ]
+}

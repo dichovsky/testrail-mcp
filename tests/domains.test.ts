@@ -1,7 +1,9 @@
-import { TestRailClient } from '@dichovsky/testrail-api-client';
+import { TestRailClient, TestRailValidationError } from '@dichovsky/testrail-api-client';
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
-import { aggregateLimitDefaults, nonnegativeIntegerSchema, positiveIdSchema } from '../src/contracts/inputs.js';
+import {
+  aggregateLimitDefaults, caseIdsSchema, idFilterSchema, nonnegativeIntegerSchema, positiveIdSchema,
+} from '../src/contracts/inputs.js';
 import { auditDomainLibrary, loadDomainLibrary, type ParameterDomain } from './contracts/domains.js';
 
 const library = await loadDomainLibrary();
@@ -33,6 +35,12 @@ async function probe(client: TestRailClient, binding: string, value: unknown): P
     case 'projects.getAllProjects':
       await client.projects.getAllProjects(value as { pageSize?: number; maxItems?: number });
       return;
+    case 'cases.getCasesPage':
+      await client.cases.getCasesPage(7, value as { typeId?: number; createdAfter?: number });
+      return;
+    case 'cases.getCaseTitles':
+      await client.cases.getCaseTitles(value as number[]);
+      return;
     default:
       throw new Error(`No probe harness for binding ${binding}`);
   }
@@ -48,6 +56,8 @@ const optionNames: Readonly<Record<string, string>> = {
   aggregate_max_pages: 'maxPages',
   aggregate_max_bytes: 'maxBytes',
   aggregate_max_duration_ms: 'maxDurationMs',
+  id_filter: 'typeId',
+  unix_timestamp: 'createdAfter',
 };
 
 function positioned(name: string, value: unknown): unknown {
@@ -66,6 +76,9 @@ const adapterSchema: Readonly<Record<string, z.ZodType>> = {
   aggregate_max_pages: positiveIdSchema.max(aggregateLimitDefaults.max_pages),
   aggregate_max_bytes: positiveIdSchema.max(aggregateLimitDefaults.max_bytes),
   aggregate_max_duration_ms: positiveIdSchema.max(aggregateLimitDefaults.max_duration_ms),
+  id_filter: idFilterSchema,
+  unix_timestamp: nonnegativeIntegerSchema,
+  case_ids: caseIdsSchema,
 };
 
 describe('shared parameter domains', () => {
@@ -92,14 +105,21 @@ describe('shared parameter domains', () => {
       const { client, requests } = probeClient();
       try {
         const attempt = probe(client, domain.probe.binding, positioned(name, invalid.value));
-        if (invalid.rejected_by === 'driver') {
-          await expect(attempt, `${name}/${invalid.id}`).rejects.toThrow();
-          // Refused before dispatch, not merely surfaced as an upstream failure.
-          expect(requests(), `${name}/${invalid.id} issued a request`).toBe(0);
-        } else {
+        if (invalid.rejected_by === 'adapter') {
           // The driver accepts it; only the MCP boundary refuses. Asserting this keeps
           // the library from overstating where the guarantee comes from.
           await attempt;
+        } else {
+          const error: unknown = await attempt.then(() => undefined, (reason: unknown) => reason);
+          expect(error, `${name}/${invalid.id} was accepted`).toBeInstanceOf(Error);
+          // Which kind of refusal it is matters: a stated check is a contract, while an
+          // unguarded crash merely happens to stop the call today. The label is asserted
+          // both ways, so a driver that starts or stops validating fails this test rather
+          // than quietly leaving the library overstating its evidence.
+          expect(error instanceof TestRailValidationError, `${name}/${invalid.id} rejected_by`)
+            .toBe(invalid.rejected_by === 'driver');
+          // Refused before dispatch, not merely surfaced as an upstream failure.
+          expect(requests(), `${name}/${invalid.id} issued a request`).toBe(0);
         }
       } finally { client.destroy(); }
     }

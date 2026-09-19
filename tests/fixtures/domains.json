@@ -364,6 +364,120 @@
         { "id": "fractional", "value": 1.5, "requirements": ["invalid"], "rejected_by": "driver" },
         { "id": "above-ceiling", "value": 45001, "requirements": ["above-ceiling"], "rejected_by": "adapter" }
       ]
+    },
+    "id_filter": {
+      "source": {
+        "id": "driver-utils",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/utils.ts",
+        "supports": "serializeIdFilter(value, name) accepts one identifier or an array of them, validates each member with validateId, joins an array with commas, and returns undefined for an empty array so the filter is omitted from the request."
+      },
+      "probe": {
+        "binding": "cases.getCasesPage",
+        "note": "The public page helper carries every case filter; the domain is proven through typeId, one of the seven filters the driver serializes this way. A numeric string stops the driver by crashing rather than by a stated check, which its own entry records."
+      },
+      "domain": {
+        "anyOf": [
+          { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+          { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 } }
+        ]
+      },
+      "semantics": "One identifier or a non-empty list. A list is sent comma-joined under the filter's REST name. An empty list is refused at the boundary: the driver would omit the filter, silently widening the result to every case.",
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value at its explicit driver argument and wire location." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative single identifier." },
+        { "id": "list", "kind": "valid", "description": "Accept several identifiers and send them comma-joined." },
+        { "id": "upper-bound", "kind": "valid", "description": "Accept the largest safe integer, which is the largest value that can round-trip through JSON." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a representative invalid value or list member before driver invocation." },
+        { "id": "above-upper-bound", "kind": "invalid", "description": "Reject a value above the largest safe integer, alone or as a member. The driver checks Number.isInteger only, so this is an MCP boundary check." },
+        { "id": "empty-list", "kind": "invalid", "description": "Reject an empty list rather than letting the driver drop the filter." },
+        { "id": "omitted", "kind": "omitted", "description": "Omit the filter entirely when the caller did not supply it rather than sending a default." }
+      ],
+      "valid": [
+        { "id": "representative", "value": 7, "requirements": ["mapping", "valid"] },
+        { "id": "list", "value": [3, 4], "requirements": ["list"] },
+        { "id": "largest-safe", "value": 9007199254740991, "requirements": ["upper-bound"] }
+      ],
+      "invalid": [
+        { "id": "zero", "value": 0, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "negative", "value": -1, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "fractional", "value": 1.5, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "numeric-string", "value": "7", "requirements": ["invalid"], "rejected_by": "driver_crash" },
+        { "id": "zero-member", "value": [3, 0], "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "string-member", "value": ["3"], "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "fractional-member", "value": [1.5], "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "above-safe-integer", "value": 9007199254740992, "requirements": ["above-upper-bound"], "rejected_by": "adapter" },
+        { "id": "above-safe-member", "value": [9007199254740992], "requirements": ["above-upper-bound"], "rejected_by": "adapter" },
+        { "id": "empty", "value": [], "requirements": ["empty-list"], "rejected_by": "adapter" }
+      ]
+    },
+    "unix_timestamp": {
+      "source": {
+        "id": "driver-module",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts",
+        "supports": "The get_cases preparation forwards createdAfter, createdBefore, updatedAfter and updatedBefore to the query unchanged and applies no validation to them, so their domain is held entirely at the MCP boundary."
+      },
+      "probe": {
+        "binding": "cases.getCasesPage",
+        "note": "Proven through createdAfter. The driver accepts every invalid value below, which the library records rather than implies."
+      },
+      "domain": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+      "semantics": "Seconds since the Unix epoch, as TestRail documents its timestamp filters. No coercion; zero is the epoch and is sent.",
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value at its explicit driver argument and wire location." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative timestamp." },
+        { "id": "zero", "kind": "valid", "description": "Accept zero, the epoch, and send it rather than treating it as absent." },
+        { "id": "upper-bound", "kind": "valid", "description": "Accept the largest safe integer, which is the largest value that can round-trip through JSON." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a negative, fractional or string value before driver invocation; the driver would forward each of them." },
+        { "id": "above-upper-bound", "kind": "invalid", "description": "Reject a value above the largest safe integer, which cannot round-trip through JSON." },
+        { "id": "omitted", "kind": "omitted", "description": "Omit the filter entirely when the caller did not supply it rather than sending a default." }
+      ],
+      "valid": [
+        { "id": "representative", "value": 1646317844, "requirements": ["mapping", "valid"] },
+        { "id": "epoch", "value": 0, "requirements": ["zero"] },
+        { "id": "largest-safe", "value": 9007199254740991, "requirements": ["upper-bound"] }
+      ],
+      "invalid": [
+        { "id": "negative", "value": -1, "requirements": ["invalid"], "rejected_by": "adapter" },
+        { "id": "fractional", "value": 1646317844.5, "requirements": ["invalid"], "rejected_by": "adapter" },
+        { "id": "numeric-string", "value": "1646317844", "requirements": ["invalid"], "rejected_by": "adapter" },
+        { "id": "above-safe-integer", "value": 9007199254740992, "requirements": ["above-upper-bound"], "rejected_by": "adapter" }
+      ]
+    },
+    "case_ids": {
+      "source": {
+        "id": "driver-module",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts",
+        "supports": "getCaseTitles refuses an empty list and validates every member with validateId before joining them with commas. The bulk case payload schemas declare case_ids as an array of numbers and forward it unchecked; the MCP boundary holds each member to the identifier domain and requires at least one."
+      },
+      "probe": {
+        "binding": "cases.getCaseTitles",
+        "note": "The public title lookup takes the list positionally and validates it the way the bulk endpoints need, so it proves the domain without a payload. It is the query-side proof only: the bulk bodies that also reference this domain are forwarded unchecked, which each body reference records in its semantics, so their guarantee is the adapter's alone. Passing a bare number crashes the lookup rather than failing a stated check, which its own entry records."
+      },
+      "domain": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 } },
+      "semantics": "A non-empty list of case identifiers. Sent comma-joined as a query control by get_case_titles and as a JSON array in every bulk body.",
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve every member at the explicit driver argument and wire location." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative list of identifiers." },
+        { "id": "upper-bound", "kind": "valid", "description": "Accept a member equal to the largest safe integer." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a list with a non-positive, fractional or string member, or a value that is not a list, before driver invocation." },
+        { "id": "above-upper-bound", "kind": "invalid", "description": "Reject a member above the largest safe integer. The driver checks Number.isInteger only, so this is an MCP boundary check." },
+        { "id": "empty", "kind": "invalid", "description": "Reject an empty list; there is nothing to act on and TestRail answers 400." },
+        { "id": "required", "kind": "required", "description": "Reject a missing list." }
+      ],
+      "valid": [
+        { "id": "representative", "value": [42, 43], "requirements": ["mapping", "valid"] },
+        { "id": "largest-safe", "value": [9007199254740991], "requirements": ["upper-bound"] }
+      ],
+      "invalid": [
+        { "id": "empty", "value": [], "requirements": ["empty"], "rejected_by": "driver" },
+        { "id": "zero-member", "value": [42, 0], "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "negative-member", "value": [-1], "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "fractional-member", "value": [1.5], "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "string-member", "value": ["42"], "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "scalar", "value": 42, "requirements": ["invalid"], "rejected_by": "driver_crash" },
+        { "id": "above-safe-member", "value": [9007199254740992], "requirements": ["above-upper-bound"], "rejected_by": "adapter" }
+      ],
+      "omitted": { "id": "missing", "requirements": ["required"] }
     }
   }
 }

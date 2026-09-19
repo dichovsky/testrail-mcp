@@ -74,7 +74,7 @@ describe('registered parameter coverage gate', () => {
       pagination: { kind: 'controlled', page: driverCall(listInput, 'cases.getCasesPage', (method) => method(7)), all: driverCall(listInput, 'cases.getAllCases', (method) => method(7)) },
     });
     const manifest = manifests.find((candidate) => candidate.endpoint.tool === cases.tool);
-    const accepted = manifest?.cases.find((fixture) => fixture.id === 'refs-omitted');
+    const accepted = manifest?.cases.find((fixture) => fixture.id === 'defaults');
     if (!manifest || accepted?.expect.kind !== 'accepted') throw new Error('Missing accepted case-list fixture');
     // These synthetic fixtures isolate mode coverage; they do not complete T02's manifest.
     const sample = {
@@ -100,6 +100,18 @@ describe('registered parameter coverage gate', () => {
   });
 
   it('detects missing all-mode filters and reviewed fields omitted from schemas', () => {
+    const manifest = manifests.find((candidate) => candidate.endpoint.tool === 'testrail_get_cases');
+    const accepted = manifest?.cases.find((fixture) => fixture.id === 'defaults');
+    if (!manifest || accepted?.expect.kind !== 'accepted') throw new Error('Missing accepted case-list fixture');
+    // Only the refs filter is kept, so a registration without it disagrees with the one fixture.
+    const sample = {
+      ...manifest,
+      parameters: manifest.parameters.filter((parameter) => ['project_id', 'query.refs'].includes(parameter.id)),
+      cases: [{
+        ...accepted, id: 'refs', input: { project_id: 7, query: { refs: 'REQ-1' } },
+        covers: [{ parameter: 'query.refs', requirements: ['mapping', 'valid'] }],
+      }],
+    };
     for (const includeRefs of [true, false]) {
       const listInput = createListInput({ path: { project_id: positiveIdSchema }, query: includeRefs ? { refs: refsSchema.optional() } : {}, pagination: 'controlled' });
       const cases = defineOperation({
@@ -113,7 +125,7 @@ describe('registered parameter coverage gate', () => {
         response: { shape: 'page', outerSchema: z.object({ kind: z.enum(['envelope', 'legacy-array']), items: z.array(z.unknown()) }), entitySchema: null },
         pagination: { kind: 'controlled', page: driverCall(listInput, 'cases.getCasesPage', (method) => method(1)), all: driverCall(listInput, 'cases.getAllCases', (method) => method(1)) },
       });
-      const errors = auditRegisteredParameters(createRegistry(cases), manifests);
+      const errors = auditRegisteredParameters(createRegistry(cases), [sample]);
       expect(errors).toContain('testrail_get_cases: no all argument mapping for query.refs');
       expect(errors).toContain('testrail_get_cases: no accepted all fixture');
       expect(errors.some((error) => error.includes('schema disagrees'))).toBe(!includeRefs);
@@ -140,6 +152,9 @@ describe('registered parameter coverage gate', () => {
     // not added to the reviewed family manifest counts or production catalog.
     const sample = {
       ...attachment, endpoint: { ...attachment.endpoint, tool: listing.tool, route: listing.route, driver_method: listing.driverBinding },
+      // This sample lists attachments rather than downloading one, so its outer result is
+      // the array the non-helper method returns, not the reviewed binary download.
+      outer_result: { ...attachment.outer_result, driver: 'array' as const, tool_data: 'array' as const },
       parameters: [
         { ...parameter, id: 'test_id', input_path: ['test_id'] },
         ...['limit', 'offset'].map((name) => ({ ...parameter, id: `query.${name}`, input_path: ['query', name], scope: 'query' as const, driver: { argument: 1, path: [name] } })),
@@ -202,6 +217,11 @@ describe('production registrations send what their fixtures promise', () => {
             body: expected.wire.json,
           }]);
           expect(result).toEqual(expected.driver_result.kind === 'json' ? expected.driver_result.value : undefined);
+          // What the driver returned must also satisfy the contract the registration
+          // declares, or every real call fails in validateOuter while the arguments,
+          // the wire and the result all still match the fixture.
+          if (all) expect(Array.isArray(result), `${operation.tool}: aggregate result`).toBe(true);
+          else expect(operation.response.outerSchema.safeParse(result).success, `${operation.tool}: outer schema`).toBe(true);
         } finally { client.destroy(); }
       });
     }
