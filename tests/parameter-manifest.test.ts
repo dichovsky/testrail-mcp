@@ -3,8 +3,11 @@ import {
   TestRailClient,
   UpdateCasePayloadSchema,
   AddProjectPayloadSchema,
+  AddSectionPayloadSchema,
   AddSuitePayloadSchema,
+  MoveSectionPayloadSchema,
   UpdateProjectPayloadSchema,
+  UpdateSectionPayloadSchema,
   UpdateSuitePayloadSchema,
 } from '@dichovsky/testrail-api-client';
 import { describe, expect, it, vi } from 'vitest';
@@ -144,20 +147,26 @@ describe('independent parameter manifest format', () => {
     const report = parameterCoverageReport(manifests, inventory);
     expect(report.completeEndpoints).toEqual([
       'testrail_add_project',
+      'testrail_add_section',
       'testrail_add_suite',
       'testrail_delete_project',
+      'testrail_delete_section',
       'testrail_delete_suite',
       'testrail_get_attachment',
       'testrail_get_attachments_for_plan_entry',
       'testrail_get_project',
       'testrail_get_projects',
+      'testrail_get_section',
+      'testrail_get_sections',
       'testrail_get_suite',
       'testrail_get_suites',
+      'testrail_move_section',
       'testrail_update_project',
+      'testrail_update_section',
       'testrail_update_suite',
     ]);
     expect(report.partialEndpoints).toEqual(['testrail_get_cases', 'testrail_update_case']);
-    expect(report.pendingEndpoints).toHaveLength(119);
+    expect(report.pendingEndpoints).toHaveLength(113);
     expect([...report.reviewedEndpoints, ...report.pendingEndpoints].sort())
       .toEqual(inventory.map(({ tool }) => tool).sort());
     expect(report.pendingEndpoints).toContain('testrail_add_case');
@@ -190,6 +199,16 @@ describe('independent parameter manifest format', () => {
       .toThrow('query.limit baseline is a case of the other call mode');
     expect(() => resolveDomains(rebase('_mcp.max_items', 'largest-safe-project'), library)).toThrow();
     expect(() => resolveDomains(suites, library)).not.toThrow();
+  });
+
+  it('refuses an omission claim from a case that supplies the parameter', () => {
+    const sections = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_get_sections');
+    if (!sections) throw new Error('Required get_sections manifest is missing');
+    const moved = { ...sections, cases: sections.cases.map((fixture) => fixture.id === 'suite-filter'
+      ? { ...fixture, covers: [...fixture.covers, { parameter: 'query.suite_id', requirements: ['omitted'] }] }
+      : fixture) };
+    expect(auditParameterManifests([moved])).toContain('testrail_get_sections: Case suite-filter supplies query.suite_id/omitted it claims to omit');
+    expect(auditParameterManifests([sections])).toEqual([]);
   });
 
   it('detects a removed union-branch fixture instead of merely counting endpoints', () => {
@@ -356,6 +375,49 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
       const [suiteId, options] = z.tuple([z.number(), z.strictObject({ soft: z.boolean() }).optional()])
         .parse(expected.driver.arguments);
       return options === undefined ? client.suites.deleteSuite(suiteId) : client.suites.deleteSuite(suiteId, options);
+    }
+    case 'sections.getSection': {
+      const [sectionId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.sections.getSection(sectionId);
+    }
+    case 'sections.getSectionsPage': {
+      const [projectId, options] = z.tuple([z.number(), z.strictObject({
+        suiteId: z.number().optional(), limit: z.number(), offset: z.number(),
+      })]).parse(expected.driver.arguments);
+      return client.sections.getSectionsPage(projectId, {
+        limit: options.limit, offset: options.offset,
+        ...(options.suiteId === undefined ? {} : { suiteId: options.suiteId }),
+      });
+    }
+    case 'sections.getAllSections': {
+      const [projectId, options] = z.tuple([z.number(), z.strictObject({
+        suiteId: z.number().optional(), pageSize: z.number().optional(), startOffset: z.number().optional(),
+        maxItems: z.number(), maxPages: z.number(), maxBytes: z.number(), maxDurationMs: z.number(),
+      })]).parse(expected.driver.arguments);
+      const { suiteId, pageSize, startOffset, ...bounds } = options;
+      return client.sections.getAllSections(projectId, {
+        ...bounds,
+        ...(suiteId === undefined ? {} : { suiteId }),
+        ...(pageSize === undefined ? {} : { pageSize }),
+        ...(startOffset === undefined ? {} : { startOffset }),
+      });
+    }
+    case 'sections.addSection': {
+      const [projectId, payload] = z.tuple([z.number(), AddSectionPayloadSchema]).parse(expected.driver.arguments);
+      return client.sections.addSection(projectId, payload);
+    }
+    case 'sections.updateSection': {
+      const [sectionId, payload] = z.tuple([z.number(), UpdateSectionPayloadSchema]).parse(expected.driver.arguments);
+      return client.sections.updateSection(sectionId, payload);
+    }
+    case 'sections.moveSection': {
+      const [sectionId, payload] = z.tuple([z.number(), MoveSectionPayloadSchema]).parse(expected.driver.arguments);
+      return client.sections.moveSection(sectionId, payload);
+    }
+    case 'sections.deleteSection': {
+      const [sectionId, options] = z.tuple([z.number(), z.strictObject({ soft: z.boolean() }).optional()])
+        .parse(expected.driver.arguments);
+      return options === undefined ? client.sections.deleteSection(sectionId) : client.sections.deleteSection(sectionId, options);
     }
     default: throw new Error(`Missing independent driver evidence harness: ${expected.driver.binding}`);
   }

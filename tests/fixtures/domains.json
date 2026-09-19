@@ -52,6 +52,11 @@
           "id": "above-upper-bound",
           "kind": "invalid",
           "description": "Reject a value above the largest safe integer. The driver accepts it, because it checks Number.isInteger rather than Number.isSafeInteger, so this is an MCP boundary check: a value that cannot round-trip through JSON would address a different record than the caller named."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Where the identifier is optional, omit it entirely when the caller did not supply it rather than sending a default; a required identifier drops this requirement at resolution."
         }
       ],
       "valid": [
