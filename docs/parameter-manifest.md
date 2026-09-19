@@ -21,7 +21,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `get_sections` | 11 | 18 | Complete input manifest |
 | `get_suite` | 1 | 3 | Complete input manifest |
 | `get_suites` | 10 | 16 | Complete input manifest |
-| `move_section` | 3 | 13 | Complete input manifest |
+| `move_section` | 3 | 15 | Complete input manifest |
 | `update_case` | 3 | 8 | Partial: case ID, body container and custom-field extension point |
 | `update_project` | 11 | 29 | Complete input manifest |
 | `update_section` | 3 | 8 | Complete input manifest |
@@ -81,6 +81,6 @@ Two properties keep a reference as strong as writing it out.
 
 **Derived rejections stay attributable.** A manifest using `domain_ref` names a `baseline` accepted case. Each rejection is derived by mutating that baseline at exactly one input path, so everything else in the input stayed valid and the refusal can only have come from the parameter under test. Removing the derivation leaves the covered requirements uncovered and the audit names each one, so these cases are load-bearing rather than decorative.
 
-Endpoint-specific parameters — query filters, body fields, unions such as `attachment_id` — stay written out in full. The library covers only domains the driver genuinely shares.
+A parameter of any scope may reference a shared domain when the adapter holds it to that domain — path, query and body identifiers all reference `positive_id`, and a body reference records in its `semantics` where the driver itself is looser. Endpoint-specific domains, such as the `attachment_id` union or a payload's own value types, stay written out in full.
 
-The current 13 accepted examples run against the installed public driver with injected fetch and DNS, comparing exact URLs, request JSON and driver results. No request reaches TestRail. Rejected fixture cases are format and coverage requirements until a family adapter consumes them; the direct-driver evidence harness does not pretend to validate the MCP input boundary. Run the fixture checks with `npm exec -- vitest run tests/parameter-manifest.test.ts`.
+The accepted examples run against the installed public driver with injected fetch and DNS, comparing exact URLs, request JSON and driver results. No request reaches TestRail. Rejected fixture cases are format and coverage requirements until a family adapter consumes them; the direct-driver evidence harness does not pretend to validate the MCP input boundary. Run the fixture checks with `npm exec -- vitest run tests/parameter-manifest.test.ts`.

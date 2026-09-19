@@ -90,7 +90,7 @@
         { "id": "valid", "kind": "valid", "description": "Accept a representative parent section ID." },
         { "id": "null", "kind": "valid", "description": "Send an explicit null to move the section to the root rather than dropping it." },
         { "id": "zero", "kind": "valid", "description": "Forward an explicit zero, the sentinel the driver deliberately keeps." },
-        { "id": "invalid", "kind": "invalid", "description": "Reject a numeric string, a fractional or a negative value before driver invocation." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a numeric string, a fractional, a negative or an unsafe value before driver invocation." },
         { "id": "omitted", "kind": "omitted", "description": "Omit the field entirely when the caller did not supply it, leaving the parent unchanged." }
       ]
     },
@@ -109,7 +109,7 @@
         { "id": "valid", "kind": "valid", "description": "Accept a representative sibling section ID." },
         { "id": "null", "kind": "valid", "description": "Send an explicit null to move the section to the top rather than dropping it." },
         { "id": "zero", "kind": "valid", "description": "Forward an explicit zero, the sentinel the driver deliberately keeps." },
-        { "id": "invalid", "kind": "invalid", "description": "Reject a numeric string, a fractional or a negative value before driver invocation." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a numeric string, a fractional, a negative or an unsafe value before driver invocation." },
         { "id": "omitted", "kind": "omitted", "description": "Omit the field entirely when the caller did not supply it, leaving the position unchanged." }
       ]
     }
@@ -227,6 +227,18 @@
     {
       "id": "after-id-negative",
       "input": { "section_id": 5, "body": { "after_id": -1 } },
+      "covers": [{ "parameter": "body.after_id", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "parent-id-unsafe",
+      "input": { "section_id": 5, "body": { "parent_id": 9007199254740992 } },
+      "covers": [{ "parameter": "body.parent_id", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "after-id-unsafe",
+      "input": { "section_id": 5, "body": { "after_id": 9007199254740992 } },
       "covers": [{ "parameter": "body.after_id", "requirements": ["invalid"] }],
       "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
     },
