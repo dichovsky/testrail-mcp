@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "review": { "status": "complete", "pending": [], "driver_version": "7.2.0", "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-19" },
+  "endpoint": { "family_id": "T02", "http_method": "GET", "route": "get_case/{case_id}", "tool": "testrail_get_case", "driver_method": "cases.getCase" },
+  "sources": [
+    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts", "supports": "getCase validates the case ID and places it as the only path segment of get_case; the reply is parsed advisorily against CaseSchema and returned as received." },
+    { "id": "testrail-cases", "url": "https://support.testrail.com/hc/en-us/articles/7077292642580-Cases", "supports": "get_case/{case_id} takes the case ID and returns the case with its system fields and its custom fields, which use their system name prefixed with custom_." }
+  ],
+  "input_policy": { "ordinary_fields": "reject", "custom_fields": "reject", "notes": "Strictness is an MCP boundary requirement. The identifier is the only input; there is no query or body." },
+  "outer_result": { "driver": "record", "tool_data": "record", "notes": "The driver's case record is returned as received, flat custom_* properties included; entity-field drift is advisory." },
+  "requirements": [
+    { "id": "unknown-top-level", "kind": "invalid", "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them." }
+  ],
+  "baseline": "representative-id",
+  "parameters": [
+    {
+      "id": "case_id", "input_path": ["case_id"], "scope": "path", "requiredness": "required", "domain_ref": "positive_id",
+      "semantics": "No coercion. The validated number is passed positionally and appears verbatim in the path.",
+      "driver": { "argument": 0, "path": [] },
+      "wire": { "location": "path", "names": ["case_id"], "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced." },
+      "sources": ["driver-module", "testrail-cases"]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-id", "input": { "case_id": 42 },
+      "covers": [{ "parameter": "case_id", "requirements": ["mapping", "valid"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "cases.getCase", "arguments": [42] },
+        "wire": { "method": "GET", "endpoint": "get_case/42" },
+        "upstream_response": { "kind": "json", "body": { "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 2, "milestone_id": null, "refs": "REQ-1", "created_by": 1, "created_on": 1646317844, "updated_by": 1, "updated_on": 1646317844, "estimate": null, "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": null, "labels": [] } },
+        "driver_result": { "kind": "json", "value": { "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 2, "milestone_id": null, "refs": "REQ-1", "created_by": 1, "created_on": 1646317844, "updated_by": 1, "updated_on": 1646317844, "estimate": null, "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": null, "labels": [] } }
+      }
+    },
+    {
+      "id": "largest-safe-id", "input": { "case_id": 9007199254740991 },
+      "covers": [{ "parameter": "case_id", "requirements": ["upper-bound"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "cases.getCase", "arguments": [9007199254740991] },
+        "wire": { "method": "GET", "endpoint": "get_case/9007199254740991" },
+        "upstream_response": { "kind": "json", "body": { "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 2, "milestone_id": null, "refs": "REQ-1", "created_by": 1, "created_on": 1646317844, "updated_by": 1, "updated_on": 1646317844, "estimate": null, "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": null, "labels": [] } },
+        "driver_result": { "kind": "json", "value": { "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 2, "milestone_id": null, "refs": "REQ-1", "created_by": 1, "created_on": 1646317844, "updated_by": 1, "updated_on": 1646317844, "estimate": null, "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": null, "labels": [] } }
+      }
+    },
+    {
+      "id": "unknown-top-level", "input": { "case_id": 42, "suite_id": 3 },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    }
+  ]
+}

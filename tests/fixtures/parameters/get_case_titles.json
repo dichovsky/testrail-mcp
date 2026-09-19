@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "review": { "status": "complete", "pending": [], "driver_version": "7.2.0", "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-19" },
+  "endpoint": { "family_id": "T02", "http_method": "GET", "route": "get_case_titles", "tool": "testrail_get_case_titles", "driver_method": "cases.getCaseTitles" },
+  "sources": [
+    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts", "supports": "getCaseTitles refuses an empty list, validates every member as an identifier, joins them with commas as the case_ids query control of get_case_titles, and parses the reply as an array of CaseTitleSchema records. The driver documents the endpoint as TestRail 10.5 or later." },
+    { "id": "driver-url", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/url.ts", "supports": "buildEndpoint appends the control path-style after an ampersand and percent-encodes the value, so the joining commas are sent as %2C." },
+    { "id": "testrail-10-5", "url": "https://support.testrail.com/hc/en-us/articles/50194016906900-TestRail-10-5-1-Default-1001", "supports": "The 10.5.1 release notes introduce get_case_titles as a lightweight call mapping a list of case IDs to their titles. The Cases API reference does not yet document it, so the driver is the source for its request shape." }
+  ],
+  "input_policy": { "ordinary_fields": "reject", "custom_fields": "reject", "notes": "Strictness is an MCP boundary requirement. The identifier list is the only input and it lives in query, where TestRail reads it." },
+  "outer_result": { "driver": "array", "tool_data": "array", "notes": "The driver returns the array of id/title projections as received; entity-field drift is advisory." },
+  "requirements": [
+    { "id": "unknown-top-level", "kind": "invalid", "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them." },
+    { "id": "unknown-query", "kind": "invalid", "description": "Reject an unsupported query key rather than discarding it." },
+    { "id": "missing-query", "kind": "invalid", "description": "Reject an input without the query container; the list is required." }
+  ],
+  "baseline": "representative-ids",
+  "parameters": [
+    {
+      "id": "query.case_ids", "input_path": ["query", "case_ids"], "scope": "query", "requiredness": "required", "domain_ref": "case_ids",
+      "semantics": "No coercion. The validated list is passed positionally as the only driver argument and sent comma-joined as the case_ids control.",
+      "driver": { "argument": 0, "path": [] },
+      "wire": { "location": "query", "names": ["case_ids"], "encoding": "case_ids=<ids joined by commas, percent-encoded as %2C> appended path-style." },
+      "sources": ["driver-module", "driver-url", "testrail-10-5"]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-ids", "input": { "query": { "case_ids": [42, 43] } },
+      "covers": [{ "parameter": "query.case_ids", "requirements": ["mapping", "valid"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "cases.getCaseTitles", "arguments": [[42, 43]] },
+        "wire": { "method": "GET", "endpoint": "get_case_titles&case_ids=42%2C43" },
+        "upstream_response": { "kind": "json", "body": [{ "id": 42, "title": "Print document history" }, { "id": 43, "title": "Export as PDF" }] },
+        "driver_result": { "kind": "json", "value": [{ "id": 42, "title": "Print document history" }, { "id": 43, "title": "Export as PDF" }] }
+      }
+    },
+    {
+      "id": "largest-safe-id", "input": { "query": { "case_ids": [9007199254740991] } },
+      "covers": [{ "parameter": "query.case_ids", "requirements": ["upper-bound"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "cases.getCaseTitles", "arguments": [[9007199254740991]] },
+        "wire": { "method": "GET", "endpoint": "get_case_titles&case_ids=9007199254740991" },
+        "upstream_response": { "kind": "json", "body": [] },
+        "driver_result": { "kind": "json", "value": [] }
+      }
+    },
+    {
+      "id": "missing-query", "input": {},
+      "covers": [{ "parameter": "$input", "requirements": ["missing-query"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-query", "input": { "query": { "case_ids": [42], "project_id": 7 } },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-query"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-top-level", "input": { "query": { "case_ids": [42] }, "case_ids": [42] },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    }
+  ]
+}

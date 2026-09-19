@@ -6,28 +6,38 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 
 | Endpoint | Reviewed parameters | Fixture cases | Review status |
 | --- | ---: | ---: | --- |
+| `add_case` | 12 | 16 | Complete input manifest |
+| `add_cases` | 4 | 11 | Complete input manifest |
 | `add_project` | 4 | 10 | Complete input manifest |
 | `add_section` | 5 | 10 | Complete input manifest |
 | `add_suite` | 3 | 9 | Complete input manifest |
+| `copy_cases_to_section` | 3 | 6 | Complete input manifest |
+| `delete_case` | 2 | 7 | Complete input manifest |
+| `delete_cases` | 5 | 11 | Complete input manifest |
 | `delete_project` | 1 | 3 | Complete input manifest |
 | `delete_section` | 2 | 7 | Complete input manifest |
 | `delete_suite` | 2 | 7 | Complete input manifest |
 | `get_attachment` | 1 | 12 | Complete input manifest |
 | `get_attachments_for_plan_entry` | 2 | 11 | Complete input manifest |
-| `get_cases` | 2 | 9 | Partial: project ID and refs variants |
+| `get_case` | 1 | 3 | Complete input manifest |
+| `get_case_titles` | 1 | 5 | Complete input manifest |
+| `get_cases` | 25 | 22 | Complete input manifest |
+| `get_history_for_case` | 10 | 16 | Complete input manifest |
 | `get_project` | 1 | 3 | Complete input manifest |
 | `get_projects` | 10 | 18 | Complete input manifest |
 | `get_section` | 1 | 3 | Complete input manifest |
 | `get_sections` | 11 | 18 | Complete input manifest |
 | `get_suite` | 1 | 3 | Complete input manifest |
 | `get_suites` | 10 | 16 | Complete input manifest |
+| `move_cases_to_section` | 4 | 6 | Complete input manifest |
 | `move_section` | 3 | 15 | Complete input manifest |
-| `update_case` | 3 | 8 | Partial: case ID, body container and custom-field extension point |
+| `update_case` | 13 | 15 | Complete input manifest |
+| `update_cases` | 14 | 15 | Complete input manifest |
 | `update_project` | 11 | 29 | Complete input manifest |
 | `update_section` | 3 | 8 | Complete input manifest |
 | `update_suite` | 3 | 8 | Complete input manifest |
 
-Case counts are authored cases; a parameter that references the shared domain library ([tests/fixtures/domains.json](../tests/fixtures/domains.json)) derives further rejections at load, one per proven invalid value. There are **113 endpoints without a manifest**, **2 partial manifests**, and **18 complete input manifests**. The partial files name their remaining fields under `review.pending`. `parameterCoverageReport()` returns the exact sorted tool names in each group; its test compares their union with all 133 inventory names. Completing a manifest requires reviewing the endpoint's entire parameter surface against sources, not merely deleting its pending text.
+Case counts are authored cases; a parameter that references the shared domain library ([tests/fixtures/domains.json](../tests/fixtures/domains.json)) derives further rejections at load, one per proven invalid value. There are **103 endpoints without a manifest**, **no partial manifests**, and **30 complete input manifests**. A partial file names its remaining fields under `review.pending`. `parameterCoverageReport()` returns the exact sorted tool names in each group; its test compares their union with all 133 inventory names. Completing a manifest requires reviewing the endpoint's entire parameter surface against sources, not merely deleting its pending text.
 
 ## Format and integration
 
@@ -55,9 +65,9 @@ The format also represents text responses, JSON/void outer variants and multipar
 
 The MCP UUID domain additionally requires the match to reach the absolute end of input. Its `(?![\s\S])` terminal assertion rejects a final newline, unlike JavaScript's `$` anchor used in the pinned driver. Explicit LF/CRLF rejection fixtures and domain-pattern regressions prevent terminal line breaks from passing the MCP boundary.
 
-For `get_cases`, a string uses `refs=value`; an array emits repeated `refs%5B%5D=value` parameters. Each value is independently percent encoded, and an empty array emits no refs parameter. The fixture uses characters such as `&` and `#` so a broken encoder cannot pass with simple alphanumeric inputs. Sources: [case filter mapping](https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/modules/cases.ts), [URL encoder](https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/url.ts).
+For `get_cases`, a string uses `refs=value`; a non-empty array emits repeated `refs%5B%5D=value` parameters, each value independently percent encoded. The driver would send nothing for an empty array, silently widening the result to every case, so the boundary refuses an empty array instead; the same rule holds for the seven comma-joined ID filters through the shared `id_filter` domain. The fixture uses characters such as `&` and `#` so a broken encoder cannot pass with simple alphanumeric inputs. Sources: [case filter mapping](https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/modules/cases.ts), [URL encoder](https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/url.ts).
 
-Case payload custom fields remain flat and preserve JSON values, including `null`, `false`, `0`, arrays and objects. The exported schema uses passthrough, so the MCP boundary must separately reject unknown ordinary names. The exported legacy `custom_fields` property remains an explicitly pending T02 field review; these examples neither relocate flat values into it nor silently remove it from the driver's supported surface. Sources: [case schemas](https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/schemas/cases.ts), [shared object schema](https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/schemas/common.ts).
+Case payload custom fields remain flat and preserve JSON values, including `null`, `false`, `0`, arrays and objects. The exported schema uses passthrough, so the MCP boundary must separately reject unknown ordinary names. The exported payloads also declare a nested `custom_fields` record that TestRail does not document as a request field: it reads custom values only as flat `custom_*` properties, so forwarding the container would drop them silently. The T02 manifests therefore refuse it explicitly (`legacy-custom-container`) rather than forwarding or relocating it. Body identifiers (`section_id`, `template_id`, `type_id`, `priority_id`, `milestone_id`) and numeric label members are held to the identifier domain where the driver accepts any number; `milestone_id` admits no null in the driver, so unlinking a milestone is not available through the pinned driver. Sources: [case schemas](https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/schemas/cases.ts), [shared object schema](https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/schemas/common.ts).
 
 Project assignment `role_id: 0` selects the global role; `role_id: null` clears the project-specific role. Omitting the assignment collection is a different input. A supplied assignment still requires a role field. The fixture verifies each of these states; it does not generalize null to all numeric IDs. For example, the published update-run payload has optional numeric IDs without null, while move-section parent/position fields explicitly support null. Sources: [project payload schemas](https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/schemas/projects.ts), [TestRail project role semantics](https://support.testrail.com/hc/en-us/articles/7077792415124-Projects), [run schemas](https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/schemas/runs.ts), [section schemas](https://github.com/dichovsky/testrail-api-client/blob/71a80d984aea14713d8eeaf6ac9a0d41c1fba12b/src/schemas/sections.ts).
 
@@ -82,5 +92,7 @@ Two properties keep a reference as strong as writing it out.
 **Derived rejections stay attributable.** A manifest using `domain_ref` names a `baseline` accepted case. Each rejection is derived by mutating that baseline at exactly one input path, so everything else in the input stayed valid and the refusal can only have come from the parameter under test. Removing the derivation leaves the covered requirements uncovered and the audit names each one, so these cases are load-bearing rather than decorative.
 
 A parameter of any scope may reference a shared domain when the adapter holds it to that domain — path, query and body identifiers all reference `positive_id`, and a body reference records in its `semantics` where the driver itself is looser. Endpoint-specific domains, such as the `attachment_id` union or a payload's own value types, stay written out in full.
+
+The Cases family added three domains. `id_filter` is one identifier or a non-empty list, proven through the `typeId` option of `cases.getCasesPage`, which is one of the seven filters the driver comma-joins. `unix_timestamp` is proven through `createdAfter`; the driver forwards any value there, so every rejection is recorded as the adapter's. `case_ids` is a non-empty identifier list proven through `cases.getCaseTitles`, whose validation matches what the bulk bodies need while the driver forwards those bodies unchecked, which each body reference records in its semantics.
 
 The accepted examples run against the installed public driver with injected fetch and DNS, comparing exact URLs, request JSON and driver results. No request reaches TestRail. Rejected fixture cases are format and coverage requirements until a family adapter consumes them; the direct-driver evidence harness does not pretend to validate the MCP input boundary. Run the fixture checks with `npm exec -- vitest run tests/parameter-manifest.test.ts`.

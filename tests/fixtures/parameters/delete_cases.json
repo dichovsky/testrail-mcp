@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "review": { "status": "complete", "pending": [], "driver_version": "7.2.0", "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-19" },
+  "endpoint": { "family_id": "T02", "http_method": "POST", "route": "delete_cases/{suite_id}", "tool": "testrail_delete_cases", "driver_method": "cases.deleteCases" },
+  "sources": [
+    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts", "supports": "deleteCases validates the suite and project IDs, sends the suite in the path and project_id as a query control followed by soft=1 only when the soft option is true, forwards the JSON body unchanged, resolves with no value after a deletion and with the parsed preview after a soft request." },
+    { "id": "driver-schema", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/cases.ts", "supports": "DeleteCasesPayloadSchema declares case_ids as an array of numbers and refines away a body-level soft key, because TestRail toggles the preview through the query and a pasted example must not turn a preview into a deletion. SoftDeletePreviewSchema describes the optional affected counts." },
+    { "id": "testrail-cases", "url": "https://support.testrail.com/hc/en-us/articles/7077292642580-Cases", "supports": "delete_cases/{suite_id}&soft=1 deletes multiple cases from a project or suite and cannot be undone; case_ids and project_id are required, suite_id is required in multi-suite mode, and soft=1 returns information about the data that would be deleted without proceeding." }
+  ],
+  "input_policy": { "ordinary_fields": "reject", "custom_fields": "reject", "notes": "Strictness is an MCP boundary requirement at every depth. The suite is a path argument, the project and the preview flag are query controls, and the body carries only the case identifiers; the driver additionally refuses a body-level soft key." },
+  "outer_result": { "driver": "record_or_void", "tool_data": "record_or_null", "notes": "After a deletion the method resolves with no value and the wrapper reports data: null. After a preview it resolves with TestRail's affected-entity counts, which are not drift-checked; every count is optional in the driver's schema, so an empty reply to soft=1 is reported as an empty preview. One request deletes every listed case together with its results in active runs." },
+  "requirements": [
+    { "id": "unknown-top-level", "kind": "invalid", "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them." },
+    { "id": "unknown-query", "kind": "invalid", "description": "Reject an unsupported query key rather than discarding it." },
+    { "id": "unknown-body", "kind": "invalid", "description": "Reject an unknown body field rather than forwarding it; the body carries case_ids only." },
+    { "id": "body-soft-rejected", "kind": "invalid", "description": "Reject a body-level soft key, as the driver does; the preview flag lives in query and a misplaced one must not change what the call does." },
+    { "id": "no-cascade", "kind": "mapping", "description": "Send exactly one request, however many cases are listed. The adapter never splits the list or follows up with further calls." }
+  ],
+  "baseline": "representative",
+  "parameters": [
+    {
+      "id": "suite_id", "input_path": ["suite_id"], "scope": "path", "requiredness": "required", "domain_ref": "positive_id",
+      "semantics": "No coercion. The suite the cases belong to; passed positionally and sent verbatim as the only path segment. TestRail requires it only in multi-suite mode, but the driver's public method and this tool always take it.",
+      "driver": { "argument": 0, "path": [] },
+      "wire": { "location": "path", "names": ["suite_id"], "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced." },
+      "sources": ["driver-module", "testrail-cases"]
+    },
+    {
+      "id": "query.project_id", "input_path": ["query", "project_id"], "scope": "query", "requiredness": "required", "domain_ref": "positive_id",
+      "semantics": "No coercion. Required by TestRail as a query control; passed positionally as the driver's second argument and sent before the preview flag.",
+      "driver": { "argument": 1, "path": [] },
+      "wire": { "location": "query", "names": ["project_id"], "encoding": "Decimal integer appended path-style after the suite segment." },
+      "sources": ["driver-module", "testrail-cases"]
+    },
+    {
+      "id": "query.soft", "input_path": ["query", "soft"], "scope": "query", "requiredness": "optional", "domain": { "type": "boolean" },
+      "semantics": "true requests TestRail's server-side preview: the affected counts are returned and nothing is deleted. false or omitted deletes. An explicit false is accepted but never sent, since the driver only ever emits soft=1.",
+      "driver": { "argument": 3, "path": ["soft"] },
+      "wire": { "location": "query", "names": ["soft"], "encoding": "soft=1 appended path-style after project_id when true; nothing is appended when false or omitted." },
+      "sources": ["driver-module", "testrail-cases"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the soft option at driver argument 3." },
+        { "id": "valid", "kind": "valid", "description": "Accept true, send soft=1 and return the preview counts." },
+        { "id": "false-not-sent", "kind": "valid", "description": "Accept an explicit false, delete, and append nothing to the endpoint." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a numeric stand-in for the boolean before driver invocation." },
+        { "id": "omitted", "kind": "omitted", "description": "Delete, sending no soft control, when the caller did not supply one." }
+      ]
+    },
+    {
+      "id": "body", "input_path": ["body"], "scope": "body", "requiredness": "required", "domain": { "type": "object" },
+      "semantics": "No coercion. The JSON object is passed as the driver's third argument and sent unchanged.",
+      "driver": { "argument": 2, "path": [] },
+      "wire": { "location": "json", "names": ["body"], "encoding": "JSON object sent unchanged." },
+      "sources": ["driver-module", "driver-schema"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the object at driver argument 2 as the JSON request body." },
+        { "id": "valid", "kind": "valid", "description": "Accept an object carrying the case list." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a body that is not an object before driver invocation." },
+        { "id": "required", "kind": "required", "description": "Reject a missing body." }
+      ]
+    },
+    {
+      "id": "body.case_ids", "input_path": ["body", "case_ids"], "scope": "body", "requiredness": "required", "domain_ref": "case_ids",
+      "semantics": "The cases to delete. The driver forwards the payload unchecked, so the boundary holds every member to the identifier domain and requires at least one; the list is sent as a JSON array.",
+      "driver": { "argument": 2, "path": ["case_ids"] },
+      "wire": { "location": "json", "names": ["case_ids"], "encoding": "JSON array of integers under case_ids." },
+      "sources": ["driver-module", "driver-schema", "testrail-cases"]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative", "input": { "suite_id": 3, "query": { "project_id": 7 }, "body": { "case_ids": [42, 43] } },
+      "covers": [
+        { "parameter": "suite_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.project_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.soft", "requirements": ["omitted"] },
+        { "parameter": "body", "requirements": ["mapping", "valid"] },
+        { "parameter": "body.case_ids", "requirements": ["mapping", "valid"] },
+        { "parameter": "$input", "requirements": ["no-cascade"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "cases.deleteCases", "arguments": [3, 7, { "case_ids": [42, 43] }] },
+        "wire": { "method": "POST", "endpoint": "delete_cases/3&project_id=7", "json": { "case_ids": [42, 43] } },
+        "upstream_response": { "kind": "json", "body": {} },
+        "driver_result": { "kind": "void" }
+      }
+    },
+    {
+      "id": "largest-safe-ids", "input": { "suite_id": 9007199254740991, "query": { "project_id": 9007199254740991 }, "body": { "case_ids": [9007199254740991] } },
+      "covers": [
+        { "parameter": "suite_id", "requirements": ["upper-bound"] },
+        { "parameter": "query.project_id", "requirements": ["upper-bound"] },
+        { "parameter": "body.case_ids", "requirements": ["upper-bound"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "cases.deleteCases", "arguments": [9007199254740991, 9007199254740991, { "case_ids": [9007199254740991] }] },
+        "wire": { "method": "POST", "endpoint": "delete_cases/9007199254740991&project_id=9007199254740991", "json": { "case_ids": [9007199254740991] } },
+        "upstream_response": { "kind": "json", "body": {} },
+        "driver_result": { "kind": "void" }
+      }
+    },
+    {
+      "id": "preview", "input": { "suite_id": 3, "query": { "project_id": 7, "soft": true }, "body": { "case_ids": [42, 43] } },
+      "covers": [{ "parameter": "query.soft", "requirements": ["mapping", "valid"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "cases.deleteCases", "arguments": [3, 7, { "case_ids": [42, 43] }, { "soft": true }] },
+        "wire": { "method": "POST", "endpoint": "delete_cases/3&project_id=7&soft=1", "json": { "case_ids": [42, 43] } },
+        "upstream_response": { "kind": "json", "body": { "affected_tests": 4, "affected_cases": 2 } },
+        "driver_result": { "kind": "json", "value": { "affected_tests": 4, "affected_cases": 2 } }
+      }
+    },
+    {
+      "id": "explicit-hard-delete", "input": { "suite_id": 3, "query": { "project_id": 7, "soft": false }, "body": { "case_ids": [42] } },
+      "covers": [{ "parameter": "query.soft", "requirements": ["false-not-sent"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "cases.deleteCases", "arguments": [3, 7, { "case_ids": [42] }, { "soft": false }] },
+        "wire": { "method": "POST", "endpoint": "delete_cases/3&project_id=7", "json": { "case_ids": [42] } },
+        "upstream_response": { "kind": "json", "body": {} },
+        "driver_result": { "kind": "void" }
+      }
+    },
+    { "id": "soft-numeric", "input": { "suite_id": 3, "query": { "project_id": 7, "soft": 1 }, "body": { "case_ids": [42] } }, "covers": [{ "parameter": "query.soft", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "missing-body", "input": { "suite_id": 3, "query": { "project_id": 7 } }, "covers": [{ "parameter": "body", "requirements": ["required"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "invalid-body", "input": { "suite_id": 3, "query": { "project_id": 7 }, "body": [42] }, "covers": [{ "parameter": "body", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "body-soft", "input": { "suite_id": 3, "query": { "project_id": 7 }, "body": { "case_ids": [42], "soft": 1 } }, "covers": [{ "parameter": "$input", "requirements": ["body-soft-rejected"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "unknown-body", "input": { "suite_id": 3, "query": { "project_id": 7 }, "body": { "case_ids": [42], "section_id": 5 } }, "covers": [{ "parameter": "$input", "requirements": ["unknown-body"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "unknown-query", "input": { "suite_id": 3, "query": { "project_id": 7, "force": true }, "body": { "case_ids": [42] } }, "covers": [{ "parameter": "$input", "requirements": ["unknown-query"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "unknown-top-level", "input": { "suite_id": 3, "project_id": 7, "body": { "case_ids": [42] } }, "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } }
+  ]
+}

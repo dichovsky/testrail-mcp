@@ -1,494 +1,298 @@
 {
   "schema_version": 1,
-  "review": {
-    "status": "partial",
-    "pending": [
-      "T02: review and fixture suite_id, section_id, type_id, priority_id, template_id, milestone_id, created_after, created_before, created_by, filter, updated_after, updated_before, updated_by and label_id.",
-      "F06/T02: complete query.limit/offset and _mcp page/all controls, bounds, conflicts and page result variants."
-    ],
-    "driver_version": "7.2.0",
-    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-09-17"
-  },
-  "endpoint": {
-    "family_id": "T02",
-    "http_method": "GET",
-    "route": "get_cases/{project_id}",
-    "tool": "testrail_get_cases",
-    "driver_method": "cases.getCases"
-  },
+  "review": { "status": "complete", "pending": [], "driver_version": "7.2.0", "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-19" },
+  "endpoint": { "family_id": "T02", "http_method": "GET", "route": "get_cases/{project_id}", "tool": "testrail_get_cases", "driver_method": "cases.getCases" },
   "sources": [
-    {
-      "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts",
-      "supports": "Explicit REST filter mappings and refs scalar/repeated-array variants."
-    },
-    {
-      "id": "driver-url",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/url.ts",
-      "supports": "buildEndpoint percent-encodes every repeated key and value independently."
-    }
+    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts", "supports": "getCasesPage and getAllCases validate the project ID and place it as the only path segment. suiteId and sectionId are validated as identifiers and sent as suite_id and section_id; typeId, priorityId, templateId, milestoneId, createdBy, updatedBy and labelId go through serializeIdFilter; createdAfter, createdBefore, updatedAfter, updatedBefore and filter are forwarded unchanged; a string refs is sent as refs and an array as repeated refs[]. The query is built in that fixed order ahead of the paging controls." },
+    { "id": "driver-utils", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/utils.ts", "supports": "serializeIdFilter validates one identifier or each member of an array with validateId, joins an array with commas, and returns undefined for an empty array so the filter would be omitted." },
+    { "id": "driver-paginated-list", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/paginated-list.ts", "supports": "The page helper validates limit and offset before dispatch and appends them after the filters. The all helper copies only pageSize, startOffset, maxPages, maxItems, maxDurationMs and maxBytes from its options." },
+    { "id": "driver-pagination", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts", "supports": "collectAllPages validates every bound before the first request, defaults pageSize to 250 and startOffset to 0, requires the first envelope offset to equal startOffset, and stops when _links.next is null." },
+    { "id": "driver-url", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/url.ts", "supports": "buildEndpoint appends controls path-style after an ampersand, skips undefined values, repeats an array-valued key once per element and percent-encodes every key and value independently." },
+    { "id": "testrail-cases", "url": "https://support.testrail.com/hc/en-us/articles/7077292642580-Cases", "supports": "get_cases/{project_id} takes suite_id (optional only in single-suite mode), section_id, created_after, created_before, updated_after and updated_before as UNIX timestamps, created_by, updated_by, milestone_id, priority_id, template_id, type_id and label_id as comma-separated ID lists, filter as a title substring, refs as a reference, and limit (250 by default) and offset on TestRail 6.7 or later; it answers with an offset/limit/size/_links envelope around cases. The fields, status_id and assignedto_id filters require TestRail 10.8 and are outside the pinned driver." }
   ],
-  "input_policy": {
-    "ordinary_fields": "reject",
-    "custom_fields": "reject",
-    "notes": "Strictness is an MCP boundary requirement. Driver passthrough alone does not enforce it."
-  },
-  "outer_result": {
-    "driver": "page",
-    "tool_data": "array",
-    "notes": "Page helper returns normalized Page; F06 projects items and metadata. These examples exercise the legacy-array page variant with explicit page defaults."
-  },
+  "input_policy": { "ordinary_fields": "reject", "custom_fields": "reject", "notes": "Strictness is an MCP boundary requirement at every depth: the top level, query and _mcp are each closed. Filters the pinned driver does not carry (fields, status_id, assignedto_id of TestRail 10.8) are rejected as unknown query keys rather than dropped. Whether suite_id may be omitted depends on the project's suite mode, which only TestRail knows, so the adapter leaves it optional and reports TestRail's answer." },
+  "outer_result": { "driver": "page", "tool_data": "array", "notes": "Page mode returns the driver's decoded page; the wrapper carries its items as data and describes the rest as pagination metadata. All mode returns the collected array. Cases carry their custom fields as flat custom_* properties. These fixtures use the envelope TestRail 6.7 or later sends; a bare array is decoded as one terminal page." },
   "requirements": [
-    {
-      "id": "unknown-top-level",
-      "kind": "invalid",
-      "description": "Reject unknown ordinary top-level fields before driver invocation."
-    },
-    {
-      "id": "unknown-query",
-      "kind": "invalid",
-      "description": "Reject unsupported query keys rather than discarding them."
-    }
+    { "id": "unknown-top-level", "kind": "invalid", "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them." },
+    { "id": "unknown-query", "kind": "invalid", "description": "Reject an unsupported query key rather than discarding it." },
+    { "id": "unknown-control", "kind": "invalid", "description": "Reject an unknown _mcp control rather than discarding it." },
+    { "id": "page-controls-in-all", "kind": "invalid", "description": "Reject query.limit or query.offset together with pagination all; page_size and start_offset are the only paging controls of an aggregate." },
+    { "id": "all-controls-in-page", "kind": "invalid", "description": "Reject an aggregate bound in page mode, where nothing would apply it." }
   ],
+  "baseline": "page-controls",
   "parameters": [
-    {
-      "id": "project_id",
-      "input_path": [
-        "project_id"
-      ],
-      "scope": "path",
-      "requiredness": "required",
-      "domain": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 9007199254740991
-      },
-      "semantics": "No coercion. Preserve the validated value.",
-      "driver": {
-        "argument": 0,
-        "path": []
-      },
-      "wire": {
-        "location": "path",
-        "names": [
-          "project_id"
-        ],
-        "encoding": "Decimal path segment."
-      },
-      "sources": [
-        "driver-module"
-      ],
-      "requirements": [
-        {
-          "id": "mapping",
-          "kind": "mapping",
-          "description": "Preserve the value at the explicit driver argument and wire location."
-        },
-        {
-          "id": "valid",
-          "kind": "valid",
-          "description": "Accept a representative value in the documented domain."
-        },
-        {
-          "id": "invalid",
-          "kind": "invalid",
-          "description": "Reject a representative invalid value before driver invocation."
-        },
-        {
-          "id": "required",
-          "kind": "required",
-          "description": "Reject a missing required input."
-        }
-      ]
-    },
-    {
-      "id": "query.refs",
-      "input_path": [
-        "query",
-        "refs"
-      ],
-      "scope": "query",
-      "requiredness": "optional",
-      "domain": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        ]
-      },
-      "semantics": "No coercion. Preserve the validated value.",
-      "driver": {
-        "argument": 1,
-        "path": [
-          "refs"
-        ]
-      },
-      "wire": {
-        "location": "query",
-        "names": [
-          "refs",
-          "refs[]"
-        ],
-        "encoding": "String -> refs=<percent-encoded string>; array -> one refs%5B%5D=<encoded value> per element; empty array emits no refs parameter."
-      },
-      "sources": [
-        "driver-module",
-        "driver-url"
-      ],
-      "requirements": [
-        {
-          "id": "mapping",
-          "kind": "mapping",
-          "description": "Preserve the value at the explicit driver argument and wire location."
-        },
-        {
-          "id": "valid",
-          "kind": "valid",
-          "description": "Accept a representative value in the documented domain."
-        },
-        {
-          "id": "invalid",
-          "kind": "invalid",
-          "description": "Reject a representative invalid value before driver invocation."
-        },
-        {
-          "id": "omitted",
-          "kind": "omitted",
-          "description": "Preserve omission."
-        },
-        {
-          "id": "array",
-          "kind": "valid",
-          "description": "Preserve all array elements as repeated refs[] parameters."
-        },
-        {
-          "id": "empty-array",
-          "kind": "valid",
-          "description": "An empty refs array emits no refs parameter."
-        }
-      ]
-    }
+    { "id": "project_id", "input_path": ["project_id"], "scope": "path", "requiredness": "required", "domain_ref": "positive_id", "semantics": "No coercion. The validated number is passed positionally to either helper and appears verbatim in the path of every request.", "driver": { "argument": 0, "path": [] }, "wire": { "location": "path", "names": ["project_id"], "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced." }, "sources": ["driver-module", "testrail-cases"] },
+    { "id": "query.suite_id", "input_path": ["query", "suite_id"], "scope": "query", "requiredness": "optional", "domain_ref": "positive_id", "semantics": "The suite to list. Passed to either helper as suiteId and sent as the suite_id control on every request; omitted entirely when absent, which TestRail accepts only for single-suite projects.", "driver": { "argument": 1, "path": ["suiteId"] }, "wire": { "location": "query", "names": ["suite_id"], "encoding": "Decimal integer appended path-style first among the filters." }, "sources": ["driver-module", "testrail-cases"] },
+    { "id": "query.section_id", "input_path": ["query", "section_id"], "scope": "query", "requiredness": "optional", "domain_ref": "positive_id", "semantics": "The section to list. Passed to either helper as sectionId and sent as the section_id control on every request; omitted entirely when absent.", "driver": { "argument": 1, "path": ["sectionId"] }, "wire": { "location": "query", "names": ["section_id"], "encoding": "Decimal integer appended path-style after suite_id." }, "sources": ["driver-module", "testrail-cases"] },
+    { "id": "query.type_id", "input_path": ["query", "type_id"], "scope": "query", "requiredness": "optional", "domain_ref": "id_filter", "semantics": "Case types to match. Passed to either helper as typeId and sent comma-joined as the type_id control on every request; omitted entirely when absent.", "driver": { "argument": 1, "path": ["typeId"] }, "wire": { "location": "query", "names": ["type_id"], "encoding": "Decimal integers joined by commas, percent-encoded as %2C, appended path-style before the paging controls." }, "sources": ["driver-module", "driver-utils", "driver-url", "testrail-cases"] },
+    { "id": "query.priority_id", "input_path": ["query", "priority_id"], "scope": "query", "requiredness": "optional", "domain_ref": "id_filter", "semantics": "Priorities to match. Passed to either helper as priorityId and sent comma-joined as the priority_id control on every request; omitted entirely when absent.", "driver": { "argument": 1, "path": ["priorityId"] }, "wire": { "location": "query", "names": ["priority_id"], "encoding": "Decimal integers joined by commas, percent-encoded as %2C, appended path-style before the paging controls." }, "sources": ["driver-module", "driver-utils", "driver-url", "testrail-cases"] },
+    { "id": "query.template_id", "input_path": ["query", "template_id"], "scope": "query", "requiredness": "optional", "domain_ref": "id_filter", "semantics": "Templates to match (TestRail 5.2 or later). Passed to either helper as templateId and sent comma-joined as the template_id control on every request; omitted entirely when absent.", "driver": { "argument": 1, "path": ["templateId"] }, "wire": { "location": "query", "names": ["template_id"], "encoding": "Decimal integers joined by commas, percent-encoded as %2C, appended path-style before the paging controls." }, "sources": ["driver-module", "driver-utils", "driver-url", "testrail-cases"] },
+    { "id": "query.milestone_id", "input_path": ["query", "milestone_id"], "scope": "query", "requiredness": "optional", "domain_ref": "id_filter", "semantics": "Milestones to match; unavailable when the milestone field is disabled for the project. Passed to either helper as milestoneId and sent comma-joined as the milestone_id control on every request; omitted entirely when absent.", "driver": { "argument": 1, "path": ["milestoneId"] }, "wire": { "location": "query", "names": ["milestone_id"], "encoding": "Decimal integers joined by commas, percent-encoded as %2C, appended path-style before the paging controls." }, "sources": ["driver-module", "driver-utils", "driver-url", "testrail-cases"] },
+    { "id": "query.created_after", "input_path": ["query", "created_after"], "scope": "query", "requiredness": "optional", "domain_ref": "unix_timestamp", "semantics": "Only cases created after this time. Passed to either helper as createdAfter and sent unchanged as the created_after control on every request; omitted entirely when absent.", "driver": { "argument": 1, "path": ["createdAfter"] }, "wire": { "location": "query", "names": ["created_after"], "encoding": "Decimal integer appended path-style before the paging controls." }, "sources": ["driver-module", "testrail-cases"] },
+    { "id": "query.created_before", "input_path": ["query", "created_before"], "scope": "query", "requiredness": "optional", "domain_ref": "unix_timestamp", "semantics": "Only cases created before this time. Passed to either helper as createdBefore and sent unchanged as the created_before control on every request; omitted entirely when absent.", "driver": { "argument": 1, "path": ["createdBefore"] }, "wire": { "location": "query", "names": ["created_before"], "encoding": "Decimal integer appended path-style before the paging controls." }, "sources": ["driver-module", "testrail-cases"] },
+    { "id": "query.created_by", "input_path": ["query", "created_by"], "scope": "query", "requiredness": "optional", "domain_ref": "id_filter", "semantics": "Creators to match, as user IDs. Passed to either helper as createdBy and sent comma-joined as the created_by control on every request; omitted entirely when absent.", "driver": { "argument": 1, "path": ["createdBy"] }, "wire": { "location": "query", "names": ["created_by"], "encoding": "Decimal integers joined by commas, percent-encoded as %2C, appended path-style before the paging controls." }, "sources": ["driver-module", "driver-utils", "driver-url", "testrail-cases"] },
+    { "id": "query.filter", "input_path": ["query", "filter"], "scope": "query", "requiredness": "optional", "domain": { "type": "string" }, "semantics": "A substring the case title must contain. Passed to either helper as filter and sent percent-encoded as the filter control; omitted entirely when absent.", "driver": { "argument": 1, "path": ["filter"] }, "wire": { "location": "query", "names": ["filter"], "encoding": "Percent-encoded string appended path-style after created_by." }, "sources": ["driver-module", "driver-url", "testrail-cases"], "requirements": [ { "id": "mapping", "kind": "mapping", "description": "Preserve the string as the filter option and control." }, { "id": "valid", "kind": "valid", "description": "Accept a string, including characters that must be percent-encoded." }, { "id": "invalid", "kind": "invalid", "description": "Reject a number in place of the string before driver invocation." }, { "id": "omitted", "kind": "omitted", "description": "Send no filter control when the caller did not supply one." } ] },
+    { "id": "query.updated_after", "input_path": ["query", "updated_after"], "scope": "query", "requiredness": "optional", "domain_ref": "unix_timestamp", "semantics": "Only cases updated after this time. Passed to either helper as updatedAfter and sent unchanged as the updated_after control on every request; omitted entirely when absent.", "driver": { "argument": 1, "path": ["updatedAfter"] }, "wire": { "location": "query", "names": ["updated_after"], "encoding": "Decimal integer appended path-style before the paging controls." }, "sources": ["driver-module", "testrail-cases"] },
+    { "id": "query.updated_before", "input_path": ["query", "updated_before"], "scope": "query", "requiredness": "optional", "domain_ref": "unix_timestamp", "semantics": "Only cases updated before this time. Passed to either helper as updatedBefore and sent unchanged as the updated_before control on every request; omitted entirely when absent.", "driver": { "argument": 1, "path": ["updatedBefore"] }, "wire": { "location": "query", "names": ["updated_before"], "encoding": "Decimal integer appended path-style before the paging controls." }, "sources": ["driver-module", "testrail-cases"] },
+    { "id": "query.updated_by", "input_path": ["query", "updated_by"], "scope": "query", "requiredness": "optional", "domain_ref": "id_filter", "semantics": "Last updaters to match, as user IDs. Passed to either helper as updatedBy and sent comma-joined as the updated_by control on every request; omitted entirely when absent.", "driver": { "argument": 1, "path": ["updatedBy"] }, "wire": { "location": "query", "names": ["updated_by"], "encoding": "Decimal integers joined by commas, percent-encoded as %2C, appended path-style before the paging controls." }, "sources": ["driver-module", "driver-utils", "driver-url", "testrail-cases"] },
+    { "id": "query.label_id", "input_path": ["query", "label_id"], "scope": "query", "requiredness": "optional", "domain_ref": "id_filter", "semantics": "Labels to match (TestRail 10.5 or later). Passed to either helper as labelId and sent comma-joined as the label_id control on every request; omitted entirely when absent.", "driver": { "argument": 1, "path": ["labelId"] }, "wire": { "location": "query", "names": ["label_id"], "encoding": "Decimal integers joined by commas, percent-encoded as %2C, appended path-style before the paging controls." }, "sources": ["driver-module", "driver-utils", "driver-url", "testrail-cases"] },
+    { "id": "query.refs", "input_path": ["query", "refs"], "scope": "query", "requiredness": "optional", "domain": { "anyOf": [ { "type": "string" }, { "type": "array", "minItems": 1, "items": { "type": "string" } } ] }, "semantics": "References to match (TestRail 6.5.2 or later). A string is sent as the single refs control; a non-empty array is sent as one repeated refs[] control per element, the form TestRail 10.7 accepts. An empty array is refused rather than letting the driver drop the filter.", "driver": { "argument": 1, "path": ["refs"] }, "wire": { "location": "query", "names": ["refs", "refs[]"], "encoding": "String -> refs=<percent-encoded string>; array -> one refs%5B%5D=<encoded value> per element, appended path-style last among the filters." }, "sources": ["driver-module", "driver-url", "testrail-cases"], "requirements": [ { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the refs option and control." }, { "id": "valid", "kind": "valid", "description": "Accept a single reference string, including characters that must be percent-encoded." }, { "id": "array", "kind": "valid", "description": "Preserve every array element as a repeated refs[] control, each encoded independently." }, { "id": "invalid", "kind": "invalid", "description": "Reject a non-string member before driver invocation." }, { "id": "empty-array", "kind": "invalid", "description": "Reject an empty array rather than sending no refs control for it." }, { "id": "omitted", "kind": "omitted", "description": "Send no refs control when the caller did not supply one." } ] },
+    { "id": "query.limit", "input_path": ["query", "limit"], "scope": "query", "requiredness": "optional", "domain_ref": "pagination_limit", "semantics": "Page mode only. Sent explicitly on every page request: the caller's value, or 50 when omitted.", "driver": { "argument": 1, "path": ["limit"] }, "wire": { "location": "query", "names": ["limit"], "encoding": "Decimal integer appended path-style after the filters." }, "sources": ["driver-paginated-list", "driver-url", "testrail-cases"] },
+    { "id": "query.offset", "input_path": ["query", "offset"], "scope": "query", "requiredness": "optional", "domain_ref": "pagination_offset", "semantics": "Page mode only. Sent explicitly on every page request: the caller's value, or 0 when omitted.", "driver": { "argument": 1, "path": ["offset"] }, "wire": { "location": "query", "names": ["offset"], "encoding": "Decimal integer appended path-style after limit." }, "sources": ["driver-paginated-list", "driver-url", "testrail-cases"] },
+    { "id": "_mcp.pagination", "input_path": ["_mcp", "pagination"], "scope": "mcp", "requiredness": "optional", "domain": { "enum": ["page", "all"] }, "semantics": "Selects the public page helper or the bounded all helper. Never passed to the driver.", "driver": null, "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized upstream." }, "sources": ["driver-module"], "requirements": [ { "id": "mapping", "kind": "mapping", "description": "Select the page helper for page and the all helper for all." }, { "id": "page", "kind": "valid", "description": "Accept an explicit page mode." }, { "id": "all", "kind": "valid", "description": "Accept all mode." }, { "id": "invalid", "kind": "invalid", "description": "Reject an unknown mode before driver invocation." }, { "id": "omitted", "kind": "omitted", "description": "Use page mode when omitted." } ] },
+    { "id": "_mcp.page_size", "input_path": ["_mcp", "page_size"], "scope": "mcp", "requiredness": "optional", "domain_ref": "aggregate_page_size", "baseline": "all-defaults", "semantics": "All mode only. Forwarded as the driver's pageSize when supplied; the driver's own default of 250 applies when omitted.", "driver": { "argument": 1, "path": ["pageSize"] }, "wire": { "location": "query", "names": ["limit"], "encoding": "Sent as the limit control of every request the aggregate issues." }, "sources": ["driver-paginated-list", "driver-pagination"] },
+    { "id": "_mcp.start_offset", "input_path": ["_mcp", "start_offset"], "scope": "mcp", "requiredness": "optional", "domain_ref": "aggregate_start_offset", "baseline": "all-defaults", "semantics": "All mode only. Forwarded as the driver's startOffset when supplied; the aggregate starts at 0 when omitted.", "driver": { "argument": 1, "path": ["startOffset"] }, "wire": { "location": "query", "names": ["offset"], "encoding": "Sent as the offset of the first request; later offsets follow the continuation links." }, "sources": ["driver-paginated-list", "driver-pagination"] },
+    { "id": "_mcp.max_items", "input_path": ["_mcp", "max_items"], "scope": "mcp", "requiredness": "optional", "domain_ref": "aggregate_max_items", "baseline": "all-defaults", "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.", "driver": { "argument": 1, "path": ["maxItems"] }, "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the collection inside the driver." }, "sources": ["driver-pagination"] },
+    { "id": "_mcp.max_pages", "input_path": ["_mcp", "max_pages"], "scope": "mcp", "requiredness": "optional", "domain_ref": "aggregate_max_pages", "baseline": "all-defaults", "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.", "driver": { "argument": 1, "path": ["maxPages"] }, "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the collection inside the driver." }, "sources": ["driver-pagination"] },
+    { "id": "_mcp.max_bytes", "input_path": ["_mcp", "max_bytes"], "scope": "mcp", "requiredness": "optional", "domain_ref": "aggregate_max_bytes", "baseline": "all-defaults", "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.", "driver": { "argument": 1, "path": ["maxBytes"] }, "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the serialized item bytes inside the driver." }, "sources": ["driver-pagination"] },
+    { "id": "_mcp.max_duration_ms", "input_path": ["_mcp", "max_duration_ms"], "scope": "mcp", "requiredness": "optional", "domain_ref": "aggregate_max_duration_ms", "baseline": "all-defaults", "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.", "driver": { "argument": 1, "path": ["maxDurationMs"] }, "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the aggregate's wall-clock time inside the driver." }, "sources": ["driver-pagination"] }
   ],
   "cases": [
     {
-      "id": "refs-string",
-      "input": {
-        "project_id": 7,
-        "query": {
-          "refs": "REQ-1 & #x"
-        }
-      },
+      "id": "defaults", "input": { "project_id": 7 },
       "covers": [
-        {
-          "parameter": "project_id",
-          "requirements": [
-            "mapping",
-            "valid"
-          ]
-        },
-        {
-          "parameter": "query.refs",
-          "requirements": [
-            "mapping",
-            "valid"
-          ]
-        }
+        { "parameter": "query.suite_id", "requirements": ["omitted"] },
+        { "parameter": "query.section_id", "requirements": ["omitted"] },
+        { "parameter": "query.type_id", "requirements": ["omitted"] },
+        { "parameter": "query.priority_id", "requirements": ["omitted"] },
+        { "parameter": "query.template_id", "requirements": ["omitted"] },
+        { "parameter": "query.milestone_id", "requirements": ["omitted"] },
+        { "parameter": "query.created_after", "requirements": ["omitted"] },
+        { "parameter": "query.created_before", "requirements": ["omitted"] },
+        { "parameter": "query.created_by", "requirements": ["omitted"] },
+        { "parameter": "query.filter", "requirements": ["omitted"] },
+        { "parameter": "query.updated_after", "requirements": ["omitted"] },
+        { "parameter": "query.updated_before", "requirements": ["omitted"] },
+        { "parameter": "query.updated_by", "requirements": ["omitted"] },
+        { "parameter": "query.label_id", "requirements": ["omitted"] },
+        { "parameter": "query.refs", "requirements": ["omitted"] },
+        { "parameter": "query.limit", "requirements": ["omitted"] },
+        { "parameter": "query.offset", "requirements": ["omitted"] },
+        { "parameter": "_mcp.pagination", "requirements": ["omitted"] }
       ],
       "expect": {
         "kind": "accepted",
-        "driver": {
-          "binding": "cases.getCasesPage",
-          "arguments": [
-            7,
-            {
-              "refs": "REQ-1 & #x",
-              "limit": 50,
-              "offset": 0
-            }
-          ]
-        },
-        "wire": {
-          "method": "GET",
-          "endpoint": "get_cases/7&refs=REQ-1%20%26%20%23x&limit=50&offset=0"
-        },
-        "upstream_response": {
-          "kind": "json",
-          "body": []
-        },
-        "driver_result": {
-          "kind": "json",
-          "value": {
-            "kind": "legacy-array",
-            "items": [],
-            "size": 0
-          }
-        }
+        "driver": { "binding": "cases.getCasesPage", "arguments": [7, { "limit": 50, "offset": 0 }] },
+        "wire": { "method": "GET", "endpoint": "get_cases/7&limit=50&offset=0" },
+        "upstream_response": { "kind": "json", "body": { "offset": 0, "limit": 50, "size": 1, "_links": { "next": null, "prev": null }, "cases": [{ "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "REQ-1", "created_by": 1, "created_on": 1646317844, "updated_by": 2, "updated_on": 1647317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": null, "labels": [{ "id": 11, "title": "login" }] }] } },
+        "driver_result": { "kind": "json", "value": { "kind": "envelope", "items": [{ "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "REQ-1", "created_by": 1, "created_on": 1646317844, "updated_by": 2, "updated_on": 1647317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": null, "labels": [{ "id": 11, "title": "login" }] }], "offset": 0, "limit": 50, "size": 1, "_links": { "next": null, "prev": null } } }
       }
     },
     {
-      "id": "refs-array",
-      "input": {
-        "project_id": 7,
-        "query": {
-          "refs": [
-            "REQ-1",
-            "REQ&2"
-          ]
-        }
-      },
+      "id": "page-controls", "input": { "project_id": 7, "query": { "limit": 50, "offset": 50 } },
       "covers": [
-        {
-          "parameter": "project_id",
-          "requirements": [
-            "mapping",
-            "valid"
-          ]
-        },
-        {
-          "parameter": "query.refs",
-          "requirements": [
-            "array"
-          ]
-        }
+        { "parameter": "project_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.limit", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.offset", "requirements": ["mapping", "valid"] }
       ],
       "expect": {
         "kind": "accepted",
-        "driver": {
-          "binding": "cases.getCasesPage",
-          "arguments": [
-            7,
-            {
-              "refs": [
-                "REQ-1",
-                "REQ&2"
-              ],
-              "limit": 50,
-              "offset": 0
-            }
-          ]
-        },
-        "wire": {
-          "method": "GET",
-          "endpoint": "get_cases/7&refs%5B%5D=REQ-1&refs%5B%5D=REQ%262&limit=50&offset=0"
-        },
-        "upstream_response": {
-          "kind": "json",
-          "body": []
-        },
-        "driver_result": {
-          "kind": "json",
-          "value": {
-            "kind": "legacy-array",
-            "items": [],
-            "size": 0
-          }
-        }
+        "driver": { "binding": "cases.getCasesPage", "arguments": [7, { "limit": 50, "offset": 50 }] },
+        "wire": { "method": "GET", "endpoint": "get_cases/7&limit=50&offset=50" },
+        "upstream_response": { "kind": "json", "body": { "offset": 50, "limit": 50, "size": 1, "_links": { "next": null, "prev": "/api/v2/get_cases/7&limit=50&offset=0" }, "cases": [{ "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "REQ-1", "created_by": 1, "created_on": 1646317844, "updated_by": 2, "updated_on": 1647317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": null, "labels": [{ "id": 11, "title": "login" }] }] } },
+        "driver_result": { "kind": "json", "value": { "kind": "envelope", "items": [{ "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "REQ-1", "created_by": 1, "created_on": 1646317844, "updated_by": 2, "updated_on": 1647317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": null, "labels": [{ "id": 11, "title": "login" }] }], "offset": 50, "limit": 50, "size": 1, "_links": { "next": null, "prev": "/api/v2/get_cases/7&limit=50&offset=0" } } }
       }
     },
     {
-      "id": "refs-empty",
-      "input": {
-        "project_id": 7,
-        "query": {
-          "refs": []
-        }
-      },
+      "id": "scalar-filters", "input": { "project_id": 7, "query": { "suite_id": 3, "section_id": 5, "type_id": 2, "priority_id": 4, "template_id": 1, "milestone_id": 9, "created_after": 1646000000, "created_before": 1646999999, "created_by": 1, "filter": "login & logout", "updated_after": 1647000000, "updated_before": 1647999999, "updated_by": 2, "label_id": 11, "refs": "REQ-1 & #x" } },
       "covers": [
-        {
-          "parameter": "project_id",
-          "requirements": [
-            "mapping",
-            "valid"
-          ]
-        },
-        {
-          "parameter": "query.refs",
-          "requirements": [
-            "empty-array"
-          ]
-        }
+        { "parameter": "query.suite_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.section_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.type_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.priority_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.template_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.milestone_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.created_after", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.created_before", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.created_by", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.filter", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.updated_after", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.updated_before", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.updated_by", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.label_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "query.refs", "requirements": ["mapping", "valid"] }
       ],
       "expect": {
         "kind": "accepted",
-        "driver": {
-          "binding": "cases.getCasesPage",
-          "arguments": [
-            7,
-            {
-              "refs": [],
-              "limit": 50,
-              "offset": 0
-            }
-          ]
-        },
-        "wire": {
-          "method": "GET",
-          "endpoint": "get_cases/7&limit=50&offset=0"
-        },
-        "upstream_response": {
-          "kind": "json",
-          "body": []
-        },
-        "driver_result": {
-          "kind": "json",
-          "value": {
-            "kind": "legacy-array",
-            "items": [],
-            "size": 0
-          }
-        }
+        "driver": { "binding": "cases.getCasesPage", "arguments": [7, { "suiteId": 3, "sectionId": 5, "typeId": 2, "priorityId": 4, "templateId": 1, "milestoneId": 9, "createdAfter": 1646000000, "createdBefore": 1646999999, "createdBy": 1, "filter": "login & logout", "updatedAfter": 1647000000, "updatedBefore": 1647999999, "updatedBy": 2, "labelId": 11, "refs": "REQ-1 & #x", "limit": 50, "offset": 0 }] },
+        "wire": { "method": "GET", "endpoint": "get_cases/7&suite_id=3&section_id=5&type_id=2&priority_id=4&template_id=1&milestone_id=9&created_after=1646000000&created_before=1646999999&created_by=1&filter=login%20%26%20logout&updated_after=1647000000&updated_before=1647999999&updated_by=2&label_id=11&refs=REQ-1%20%26%20%23x&limit=50&offset=0" },
+        "upstream_response": { "kind": "json", "body": { "offset": 0, "limit": 50, "size": 1, "_links": { "next": null, "prev": null }, "cases": [{ "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "REQ-1", "created_by": 1, "created_on": 1646317844, "updated_by": 2, "updated_on": 1647317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": null, "labels": [{ "id": 11, "title": "login" }] }] } },
+        "driver_result": { "kind": "json", "value": { "kind": "envelope", "items": [{ "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "REQ-1", "created_by": 1, "created_on": 1646317844, "updated_by": 2, "updated_on": 1647317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": null, "labels": [{ "id": 11, "title": "login" }] }], "offset": 0, "limit": 50, "size": 1, "_links": { "next": null, "prev": null } } }
       }
     },
     {
-      "id": "refs-omitted",
-      "input": {
-        "project_id": 7
-      },
+      "id": "list-filters", "input": { "project_id": 7, "query": { "type_id": [2, 3], "priority_id": [3, 4], "template_id": [1, 2], "milestone_id": [9, 10], "created_by": [1, 2], "updated_by": [2, 3], "label_id": [11, 12], "refs": ["REQ-1", "REQ&2"] } },
       "covers": [
-        {
-          "parameter": "query.refs",
-          "requirements": [
-            "omitted"
-          ]
-        }
+        { "parameter": "query.type_id", "requirements": ["list"] },
+        { "parameter": "query.priority_id", "requirements": ["list"] },
+        { "parameter": "query.template_id", "requirements": ["list"] },
+        { "parameter": "query.milestone_id", "requirements": ["list"] },
+        { "parameter": "query.created_by", "requirements": ["list"] },
+        { "parameter": "query.updated_by", "requirements": ["list"] },
+        { "parameter": "query.label_id", "requirements": ["list"] },
+        { "parameter": "query.refs", "requirements": ["array"] }
       ],
       "expect": {
         "kind": "accepted",
-        "driver": {
-          "binding": "cases.getCasesPage",
-          "arguments": [
-            7,
-            {
-              "limit": 50,
-              "offset": 0
-            }
-          ]
-        },
-        "wire": {
-          "method": "GET",
-          "endpoint": "get_cases/7&limit=50&offset=0"
-        },
-        "upstream_response": {
-          "kind": "json",
-          "body": []
-        },
-        "driver_result": {
-          "kind": "json",
-          "value": {
-            "kind": "legacy-array",
-            "items": [],
-            "size": 0
-          }
-        }
+        "driver": { "binding": "cases.getCasesPage", "arguments": [7, { "typeId": [2, 3], "priorityId": [3, 4], "templateId": [1, 2], "milestoneId": [9, 10], "createdBy": [1, 2], "updatedBy": [2, 3], "labelId": [11, 12], "refs": ["REQ-1", "REQ&2"], "limit": 50, "offset": 0 }] },
+        "wire": { "method": "GET", "endpoint": "get_cases/7&type_id=2%2C3&priority_id=3%2C4&template_id=1%2C2&milestone_id=9%2C10&created_by=1%2C2&updated_by=2%2C3&label_id=11%2C12&refs%5B%5D=REQ-1&refs%5B%5D=REQ%262&limit=50&offset=0" },
+        "upstream_response": { "kind": "json", "body": { "offset": 0, "limit": 50, "size": 1, "_links": { "next": null, "prev": null }, "cases": [{ "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "REQ-1", "created_by": 1, "created_on": 1646317844, "updated_by": 2, "updated_on": 1647317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": null, "labels": [{ "id": 11, "title": "login" }] }] } },
+        "driver_result": { "kind": "json", "value": { "kind": "envelope", "items": [{ "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "REQ-1", "created_by": 1, "created_on": 1646317844, "updated_by": 2, "updated_on": 1647317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": null, "labels": [{ "id": 11, "title": "login" }] }], "offset": 0, "limit": 50, "size": 1, "_links": { "next": null, "prev": null } } }
       }
     },
     {
-      "id": "missing-project",
-      "input": {
-        "query": {
-          "refs": "REQ-1"
-        }
-      },
+      "id": "largest-safe-values", "input": { "project_id": 9007199254740991, "query": { "suite_id": 9007199254740991, "section_id": 9007199254740991, "type_id": 9007199254740991, "priority_id": 9007199254740991, "template_id": 9007199254740991, "milestone_id": 9007199254740991, "created_after": 9007199254740991, "created_before": 9007199254740991, "created_by": 9007199254740991, "updated_after": 9007199254740991, "updated_before": 9007199254740991, "updated_by": 9007199254740991, "label_id": 9007199254740991 } },
       "covers": [
-        {
-          "parameter": "project_id",
-          "requirements": [
-            "required"
-          ]
-        }
+        { "parameter": "project_id", "requirements": ["upper-bound"] },
+        { "parameter": "query.suite_id", "requirements": ["upper-bound"] },
+        { "parameter": "query.section_id", "requirements": ["upper-bound"] },
+        { "parameter": "query.type_id", "requirements": ["upper-bound"] },
+        { "parameter": "query.priority_id", "requirements": ["upper-bound"] },
+        { "parameter": "query.template_id", "requirements": ["upper-bound"] },
+        { "parameter": "query.milestone_id", "requirements": ["upper-bound"] },
+        { "parameter": "query.created_after", "requirements": ["upper-bound"] },
+        { "parameter": "query.created_before", "requirements": ["upper-bound"] },
+        { "parameter": "query.created_by", "requirements": ["upper-bound"] },
+        { "parameter": "query.updated_after", "requirements": ["upper-bound"] },
+        { "parameter": "query.updated_before", "requirements": ["upper-bound"] },
+        { "parameter": "query.updated_by", "requirements": ["upper-bound"] },
+        { "parameter": "query.label_id", "requirements": ["upper-bound"] }
       ],
       "expect": {
-        "kind": "rejected",
-        "code": "INVALID_ARGUMENT"
+        "kind": "accepted",
+        "driver": { "binding": "cases.getCasesPage", "arguments": [9007199254740991, { "suiteId": 9007199254740991, "sectionId": 9007199254740991, "typeId": 9007199254740991, "priorityId": 9007199254740991, "templateId": 9007199254740991, "milestoneId": 9007199254740991, "createdAfter": 9007199254740991, "createdBefore": 9007199254740991, "createdBy": 9007199254740991, "updatedAfter": 9007199254740991, "updatedBefore": 9007199254740991, "updatedBy": 9007199254740991, "labelId": 9007199254740991, "limit": 50, "offset": 0 }] },
+        "wire": { "method": "GET", "endpoint": "get_cases/9007199254740991&suite_id=9007199254740991&section_id=9007199254740991&type_id=9007199254740991&priority_id=9007199254740991&template_id=9007199254740991&milestone_id=9007199254740991&created_after=9007199254740991&created_before=9007199254740991&created_by=9007199254740991&updated_after=9007199254740991&updated_before=9007199254740991&updated_by=9007199254740991&label_id=9007199254740991&limit=50&offset=0" },
+        "upstream_response": { "kind": "json", "body": { "offset": 0, "limit": 50, "size": 0, "_links": { "next": null, "prev": null }, "cases": [] } },
+        "driver_result": { "kind": "json", "value": { "kind": "envelope", "items": [], "offset": 0, "limit": 50, "size": 0, "_links": { "next": null, "prev": null } } }
       }
     },
     {
-      "id": "invalid-project",
-      "input": {
-        "project_id": -1
-      },
+      "id": "epoch-timestamps", "input": { "project_id": 7, "query": { "created_after": 0, "created_before": 0, "updated_after": 0, "updated_before": 0 } },
       "covers": [
-        {
-          "parameter": "project_id",
-          "requirements": [
-            "invalid"
-          ]
-        }
+        { "parameter": "query.created_after", "requirements": ["zero"] },
+        { "parameter": "query.created_before", "requirements": ["zero"] },
+        { "parameter": "query.updated_after", "requirements": ["zero"] },
+        { "parameter": "query.updated_before", "requirements": ["zero"] }
       ],
       "expect": {
-        "kind": "rejected",
-        "code": "INVALID_ARGUMENT"
+        "kind": "accepted",
+        "driver": { "binding": "cases.getCasesPage", "arguments": [7, { "createdAfter": 0, "createdBefore": 0, "updatedAfter": 0, "updatedBefore": 0, "limit": 50, "offset": 0 }] },
+        "wire": { "method": "GET", "endpoint": "get_cases/7&created_after=0&created_before=0&updated_after=0&updated_before=0&limit=50&offset=0" },
+        "upstream_response": { "kind": "json", "body": { "offset": 0, "limit": 50, "size": 0, "_links": { "next": null, "prev": null }, "cases": [] } },
+        "driver_result": { "kind": "json", "value": { "kind": "envelope", "items": [], "offset": 0, "limit": 50, "size": 0, "_links": { "next": null, "prev": null } } }
       }
     },
     {
-      "id": "invalid-refs",
-      "input": {
-        "project_id": 7,
-        "query": {
-          "refs": [
-            false
-          ]
-        }
-      },
-      "covers": [
-        {
-          "parameter": "query.refs",
-          "requirements": [
-            "invalid"
-          ]
-        }
-      ],
+      "id": "largest-page", "input": { "project_id": 7, "query": { "limit": 250 } },
+      "covers": [{ "parameter": "query.limit", "requirements": ["upper-bound"] }],
       "expect": {
-        "kind": "rejected",
-        "code": "INVALID_ARGUMENT"
+        "kind": "accepted",
+        "driver": { "binding": "cases.getCasesPage", "arguments": [7, { "limit": 250, "offset": 0 }] },
+        "wire": { "method": "GET", "endpoint": "get_cases/7&limit=250&offset=0" },
+        "upstream_response": { "kind": "json", "body": { "offset": 0, "limit": 250, "size": 0, "_links": { "next": null, "prev": null }, "cases": [] } },
+        "driver_result": { "kind": "json", "value": { "kind": "envelope", "items": [], "offset": 0, "limit": 250, "size": 0, "_links": { "next": null, "prev": null } } }
       }
     },
     {
-      "id": "unknown-top-level",
-      "input": {
-        "project_id": 7,
-        "refs": "REQ-1"
-      },
+      "id": "first-page-by-name", "input": { "project_id": 7, "query": { "offset": 0 }, "_mcp": { "pagination": "page" } },
       "covers": [
-        {
-          "parameter": "$input",
-          "requirements": [
-            "unknown-top-level"
-          ]
-        }
+        { "parameter": "query.offset", "requirements": ["zero"] },
+        { "parameter": "_mcp.pagination", "requirements": ["mapping", "page"] }
       ],
       "expect": {
-        "kind": "rejected",
-        "code": "INVALID_ARGUMENT"
+        "kind": "accepted",
+        "driver": { "binding": "cases.getCasesPage", "arguments": [7, { "limit": 50, "offset": 0 }] },
+        "wire": { "method": "GET", "endpoint": "get_cases/7&limit=50&offset=0" },
+        "upstream_response": { "kind": "json", "body": { "offset": 0, "limit": 50, "size": 0, "_links": { "next": null, "prev": null }, "cases": [] } },
+        "driver_result": { "kind": "json", "value": { "kind": "envelope", "items": [], "offset": 0, "limit": 50, "size": 0, "_links": { "next": null, "prev": null } } }
       }
     },
     {
-      "id": "unknown-query",
-      "input": {
-        "project_id": 7,
-        "query": {
-          "refs_filter": "REQ-1"
-        }
-      },
+      "id": "all-defaults", "input": { "project_id": 7, "_mcp": { "pagination": "all" } },
       "covers": [
-        {
-          "parameter": "$input",
-          "requirements": [
-            "unknown-query"
-          ]
-        }
+        { "parameter": "_mcp.pagination", "requirements": ["mapping", "all"] },
+        { "parameter": "_mcp.page_size", "requirements": ["omitted"] },
+        { "parameter": "_mcp.start_offset", "requirements": ["omitted"] },
+        { "parameter": "_mcp.max_items", "requirements": ["omitted"] },
+        { "parameter": "_mcp.max_pages", "requirements": ["omitted"] },
+        { "parameter": "_mcp.max_bytes", "requirements": ["omitted"] },
+        { "parameter": "_mcp.max_duration_ms", "requirements": ["omitted"] }
       ],
       "expect": {
-        "kind": "rejected",
-        "code": "INVALID_ARGUMENT"
+        "kind": "accepted",
+        "driver": { "binding": "cases.getAllCases", "arguments": [7, { "maxItems": 1000, "maxPages": 20, "maxBytes": 1048576, "maxDurationMs": 45000 }] },
+        "wire": { "method": "GET", "endpoint": "get_cases/7&limit=250&offset=0" },
+        "upstream_response": { "kind": "json", "body": { "offset": 0, "limit": 250, "size": 1, "_links": { "next": null, "prev": null }, "cases": [{ "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "REQ-1", "created_by": 1, "created_on": 1646317844, "updated_by": 2, "updated_on": 1647317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": null, "labels": [{ "id": 11, "title": "login" }] }] } },
+        "driver_result": { "kind": "json", "value": [{ "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "REQ-1", "created_by": 1, "created_on": 1646317844, "updated_by": 2, "updated_on": 1647317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": null, "labels": [{ "id": 11, "title": "login" }] }] }
       }
-    }
+    },
+    {
+      "id": "all-controls", "input": { "project_id": 7, "query": { "suite_id": 3, "type_id": [2, 3], "refs": "REQ-1" }, "_mcp": { "pagination": "all", "page_size": 25, "start_offset": 100, "max_items": 10, "max_pages": 2, "max_bytes": 1024, "max_duration_ms": 5000 } },
+      "covers": [
+        { "parameter": "query.suite_id", "requirements": ["mapping"] },
+        { "parameter": "query.type_id", "requirements": ["mapping"] },
+        { "parameter": "query.refs", "requirements": ["mapping"] },
+        { "parameter": "_mcp.page_size", "requirements": ["mapping", "valid"] },
+        { "parameter": "_mcp.start_offset", "requirements": ["mapping", "valid"] },
+        { "parameter": "_mcp.max_items", "requirements": ["mapping", "valid"] },
+        { "parameter": "_mcp.max_pages", "requirements": ["mapping", "valid"] },
+        { "parameter": "_mcp.max_bytes", "requirements": ["mapping", "valid"] },
+        { "parameter": "_mcp.max_duration_ms", "requirements": ["mapping", "valid"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "cases.getAllCases", "arguments": [7, { "suiteId": 3, "typeId": [2, 3], "refs": "REQ-1", "pageSize": 25, "startOffset": 100, "maxItems": 10, "maxPages": 2, "maxBytes": 1024, "maxDurationMs": 5000 }] },
+        "wire": { "method": "GET", "endpoint": "get_cases/7&suite_id=3&type_id=2%2C3&refs=REQ-1&limit=25&offset=100" },
+        "upstream_response": { "kind": "json", "body": { "offset": 100, "limit": 25, "size": 0, "_links": { "next": null, "prev": "/api/v2/get_cases/7&limit=25&offset=75" }, "cases": [] } },
+        "driver_result": { "kind": "json", "value": [] }
+      }
+    },
+    {
+      "id": "all-ceilings", "input": { "project_id": 7, "_mcp": { "pagination": "all", "max_items": 1000, "max_pages": 20, "max_bytes": 1048576, "max_duration_ms": 45000 } },
+      "covers": [
+        { "parameter": "_mcp.max_items", "requirements": ["ceiling"] },
+        { "parameter": "_mcp.max_pages", "requirements": ["ceiling"] },
+        { "parameter": "_mcp.max_bytes", "requirements": ["ceiling"] },
+        { "parameter": "_mcp.max_duration_ms", "requirements": ["ceiling"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "cases.getAllCases", "arguments": [7, { "maxItems": 1000, "maxPages": 20, "maxBytes": 1048576, "maxDurationMs": 45000 }] },
+        "wire": { "method": "GET", "endpoint": "get_cases/7&limit=250&offset=0" },
+        "upstream_response": { "kind": "json", "body": { "offset": 0, "limit": 250, "size": 0, "_links": { "next": null, "prev": null }, "cases": [] } },
+        "driver_result": { "kind": "json", "value": [] }
+      }
+    },
+    {
+      "id": "largest-aggregate-page", "input": { "project_id": 7, "_mcp": { "pagination": "all", "page_size": 250 } },
+      "covers": [{ "parameter": "_mcp.page_size", "requirements": ["upper-bound"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "cases.getAllCases", "arguments": [7, { "pageSize": 250, "maxItems": 1000, "maxPages": 20, "maxBytes": 1048576, "maxDurationMs": 45000 }] },
+        "wire": { "method": "GET", "endpoint": "get_cases/7&limit=250&offset=0" },
+        "upstream_response": { "kind": "json", "body": { "offset": 0, "limit": 250, "size": 0, "_links": { "next": null, "prev": null }, "cases": [] } },
+        "driver_result": { "kind": "json", "value": [] }
+      }
+    },
+    {
+      "id": "aggregate-from-start", "input": { "project_id": 7, "_mcp": { "pagination": "all", "start_offset": 0 } },
+      "covers": [{ "parameter": "_mcp.start_offset", "requirements": ["zero"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "cases.getAllCases", "arguments": [7, { "startOffset": 0, "maxItems": 1000, "maxPages": 20, "maxBytes": 1048576, "maxDurationMs": 45000 }] },
+        "wire": { "method": "GET", "endpoint": "get_cases/7&limit=250&offset=0" },
+        "upstream_response": { "kind": "json", "body": { "offset": 0, "limit": 250, "size": 0, "_links": { "next": null, "prev": null }, "cases": [] } },
+        "driver_result": { "kind": "json", "value": [] }
+      }
+    },
+    { "id": "invalid-filter", "input": { "project_id": 7, "query": { "filter": 7 } }, "covers": [{ "parameter": "query.filter", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "invalid-refs", "input": { "project_id": 7, "query": { "refs": [false] } }, "covers": [{ "parameter": "query.refs", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "empty-refs", "input": { "project_id": 7, "query": { "refs": [] } }, "covers": [{ "parameter": "query.refs", "requirements": ["empty-array"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "pagination-unknown-mode", "input": { "project_id": 7, "_mcp": { "pagination": "stream" } }, "covers": [{ "parameter": "_mcp.pagination", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "unknown-top-level", "input": { "project_id": 7, "suite_id": 3 }, "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "unknown-query", "input": { "project_id": 7, "query": { "status_id": 1 } }, "covers": [{ "parameter": "$input", "requirements": ["unknown-query"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "unknown-control", "input": { "project_id": 7, "_mcp": { "pagination": "all", "unexpected": 1 } }, "covers": [{ "parameter": "$input", "requirements": ["unknown-control"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "page-controls-in-all", "input": { "project_id": 7, "query": { "limit": 50 }, "_mcp": { "pagination": "all" } }, "covers": [{ "parameter": "$input", "requirements": ["page-controls-in-all"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "all-controls-in-page", "input": { "project_id": 7, "_mcp": { "pagination": "page", "max_items": 5 } }, "covers": [{ "parameter": "$input", "requirements": ["all-controls-in-page"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } }
   ]
 }

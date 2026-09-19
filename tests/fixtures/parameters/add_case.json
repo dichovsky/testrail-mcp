@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "review": { "status": "complete", "pending": [], "driver_version": "7.2.0", "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-19" },
-  "endpoint": { "family_id": "T02", "http_method": "POST", "route": "update_case/{case_id}", "tool": "testrail_update_case", "driver_method": "cases.updateCase" },
+  "endpoint": { "family_id": "T02", "http_method": "POST", "route": "add_case/{section_id}", "tool": "testrail_add_case", "driver_method": "cases.addCase" },
   "sources": [
-    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts", "supports": "updateCase validates the case ID, sends it as the only path segment of update_case, forwards the JSON payload unchanged and parses the reply advisorily against CaseSchema." },
+    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts", "supports": "addCase validates the section ID, sends it as the only path segment of add_case, forwards the JSON payload unchanged and parses the reply advisorily against CaseSchema." },
     { "id": "driver-schema", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/cases.ts", "supports": "The case payload schemas declare title, template_id, type_id, priority_id, estimate, milestone_id, refs, labels (numbers or strings), is_legacy and a legacy custom_fields record; update payloads add section_id and the bulk update requires case_ids. Every identifier is a plain number in the driver." },
     { "id": "driver-common", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/common.ts", "supports": "zObject uses passthrough, so the driver forwards unknown and custom_* properties alike; the MCP boundary must reject ordinary unknown names separately." },
     { "id": "testrail-cases", "url": "https://support.testrail.com/hc/en-us/articles/7077292642580-Cases", "supports": "add_case and update_case take title, template_id, type_id, priority_id, estimate (a timespan such as 30s or 1m 45s), milestone_id, refs (a comma-separated string), labels (an array of IDs or titles) and is_legacy, plus custom fields submitted with their system name prefixed with custom_. update_case supports partial updates and section_id requires TestRail 6.5.2 or later. update_cases applies the same values to every case in case_ids and add_cases takes an array of case objects." }
   ],
   "input_policy": { "ordinary_fields": "reject", "custom_fields": "flat_custom_prefix", "notes": "Strictness is an MCP boundary requirement at every depth. Custom fields are flat custom_* properties with any JSON value; the driver's legacy custom_fields container is refused rather than forwarded because TestRail does not read it." },
-  "outer_result": { "driver": "record", "tool_data": "record", "notes": "The updated case is returned as the driver received it, flat custom_* properties included; entity-field drift is advisory. TestRail applies a partial update, so an empty body changes nothing and returns the case as it is." },
+  "outer_result": { "driver": "record", "tool_data": "record", "notes": "The created case is returned as the driver received it, flat custom_* properties included; entity-field drift is advisory." },
   "requirements": [
     { "id": "unknown-top-level", "kind": "invalid", "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them." },
     { "id": "unknown-body", "kind": "invalid", "description": "Reject an unknown ordinary body field rather than forwarding it; only custom_* names extend the payload." },
@@ -17,10 +17,9 @@
   ],
   "baseline": "full-body",
   "parameters": [
-    { "id": "case_id", "input_path": ["case_id"], "scope": "path", "requiredness": "required", "domain_ref": "positive_id", "semantics": "No coercion. The validated number is passed positionally and appears verbatim in the path.", "driver": { "argument": 0, "path": [] }, "wire": { "location": "path", "names": ["case_id"], "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced." }, "sources": ["driver-module", "testrail-cases"] },
+    { "id": "section_id", "input_path": ["section_id"], "scope": "path", "requiredness": "required", "domain_ref": "positive_id", "semantics": "No coercion. The section the case is created in; passed positionally and sent verbatim as the only path segment.", "driver": { "argument": 0, "path": [] }, "wire": { "location": "path", "names": ["section_id"], "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced." }, "sources": ["driver-module", "testrail-cases"] },
     { "id": "body", "input_path": ["body"], "scope": "body", "requiredness": "required", "domain": { "type": "object" }, "semantics": "No coercion. The JSON object is passed as the driver's payload argument and sent unchanged.", "driver": { "argument": 1, "path": [] }, "wire": { "location": "json", "names": ["body"], "encoding": "JSON object sent unchanged." }, "sources": ["driver-module", "driver-schema"], "requirements": [ { "id": "mapping", "kind": "mapping", "description": "Preserve the object at driver argument 1 as the JSON request body." }, { "id": "valid", "kind": "valid", "description": "Accept an object." }, { "id": "invalid", "kind": "invalid", "description": "Reject a body that is not an object before driver invocation." }, { "id": "required", "kind": "required", "description": "Reject a missing body." } ] },
-    { "id": "body.section_id", "input_path": ["body", "section_id"], "scope": "body", "requiredness": "optional", "domain_ref": "positive_id", "semantics": "Moves the case into this section (TestRail 6.5.2 or later). The driver forwards any number, so the boundary holds it to the identifier domain; sent as a JSON number.", "driver": { "argument": 1, "path": ["section_id"] }, "wire": { "location": "json", "names": ["section_id"], "encoding": "JSON integer under section_id." }, "sources": ["driver-schema", "testrail-cases"] },
-    { "id": "body.title", "input_path": ["body", "title"], "scope": "body", "requiredness": "optional", "domain": { "type": "string" }, "semantics": "The new title. No coercion; omitted leaves the title unchanged.", "driver": { "argument": 1, "path": ["title"] }, "wire": { "location": "json", "names": ["title"], "encoding": "JSON string under title." }, "sources": ["driver-schema", "testrail-cases"], "requirements": [ { "id": "mapping", "kind": "mapping", "description": "Preserve the title under its own name in the body." }, { "id": "valid", "kind": "valid", "description": "Accept a string." }, { "id": "invalid", "kind": "invalid", "description": "Reject a non-string title before driver invocation." }, { "id": "omitted", "kind": "omitted", "description": "Send no title when the caller did not supply one." } ] },
+    { "id": "body.title", "input_path": ["body", "title"], "scope": "body", "requiredness": "required", "domain": { "type": "string" }, "semantics": "The case title, required by TestRail. No coercion.", "driver": { "argument": 1, "path": ["title"] }, "wire": { "location": "json", "names": ["title"], "encoding": "JSON string under title." }, "sources": ["driver-schema", "testrail-cases"], "requirements": [ { "id": "mapping", "kind": "mapping", "description": "Preserve the title under its own name in the body." }, { "id": "valid", "kind": "valid", "description": "Accept a string." }, { "id": "invalid", "kind": "invalid", "description": "Reject a non-string title before driver invocation." }, { "id": "required", "kind": "required", "description": "Reject a body without a title." } ] },
     { "id": "body.template_id", "input_path": ["body", "template_id"], "scope": "body", "requiredness": "optional", "domain_ref": "positive_id", "semantics": "The template (field layout), TestRail 5.2 or later. The driver forwards any number, so the boundary holds it to the identifier domain; sent as a JSON number.", "driver": { "argument": 1, "path": ["template_id"] }, "wire": { "location": "json", "names": ["template_id"], "encoding": "JSON integer under template_id." }, "sources": ["driver-schema", "testrail-cases"] },
     { "id": "body.type_id", "input_path": ["body", "type_id"], "scope": "body", "requiredness": "optional", "domain_ref": "positive_id", "semantics": "The case type. The driver forwards any number, so the boundary holds it to the identifier domain; sent as a JSON number.", "driver": { "argument": 1, "path": ["type_id"] }, "wire": { "location": "json", "names": ["type_id"], "encoding": "JSON integer under type_id." }, "sources": ["driver-schema", "testrail-cases"] },
     { "id": "body.priority_id", "input_path": ["body", "priority_id"], "scope": "body", "requiredness": "optional", "domain_ref": "positive_id", "semantics": "The case priority. The driver forwards any number, so the boundary holds it to the identifier domain; sent as a JSON number.", "driver": { "argument": 1, "path": ["priority_id"] }, "wire": { "location": "json", "names": ["priority_id"], "encoding": "JSON integer under priority_id." }, "sources": ["driver-schema", "testrail-cases"] },
@@ -33,11 +32,10 @@
   ],
   "cases": [
     {
-      "id": "full-body", "input": { "case_id": 42, "body": { "section_id": 6, "title": "Print document history", "template_id": 1, "type_id": 2, "priority_id": 4, "estimate": "3m", "milestone_id": 9, "refs": "RF-1, RF-2", "labels": [7, "label1"], "is_legacy": false, "custom_preconds": "These are the preconditions", "custom_steps_separated": [{ "content": "Step 1", "expected": "Expected Result 1" }, { "shared_step_id": 3 }], "custom_null": null, "custom_zero": 0, "custom_flag": false } },
+      "id": "full-body", "input": { "section_id": 5, "body": { "title": "Print document history", "template_id": 1, "type_id": 2, "priority_id": 4, "estimate": "3m", "milestone_id": 9, "refs": "RF-1, RF-2", "labels": [7, "label1"], "is_legacy": false, "custom_preconds": "These are the preconditions", "custom_steps_separated": [{ "content": "Step 1", "expected": "Expected Result 1" }, { "shared_step_id": 3 }], "custom_null": null, "custom_zero": 0, "custom_flag": false } },
       "covers": [
-        { "parameter": "case_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "section_id", "requirements": ["mapping", "valid"] },
         { "parameter": "body", "requirements": ["mapping", "valid"] },
-        { "parameter": "body.section_id", "requirements": ["mapping", "valid"] },
         { "parameter": "body.title", "requirements": ["mapping", "valid"] },
         { "parameter": "body.template_id", "requirements": ["mapping", "valid"] },
         { "parameter": "body.type_id", "requirements": ["mapping", "valid"] },
@@ -51,17 +49,15 @@
       ],
       "expect": {
         "kind": "accepted",
-        "driver": { "binding": "cases.updateCase", "arguments": [42, { "section_id": 6, "title": "Print document history", "template_id": 1, "type_id": 2, "priority_id": 4, "estimate": "3m", "milestone_id": 9, "refs": "RF-1, RF-2", "labels": [7, "label1"], "is_legacy": false, "custom_preconds": "These are the preconditions", "custom_steps_separated": [{ "content": "Step 1", "expected": "Expected Result 1" }, { "shared_step_id": 3 }], "custom_null": null, "custom_zero": 0, "custom_flag": false }] },
-        "wire": { "method": "POST", "endpoint": "update_case/42", "json": { "section_id": 6, "title": "Print document history", "template_id": 1, "type_id": 2, "priority_id": 4, "estimate": "3m", "milestone_id": 9, "refs": "RF-1, RF-2", "labels": [7, "label1"], "is_legacy": false, "custom_preconds": "These are the preconditions", "custom_steps_separated": [{ "content": "Step 1", "expected": "Expected Result 1" }, { "shared_step_id": 3 }], "custom_null": null, "custom_zero": 0, "custom_flag": false } },
-        "upstream_response": { "kind": "json", "body": { "id": 42, "title": "Print document history", "section_id": 6, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "RF-1, RF-2", "created_by": 1, "created_on": 1646317844, "updated_by": 1, "updated_on": 1646317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": "These are the preconditions", "custom_steps_separated": [{ "content": "Step 1", "expected": "Expected Result 1" }, { "shared_step_id": 3 }], "custom_null": null, "custom_zero": 0, "custom_flag": false, "labels": [{ "id": 7, "title": "label1" }] } },
-        "driver_result": { "kind": "json", "value": { "id": 42, "title": "Print document history", "section_id": 6, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "RF-1, RF-2", "created_by": 1, "created_on": 1646317844, "updated_by": 1, "updated_on": 1646317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": "These are the preconditions", "custom_steps_separated": [{ "content": "Step 1", "expected": "Expected Result 1" }, { "shared_step_id": 3 }], "custom_null": null, "custom_zero": 0, "custom_flag": false, "labels": [{ "id": 7, "title": "label1" }] } }
+        "driver": { "binding": "cases.addCase", "arguments": [5, { "title": "Print document history", "template_id": 1, "type_id": 2, "priority_id": 4, "estimate": "3m", "milestone_id": 9, "refs": "RF-1, RF-2", "labels": [7, "label1"], "is_legacy": false, "custom_preconds": "These are the preconditions", "custom_steps_separated": [{ "content": "Step 1", "expected": "Expected Result 1" }, { "shared_step_id": 3 }], "custom_null": null, "custom_zero": 0, "custom_flag": false }] },
+        "wire": { "method": "POST", "endpoint": "add_case/5", "json": { "title": "Print document history", "template_id": 1, "type_id": 2, "priority_id": 4, "estimate": "3m", "milestone_id": 9, "refs": "RF-1, RF-2", "labels": [7, "label1"], "is_legacy": false, "custom_preconds": "These are the preconditions", "custom_steps_separated": [{ "content": "Step 1", "expected": "Expected Result 1" }, { "shared_step_id": 3 }], "custom_null": null, "custom_zero": 0, "custom_flag": false } },
+        "upstream_response": { "kind": "json", "body": { "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "RF-1, RF-2", "created_by": 1, "created_on": 1646317844, "updated_by": 1, "updated_on": 1646317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": "These are the preconditions", "custom_steps_separated": [{ "content": "Step 1", "expected": "Expected Result 1" }, { "shared_step_id": 3 }], "custom_null": null, "custom_zero": 0, "custom_flag": false, "labels": [{ "id": 7, "title": "label1" }] } },
+        "driver_result": { "kind": "json", "value": { "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "RF-1, RF-2", "created_by": 1, "created_on": 1646317844, "updated_by": 1, "updated_on": 1646317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": "These are the preconditions", "custom_steps_separated": [{ "content": "Step 1", "expected": "Expected Result 1" }, { "shared_step_id": 3 }], "custom_null": null, "custom_zero": 0, "custom_flag": false, "labels": [{ "id": 7, "title": "label1" }] } }
       }
     },
     {
-      "id": "empty-body", "input": { "case_id": 42, "body": {} },
+      "id": "minimal-body", "input": { "section_id": 5, "body": { "title": "Smoke" } },
       "covers": [
-        { "parameter": "body.section_id", "requirements": ["omitted"] },
-        { "parameter": "body.title", "requirements": ["omitted"] },
         { "parameter": "body.template_id", "requirements": ["omitted"] },
         { "parameter": "body.type_id", "requirements": ["omitted"] },
         { "parameter": "body.priority_id", "requirements": ["omitted"] },
@@ -74,17 +70,16 @@
       ],
       "expect": {
         "kind": "accepted",
-        "driver": { "binding": "cases.updateCase", "arguments": [42, {}] },
-        "wire": { "method": "POST", "endpoint": "update_case/42", "json": {} },
-        "upstream_response": { "kind": "json", "body": { "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "RF-1, RF-2", "created_by": 1, "created_on": 1646317844, "updated_by": 1, "updated_on": 1646317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": "These are the preconditions", "custom_steps_separated": [{ "content": "Step 1", "expected": "Expected Result 1" }, { "shared_step_id": 3 }], "custom_null": null, "custom_zero": 0, "custom_flag": false, "labels": [{ "id": 7, "title": "label1" }] } },
-        "driver_result": { "kind": "json", "value": { "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "RF-1, RF-2", "created_by": 1, "created_on": 1646317844, "updated_by": 1, "updated_on": 1646317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": "These are the preconditions", "custom_steps_separated": [{ "content": "Step 1", "expected": "Expected Result 1" }, { "shared_step_id": 3 }], "custom_null": null, "custom_zero": 0, "custom_flag": false, "labels": [{ "id": 7, "title": "label1" }] } }
+        "driver": { "binding": "cases.addCase", "arguments": [5, { "title": "Smoke" }] },
+        "wire": { "method": "POST", "endpoint": "add_case/5", "json": { "title": "Smoke" } },
+        "upstream_response": { "kind": "json", "body": { "id": 43, "title": "Export as PDF", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": null, "refs": null, "created_by": 1, "created_on": 1646317900, "updated_by": 1, "updated_on": 1646317900, "estimate": null, "estimate_forecast": null, "suite_id": 3, "display_order": 2, "is_deleted": 0, "custom_preconds": null, "labels": [] } },
+        "driver_result": { "kind": "json", "value": { "id": 43, "title": "Export as PDF", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": null, "refs": null, "created_by": 1, "created_on": 1646317900, "updated_by": 1, "updated_on": 1646317900, "estimate": null, "estimate_forecast": null, "suite_id": 3, "display_order": 2, "is_deleted": 0, "custom_preconds": null, "labels": [] } }
       }
     },
     {
-      "id": "largest-safe-ids", "input": { "case_id": 9007199254740991, "body": { "section_id": 9007199254740991, "template_id": 9007199254740991, "type_id": 9007199254740991, "priority_id": 9007199254740991, "milestone_id": 9007199254740991 } },
+      "id": "largest-safe-ids", "input": { "section_id": 9007199254740991, "body": { "title": "Smoke", "template_id": 9007199254740991, "type_id": 9007199254740991, "priority_id": 9007199254740991, "milestone_id": 9007199254740991 } },
       "covers": [
-        { "parameter": "case_id", "requirements": ["upper-bound"] },
-        { "parameter": "body.section_id", "requirements": ["upper-bound"] },
+        { "parameter": "section_id", "requirements": ["upper-bound"] },
         { "parameter": "body.template_id", "requirements": ["upper-bound"] },
         { "parameter": "body.type_id", "requirements": ["upper-bound"] },
         { "parameter": "body.priority_id", "requirements": ["upper-bound"] },
@@ -92,33 +87,34 @@
       ],
       "expect": {
         "kind": "accepted",
-        "driver": { "binding": "cases.updateCase", "arguments": [9007199254740991, { "section_id": 9007199254740991, "template_id": 9007199254740991, "type_id": 9007199254740991, "priority_id": 9007199254740991, "milestone_id": 9007199254740991 }] },
-        "wire": { "method": "POST", "endpoint": "update_case/9007199254740991", "json": { "section_id": 9007199254740991, "template_id": 9007199254740991, "type_id": 9007199254740991, "priority_id": 9007199254740991, "milestone_id": 9007199254740991 } },
-        "upstream_response": { "kind": "json", "body": { "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "RF-1, RF-2", "created_by": 1, "created_on": 1646317844, "updated_by": 1, "updated_on": 1646317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": "These are the preconditions", "custom_steps_separated": [{ "content": "Step 1", "expected": "Expected Result 1" }, { "shared_step_id": 3 }], "custom_null": null, "custom_zero": 0, "custom_flag": false, "labels": [{ "id": 7, "title": "label1" }] } },
-        "driver_result": { "kind": "json", "value": { "id": 42, "title": "Print document history", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": 9, "refs": "RF-1, RF-2", "created_by": 1, "created_on": 1646317844, "updated_by": 1, "updated_on": 1646317844, "estimate": "3m", "estimate_forecast": "8m 40s", "suite_id": 3, "display_order": 1, "is_deleted": 0, "custom_preconds": "These are the preconditions", "custom_steps_separated": [{ "content": "Step 1", "expected": "Expected Result 1" }, { "shared_step_id": 3 }], "custom_null": null, "custom_zero": 0, "custom_flag": false, "labels": [{ "id": 7, "title": "label1" }] } }
-      }
-    },
-    {
-      "id": "empty-labels", "input": { "case_id": 42, "body": { "labels": [] } },
-      "covers": [{ "parameter": "body.labels", "requirements": ["empty"] }],
-      "expect": {
-        "kind": "accepted",
-        "driver": { "binding": "cases.updateCase", "arguments": [42, { "labels": [] }] },
-        "wire": { "method": "POST", "endpoint": "update_case/42", "json": { "labels": [] } },
+        "driver": { "binding": "cases.addCase", "arguments": [9007199254740991, { "title": "Smoke", "template_id": 9007199254740991, "type_id": 9007199254740991, "priority_id": 9007199254740991, "milestone_id": 9007199254740991 }] },
+        "wire": { "method": "POST", "endpoint": "add_case/9007199254740991", "json": { "title": "Smoke", "template_id": 9007199254740991, "type_id": 9007199254740991, "priority_id": 9007199254740991, "milestone_id": 9007199254740991 } },
         "upstream_response": { "kind": "json", "body": { "id": 43, "title": "Export as PDF", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": null, "refs": null, "created_by": 1, "created_on": 1646317900, "updated_by": 1, "updated_on": 1646317900, "estimate": null, "estimate_forecast": null, "suite_id": 3, "display_order": 2, "is_deleted": 0, "custom_preconds": null, "labels": [] } },
         "driver_result": { "kind": "json", "value": { "id": 43, "title": "Export as PDF", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": null, "refs": null, "created_by": 1, "created_on": 1646317900, "updated_by": 1, "updated_on": 1646317900, "estimate": null, "estimate_forecast": null, "suite_id": 3, "display_order": 2, "is_deleted": 0, "custom_preconds": null, "labels": [] } }
       }
     },
-    { "id": "invalid-body", "input": { "case_id": 42, "body": [] }, "covers": [{ "parameter": "body", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "missing-body", "input": { "case_id": 42 }, "covers": [{ "parameter": "body", "requirements": ["required"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "invalid-title", "input": { "case_id": 42, "body": {  "title": 7 } }, "covers": [{ "parameter": "body.title", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "invalid-estimate", "input": { "case_id": 42, "body": {   "estimate": 180 } }, "covers": [{ "parameter": "body.estimate", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "invalid-refs", "input": { "case_id": 42, "body": {   "refs": ["RF-1"] } }, "covers": [{ "parameter": "body.refs", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "invalid-label", "input": { "case_id": 42, "body": {   "labels": [true] } }, "covers": [{ "parameter": "body.labels", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "zero-label-id", "input": { "case_id": 42, "body": {   "labels": [0] } }, "covers": [{ "parameter": "body.labels", "requirements": ["zero-id"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "invalid-is-legacy", "input": { "case_id": 42, "body": {   "is_legacy": 1 } }, "covers": [{ "parameter": "body.is_legacy", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "unknown-body", "input": { "case_id": 42, "body": {   "unexpected": true } }, "covers": [{ "parameter": "$input", "requirements": ["unknown-body"] }, { "parameter": "body.custom_*", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "legacy-custom-container", "input": { "case_id": 42, "body": {   "custom_fields": { "custom_preconds": "Signed in" } } }, "covers": [{ "parameter": "$input", "requirements": ["legacy-custom-container"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "unknown-top-level", "input": { "case_id": 42, "body": {}, "title": "Smoke" }, "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } }
+    {
+      "id": "empty-labels", "input": { "section_id": 5, "body": { "title": "Smoke", "labels": [] } },
+      "covers": [{ "parameter": "body.labels", "requirements": ["empty"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "cases.addCase", "arguments": [5, { "title": "Smoke", "labels": [] }] },
+        "wire": { "method": "POST", "endpoint": "add_case/5", "json": { "title": "Smoke", "labels": [] } },
+        "upstream_response": { "kind": "json", "body": { "id": 43, "title": "Export as PDF", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": null, "refs": null, "created_by": 1, "created_on": 1646317900, "updated_by": 1, "updated_on": 1646317900, "estimate": null, "estimate_forecast": null, "suite_id": 3, "display_order": 2, "is_deleted": 0, "custom_preconds": null, "labels": [] } },
+        "driver_result": { "kind": "json", "value": { "id": 43, "title": "Export as PDF", "section_id": 5, "template_id": 1, "type_id": 2, "priority_id": 4, "milestone_id": null, "refs": null, "created_by": 1, "created_on": 1646317900, "updated_by": 1, "updated_on": 1646317900, "estimate": null, "estimate_forecast": null, "suite_id": 3, "display_order": 2, "is_deleted": 0, "custom_preconds": null, "labels": [] } }
+      }
+    },
+    { "id": "missing-title", "input": { "section_id": 5, "body": {} }, "covers": [{ "parameter": "body.title", "requirements": ["required"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "invalid-body", "input": { "section_id": 5, "body": [] }, "covers": [{ "parameter": "body", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "missing-body", "input": { "section_id": 5 }, "covers": [{ "parameter": "body", "requirements": ["required"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "invalid-title", "input": { "section_id": 5, "body": {  "title": 7 } }, "covers": [{ "parameter": "body.title", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "invalid-estimate", "input": { "section_id": 5, "body": {  "title": "Smoke",  "estimate": 180 } }, "covers": [{ "parameter": "body.estimate", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "invalid-refs", "input": { "section_id": 5, "body": {  "title": "Smoke",  "refs": ["RF-1"] } }, "covers": [{ "parameter": "body.refs", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "invalid-label", "input": { "section_id": 5, "body": {  "title": "Smoke",  "labels": [true] } }, "covers": [{ "parameter": "body.labels", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "zero-label-id", "input": { "section_id": 5, "body": {  "title": "Smoke",  "labels": [0] } }, "covers": [{ "parameter": "body.labels", "requirements": ["zero-id"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "invalid-is-legacy", "input": { "section_id": 5, "body": {  "title": "Smoke",  "is_legacy": 1 } }, "covers": [{ "parameter": "body.is_legacy", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "unknown-body", "input": { "section_id": 5, "body": {  "title": "Smoke",  "unexpected": true } }, "covers": [{ "parameter": "$input", "requirements": ["unknown-body"] }, { "parameter": "body.custom_*", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "legacy-custom-container", "input": { "section_id": 5, "body": {  "title": "Smoke",  "custom_fields": { "custom_preconds": "Signed in" } } }, "covers": [{ "parameter": "$input", "requirements": ["legacy-custom-container"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "unknown-top-level", "input": { "section_id": 5, "body": { "title": "Smoke" }, "title": "Smoke" }, "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } }
   ]
 }
