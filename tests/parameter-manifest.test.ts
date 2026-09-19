@@ -1,11 +1,17 @@
 import { readFile } from 'node:fs/promises';
 import {
   TestRailClient,
-  UpdateCasePayloadSchema,
+  AddCasePayloadSchema,
+  AddCasesBulkPayloadSchema,
   AddProjectPayloadSchema,
   AddSectionPayloadSchema,
   AddSuitePayloadSchema,
+  CopyCasesToSectionPayloadSchema,
+  DeleteCasesPayloadSchema,
+  MoveCasesToSectionPayloadSchema,
   MoveSectionPayloadSchema,
+  UpdateCasePayloadSchema,
+  UpdateCasesPayloadSchema,
   UpdateProjectPayloadSchema,
   UpdateSectionPayloadSchema,
   UpdateSuitePayloadSchema,
@@ -146,30 +152,42 @@ describe('independent parameter manifest format', () => {
   it('reports every unreviewed endpoint and partial endpoint separately', () => {
     const report = parameterCoverageReport(manifests, inventory);
     expect(report.completeEndpoints).toEqual([
+      'testrail_add_case',
+      'testrail_add_cases',
       'testrail_add_project',
       'testrail_add_section',
       'testrail_add_suite',
+      'testrail_copy_cases_to_section',
+      'testrail_delete_case',
+      'testrail_delete_cases',
       'testrail_delete_project',
       'testrail_delete_section',
       'testrail_delete_suite',
       'testrail_get_attachment',
       'testrail_get_attachments_for_plan_entry',
+      'testrail_get_case',
+      'testrail_get_case_titles',
+      'testrail_get_cases',
+      'testrail_get_history_for_case',
       'testrail_get_project',
       'testrail_get_projects',
       'testrail_get_section',
       'testrail_get_sections',
       'testrail_get_suite',
       'testrail_get_suites',
+      'testrail_move_cases_to_section',
       'testrail_move_section',
+      'testrail_update_case',
+      'testrail_update_cases',
       'testrail_update_project',
       'testrail_update_section',
       'testrail_update_suite',
     ]);
-    expect(report.partialEndpoints).toEqual(['testrail_get_cases', 'testrail_update_case']);
-    expect(report.pendingEndpoints).toHaveLength(113);
+    expect(report.partialEndpoints).toEqual([]);
+    expect(report.pendingEndpoints).toHaveLength(103);
     expect([...report.reviewedEndpoints, ...report.pendingEndpoints].sort())
       .toEqual(inventory.map(({ tool }) => tool).sort());
-    expect(report.pendingEndpoints).toContain('testrail_add_case');
+    expect(report.pendingEndpoints).toContain('testrail_add_run');
   });
 
   it('derives a control\'s rejections from the baseline of its own call mode', () => {
@@ -277,6 +295,28 @@ describe('independent parameter manifest format', () => {
   });
 });
 
+const idOrList = z.union([z.number(), z.array(z.number())]);
+/** The case filters under the driver's option names, as a fixture writes them. */
+const caseFilterOptions = z.strictObject({
+  suiteId: z.number().optional(), sectionId: z.number().optional(),
+  typeId: idOrList.optional(), priorityId: idOrList.optional(), templateId: idOrList.optional(), milestoneId: idOrList.optional(),
+  createdAfter: z.number().optional(), createdBefore: z.number().optional(), createdBy: idOrList.optional(),
+  filter: z.string().optional(),
+  updatedAfter: z.number().optional(), updatedBefore: z.number().optional(), updatedBy: idOrList.optional(),
+  labelId: idOrList.optional(), refs: z.union([z.string(), z.array(z.string())]).optional(),
+});
+const aggregateOptions = {
+  pageSize: z.number().optional(), startOffset: z.number().optional(),
+  maxItems: z.number(), maxPages: z.number(), maxBytes: z.number(), maxDurationMs: z.number(),
+};
+
+/** Drop the optionals a fixture left out, so the literal satisfies exactOptionalPropertyTypes. */
+function present<T extends object>(value: T): { [K in keyof T]: Exclude<T[K], undefined> } {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as {
+    [K in keyof T]: Exclude<T[K], undefined>;
+  };
+}
+
 // This explicitly invokes the pinned public API. It is not an endpoint adapter:
 // the literal expected driver arguments already live in independently authored fixtures.
 async function invokeDriver(client: TestRailClient, expected: Extract<ParameterFixture['expect'], { kind: 'accepted' }>): Promise<unknown> {
@@ -289,20 +329,68 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
       const [planId, entryId] = z.tuple([z.number(), z.string()]).parse(expected.driver.arguments);
       return client.attachments.getAttachmentsForPlanEntry(planId, entryId);
     }
+    case 'cases.getCase': {
+      const [caseId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.cases.getCase(caseId);
+    }
+    case 'cases.getCaseTitles': {
+      const [caseIds] = z.tuple([z.array(z.number())]).parse(expected.driver.arguments);
+      return client.cases.getCaseTitles(caseIds);
+    }
     case 'cases.getCasesPage': {
-      const [projectId, options] = z.tuple([z.number(), z.strictObject({
-        refs: z.union([z.string(), z.array(z.string())]).optional(),
-        limit: z.number(), offset: z.number(),
-      })]).parse(expected.driver.arguments);
-      return client.cases.getCasesPage(projectId, {
-        limit: options.limit,
-        offset: options.offset,
-        ...(options.refs === undefined ? {} : { refs: options.refs }),
-      });
+      const [projectId, options] = z.tuple([z.number(), caseFilterOptions.extend({ limit: z.number(), offset: z.number() })])
+        .parse(expected.driver.arguments);
+      return client.cases.getCasesPage(projectId, present(options));
+    }
+    case 'cases.getAllCases': {
+      const [projectId, options] = z.tuple([z.number(), caseFilterOptions.extend(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.cases.getAllCases(projectId, present(options));
+    }
+    case 'cases.getHistoryForCasePage': {
+      const [caseId, options] = z.tuple([z.number(), z.strictObject({ limit: z.number(), offset: z.number() })])
+        .parse(expected.driver.arguments);
+      return client.cases.getHistoryForCasePage(caseId, options);
+    }
+    case 'cases.getAllHistoryForCase': {
+      const [caseId, options] = z.tuple([z.number(), z.strictObject(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.cases.getAllHistoryForCase(caseId, present(options));
+    }
+    case 'cases.addCase': {
+      const [sectionId, payload] = z.tuple([z.number(), AddCasePayloadSchema]).parse(expected.driver.arguments);
+      return client.cases.addCase(sectionId, payload);
+    }
+    case 'cases.addCases': {
+      const [sectionId, payload] = z.tuple([z.number(), AddCasesBulkPayloadSchema]).parse(expected.driver.arguments);
+      return client.cases.addCases(sectionId, payload);
     }
     case 'cases.updateCase': {
       const [caseId, payload] = z.tuple([z.number(), UpdateCasePayloadSchema]).parse(expected.driver.arguments);
       return client.cases.updateCase(caseId, payload);
+    }
+    case 'cases.updateCases': {
+      const [suiteId, payload] = z.tuple([z.number(), UpdateCasesPayloadSchema]).parse(expected.driver.arguments);
+      return client.cases.updateCases(suiteId, payload);
+    }
+    case 'cases.deleteCase': {
+      const [caseId, options] = z.tuple([z.number(), z.strictObject({ soft: z.boolean() }).optional()])
+        .parse(expected.driver.arguments);
+      return options === undefined ? client.cases.deleteCase(caseId) : client.cases.deleteCase(caseId, options);
+    }
+    case 'cases.deleteCases': {
+      const [suiteId, projectId, payload, options] = z.tuple([
+        z.number(), z.number(), DeleteCasesPayloadSchema, z.strictObject({ soft: z.boolean() }).optional(),
+      ]).parse(expected.driver.arguments);
+      return options === undefined
+        ? client.cases.deleteCases(suiteId, projectId, payload)
+        : client.cases.deleteCases(suiteId, projectId, payload, options);
+    }
+    case 'cases.copyCasesToSection': {
+      const [sectionId, payload] = z.tuple([z.number(), CopyCasesToSectionPayloadSchema]).parse(expected.driver.arguments);
+      return client.cases.copyCasesToSection(sectionId, payload);
+    }
+    case 'cases.moveCasesToSection': {
+      const [sectionId, payload] = z.tuple([z.number(), MoveCasesToSectionPayloadSchema]).parse(expected.driver.arguments);
+      return client.cases.moveCasesToSection(sectionId, payload);
     }
     case 'projects.getProject': {
       const [projectId] = z.tuple([z.number()]).parse(expected.driver.arguments);

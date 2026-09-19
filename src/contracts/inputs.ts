@@ -17,6 +17,10 @@ export const entryIdSchema = z.string().regex(
 );
 export const attachmentIdSchema = z.union([positiveIdSchema, entryIdSchema]);
 export const refsSchema = z.union([z.string(), z.array(z.string())]);
+/** One identifier or several. The driver joins a list with commas and would drop an empty one. */
+export const idFilterSchema = z.union([positiveIdSchema, z.array(positiveIdSchema).min(1)]);
+/** A non-empty list of case identifiers, as every bulk case endpoint requires. */
+export const caseIdsSchema = z.array(positiveIdSchema).min(1);
 export const jsonValueSchema = z.json();
 
 // eslint-disable-next-line no-control-regex -- Control bytes must be excluded from multipart names.
