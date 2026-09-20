@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T06",
+    "http_method": "POST",
+    "route": "delete_config_group/{config_group_id}",
+    "tool": "testrail_delete_config_group",
+    "driver_method": "configurations.deleteConfigurationGroup"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/configurations.ts",
+      "supports": "Every method validates its identifier, places it as the only path segment of the matching endpoint and forwards any JSON payload unchanged. getConfigurations is the module's one read and parses against an array of ConfigurationGroupSchema. The group writes parse against ConfigurationGroupSchema and the configuration writes against ConfigurationSchema; the two deletes pass no schema and resolve with no value."
+    },
+    {
+      "id": "testrail-configurations",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077298488340-Configurations",
+      "supports": "get_configs/{project_id} returns the configuration groups of a project, each with its configurations. add_config_group and add_config require a name; update_config_group and update_config take an optional name. The reference marks each of the six management endpoints \"This endpoint requires TestRail 5.2 or later\" and states no version requirement for get_configs. Deleting a group cannot be undone and removes every configuration in it; deleting either does not affect closed plans and runs, nor active ones until they are next updated."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement. The identifier is the only input; no body and no query are sent."
+  },
+  "outer_result": {
+    "driver": "void",
+    "tool_data": "null",
+    "notes": "The method resolves with no value and the wrapper reports data: null. Deleting a group removes every configuration in it and cannot be undone; closed plans and runs keep what they already recorded, and active ones keep it until they are next updated."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "no-cascade",
+      "kind": "mapping",
+      "description": "Send exactly one request. The adapter never follows up with further calls to find or repair what the deletion removed."
+    }
+  ],
+  "baseline": "representative-id",
+  "parameters": [
+    {
+      "id": "config_group_id",
+      "input_path": [
+        "config_group_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The group to delete. No coercion; passed positionally and sent verbatim as the only path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "config_group_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-configurations"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-id",
+      "input": {
+        "config_group_id": 1
+      },
+      "covers": [
+        {
+          "parameter": "config_group_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-cascade"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "configurations.deleteConfigurationGroup",
+          "arguments": [
+            1
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "delete_config_group/1"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {}
+        },
+        "driver_result": {
+          "kind": "void"
+        }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": {
+        "config_group_id": 9007199254740991
+      },
+      "covers": [
+        {
+          "parameter": "config_group_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "configurations.deleteConfigurationGroup",
+          "arguments": [
+            9007199254740991
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "delete_config_group/9007199254740991"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {}
+        },
+        "driver_result": {
+          "kind": "void"
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "config_group_id": 1,
+        "name": "x"
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

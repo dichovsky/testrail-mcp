@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T06",
+    "http_method": "GET",
+    "route": "get_plan/{plan_id}",
+    "tool": "testrail_get_plan",
+    "driver_method": "plans.getPlan"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/plans.ts",
+      "supports": "Every method validates its identifiers, an entry identifier through the UUID validator, and places them as the path segments of the matching endpoint before forwarding any JSON payload unchanged. The list executor builds its query as created_after, created_before, created_by, is_completed, milestone_id and refs ahead of the paging controls, converting the completion flag to 1 or 0 and joining the two lists with commas; the envelope collection is named plans."
+    },
+    {
+      "id": "driver-schema",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/plans.ts",
+      "supports": "AddPlanPayloadSchema requires name and accepts description, milestone_id, start_on, due_on, refs and an entries array whose items carry suite_id, name, description, assignedto_id, include_all, case_ids, config_ids, a runs array, dynamic_filters, start_on, due_on and refs. UpdatePlanPayloadSchema is the same without entries and with name optional. AddPlanEntryPayloadSchema matches an entry item, and its comments record that suite_id is required only for projects using multiple suites or baselines. UpdatePlanEntryPayloadSchema deliberately omits config_ids and runs, which TestRail does not accept there, and omits suite_id, which is not in the endpoint's request body. AddRunToPlanEntryPayloadSchema requires config_ids and deliberately omits name, which TestRail derives from the configuration; UpdateRunInPlanEntryPayloadSchema omits both config_ids and name. None of these is parsed by the public method, so every payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "testrail-plans",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077711537684-Plans",
+      "supports": "get_plan/{plan_id} returns a plan with its entries, each grouping the runs generated for one suite, and each entry carrying its own identifier for use with update_plan_entry and delete_plan_entry. get_plans/{project_id} filters by created_after, created_before, created_by, is_completed, milestone_id and refs with limit and offset, and its listed plans omit the entries field. add_plan requires name and accepts entries. add_plan_entry takes suite_id, required for projects with multiple suites or baseline support, and its top-level config_ids lists the combined configurations while each nested run names one full combination, one configuration per group. update_plan supports the same fields as add_plan except entries, and the reference documents that config_ids and runs are not supported on update_plan_entry. add_run_to_plan_entry requires config_ids. close_plan archives the plan and its runs and cannot be undone; delete_plan removes them and cannot be undone."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement. The identifier is the only input; there is no query and no body."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "The plan is returned as the driver received it, with its entries and the runs inside them; entity-field drift is advisory. Each entry carries the identifier the entry tools take, which is not a run identifier."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    }
+  ],
+  "baseline": "representative-id",
+  "parameters": [
+    {
+      "id": "plan_id",
+      "input_path": [
+        "plan_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The plan to read. No coercion; passed positionally and sent verbatim as the only path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "plan_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-plans"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-id",
+      "input": {
+        "plan_id": 10
+      },
+      "covers": [
+        {
+          "parameter": "plan_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "plans.getPlan",
+          "arguments": [
+            10
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_plan/10"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 10,
+            "name": "Release 1.0: Final (all browsers)",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 445,
+            "blocked_count": 99,
+            "untested_count": 473,
+            "retest_count": 107,
+            "failed_count": 56,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 10,
+            "name": "Release 1.0: Final (all browsers)",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 445,
+            "blocked_count": 99,
+            "untested_count": 473,
+            "retest_count": 107,
+            "failed_count": 56,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": {
+        "plan_id": 9007199254740991
+      },
+      "covers": [
+        {
+          "parameter": "plan_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "plans.getPlan",
+          "arguments": [
+            9007199254740991
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_plan/9007199254740991"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 10,
+            "name": "Release 1.0: Final (all browsers)",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 445,
+            "blocked_count": 99,
+            "untested_count": 473,
+            "retest_count": 107,
+            "failed_count": 56,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 10,
+            "name": "Release 1.0: Final (all browsers)",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 445,
+            "blocked_count": 99,
+            "untested_count": 473,
+            "retest_count": 107,
+            "failed_count": 56,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null
+          }
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "plan_id": 10,
+        "project_id": 1
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

@@ -9,25 +9,36 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `add_bdd` | 4 | 10 | Complete input manifest |
 | `add_case` | 12 | 16 | Complete input manifest |
 | `add_cases` | 12 | 18 | Complete input manifest |
+| `add_config` | 3 | 8 | Complete input manifest |
+| `add_config_group` | 3 | 8 | Complete input manifest |
+| `add_plan` | 27 | 38 | Complete input manifest |
+| `add_plan_entry` | 20 | 29 | Complete input manifest |
 | `add_project` | 4 | 10 | Complete input manifest |
 | `add_result` | 9 | 15 | Complete input manifest |
 | `add_result_for_case` | 10 | 15 | Complete input manifest |
 | `add_results` | 11 | 20 | Complete input manifest |
 | `add_results_for_cases` | 11 | 20 | Complete input manifest |
 | `add_run` | 13 | 18 | Complete input manifest |
+| `add_run_to_plan_entry` | 12 | 20 | Complete input manifest |
 | `add_section` | 5 | 10 | Complete input manifest |
 | `add_shared_step` | 5 | 11 | Complete input manifest |
 | `add_suite` | 3 | 9 | Complete input manifest |
+| `close_plan` | 1 | 3 | Complete input manifest |
 | `close_run` | 1 | 3 | Complete input manifest |
 | `copy_cases_to_section` | 3 | 6 | Complete input manifest |
 | `delete_case` | 2 | 7 | Complete input manifest |
 | `delete_cases` | 5 | 11 | Complete input manifest |
+| `delete_config` | 1 | 3 | Complete input manifest |
+| `delete_config_group` | 1 | 3 | Complete input manifest |
+| `delete_plan` | 1 | 3 | Complete input manifest |
+| `delete_plan_entry` | 2 | 4 | Complete input manifest |
 | `delete_project` | 1 | 3 | Complete input manifest |
 | `delete_run` | 2 | 7 | Complete input manifest |
+| `delete_run_from_plan_entry` | 1 | 3 | Complete input manifest |
 | `delete_section` | 2 | 7 | Complete input manifest |
 | `delete_shared_step` | 2 | 7 | Complete input manifest |
 | `delete_suite` | 2 | 7 | Complete input manifest |
-| `edit_result` | 10 | 16 | Complete input manifest |
+| `edit_result` | 10 | 17 | Complete input manifest |
 | `get_attachment` | 1 | 12 | Complete input manifest |
 | `get_attachments_for_plan_entry` | 2 | 11 | Complete input manifest |
 | `get_bdd` | 1 | 4 | Complete input manifest |
@@ -35,7 +46,10 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `get_case` | 1 | 3 | Complete input manifest |
 | `get_case_titles` | 1 | 5 | Complete input manifest |
 | `get_cases` | 25 | 24 | Complete input manifest |
+| `get_configs` | 1 | 3 | Complete input manifest |
 | `get_history_for_case` | 10 | 16 | Complete input manifest |
+| `get_plan` | 1 | 3 | Complete input manifest |
+| `get_plans` | 16 | 24 | Complete input manifest |
 | `get_project` | 1 | 3 | Complete input manifest |
 | `get_projects` | 10 | 18 | Complete input manifest |
 | `get_results` | 12 | 19 | Complete input manifest |
@@ -57,8 +71,13 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `update_bdd` | 4 | 10 | Complete input manifest |
 | `update_case` | 13 | 15 | Complete input manifest |
 | `update_cases` | 14 | 15 | Complete input manifest |
+| `update_config` | 3 | 8 | Complete input manifest |
+| `update_config_group` | 3 | 8 | Complete input manifest |
+| `update_plan` | 8 | 11 | Complete input manifest |
+| `update_plan_entry` | 12 | 20 | Complete input manifest |
 | `update_project` | 11 | 29 | Complete input manifest |
 | `update_run` | 12 | 17 | Complete input manifest |
+| `update_run_in_plan_entry` | 10 | 17 | Complete input manifest |
 | `update_section` | 3 | 8 | Complete input manifest |
 | `update_shared_step` | 5 | 10 | Complete input manifest |
 | `update_suite` | 3 | 8 | Complete input manifest |
@@ -91,13 +110,21 @@ The format also represents text responses, JSON/void outer variants and multipar
 
 `entry_id` is a UUID string, although the attachment documentation historically labels it an integer. The pinned public method documents that discrepancy and applies the UUID validator. `attachment_id` accepts a positive numeric ID or UUID, while numeric strings, arbitrary paths, malformed UUIDs and whitespace padding are invalid. Sources: [attachment methods](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/attachments.ts), [identifier validators](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/validation.ts).
 
-The MCP UUID domain additionally requires the match to reach the absolute end of input. Its `(?![\s\S])` terminal assertion rejects a final newline, unlike JavaScript's `$` anchor used in the pinned driver. Explicit LF/CRLF rejection fixtures and domain-pattern regressions prevent terminal line breaks from passing the MCP boundary.
+The MCP UUID domain requires the match to reach the absolute end of input, which its `(?![\s\S])` terminal assertion states outright. The pinned driver's `$` anchor behaves the same way here, because it carries no multiline flag, so neither layer admits a trailing line terminator; an earlier note in this document claimed the two differed, and a probe against the driver showed they do not. The assertion is kept because it says what is meant without depending on a flag elsewhere in the pattern, and because a shared domain is only worth reusing if what it claims is proven: the `entry_id` domain drives its LF, CR and CRLF values through a public driver method and asserts the refusal at both layers, so a driver that started admitting them would fail the suite rather than quietly widen the boundary.
 
 For `get_cases`, a string uses `refs=value`; a non-empty array emits repeated `refs%5B%5D=value` parameters, each value independently percent encoded. The driver would send nothing for an empty array, silently widening the result to every case, so the boundary refuses an empty array instead; the same rule holds for the seven comma-joined ID filters through the shared `id_filter` domain. The fixture uses characters such as `&` and `#` so a broken encoder cannot pass with simple alphanumeric inputs. Sources: [case filter mapping](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts), [URL encoder](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/url.ts).
 
 Case payload custom fields remain flat and preserve JSON values, including `null`, `false`, `0`, arrays and objects. The exported schema uses passthrough, so the MCP boundary must separately reject unknown ordinary names. The exported payloads also declare a nested `custom_fields` record that TestRail does not document as a request field: it reads custom values only as flat `custom_*` properties, so forwarding the container would drop them silently. The T02 manifests therefore refuse it explicitly (`legacy-custom-container`) rather than forwarding or relocating it. Body identifiers (`section_id`, `template_id`, `type_id`, `priority_id`, `milestone_id`) and numeric label members are held to the identifier domain where the driver accepts any number; `milestone_id` admits no null in the driver, so unlinking a milestone is not available through the pinned driver. Sources: [case schemas](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/cases.ts), [shared object schema](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/common.ts).
 
 Project assignment `role_id: 0` selects the global role; `role_id: null` clears the project-specific role. Omitting the assignment collection is a different input. A supplied assignment still requires a role field. The fixture verifies each of these states; it does not generalize null to all numeric IDs. For example, the published update-run payload has optional numeric IDs without null, while move-section parent/position fields explicitly support null. Sources: [project payload schemas](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/projects.ts), [TestRail project role semantics](https://support.testrail.com/hc/en-us/articles/7077792415124-Projects), [run schemas](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/runs.ts), [section schemas](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/sections.ts).
+
+A plan's entries carry fields that the endpoints changing them do not accept, and forwarding one would be a write the caller is told succeeded while nothing changed. TestRail's reference states that `config_ids` and `runs` are not supported on `update_plan_entry`, and that endpoint's request body carries no `suite_id`; a run inside an entry takes its name from its configuration combination, so `add_run_to_plan_entry` and `update_run_in_plan_entry` refuse a `name`, and the latter refuses `config_ids` as well. Each refusal is an endpoint-wide requirement with its own fixture rather than an unnamed consequence of strictness, so removing the rule fails a case that says what was lost. The driver parses none of these payloads, so every rule at every depth of a plan, an entry and a nested run is the boundary's alone. Sources: [plan payload schemas](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/plans.ts), [TestRail plan semantics](https://support.testrail.com/hc/en-us/articles/7077711537684-Plans).
+
+A nested run is held to the same rule. TestRail's reference names `assignedto_id`, `include_all` and `case_ids` as the fields a run inside an entry may override, and the runs example in that reference carries no `name`; the driver's payload schemas say why, recording that TestRail derives a nested run's name from its configuration combination, which is also why the standalone `add_run_to_plan_entry` payload omits the field entirely. `add_plan` and `add_plan_entry` therefore refuse a nested `name` as well, so the same field is not accepted in one place and refused in another on the same stated ground.
+
+An effect annotation is now a gate rather than a per-endpoint assertion. `effects.destructive` is published as the MCP `destructiveHint`, which is what a host uses to decide whether to ask before calling, and until T06 nothing compared it against anything: the manifests describe arguments and replies, and the registration audits compare response shapes. `update_plan_entry` shipped as non-destructive although narrowing its case selection deletes tests and results in every run the entry generated, while the two siblings that destroy strictly less were both flagged correctly. [tests/effects.test.ts](../tests/effects.test.ts) states the rules over the whole registry instead: every removal is destructive, no read is, and a write that is not a creation and can narrow an existing run's case selection is. A rule has to be argued with, where a per-endpoint restatement could simply be edited to agree with a mistake.
+
+Three plan filters are rewritten between the caller and the wire, and the boolean is the one that can fail silently. `created_by` and `milestone_id` are comma-joined from a list, which is visible in the rendered query string, while `is_completed` is sent as `1` or `0`, so a `false` treated as absent would quietly ask for every plan instead of the open ones. The family suite asserts all three in the rendered query string on the first request, and the boolean again on an aggregate continuation, because a filter that survives only the first request returns a correct first page and a wrong remainder.
 
 ## Review procedure
 
@@ -123,6 +150,6 @@ A parameter inside a reviewed array names its member with `*`, as in `body.resul
 
 A parameter of any scope may reference a shared domain when the adapter holds it to that domain — path, query and body identifiers all reference `positive_id`, and a body reference records in its `semantics` where the driver itself is looser. Endpoint-specific domains, such as the `attachment_id` union or a payload's own value types, stay written out in full.
 
-The Cases family added three domains. `id_filter` is one identifier or a non-empty list, proven through the `typeId` option of `cases.getCasesPage`, which is one of the seven filters the driver comma-joins. `unix_timestamp` is proven through `createdAfter`; the driver forwards any value there, so every rejection is recorded as the adapter's. `case_ids` is a non-empty identifier list proven through `cases.getCaseTitles`. That is a query-side proof: the four bulk bodies referencing the same domain are forwarded unchecked by the driver, so their guarantee is the adapter's alone, which each body reference records in its semantics.
+The Cases family added three domains. `id_filter` is one identifier or a non-empty list, proven through the `typeId` option of `cases.getCasesPage`, which is one of the seven filters the driver comma-joins. `unix_timestamp` is proven through `createdAfter`; the driver forwards any value there, so every rejection is recorded as the adapter's. `case_ids` is a non-empty identifier list proven through `cases.getCaseTitles`. That is a query-side proof: the four bulk bodies referencing the same domain are forwarded unchecked by the driver, so their guarantee is the adapter's alone, which each body reference records in its semantics. The Plans family added `entry_id`, the only non-numeric identifier in the library, proven through `attachments.getAttachmentsForPlanEntry`: the driver validates the UUID layout there before dispatch, so its eight rejections are recorded as the driver's rather than the adapter's. The earlier `get_attachments_for_plan_entry` manifest still writes the same rule out inline instead of referencing the domain, which is left as follow-up work.
 
 The accepted examples run against the installed public driver with injected fetch and DNS, comparing exact URLs, request JSON and driver results. No request reaches TestRail. Rejected fixture cases are format and coverage requirements until a family adapter consumes them; the direct-driver evidence harness does not pretend to validate the MCP input boundary. Run the fixture checks with `npm exec -- vitest run tests/parameter-manifest.test.ts`.

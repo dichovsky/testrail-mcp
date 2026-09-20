@@ -2,8 +2,9 @@ import { TestRailClient, TestRailValidationError } from '@dichovsky/testrail-api
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import {
-  aggregateLimitDefaults, caseIdsSchema, idFilterSchema, nonnegativeIntegerSchema, positiveIdSchema,
+  aggregateLimitDefaults, caseIdsSchema, entryIdSchema, idFilterSchema, nonnegativeIntegerSchema, positiveIdSchema,
 } from '../src/contracts/inputs.js';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
 import { auditDomainLibrary, loadDomainLibrary, type ParameterDomain } from './contracts/domains.js';
 
 const library = await loadDomainLibrary();
@@ -40,6 +41,9 @@ async function probe(client: TestRailClient, binding: string, value: unknown): P
       return;
     case 'cases.getCaseTitles':
       await client.cases.getCaseTitles(value as number[]);
+      return;
+    case 'attachments.getAttachmentsForPlanEntry':
+      await client.attachments.getAttachmentsForPlanEntry(1, value as string);
       return;
     default:
       throw new Error(`No probe harness for binding ${binding}`);
@@ -79,6 +83,7 @@ const adapterSchema: Readonly<Record<string, z.ZodType>> = {
   id_filter: idFilterSchema,
   unix_timestamp: nonnegativeIntegerSchema,
   case_ids: caseIdsSchema,
+  entry_id: entryIdSchema,
 };
 
 describe('shared parameter domains', () => {
@@ -132,6 +137,24 @@ describe('shared parameter domains', () => {
         await probe(client, domain.probe.binding, positioned(name, valid.value));
         expect(requests(), `${name}/${valid.id}`).toBe(1);
       } finally { client.destroy(); }
+    }
+  });
+
+  /*
+   * A domain's `domain` field is the only machine-readable statement of its shape, and
+   * it is copied onto every parameter that references the domain. Left unexecuted it is
+   * a claim rather than a check: the T06 review corrupted this library's UUID pattern to
+   * `^[0-9]+$`, which contradicts every value beside it, and the whole suite stayed
+   * green. Running it against the domain's own values costs nothing and means a declared
+   * shape that drifts from the values it describes cannot pass.
+   */
+  it.each(entries)('executes the declared JSON Schema for %s', (name, domain: ParameterDomain) => {
+    const validate = new AjvJsonSchemaValidator().getValidator(domain.domain);
+    for (const valid of domain.valid) {
+      expect(validate(valid.value).valid, `${name}/${valid.id}`).toBe(true);
+    }
+    for (const invalid of domain.invalid) {
+      expect(validate(invalid.value).valid, `${name}/${invalid.id}`).toBe(false);
     }
   });
 

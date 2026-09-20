@@ -478,6 +478,46 @@
         { "id": "above-safe-member", "value": [9007199254740992], "requirements": ["above-upper-bound"], "rejected_by": "adapter" }
       ],
       "omitted": { "id": "missing", "requirements": ["required"] }
+    },
+    "entry_id": {
+      "source": {
+        "id": "driver-validation",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/validation.ts",
+        "supports": "validateEntryId tests the value against a case-insensitive RFC 4122 layout anchored at both ends and rejects anything else before a request is issued. The comment records why a plain string is refused: a plan-entry identifier reaches the URL path, so accepting arbitrary text would let a traversal sequence be injected into it."
+      },
+      "probe": {
+        "binding": "attachments.getAttachmentsForPlanEntry",
+        "note": "A public method taking a plan identifier and an entry identifier, used to prove this domain against the driver rather than against a validator the package does not export."
+      },
+      "domain": {
+        "type": "string",
+        "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?![\\s\\S])"
+      },
+      "semantics": "A plan entry's identifier, which TestRail issues as a UUID string and the attachment documentation historically mislabels an integer. No coercion: the value is sent verbatim as a path segment, so nothing outside the layout may reach it.",
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value at its explicit driver argument and wire location." },
+        { "id": "valid", "kind": "valid", "description": "Accept a representative identifier." },
+        { "id": "case-insensitive", "kind": "valid", "description": "Accept the same identifier in upper case, which the layout admits." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a value that is not the documented layout before driver invocation." },
+        { "id": "path-safety", "kind": "invalid", "description": "Reject a traversal sequence, which would otherwise reach the request path as written." },
+        { "id": "terminal", "kind": "invalid", "description": "Reject trailing whitespace and line terminators. Both layers anchor at the absolute end of input, so neither admits them." },
+        { "id": "required", "kind": "required", "description": "Reject a missing identifier." }
+      ],
+      "valid": [
+        { "id": "representative", "value": "3933d74b-4282-44de-82ae-a6412808369d", "requirements": ["mapping", "valid"] },
+        { "id": "upper-case", "value": "3933D74B-4282-44DE-82AE-A6412808369D", "requirements": ["case-insensitive"] }
+      ],
+      "invalid": [
+        { "id": "malformed", "value": "not-a-uuid", "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "numeric", "value": "7", "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "empty", "value": "", "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "traversal", "value": "../../admin", "requirements": ["path-safety"], "rejected_by": "driver" },
+        { "id": "leading-space", "value": " 3933d74b-4282-44de-82ae-a6412808369d", "requirements": ["terminal"], "rejected_by": "driver" },
+        { "id": "trailing-space", "value": "3933d74b-4282-44de-82ae-a6412808369d ", "requirements": ["terminal"], "rejected_by": "driver" },
+        { "id": "trailing-line-feed", "value": "3933d74b-4282-44de-82ae-a6412808369d\n", "requirements": ["terminal"], "rejected_by": "driver" },
+        { "id": "trailing-carriage-return", "value": "3933d74b-4282-44de-82ae-a6412808369d\r\n", "requirements": ["terminal"], "rejected_by": "driver" }
+      ],
+      "omitted": { "id": "missing", "requirements": ["required"] }
     }
   }
 }
