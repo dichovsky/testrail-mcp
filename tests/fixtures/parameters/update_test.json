@@ -1,0 +1,577 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T04",
+    "http_method": "POST",
+    "route": "update_test/{test_id}",
+    "tool": "testrail_update_test",
+    "driver_method": "tests.updateTest"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/tests.ts",
+      "supports": "updateTest validates the test ID, places it as the only path segment of update_test, forwards the JSON payload unchanged and parses the reply advisorily against TestSchema. The driver documents this endpoint as updating the labels of a test."
+    },
+    {
+      "id": "driver-schema",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/tests.ts",
+      "supports": "UpdateTestLabelsPayloadSchema declares labels as a required array of numbers or strings and carries no other field. The public method forwards the payload without parsing it, so the rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "testrail-tests",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077990441108-Tests",
+      "supports": "update_test/{test_id} updates the labels assigned to an existing test and requires labels, an array of label IDs, titles or both. update_tests assigns the same labels to several tests in one call and does not support a different set per test; its example request and response carry test_ids, although its parameter table names a single test_id, and its response echoes the IDs and labels rather than returning the tests."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement at every depth, and here it is the only enforcement: the driver forwards this payload without parsing it. Labels are the one field of a test this endpoint changes; a status comes from adding a result and the remaining fields come from the case."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the updated test in the get_test format, returned as the driver received it; entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-body",
+      "kind": "invalid",
+      "description": "Reject an unknown body field rather than forwarding it; this endpoint changes labels alone."
+    }
+  ],
+  "baseline": "representative",
+  "parameters": [
+    {
+      "id": "test_id",
+      "input_path": [
+        "test_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "No coercion. The validated number is passed positionally and appears verbatim in the path.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "test_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-tests"
+      ]
+    },
+    {
+      "id": "body",
+      "input_path": [
+        "body"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "object"
+      },
+      "semantics": "No coercion. The JSON object is passed as the driver's second argument and sent unchanged.",
+      "driver": {
+        "argument": 1,
+        "path": []
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "body"
+        ],
+        "encoding": "JSON object sent unchanged."
+      },
+      "sources": [
+        "driver-module",
+        "driver-schema"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the object at driver argument 1 as the JSON request body."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an object carrying the labels."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a body that is not an object before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing body."
+        }
+      ]
+    },
+    {
+      "id": "body.labels",
+      "input_path": [
+        "body",
+        "labels"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "semantics": "The labels to assign, named by ID or by title and mixed freely, as TestRail documents. The driver accepts any number for an ID and forwards the payload without parsing it, so the boundary holds numeric members to the identifier domain and requires at least one: an empty array would ask TestRail to assign nothing.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "labels"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "labels"
+        ],
+        "encoding": "JSON array of integers and strings under labels."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-tests"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member in order under labels."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an ID and a title together."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a boolean member before driver invocation."
+        },
+        {
+          "id": "zero-id",
+          "kind": "invalid",
+          "description": "Reject a label ID of zero, which can never name a label."
+        },
+        {
+          "id": "empty",
+          "kind": "invalid",
+          "description": "Reject an empty array, which would assign nothing."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a body without labels."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative",
+      "input": {
+        "test_id": 100,
+        "body": {
+          "labels": [
+            1,
+            "label2"
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "test_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.labels",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "tests.updateTest",
+          "arguments": [
+            100,
+            {
+              "labels": [
+                1,
+                "label2"
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_test/100",
+          "json": {
+            "labels": [
+              1,
+              "label2"
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 100,
+            "case_id": 1,
+            "run_id": 1,
+            "status_id": 5,
+            "title": "Verify line spacing on multi-page document",
+            "assignedto_id": 1,
+            "priority_id": 2,
+            "type_id": 4,
+            "estimate": "1m 5s",
+            "estimate_forecast": null,
+            "custom_preconds": "Signed in",
+            "custom_expected": "The lines are evenly spaced",
+            "labels": [
+              {
+                "id": 1,
+                "title": "label1"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 100,
+            "case_id": 1,
+            "run_id": 1,
+            "status_id": 5,
+            "title": "Verify line spacing on multi-page document",
+            "assignedto_id": 1,
+            "priority_id": 2,
+            "type_id": 4,
+            "estimate": "1m 5s",
+            "estimate_forecast": null,
+            "custom_preconds": "Signed in",
+            "custom_expected": "The lines are evenly spaced",
+            "labels": [
+              {
+                "id": 1,
+                "title": "label1"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-ids",
+      "input": {
+        "test_id": 9007199254740991,
+        "body": {
+          "labels": [
+            9007199254740991
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "test_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "tests.updateTest",
+          "arguments": [
+            9007199254740991,
+            {
+              "labels": [
+                9007199254740991
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_test/9007199254740991",
+          "json": {
+            "labels": [
+              9007199254740991
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 100,
+            "case_id": 1,
+            "run_id": 1,
+            "status_id": 5,
+            "title": "Verify line spacing on multi-page document",
+            "assignedto_id": 1,
+            "priority_id": 2,
+            "type_id": 4,
+            "estimate": "1m 5s",
+            "estimate_forecast": null,
+            "custom_preconds": "Signed in",
+            "custom_expected": "The lines are evenly spaced",
+            "labels": [
+              {
+                "id": 1,
+                "title": "label1"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 100,
+            "case_id": 1,
+            "run_id": 1,
+            "status_id": 5,
+            "title": "Verify line spacing on multi-page document",
+            "assignedto_id": 1,
+            "priority_id": 2,
+            "type_id": 4,
+            "estimate": "1m 5s",
+            "estimate_forecast": null,
+            "custom_preconds": "Signed in",
+            "custom_expected": "The lines are evenly spaced",
+            "labels": [
+              {
+                "id": 1,
+                "title": "label1"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "missing-body",
+      "input": {
+        "test_id": 100
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-body",
+      "input": {
+        "test_id": 100,
+        "body": []
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-labels",
+      "input": {
+        "test_id": 100,
+        "body": {}
+      },
+      "covers": [
+        {
+          "parameter": "body.labels",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "empty-labels",
+      "input": {
+        "test_id": 100,
+        "body": {
+          "labels": []
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.labels",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "boolean-label",
+      "input": {
+        "test_id": 100,
+        "body": {
+          "labels": [
+            true
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.labels",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "zero-label-id",
+      "input": {
+        "test_id": 100,
+        "body": {
+          "labels": [
+            0
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.labels",
+          "requirements": [
+            "zero-id"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-body",
+      "input": {
+        "test_id": 100,
+        "body": {
+          "labels": [
+            1
+          ],
+          "status_id": 5
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-body"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "test_id": 100,
+        "body": {
+          "labels": [
+            1
+          ]
+        },
+        "labels": [
+          1
+        ]
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

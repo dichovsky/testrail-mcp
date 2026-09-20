@@ -1,0 +1,376 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T04",
+    "http_method": "POST",
+    "route": "delete_run/{run_id}",
+    "tool": "testrail_delete_run",
+    "driver_method": "runs.deleteRun"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/runs.ts",
+      "supports": "deleteRun validates the run ID, appends soft=1 only when the soft option is true, resolves with no value after a deletion and with the parsed preview after a soft request."
+    },
+    {
+      "id": "driver-schema",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/cases.ts",
+      "supports": "SoftDeletePreviewSchema describes the affected_tests, affected_cases, affected_sections, affected_runs, affected_milestones, affected_plans and affected_suites counts, each optional."
+    },
+    {
+      "id": "testrail-runs",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077874763156-Runs",
+      "supports": "delete_run/{run_id} deletes a run and permanently deletes all its tests and results, and cannot be undone. Omitting soft or sending soft=0 deletes; soft=1 returns data on the number of affected tests and deletes nothing. A run inside a plan is deleted through the plan API instead."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement. No body is sent; the only control is the soft preview flag, and any other query key is a caller mistake."
+  },
+  "outer_result": {
+    "driver": "record_or_void",
+    "tool_data": "record_or_null",
+    "notes": "After a deletion the method resolves with no value and the wrapper reports data: null. After a preview it resolves with TestRail's affected-entity counts, which are not drift-checked; every count is optional in the driver's schema, so an empty reply to soft=1 is reported as an empty preview. Deletion removes the run's tests and results with it."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-query",
+      "kind": "invalid",
+      "description": "Reject an unsupported query key rather than discarding it."
+    },
+    {
+      "id": "no-cascade",
+      "kind": "mapping",
+      "description": "Send exactly one request. The adapter never follows up with further calls, and never reopens or closes the run on the caller's behalf."
+    }
+  ],
+  "baseline": "representative-id",
+  "parameters": [
+    {
+      "id": "run_id",
+      "input_path": [
+        "run_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "No coercion. The validated number is passed positionally and appears verbatim in the path.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "run_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-runs"
+      ]
+    },
+    {
+      "id": "query.soft",
+      "input_path": [
+        "query",
+        "soft"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "true requests TestRail's server-side preview: the affected counts are returned and nothing is deleted. false or omitted deletes. An explicit false is accepted but never sent, since the driver only ever emits soft=1; TestRail documents soft=0 and an absent soft as equivalent.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "soft"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "soft"
+        ],
+        "encoding": "soft=1 appended path-style when true; nothing is appended when false or omitted."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-runs"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value as the soft option at driver argument 1."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept true, send soft=1 and return the preview counts."
+        },
+        {
+          "id": "false-not-sent",
+          "kind": "valid",
+          "description": "Accept an explicit false, delete, and append nothing to the endpoint."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a numeric stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Delete, sending no soft control, when the caller did not supply one."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-id",
+      "input": {
+        "run_id": 42
+      },
+      "covers": [
+        {
+          "parameter": "run_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "query.soft",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-cascade"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.deleteRun",
+          "arguments": [
+            42
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "delete_run/42"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {}
+        },
+        "driver_result": {
+          "kind": "void"
+        }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": {
+        "run_id": 9007199254740991
+      },
+      "covers": [
+        {
+          "parameter": "run_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.deleteRun",
+          "arguments": [
+            9007199254740991
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "delete_run/9007199254740991"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {}
+        },
+        "driver_result": {
+          "kind": "void"
+        }
+      }
+    },
+    {
+      "id": "preview",
+      "input": {
+        "run_id": 42,
+        "query": {
+          "soft": true
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.soft",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.deleteRun",
+          "arguments": [
+            42,
+            {
+              "soft": true
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "delete_run/42&soft=1"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "affected_tests": 46
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "affected_tests": 46
+          }
+        }
+      }
+    },
+    {
+      "id": "explicit-hard-delete",
+      "input": {
+        "run_id": 42,
+        "query": {
+          "soft": false
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.soft",
+          "requirements": [
+            "false-not-sent"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.deleteRun",
+          "arguments": [
+            42,
+            {
+              "soft": false
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "delete_run/42"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {}
+        },
+        "driver_result": {
+          "kind": "void"
+        }
+      }
+    },
+    {
+      "id": "soft-numeric",
+      "input": {
+        "run_id": 42,
+        "query": {
+          "soft": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.soft",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-query",
+      "input": {
+        "run_id": 42,
+        "query": {
+          "force": true
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-query"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "run_id": 42,
+        "soft": 1
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

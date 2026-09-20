@@ -14,8 +14,12 @@ import {
   MoveSectionPayloadSchema,
   UpdateCasePayloadSchema,
   UpdateCasesPayloadSchema,
+  AddRunPayloadSchema,
   AddSharedStepPayloadSchema,
   UpdateProjectPayloadSchema,
+  UpdateRunPayloadSchema,
+  UpdateTestLabelsPayloadSchema,
+  UpdateTestsLabelsPayloadSchema,
   UpdateSectionPayloadSchema,
   UpdateSharedStepPayloadSchema,
   UpdateSuitePayloadSchema,
@@ -161,13 +165,16 @@ describe('independent parameter manifest format', () => {
       'testrail_add_case',
       'testrail_add_cases',
       'testrail_add_project',
+      'testrail_add_run',
       'testrail_add_section',
       'testrail_add_shared_step',
       'testrail_add_suite',
+      'testrail_close_run',
       'testrail_copy_cases_to_section',
       'testrail_delete_case',
       'testrail_delete_cases',
       'testrail_delete_project',
+      'testrail_delete_run',
       'testrail_delete_section',
       'testrail_delete_shared_step',
       'testrail_delete_suite',
@@ -181,6 +188,8 @@ describe('independent parameter manifest format', () => {
       'testrail_get_history_for_case',
       'testrail_get_project',
       'testrail_get_projects',
+      'testrail_get_run',
+      'testrail_get_runs',
       'testrail_get_section',
       'testrail_get_sections',
       'testrail_get_shared_step',
@@ -188,21 +197,26 @@ describe('independent parameter manifest format', () => {
       'testrail_get_shared_steps',
       'testrail_get_suite',
       'testrail_get_suites',
+      'testrail_get_test',
+      'testrail_get_tests',
       'testrail_move_cases_to_section',
       'testrail_move_section',
       'testrail_update_bdd',
       'testrail_update_case',
       'testrail_update_cases',
       'testrail_update_project',
+      'testrail_update_run',
       'testrail_update_section',
       'testrail_update_shared_step',
       'testrail_update_suite',
+      'testrail_update_test',
+      'testrail_update_tests',
     ]);
     expect(report.partialEndpoints).toEqual([]);
-    expect(report.pendingEndpoints).toHaveLength(93);
+    expect(report.pendingEndpoints).toHaveLength(83);
     expect([...report.reviewedEndpoints, ...report.pendingEndpoints].sort())
       .toEqual(inventory.map(({ tool }) => tool).sort());
-    expect(report.pendingEndpoints).toContain('testrail_add_run');
+    expect(report.pendingEndpoints).toContain('testrail_add_plan');
   });
 
   it('derives a control\'s rejections from the baseline of its own call mode', () => {
@@ -330,6 +344,16 @@ const sharedStepFilterOptions = z.strictObject({
   createdAfter: z.number().optional(), createdBefore: z.number().optional(), createdBy: idOrList.optional(),
   updatedAfter: z.number().optional(), updatedBefore: z.number().optional(), refs: z.string().optional(),
 });
+/** The run filters under the driver's option names, as a fixture writes them. */
+const runFilterOptions = z.strictObject({
+  createdAfter: z.number().optional(), createdBefore: z.number().optional(), createdBy: z.array(z.number()).optional(),
+  includePlanRuns: z.boolean().optional(), isCompleted: z.boolean().optional(),
+  milestoneId: idOrList.optional(), refs: z.string().optional(), suiteId: idOrList.optional(),
+});
+/** The test filters under the driver's option names. */
+const testFilterOptions = z.strictObject({
+  statusId: z.array(z.number()).optional(), labelId: z.array(z.number()).optional(),
+});
 /** A staged upload as the adapter hands it to the driver. */
 const uploadFile = z.strictObject({ path: z.string(), type: z.string().optional() });
 const aggregateOptions = {
@@ -355,6 +379,58 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
     case 'attachments.getAttachmentsForPlanEntry': {
       const [planId, entryId] = z.tuple([z.number(), z.string()]).parse(expected.driver.arguments);
       return client.attachments.getAttachmentsForPlanEntry(planId, entryId);
+    }
+    case 'runs.getRun': {
+      const [runId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.runs.getRun(runId);
+    }
+    case 'runs.getRunsPage': {
+      const [projectId, options] = z.tuple([z.number(), runFilterOptions.extend({ limit: z.number(), offset: z.number() })])
+        .parse(expected.driver.arguments);
+      return client.runs.getRunsPage(projectId, present(options));
+    }
+    case 'runs.getAllRuns': {
+      const [projectId, options] = z.tuple([z.number(), runFilterOptions.extend(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.runs.getAllRuns(projectId, present(options));
+    }
+    case 'runs.addRun': {
+      const [projectId, payload] = z.tuple([z.number(), AddRunPayloadSchema]).parse(expected.driver.arguments);
+      return client.runs.addRun(projectId, payload);
+    }
+    case 'runs.updateRun': {
+      const [runId, payload] = z.tuple([z.number(), UpdateRunPayloadSchema]).parse(expected.driver.arguments);
+      return client.runs.updateRun(runId, payload);
+    }
+    case 'runs.closeRun': {
+      const [runId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.runs.closeRun(runId);
+    }
+    case 'runs.deleteRun': {
+      const [runId, options] = z.tuple([z.number(), z.strictObject({ soft: z.boolean() }).optional()])
+        .parse(expected.driver.arguments);
+      return options === undefined ? client.runs.deleteRun(runId) : client.runs.deleteRun(runId, options);
+    }
+    case 'tests.getTest': {
+      const [testId, options] = z.tuple([z.number(), z.strictObject({ withData: z.enum(['0', '1']) }).optional()])
+        .parse(expected.driver.arguments);
+      return options === undefined ? client.tests.getTest(testId) : client.tests.getTest(testId, options);
+    }
+    case 'tests.getTestsPage': {
+      const [runId, options] = z.tuple([z.number(), testFilterOptions.extend({ limit: z.number(), offset: z.number() })])
+        .parse(expected.driver.arguments);
+      return client.tests.getTestsPage(runId, present(options));
+    }
+    case 'tests.getAllTests': {
+      const [runId, options] = z.tuple([z.number(), testFilterOptions.extend(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.tests.getAllTests(runId, present(options));
+    }
+    case 'tests.updateTest': {
+      const [testId, payload] = z.tuple([z.number(), UpdateTestLabelsPayloadSchema]).parse(expected.driver.arguments);
+      return client.tests.updateTest(testId, payload);
+    }
+    case 'tests.updateTests': {
+      const [payload] = z.tuple([UpdateTestsLabelsPayloadSchema]).parse(expected.driver.arguments);
+      return client.tests.updateTests(payload);
     }
     case 'bdd.getBdd': {
       const [caseId] = z.tuple([z.number()]).parse(expected.driver.arguments);
