@@ -33,7 +33,7 @@
     {
       "id": "testrail-results",
       "url": "https://support.testrail.com/hc/en-us/articles/7077819312404-Results",
-      "supports": "add_result/{test_id} records a result against one test and takes status_id, comment, version, elapsed, defects and assignedto_id, plus custom fields submitted with their system name prefixed with custom_, of which the step results are one. add_result_for_case/{run_id}/{case_id} takes the same fields while naming the case rather than the test. add_results/{run_id} and add_results_for_cases/{run_id} wrap an array of those entries under results, each naming its test or case, and every referenced test must belong to the named run; TestRail returns the created results in the order they were sent. The documentation states that each entry needs at least one of the status, comment or assignee fields, while the driver's payload requires status_id outright, so a comment-only or assignment-only result cannot be recorded through this client."
+      "supports": "add_result/{test_id} records a result against one test and takes status_id, comment, version, elapsed, defects and assignedto_id, plus custom fields submitted with their system name prefixed with custom_, of which the step results are one. add_result_for_case/{run_id}/{case_id} takes the same fields while naming the case rather than the test. add_results/{run_id} and add_results_for_cases/{run_id} wrap an array of those entries under results, each naming its test or case, and every referenced test must belong to the named run; TestRail returns the created results in the order they were sent. The documentation states that each entry needs at least one of the status, comment or assignee fields, while the driver's payload type declares status_id required, so a comment-only or assignment-only result cannot be recorded through this client; the driver itself parses no payload, so that is a type contract rather than a runtime check."
     }
   ],
   "input_policy": {
@@ -158,7 +158,7 @@
       ],
       "requiredness": "required",
       "domain_ref": "positive_id",
-      "semantics": "The outcome, which TestRail's own documentation lists alongside comment and assignedto_id as alternatives while the driver's payload requires it; a comment-only or assignment-only result is therefore not reachable through this client. The driver forwards any number, so the boundary holds it to the identifier domain.",
+      "semantics": "The outcome, which TestRail's own documentation lists alongside comment and assignedto_id as alternatives while the driver's payload type declares it required; a comment-only or assignment-only result is therefore not reachable through this client. The driver does not check the payload at runtime, so this is the declared type being honoured at the boundary rather than a rule the driver enforces. The driver forwards any number, so the boundary holds it to the identifier domain.",
       "wire": {
         "location": "json",
         "names": [

@@ -164,7 +164,7 @@
         "names": [
           "status_id"
         ],
-        "encoding": "Decimal integers joined by commas, percent-encoded as %2C, appended path-style after the creation filters."
+        "encoding": "Decimal integers joined by commas, percent-encoded as %2C, appended path-style first among this endpoint's filters, which carry no creation filters ahead of them."
       },
       "sources": [
         "driver-module",

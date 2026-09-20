@@ -55,7 +55,9 @@ function resultFilter(query: object | undefined, names: Readonly<Record<string, 
   return filter;
 }
 
-/** Both comma-joined lists; the defect text is a single string. */
+/** Two of these are comma-joined lists; the timestamps and the defect text are scalars. */
+const listValuedFilters = new Set(['status_id', 'created_by']);
+
 function filterMappings(
   names: Readonly<Record<string, string>>,
   call: 'page' | 'all',
@@ -63,7 +65,7 @@ function filterMappings(
 ): readonly ArgumentMapping[] {
   return Object.entries(names).map(([name, property]) => ({
     input: `query.${name}`, call, argument, property,
-    serialization: name === 'defects_filter' ? 'query-scalar' as const : 'query-list' as const,
+    serialization: listValuedFilters.has(name) ? 'query-list' as const : 'query-scalar' as const,
   }));
 }
 
@@ -351,7 +353,17 @@ const editResultInput = strictObject({
   result_id: positiveIdSchema,
   body: payloadInput(EditResultPayloadSchema, {
     extensions: 'custom',
-    fields: { status_id: positiveIdSchema.optional(), assignedto_id: positiveIdSchema.optional() },
+    fields: {
+      status_id: positiveIdSchema.optional(),
+      assignedto_id: positiveIdSchema.optional(),
+      /*
+       * This payload declares no custom_fields of its own, but the name would still
+       * reach TestRail through the flat extension point, where it is read as an
+       * ordinary custom field that does not exist. Refusing it here keeps the four
+       * add-side writes and this one saying the same thing about the same name.
+       */
+      custom_fields: z.never().optional(),
+    },
   }),
 });
 

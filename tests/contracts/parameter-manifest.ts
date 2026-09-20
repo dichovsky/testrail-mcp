@@ -229,10 +229,23 @@ export function resolveDomains(manifest: ParameterManifest, library: DomainLibra
       throw new Error(`${manifest.endpoint.tool}: ${parameter.id} baseline is a case of the other call mode`);
     }
 
+    /*
+     * A derivation that leaves the baseline untouched would be recorded as a proof of
+     * the domain while exercising nothing: a mis-authored path reaches no value, and an
+     * omission of a field the baseline never carried removes nothing. Both are
+     * authoring faults, and a silent pass is the one outcome they must not have.
+     */
+    const changed = (input: JsonObject, id: string): JsonObject => {
+      if (JSON.stringify(input) === JSON.stringify(baseline.input)) {
+        throw new Error(`${manifest.endpoint.tool}: ${parameter.id} derivation ${id} changed nothing in ${baseline.id}`);
+      }
+      return input;
+    };
+
     for (const invalid of domain.invalid) {
       derived.push({
         id: `${parameter.id}:${invalid.id}`,
-        input: replaceAt(baseline.input, parameter.input_path, invalid.value),
+        input: changed(replaceAt(baseline.input, parameter.input_path, invalid.value), invalid.id),
         covers: [{ parameter: parameter.id, requirements: invalid.requirements }],
         expect: { kind: 'rejected', code: 'INVALID_ARGUMENT' },
       });
@@ -240,7 +253,7 @@ export function resolveDomains(manifest: ParameterManifest, library: DomainLibra
     if (domain.omitted !== undefined && parameter.requiredness === 'required') {
       derived.push({
         id: `${parameter.id}:${domain.omitted.id}`,
-        input: removeAt(baseline.input, parameter.input_path),
+        input: changed(removeAt(baseline.input, parameter.input_path), domain.omitted.id),
         covers: [{ parameter: parameter.id, requirements: domain.omitted.requirements }],
         expect: { kind: 'rejected', code: 'INVALID_ARGUMENT' },
       });

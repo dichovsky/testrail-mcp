@@ -2103,6 +2103,9 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
                 "$ref": "#/definitions/__schema0"
               }
             }
+          },
+          "custom_fields": {
+            "not": {}
           }
         },
         "additionalProperties": {
@@ -2119,7 +2122,8 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
                 "elapsed",
                 "defects",
                 "assignedto_id",
-                "custom_step_results"
+                "custom_step_results",
+                "custom_fields"
               ]
             },
             {
@@ -4599,14 +4603,14 @@ TestRail effect: `read`. Driver retry policy: `ordinary-read`. Local file behavi
       "call": "page",
       "argument": 1,
       "property": "createdAfter",
-      "serialization": "query-list"
+      "serialization": "query-scalar"
     },
     {
       "input": "query.created_before",
       "call": "page",
       "argument": 1,
       "property": "createdBefore",
-      "serialization": "query-list"
+      "serialization": "query-scalar"
     },
     {
       "input": "query.created_by",
@@ -4654,14 +4658,14 @@ TestRail effect: `read`. Driver retry policy: `ordinary-read`. Local file behavi
       "call": "all",
       "argument": 1,
       "property": "createdAfter",
-      "serialization": "query-list"
+      "serialization": "query-scalar"
     },
     {
       "input": "query.created_before",
       "call": "all",
       "argument": 1,
       "property": "createdBefore",
-      "serialization": "query-list"
+      "serialization": "query-scalar"
     },
     {
       "input": "query.created_by",

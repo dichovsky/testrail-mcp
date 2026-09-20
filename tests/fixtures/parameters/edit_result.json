@@ -44,7 +44,7 @@
   "input_policy": {
     "ordinary_fields": "reject",
     "custom_fields": "flat_custom_prefix",
-    "notes": "Strictness is an MCP boundary requirement at every depth. This payload declares the step results outright and carries no custom_fields container, so the flat extension point covers the remaining custom fields. At least one field is required, which the driver enforces at runtime and the emitted schema states as a minimum property count."
+    "notes": "Strictness is an MCP boundary requirement at every depth. This payload declares the step results outright and carries no custom_fields container, so the flat extension point covers the remaining custom fields. At least one field is required, which the driver enforces at runtime and the emitted schema states as a minimum property count. The name custom_fields is refused even though this payload does not declare it, because the flat extension point would otherwise carry it to TestRail as a custom field that does not exist."
   },
   "outer_result": {
     "driver": "record",
@@ -66,6 +66,11 @@
       "id": "empty-body",
       "kind": "invalid",
       "description": "Reject a body carrying no field, which the driver also refuses before dispatch: there would be nothing to change."
+    },
+    {
+      "id": "custom-fields-container",
+      "kind": "invalid",
+      "description": "Reject a custom_fields object. This payload declares no such field, so the name would otherwise reach TestRail through the flat extension point and be read as a custom field that does not exist, which is the same silent loss the add-side writes refuse it for."
     }
   ],
   "baseline": "full-body",
@@ -1192,6 +1197,30 @@
           "parameter": "body.custom_step_results",
           "requirements": [
             "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "custom-fields-container",
+      "input": {
+        "result_id": 1,
+        "body": {
+          "comment": "x",
+          "custom_fields": {
+            "custom_note": "y"
+          }
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "custom-fields-container"
           ]
         }
       ],
