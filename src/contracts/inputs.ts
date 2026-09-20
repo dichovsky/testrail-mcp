@@ -28,18 +28,22 @@ export const lookupEmailSchema = z.string().regex(/^[^\s@]+@[^\s@]+(?![\s\S])/u)
 
 /*
  * The stricter address the driver's user write payloads declare, which requires a dotted
- * domain. Its source is the driver's own, restated here only because that one carries no
- * flags while this server requires the Unicode flag for JSON Schema parity; the two are
- * held to the same verdicts by a test, so a change in the driver fails the suite rather
- * than silently widening or narrowing what a write accepts.
+ * domain. The driver asks for that format by selecting Zod's built-in email validator
+ * rather than writing a rule of its own, and this is the expression that selection
+ * currently resolves to, restated here only because the original carries no flags while
+ * this server requires the Unicode flag for JSON Schema parity.
+ *
+ * A restatement is a duplicate until something holds the two together, so a test compares
+ * them and fails on either kind of drift: the driver choosing a different format, or the
+ * validator it selected changing underneath it.
  *
  * It is stricter than lookupEmailSchema on purpose and not by this server's choice: an
  * address a self-hosted instance stores and this server can look up may still be one the
  * driver's write payload refuses.
  */
-// The escapes below are the driver's own. This pattern is compared to it
-// source-for-source by a test, so normalising them here would break the very check that
-// detects the driver changing the rule.
+// The escapes below come from that expression verbatim. A test compares this pattern to
+// it source-for-source, so normalising them here would break the very check that detects
+// the rule changing.
 // eslint-disable-next-line no-useless-escape
 export const writeEmailPattern = /^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/u;
 export const writeEmailSchema = z.string().regex(writeEmailPattern);

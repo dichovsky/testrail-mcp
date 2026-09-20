@@ -404,11 +404,15 @@ describe('structural page/all input discrimination', () => {
 });
 
 /*
- * The user write payloads carry the driver's email format, whose regular expression has
- * no flags while this server requires the Unicode flag for JSON Schema parity. The
- * pattern is therefore restated in src/contracts/inputs.ts, and a restatement is a
- * duplicate until something holds the two together. This does: a driver that loosens or
- * tightens the format fails here rather than quietly changing what a write accepts.
+ * The user write payloads ask for an email format by selecting Zod's built-in validator,
+ * whose regular expression carries no flags while this server requires the Unicode flag
+ * for JSON Schema parity. The pattern is therefore restated in src/contracts/inputs.ts,
+ * and a restatement is a duplicate until something holds the two together.
+ *
+ * This does, against both kinds of drift: the driver swapping that format for another,
+ * and the validator it selected changing underneath it on a dependency bump. Either way
+ * what a write accepts changes, and either way this fails rather than the change passing
+ * unnoticed.
  */
 describe('the restated user email format', () => {
   const driverPattern = (() => {
@@ -420,7 +424,7 @@ describe('the restated user email format', () => {
     return found;
   })();
 
-  it('restates the driver\'s own source, differing only by the Unicode flag', () => {
+  it('restates the source the driver\'s selected format resolves to, differing only by the Unicode flag', () => {
     expect(writeEmailPattern.source).toBe(driverPattern.source);
     expect(writeEmailPattern.flags).toBe('u');
     expect(driverPattern.flags).toBe('');
