@@ -14,8 +14,12 @@ import {
   MoveSectionPayloadSchema,
   UpdateCasePayloadSchema,
   UpdateCasesPayloadSchema,
+  AddResultPayloadSchema,
+  AddResultsForCasesPayloadSchema,
+  AddResultsPayloadSchema,
   AddRunPayloadSchema,
   AddSharedStepPayloadSchema,
+  EditResultPayloadSchema,
   UpdateProjectPayloadSchema,
   UpdateRunPayloadSchema,
   UpdateTestLabelsPayloadSchema,
@@ -165,6 +169,10 @@ describe('independent parameter manifest format', () => {
       'testrail_add_case',
       'testrail_add_cases',
       'testrail_add_project',
+      'testrail_add_result',
+      'testrail_add_result_for_case',
+      'testrail_add_results',
+      'testrail_add_results_for_cases',
       'testrail_add_run',
       'testrail_add_section',
       'testrail_add_shared_step',
@@ -178,6 +186,7 @@ describe('independent parameter manifest format', () => {
       'testrail_delete_section',
       'testrail_delete_shared_step',
       'testrail_delete_suite',
+      'testrail_edit_result',
       'testrail_get_attachment',
       'testrail_get_attachments_for_plan_entry',
       'testrail_get_bdd',
@@ -188,6 +197,9 @@ describe('independent parameter manifest format', () => {
       'testrail_get_history_for_case',
       'testrail_get_project',
       'testrail_get_projects',
+      'testrail_get_results',
+      'testrail_get_results_for_case',
+      'testrail_get_results_for_run',
       'testrail_get_run',
       'testrail_get_runs',
       'testrail_get_section',
@@ -213,7 +225,7 @@ describe('independent parameter manifest format', () => {
       'testrail_update_tests',
     ]);
     expect(report.partialEndpoints).toEqual([]);
-    expect(report.pendingEndpoints).toHaveLength(83);
+    expect(report.pendingEndpoints).toHaveLength(75);
     expect([...report.reviewedEndpoints, ...report.pendingEndpoints].sort())
       .toEqual(inventory.map(({ tool }) => tool).sort());
     expect(report.pendingEndpoints).toContain('testrail_add_plan');
@@ -350,6 +362,14 @@ const runFilterOptions = z.strictObject({
   includePlanRuns: z.boolean().optional(), isCompleted: z.boolean().optional(),
   milestoneId: idOrList.optional(), refs: z.string().optional(), suiteId: idOrList.optional(),
 });
+/** The result filters under the driver's option names, as a fixture writes them. */
+const resultFilterOptions = z.strictObject({
+  statusId: z.array(z.number()).optional(), defectsFilter: z.string().optional(),
+});
+/** The run-wide result list adds the creation filters. */
+const runResultFilterOptions = resultFilterOptions.extend({
+  createdAfter: z.number().optional(), createdBefore: z.number().optional(), createdBy: z.array(z.number()).optional(),
+});
 /** The test filters under the driver's option names. */
 const testFilterOptions = z.strictObject({
   statusId: z.array(z.number()).optional(), labelId: z.array(z.number()).optional(),
@@ -379,6 +399,54 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
     case 'attachments.getAttachmentsForPlanEntry': {
       const [planId, entryId] = z.tuple([z.number(), z.string()]).parse(expected.driver.arguments);
       return client.attachments.getAttachmentsForPlanEntry(planId, entryId);
+    }
+    case 'results.getResultsPage': {
+      const [testId, options] = z.tuple([z.number(), resultFilterOptions.extend({ limit: z.number(), offset: z.number() })])
+        .parse(expected.driver.arguments);
+      return client.results.getResultsPage(testId, present(options));
+    }
+    case 'results.getAllResults': {
+      const [testId, options] = z.tuple([z.number(), resultFilterOptions.extend(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.results.getAllResults(testId, present(options));
+    }
+    case 'results.getResultsForCasePage': {
+      const [runId, caseId, options] = z.tuple([z.number(), z.number(), resultFilterOptions.extend({ limit: z.number(), offset: z.number() })])
+        .parse(expected.driver.arguments);
+      return client.results.getResultsForCasePage(runId, caseId, present(options));
+    }
+    case 'results.getAllResultsForCase': {
+      const [runId, caseId, options] = z.tuple([z.number(), z.number(), resultFilterOptions.extend(aggregateOptions)])
+        .parse(expected.driver.arguments);
+      return client.results.getAllResultsForCase(runId, caseId, present(options));
+    }
+    case 'results.getResultsForRunPage': {
+      const [runId, options] = z.tuple([z.number(), runResultFilterOptions.extend({ limit: z.number(), offset: z.number() })])
+        .parse(expected.driver.arguments);
+      return client.results.getResultsForRunPage(runId, present(options));
+    }
+    case 'results.getAllResultsForRun': {
+      const [runId, options] = z.tuple([z.number(), runResultFilterOptions.extend(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.results.getAllResultsForRun(runId, present(options));
+    }
+    case 'results.addResult': {
+      const [testId, payload] = z.tuple([z.number(), AddResultPayloadSchema]).parse(expected.driver.arguments);
+      return client.results.addResult(testId, payload);
+    }
+    case 'results.addResultForCase': {
+      const [runId, caseId, payload] = z.tuple([z.number(), z.number(), AddResultPayloadSchema]).parse(expected.driver.arguments);
+      return client.results.addResultForCase(runId, caseId, payload);
+    }
+    case 'results.addResults': {
+      const [runId, payload] = z.tuple([z.number(), AddResultsPayloadSchema]).parse(expected.driver.arguments);
+      return client.results.addResults(runId, payload);
+    }
+    case 'results.addResultsForCases': {
+      const [runId, payload] = z.tuple([z.number(), AddResultsForCasesPayloadSchema]).parse(expected.driver.arguments);
+      return client.results.addResultsForCases(runId, payload);
+    }
+    case 'results.editResult': {
+      const [resultId, payload] = z.tuple([z.number(), EditResultPayloadSchema]).parse(expected.driver.arguments);
+      return client.results.editResult(resultId, payload);
     }
     case 'runs.getRun': {
       const [runId] = z.tuple([z.number()]).parse(expected.driver.arguments);

@@ -141,15 +141,36 @@ export type ParameterManifest = z.infer<typeof ParameterManifestSchema>;
 export type ParameterFixture = ParameterManifest['cases'][number];
 export type EndpointIdentity = ParameterManifest['endpoint'];
 
+function isObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Apply a mutation inside an array, to its first member alone.
+ *
+ * A wildcard path names a member of a reviewed array, and a derived rejection has to
+ * change exactly one thing for the refusal to be attributable. Mutating the first
+ * member does that: every other member stays valid, so only the member under test can
+ * be the reason the input was refused.
+ */
+function atFirstMember(value: unknown, mutate: (member: JsonObject) => JsonObject): JsonObject[string] {
+  if (!Array.isArray(value) || value.length === 0) return value as JsonObject[string];
+  const members = value as JsonObject[string][];
+  const [first] = members;
+  return [mutate(isObject(first) ? first : {}), ...members.slice(1)];
+}
+
 function replaceAt(input: JsonObject, path: readonly string[], value: JsonObject[string]): JsonObject {
   const [head, ...rest] = path;
   if (head === undefined) throw new Error('Empty input path');
   const nested = input[head];
+  if (rest[0] === '*') {
+    const inner = rest.slice(1);
+    return { ...input, [head]: atFirstMember(nested, (member) => replaceAt(member, inner, value)) };
+  }
   return {
     ...input,
-    [head]: rest.length === 0
-      ? value
-      : replaceAt(typeof nested === 'object' && nested !== null && !Array.isArray(nested) ? nested : {}, rest, value),
+    [head]: rest.length === 0 ? value : replaceAt(isObject(nested) ? nested : {}, rest, value),
   };
 }
 
@@ -160,7 +181,11 @@ function removeAt(input: JsonObject, path: readonly string[]): JsonObject {
     return Object.fromEntries(Object.entries(input).filter(([key]) => key !== head));
   }
   const nested = input[head];
-  if (typeof nested !== 'object' || nested === null || Array.isArray(nested)) return input;
+  if (rest[0] === '*') {
+    const inner = rest.slice(1);
+    return { ...input, [head]: atFirstMember(nested, (member) => removeAt(member, inner)) };
+  }
+  if (!isObject(nested)) return input;
   return { ...input, [head]: removeAt(nested, rest) };
 }
 
@@ -204,10 +229,23 @@ export function resolveDomains(manifest: ParameterManifest, library: DomainLibra
       throw new Error(`${manifest.endpoint.tool}: ${parameter.id} baseline is a case of the other call mode`);
     }
 
+    /*
+     * A derivation that leaves the baseline untouched would be recorded as a proof of
+     * the domain while exercising nothing: a mis-authored path reaches no value, and an
+     * omission of a field the baseline never carried removes nothing. Both are
+     * authoring faults, and a silent pass is the one outcome they must not have.
+     */
+    const changed = (input: JsonObject, id: string): JsonObject => {
+      if (JSON.stringify(input) === JSON.stringify(baseline.input)) {
+        throw new Error(`${manifest.endpoint.tool}: ${parameter.id} derivation ${id} changed nothing in ${baseline.id}`);
+      }
+      return input;
+    };
+
     for (const invalid of domain.invalid) {
       derived.push({
         id: `${parameter.id}:${invalid.id}`,
-        input: replaceAt(baseline.input, parameter.input_path, invalid.value),
+        input: changed(replaceAt(baseline.input, parameter.input_path, invalid.value), invalid.id),
         covers: [{ parameter: parameter.id, requirements: invalid.requirements }],
         expect: { kind: 'rejected', code: 'INVALID_ARGUMENT' },
       });
@@ -215,7 +253,7 @@ export function resolveDomains(manifest: ParameterManifest, library: DomainLibra
     if (domain.omitted !== undefined && parameter.requiredness === 'required') {
       derived.push({
         id: `${parameter.id}:${domain.omitted.id}`,
-        input: removeAt(baseline.input, parameter.input_path),
+        input: changed(removeAt(baseline.input, parameter.input_path), domain.omitted.id),
         covers: [{ parameter: parameter.id, requirements: domain.omitted.requirements }],
         expect: { kind: 'rejected', code: 'INVALID_ARGUMENT' },
       });
