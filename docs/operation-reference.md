@@ -2929,7 +2929,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_delete_group
 
-Delete a TestRail user group (TestRail 7.5 or later). The users in it are not deleted; they simply stop belonging to the group. TestRail returns no group data. Required path arguments: group_id. Changes TestRail data.
+Delete a TestRail user group. The users in it are not deleted; they simply stop belonging to the group. TestRail returns no group data. Neither TestRail's reference nor the driver states a version requirement for this endpoint, unlike the two group writes, so none is claimed here. Required path arguments: group_id. Changes TestRail data.
 
 REST: `POST delete_group/{group_id}`. Driver: `users.deleteGroup`. Family: T08.
 

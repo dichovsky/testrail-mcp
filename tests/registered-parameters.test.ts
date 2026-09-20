@@ -280,21 +280,29 @@ describe('configured limits reach the aggregate', () => {
    * Every fixture is invoked with the default limits, so the fixtures alone cannot tell
    * context.limits apart from a hard-coded DEFAULT_LIMITS. This can.
    *
-   * It runs over every controlled list rather than one exemplar. A single instantiated
-   * tool proves only itself: the T07 review showed that replacing context.limits with a
-   * literal copy of the defaults in one family's aggregate call left the whole suite
-   * green, because nothing outside get_projects was ever asked.
+   * It runs over every list that aggregates, rather than one exemplar or one pagination
+   * kind. Both narrower forms have already failed: the T07 review found that replacing
+   * context.limits with a literal copy of the defaults in one family's aggregate call
+   * left the whole suite green because only get_projects was asked, and the T08 review
+   * found the same of the three response-driven lists, because the widened filter still
+   * said `kind === 'controlled'`. A list either bounds its walk by the operator's
+   * configuration or it does not, and how it asks for its pages has no bearing on that.
    */
-  const controlled = operationRegistry.entries.filter(({ pagination }) => pagination.kind === 'controlled');
+  const aggregating = operationRegistry.entries.filter(({ pagination }) => pagination.kind !== 'none');
 
-  it('covers every controlled list', () => {
-    expect(controlled.length).toBeGreaterThan(1);
+  it('covers every list that aggregates, whichever way it pages', () => {
+    const kinds = new Set(aggregating.map(({ pagination }) => pagination.kind));
+    // Naming the kinds keeps a fourth from arriving unexamined: a new one fails here
+    // rather than silently joining the set this gate never asks.
+    expect([...kinds].sort()).toEqual(['controlled', 'response_driven']);
+    expect(aggregating.length).toBe(
+      operationRegistry.entries.filter(({ pagination }) => pagination.kind !== 'none').length);
   });
 
-  it.each(controlled.map((entry) => [entry.tool, entry] as const))(
+  it.each(aggregating.map((entry) => [entry.tool, entry] as const))(
     '%s forwards the operator\'s bounds, not the built-in defaults, when the caller sets none',
     async (tool, entry) => {
-      if (entry.pagination.kind !== 'controlled') throw new Error(`${tool}: not a controlled list`);
+      if (entry.pagination.kind === 'none') throw new Error(`${tool}: does not aggregate`);
       const manifest = manifests.find(({ endpoint }) => endpoint.tool === tool);
       const fixture = manifest?.cases.find((candidate) => candidate.expect.kind === 'accepted'
         && leavesEveryBoundToTheConfiguration(candidate.input));

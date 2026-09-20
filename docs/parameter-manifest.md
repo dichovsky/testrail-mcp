@@ -107,7 +107,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `update_tests` | 3 | 13 | Complete input manifest |
 | `update_user` | 12 | 20 | Complete input manifest |
 
-Case counts are authored cases; a parameter that references the shared domain library ([tests/fixtures/domains.json](../tests/fixtures/domains.json)) derives further rejections at load, one per proven invalid value. There are **75 endpoints without a manifest**, **no partial manifests**, and **58 complete input manifests**. A partial file names its remaining fields under `review.pending`. `parameterCoverageReport()` returns the exact sorted tool names in each group; its test compares their union with all 133 inventory names. Completing a manifest requires reviewing the endpoint's entire parameter surface against sources, not merely deleting its pending text.
+Case counts are authored cases; a parameter that references the shared domain library ([tests/fixtures/domains.json](../tests/fixtures/domains.json)) derives further rejections at load, one per proven invalid value. There are **33 endpoints without a manifest**, **no partial manifests**, and **100 complete input manifests**. A partial file names its remaining fields under `review.pending`. `parameterCoverageReport()` returns the exact sorted tool names in each group; its test compares their union with all 133 inventory names. Completing a manifest requires reviewing the endpoint's entire parameter surface against sources, not merely deleting its pending text.
 
 ## Format and integration
 

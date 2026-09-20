@@ -34,7 +34,7 @@
   "outer_result": {
     "driver": "void",
     "tool_data": "null",
-    "notes": "The method resolves with no value and the wrapper reports data: null, which matches TestRail's statement that this endpoint returns no group data. The users in the group are not deleted; they stop belonging to it."
+    "notes": "The method resolves with no value and the wrapper reports data: null, which matches TestRail's statement that this endpoint returns no group data. The users in the group are not deleted; they stop belonging to it. The two group writes carry a TestRail 7.5 requirement from the driver's payload comment; neither that comment nor TestRail's reference states one for this endpoint, so none is claimed."
   },
   "requirements": [
     {

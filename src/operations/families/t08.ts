@@ -305,7 +305,7 @@ export const deleteGroup = defineOperation({
   route: 'delete_group/{group_id}',
   family: 'T08',
   driverBinding: 'users.deleteGroup',
-  summary: 'Delete a TestRail user group (TestRail 7.5 or later). The users in it are not deleted; they simply stop belonging to the group. TestRail returns no group data.',
+  summary: 'Delete a TestRail user group. The users in it are not deleted; they simply stop belonging to the group. TestRail returns no group data. Neither TestRail\'s reference nor the driver states a version requirement for this endpoint, unlike the two group writes, so none is claimed here.',
   inputSchema: deleteGroupInput,
   argumentMap: [{ input: 'group_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
