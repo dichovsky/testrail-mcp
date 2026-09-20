@@ -106,7 +106,10 @@ describe('T06 entry identifiers in the request path', () => {
         { run_id: 13 }, { runtime, configuration });
       expect(requested(fetch, 0)).toContain(`delete_plan_entry/10/${ENTRY_ID}`);
       expect(requested(fetch, 1)).toContain('delete_run_from_plan_entry/13');
-      expect(requested(fetch, 1)).not.toContain('delete_plan_entry');
+      // The run deletion names no entry. A tool that took the entry's identifier would
+      // be addressing the group rather than the one run, which the route alone would
+      // not reveal because both endpoints answer an empty body.
+      expect(requested(fetch, 1)).not.toContain(ENTRY_ID);
     } finally { await runtime.shutdown(); }
   });
 });
@@ -170,9 +173,10 @@ describe('T06 nested plan creation', () => {
 });
 
 /*
- * Plan filters are the only place in this family where a caller's value is rewritten on
- * the way to the wire. A false that is treated as absent asks for every plan rather than
- * the open ones, which reads as a working filter returning more than it should.
+ * Three plan filters are rewritten on the way to the wire: two lists are comma-joined and
+ * the boolean becomes 1 or 0. The boolean is the one that can fail silently, because a
+ * false treated as absent asks for every plan rather than the open ones, which reads as a
+ * working filter returning more than it should.
  */
 describe('T06 plan list filters', () => {
   it('sends a false completion filter as its own value rather than dropping it', async () => {

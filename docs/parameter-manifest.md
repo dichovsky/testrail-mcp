@@ -11,8 +11,8 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `add_cases` | 12 | 18 | Complete input manifest |
 | `add_config` | 3 | 8 | Complete input manifest |
 | `add_config_group` | 3 | 8 | Complete input manifest |
-| `add_plan` | 28 | 38 | Complete input manifest |
-| `add_plan_entry` | 21 | 29 | Complete input manifest |
+| `add_plan` | 27 | 38 | Complete input manifest |
+| `add_plan_entry` | 20 | 29 | Complete input manifest |
 | `add_project` | 4 | 10 | Complete input manifest |
 | `add_result` | 9 | 15 | Complete input manifest |
 | `add_result_for_case` | 10 | 15 | Complete input manifest |
@@ -120,7 +120,11 @@ Project assignment `role_id: 0` selects the global role; `role_id: null` clears 
 
 A plan's entries carry fields that the endpoints changing them do not accept, and forwarding one would be a write the caller is told succeeded while nothing changed. TestRail's reference states that `config_ids` and `runs` are not supported on `update_plan_entry`, and that endpoint's request body carries no `suite_id`; a run inside an entry takes its name from its configuration combination, so `add_run_to_plan_entry` and `update_run_in_plan_entry` refuse a `name`, and the latter refuses `config_ids` as well. Each refusal is an endpoint-wide requirement with its own fixture rather than an unnamed consequence of strictness, so removing the rule fails a case that says what was lost. The driver parses none of these payloads, so every rule at every depth of a plan, an entry and a nested run is the boundary's alone. Sources: [plan payload schemas](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/plans.ts), [TestRail plan semantics](https://support.testrail.com/hc/en-us/articles/7077711537684-Plans).
 
-`is_completed` is the one plan filter whose value is rewritten between the caller and the wire: the driver sends `1` or `0`, so a `false` treated as absent would quietly ask for every plan instead of the open ones. The family suite asserts the rendered query string on the first request and on an aggregate continuation, because a filter that survives only the first request returns a correct first page and a wrong remainder.
+A nested run is held to the same rule. TestRail's reference names `assignedto_id`, `include_all` and `case_ids` as the fields a run inside an entry may override, and the runs example in that reference carries no `name`; the driver's payload schemas say why, recording that TestRail derives a nested run's name from its configuration combination, which is also why the standalone `add_run_to_plan_entry` payload omits the field entirely. `add_plan` and `add_plan_entry` therefore refuse a nested `name` as well, so the same field is not accepted in one place and refused in another on the same stated ground.
+
+An effect annotation is now a gate rather than a per-endpoint assertion. `effects.destructive` is published as the MCP `destructiveHint`, which is what a host uses to decide whether to ask before calling, and until T06 nothing compared it against anything: the manifests describe arguments and replies, and the registration audits compare response shapes. `update_plan_entry` shipped as non-destructive although narrowing its case selection deletes tests and results in every run the entry generated, while the two siblings that destroy strictly less were both flagged correctly. [tests/effects.test.ts](../tests/effects.test.ts) states the rules over the whole registry instead: every removal is destructive, no read is, and a write that is not a creation and can narrow an existing run's case selection is. A rule has to be argued with, where a per-endpoint restatement could simply be edited to agree with a mistake.
+
+Three plan filters are rewritten between the caller and the wire, and the boolean is the one that can fail silently. `created_by` and `milestone_id` are comma-joined from a list, which is visible in the rendered query string, while `is_completed` is sent as `1` or `0`, so a `false` treated as absent would quietly ask for every plan instead of the open ones. The family suite asserts all three in the rendered query string on the first request, and the boolean again on an aggregate continuation, because a filter that survives only the first request returns a correct first page and a wrong remainder.
 
 ## Review procedure
 

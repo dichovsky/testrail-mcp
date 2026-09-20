@@ -18,12 +18,12 @@
     {
       "id": "driver-module",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/configurations.ts",
-      "supports": "Every method validates its identifier, places it as the only path segment of the matching endpoint and forwards any JSON payload unchanged. The two reads parse against ConfigurationGroupSchema and ConfigurationSchema; the two deletes resolve with no value."
+      "supports": "Every method validates its identifier, places it as the only path segment of the matching endpoint and forwards any JSON payload unchanged. getConfigurations is the module's one read and parses against an array of ConfigurationGroupSchema. The group writes parse against ConfigurationGroupSchema and the configuration writes against ConfigurationSchema; the two deletes pass no schema and resolve with no value."
     },
     {
       "id": "testrail-configurations",
       "url": "https://support.testrail.com/hc/en-us/articles/7077298488340-Configurations",
-      "supports": "get_configs/{project_id} returns the configuration groups of a project, each with its configurations. add_config_group and add_config require a name; update_config_group and update_config take an optional name. Every one of these endpoints requires TestRail 5.2 or later. Deleting a group cannot be undone and removes every configuration in it; deleting either does not affect closed plans and runs, nor active ones until they are next updated."
+      "supports": "get_configs/{project_id} returns the configuration groups of a project, each with its configurations. add_config_group and add_config require a name; update_config_group and update_config take an optional name. The reference marks each of the six management endpoints \"This endpoint requires TestRail 5.2 or later\" and states no version requirement for get_configs. Deleting a group cannot be undone and removes every configuration in it; deleting either does not affect closed plans and runs, nor active ones until they are next updated."
     }
   ],
   "input_policy": {

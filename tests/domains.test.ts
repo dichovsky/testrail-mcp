@@ -4,6 +4,7 @@ import type { z } from 'zod';
 import {
   aggregateLimitDefaults, caseIdsSchema, entryIdSchema, idFilterSchema, nonnegativeIntegerSchema, positiveIdSchema,
 } from '../src/contracts/inputs.js';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
 import { auditDomainLibrary, loadDomainLibrary, type ParameterDomain } from './contracts/domains.js';
 
 const library = await loadDomainLibrary();
@@ -136,6 +137,24 @@ describe('shared parameter domains', () => {
         await probe(client, domain.probe.binding, positioned(name, valid.value));
         expect(requests(), `${name}/${valid.id}`).toBe(1);
       } finally { client.destroy(); }
+    }
+  });
+
+  /*
+   * A domain's `domain` field is the only machine-readable statement of its shape, and
+   * it is copied onto every parameter that references the domain. Left unexecuted it is
+   * a claim rather than a check: the T06 review corrupted this library's UUID pattern to
+   * `^[0-9]+$`, which contradicts every value beside it, and the whole suite stayed
+   * green. Running it against the domain's own values costs nothing and means a declared
+   * shape that drifts from the values it describes cannot pass.
+   */
+  it.each(entries)('executes the declared JSON Schema for %s', (name, domain: ParameterDomain) => {
+    const validate = new AjvJsonSchemaValidator().getValidator(domain.domain);
+    for (const valid of domain.valid) {
+      expect(validate(valid.value).valid, `${name}/${valid.id}`).toBe(true);
+    }
+    for (const invalid of domain.invalid) {
+      expect(validate(invalid.value).valid, `${name}/${invalid.id}`).toBe(false);
     }
   });
 

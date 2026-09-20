@@ -66,6 +66,11 @@
       "id": "unknown-run",
       "kind": "invalid",
       "description": "Reject an unknown field of a nested run, including one that belongs to the entry rather than the run."
+    },
+    {
+      "id": "nested-name-refused",
+      "kind": "invalid",
+      "description": "Reject a nested run's name. TestRail's reference names assignedto_id, include_all and case_ids as the fields a nested run may override, and its runs example carries no name; the driver's payload schemas say why, recording that TestRail derives a nested run's name from its configuration combination, which is also why the standalone add_run_to_plan_entry payload omits the field. Accepting it here would report a naming that never took effect."
     }
   ],
   "baseline": "full-plan",
@@ -1088,66 +1093,6 @@
       ]
     },
     {
-      "id": "body.entries[].runs[].name",
-      "input_path": [
-        "body",
-        "entries",
-        "*",
-        "runs",
-        "*",
-        "name"
-      ],
-      "scope": "body",
-      "driver": {
-        "argument": 1,
-        "path": [
-          "entries",
-          "*",
-          "runs",
-          "*",
-          "name"
-        ]
-      },
-      "sources": [
-        "driver-schema",
-        "testrail-plans"
-      ],
-      "requiredness": "optional",
-      "domain": {
-        "type": "string"
-      },
-      "semantics": "The run's name, overriding the entry's. No coercion; TestRail owns the format.",
-      "wire": {
-        "location": "json",
-        "names": [
-          "name"
-        ],
-        "encoding": "JSON string under name in each nested run."
-      },
-      "requirements": [
-        {
-          "id": "mapping",
-          "kind": "mapping",
-          "description": "Preserve the value under its own name."
-        },
-        {
-          "id": "valid",
-          "kind": "valid",
-          "description": "Accept a string."
-        },
-        {
-          "id": "invalid",
-          "kind": "invalid",
-          "description": "Reject a non-string value before driver invocation."
-        },
-        {
-          "id": "omitted",
-          "kind": "omitted",
-          "description": "Send nothing for it when the caller did not supply one."
-        }
-      ]
-    },
-    {
       "id": "body.entries[].runs[].description",
       "input_path": [
         "body",
@@ -1553,7 +1498,6 @@
               "refs": "TR-2",
               "runs": [
                 {
-                  "name": "Chrome, Windows 8",
                   "description": "One combination",
                   "assignedto_id": 6,
                   "include_all": true,
@@ -1720,13 +1664,6 @@
           ]
         },
         {
-          "parameter": "body.entries[].runs[].name",
-          "requirements": [
-            "mapping",
-            "valid"
-          ]
-        },
-        {
           "parameter": "body.entries[].runs[].description",
           "requirements": [
             "mapping",
@@ -1814,7 +1751,6 @@
                   "refs": "TR-2",
                   "runs": [
                     {
-                      "name": "Chrome, Windows 8",
                       "description": "One combination",
                       "assignedto_id": 6,
                       "include_all": true,
@@ -1875,7 +1811,6 @@
                 "refs": "TR-2",
                 "runs": [
                   {
-                    "name": "Chrome, Windows 8",
                     "description": "One combination",
                     "assignedto_id": 6,
                     "include_all": true,
@@ -2958,12 +2893,6 @@
         }
       },
       "covers": [
-        {
-          "parameter": "body.entries[].runs[].name",
-          "requirements": [
-            "omitted"
-          ]
-        },
         {
           "parameter": "body.entries[].runs[].description",
           "requirements": [
@@ -4390,7 +4319,7 @@
       }
     },
     {
-      "id": "run-invalid-name",
+      "id": "nested-name-refused",
       "input": {
         "project_id": 1,
         "body": {
@@ -4399,7 +4328,7 @@
             {
               "runs": [
                 {
-                  "name": 7
+                  "name": "Chrome, Windows 8"
                 }
               ]
             }
@@ -4408,9 +4337,9 @@
       },
       "covers": [
         {
-          "parameter": "body.entries[].runs[].name",
+          "parameter": "$input",
           "requirements": [
-            "invalid"
+            "nested-name-refused"
           ]
         }
       ],

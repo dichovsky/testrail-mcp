@@ -641,7 +641,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
                     "type": "object",
                     "properties": {
                       "name": {
-                        "type": "string"
+                        "not": {}
                       },
                       "description": {
                         "type": "string"
@@ -854,7 +854,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
               "type": "object",
               "properties": {
                 "name": {
-                  "type": "string"
+                  "not": {}
                 },
                 "description": {
                   "type": "string"
@@ -8843,7 +8843,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_update_plan_entry
 
-Update an entry of a TestRail test plan, which changes every run the entry generated. Supplied fields replace their current values. The configurations and the runs of an entry cannot be changed here: TestRail does not accept them, and a run is changed or removed through its own tools. Required path arguments: plan_id, entry_id. Changes TestRail data.
+Update an entry of a TestRail test plan, which changes every run the entry generated. Supplied fields replace their current values. Narrowing the case selection deletes the tests that fall outside it, and their results, in every one of those runs. The configurations and the runs of an entry cannot be changed here: TestRail does not accept them, and a run is changed or removed through its own tools. Required path arguments: plan_id, entry_id. Changes TestRail data.
 
 REST: `POST update_plan_entry/{plan_id}/{entry_id}`. Driver: `plans.updatePlanEntry`. Family: T06.
 
@@ -8853,7 +8853,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 {
   "annotations": {
     "readOnlyHint": false,
-    "destructiveHint": false,
+    "destructiveHint": true,
     "idempotentHint": true,
     "openWorldHint": true
   },

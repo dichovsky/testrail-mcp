@@ -317,10 +317,17 @@ const scheduleFields = {
   due_on: nonnegativeIntegerSchema.optional(),
 };
 
-/** A run nested inside a plan entry: every field optional, overriding the entry's own. */
+/*
+ * A run nested inside a plan entry: every field optional, overriding the entry's own.
+ * Except its name, which is refused. The driver's payload schemas record that TestRail
+ * derives a nested run's name from its configuration combination, and that is why the
+ * standalone add_run_to_plan_entry payload omits the field; the nested shape keeps it
+ * only because every field there is optional. Forwarding it would report a naming that
+ * never took effect, so the boundary refuses it in both places alike.
+ */
 const nestedRunPayload = payloadInput(
   AddPlanEntryPayloadSchema.shape.runs.unwrap().element,
-  { fields: selectionFields },
+  { fields: { ...selectionFields, name: z.never().optional() } },
 );
 
 const planEntryPayload = payloadInput(AddPlanPayloadSchema.shape.entries.unwrap().element, {
@@ -486,7 +493,7 @@ export const updatePlanEntry = defineOperation({
   route: 'update_plan_entry/{plan_id}/{entry_id}',
   family: 'T06',
   driverBinding: 'plans.updatePlanEntry',
-  summary: 'Update an entry of a TestRail test plan, which changes every run the entry generated. Supplied fields replace their current values. The configurations and the runs of an entry cannot be changed here: TestRail does not accept them, and a run is changed or removed through its own tools.',
+  summary: 'Update an entry of a TestRail test plan, which changes every run the entry generated. Supplied fields replace their current values. Narrowing the case selection deletes the tests that fall outside it, and their results, in every one of those runs. The configurations and the runs of an entry cannot be changed here: TestRail does not accept them, and a run is changed or removed through its own tools.',
   inputSchema: updatePlanEntryInput,
   argumentMap: [
     { input: 'plan_id', call: 'single', argument: 0, serialization: 'path' },
@@ -500,7 +507,13 @@ export const updatePlanEntry = defineOperation({
       (method, input) => method(input.plan_id, input.entry_id, input.body)),
   },
   files: { kind: 'none' },
-  effects: { testRail: 'write', destructive: false, idempotent: true },
+  /*
+   * Applying the same field values again leaves the entry in the same state, so this is
+   * idempotent. It is also destructive, and more broadly so than the run-level tool:
+   * narrowing the case selection removes the tests that fall outside it, and their
+   * results with them, in every run the entry generated rather than in one of them.
+   */
+  effects: { testRail: 'write', destructive: true, idempotent: true },
   retry: 'json-write',
 } as const satisfies OperationDefinition);
 
