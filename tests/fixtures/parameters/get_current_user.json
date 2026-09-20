@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T08",
+    "http_method": "GET",
+    "route": "get_current_user",
+    "tool": "testrail_get_current_user",
+    "driver_method": "users.getCurrentUser"
+  },
+  "sources": [
+    {
+      "id": "driver-module-users",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/users.ts",
+      "supports": "Every method validates its identifier and places it as the path segment of the matching endpoint. getUserByEmail checks the address against a deliberately loose shape rule, one @ with non-empty whitespace-free parts, and refuses anything else before dispatch; its comment records that single-label domains and domain literals are legitimate on self-hosted, LDAP, AD and SSO instances and that authoritative format validation is TestRail's. getUsers takes an optional project and addresses get_users/{project_id} when it is given. updateGroup injects the path identifier into the body as group_id, overwriting whatever the caller supplied, because TestRail rejects a body without it. No write payload is parsed by a public method, so every payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "driver-schema-users",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/users.ts",
+      "supports": "UserSchema is the reply shape and is permissive: role_id, is_admin, group_ids and the enterprise fields are all nullish because older servers omit them and get_current_user returns a reduced record, and mfa_required admits an integer because TestRail Cloud wire-encodes it as 0 or 1. UserAddPayloadSchema requires a non-empty name and an email in a dotted-domain format, and declares role_id, group_ids and assigned_projects as positive integers; UserUpdatePayloadSchema makes every field optional. GroupSchema carries id, name and a nullish user_ids. AddGroupPayloadSchema requires name; UpdateGroupPayloadSchema makes it optional and its comment records that TestRail accepts an empty update body. RoleSchema carries id, name, is_default and a nullish is_project_admin."
+    },
+    {
+      "id": "testrail-users",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077978310292-Users",
+      "supports": "get_user and get_user_by_email return one user, the latter taking the address as a query parameter. get_users returns an array and accepts an optional project in the path; from TestRail 6.6 only administrators may omit it, and the project form omits inactive users, omits users holding only global access, and reports each role at its project level. add_user requires name and email and accepts is_active, is_admin, role_id, group_ids, mfa_required, email_notifications, sso_enabled and assigned_projects, with is_active defaulting to false; update_user supports the same fields. The reference's get_current_user section contradicts the endpoint's own purpose by listing a required user_id parameter while describing the user making the request."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "The endpoint takes nothing at all: the identity is the one the configured credentials name, so the tool has no parameters and every field is refused. TestRail's reference contradicts itself here, listing a required user_id parameter in the same section that describes the user making the request; the driver sends no identifier, and a caller who wants a named user has get_user for that."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with a reduced user record rather than the full get_user shape, so fields such as group_ids and is_admin may be absent on a server that has them. The driver's reply schema admits that by making them nullish, and entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "no-arguments",
+      "kind": "mapping",
+      "description": "Call the driver with no arguments at all, and send no query of any kind."
+    }
+  ],
+  "baseline": "no-arguments",
+  "parameters": [],
+  "cases": [
+    {
+      "id": "no-arguments",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-arguments"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.getCurrentUser",
+          "arguments": []
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_current_user"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester"
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester"
+          }
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "user_id": 1
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

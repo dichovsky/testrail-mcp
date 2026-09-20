@@ -1,0 +1,556 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T08",
+    "http_method": "GET",
+    "route": "get_user_by_email",
+    "tool": "testrail_get_user_by_email",
+    "driver_method": "users.getUserByEmail"
+  },
+  "sources": [
+    {
+      "id": "driver-module-users",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/users.ts",
+      "supports": "Every method validates its identifier and places it as the path segment of the matching endpoint. getUserByEmail checks the address against a deliberately loose shape rule, one @ with non-empty whitespace-free parts, and refuses anything else before dispatch; its comment records that single-label domains and domain literals are legitimate on self-hosted, LDAP, AD and SSO instances and that authoritative format validation is TestRail's. getUsers takes an optional project and addresses get_users/{project_id} when it is given. updateGroup injects the path identifier into the body as group_id, overwriting whatever the caller supplied, because TestRail rejects a body without it. No write payload is parsed by a public method, so every payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "driver-schema-users",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/users.ts",
+      "supports": "UserSchema is the reply shape and is permissive: role_id, is_admin, group_ids and the enterprise fields are all nullish because older servers omit them and get_current_user returns a reduced record, and mfa_required admits an integer because TestRail Cloud wire-encodes it as 0 or 1. UserAddPayloadSchema requires a non-empty name and an email in a dotted-domain format, and declares role_id, group_ids and assigned_projects as positive integers; UserUpdatePayloadSchema makes every field optional. GroupSchema carries id, name and a nullish user_ids. AddGroupPayloadSchema requires name; UpdateGroupPayloadSchema makes it optional and its comment records that TestRail accepts an empty update body. RoleSchema carries id, name, is_default and a nullish is_project_admin."
+    },
+    {
+      "id": "driver-url",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/url.ts",
+      "supports": "Query parameters are appended path-style after the endpoint token, each value percent encoded."
+    },
+    {
+      "id": "testrail-users",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077978310292-Users",
+      "supports": "get_user and get_user_by_email return one user, the latter taking the address as a query parameter. get_users returns an array and accepts an optional project in the path; from TestRail 6.6 only administrators may omit it, and the project form omits inactive users, omits users holding only global access, and reports each role at its project level. add_user requires name and email and accepts is_active, is_admin, role_id, group_ids, mfa_required, email_notifications, sso_enabled and assigned_projects, with is_active defaulting to false; update_user supports the same fields. The reference's get_current_user section contradicts the endpoint's own purpose by listing a required user_id parameter while describing the user making the request."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "The address is the only input and it is a query parameter rather than a path segment. The shape rule below is the driver's own and is deliberately loose; the same address may still be refused by the user write tools, whose payload type demands a dotted domain. That asymmetry is the driver's and is recorded rather than smoothed over."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the user in the get_user format; entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    }
+  ],
+  "baseline": "representative-address",
+  "parameters": [
+    {
+      "id": "query.email",
+      "input_path": [
+        "query",
+        "email"
+      ],
+      "scope": "query",
+      "requiredness": "required",
+      "domain": {
+        "type": "string",
+        "pattern": "^[^\\s@]+@[^\\s@]+(?![\\s\\S])"
+      },
+      "semantics": "The address to look the user up by. The driver checks only the shape, exactly one @ with non-empty whitespace-free parts on either side, and refuses anything else before dispatch. It deliberately does not require a dotted domain: single-label domains and domain literals are legitimate on self-hosted, LDAP, AD and SSO instances, and the authoritative rule is TestRail's. No coercion and no trimming, so an address with surrounding whitespace is refused rather than repaired.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "email"
+        ],
+        "encoding": "email=value appended path-style after the endpoint token, percent encoded, so a + becomes %2B and a bracketed domain literal is escaped."
+      },
+      "sources": [
+        "driver-module-users",
+        "driver-url",
+        "testrail-users"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the address as the driver's only argument and as the email query parameter."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a representative dotted address."
+        },
+        {
+          "id": "plus-and-subdomain",
+          "kind": "valid",
+          "description": "Accept a plus tag and a multi-label domain, percent encoding the plus."
+        },
+        {
+          "id": "single-label-domain",
+          "kind": "valid",
+          "description": "Accept a single-label domain, which a self-hosted or directory instance legitimately stores."
+        },
+        {
+          "id": "domain-literal",
+          "kind": "valid",
+          "description": "Accept a bracketed domain literal, escaping it on the wire."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject an address with no @ before dispatch."
+        },
+        {
+          "id": "two-at-signs",
+          "kind": "invalid",
+          "description": "Reject an address with more than one @."
+        },
+        {
+          "id": "whitespace",
+          "kind": "invalid",
+          "description": "Reject an address with leading or trailing whitespace rather than trimming it."
+        },
+        {
+          "id": "terminal",
+          "kind": "invalid",
+          "description": "Reject a trailing line terminator, which would otherwise reach the query string."
+        },
+        {
+          "id": "empty",
+          "kind": "invalid",
+          "description": "Reject an empty address."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a call without an address."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-address",
+      "input": {
+        "query": {
+          "email": "ada@example.com"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.email",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.getUserByEmail",
+          "arguments": [
+            "ada@example.com"
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_user_by_email&email=ada%40example.com"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        }
+      }
+    },
+    {
+      "id": "plus-and-subdomain",
+      "input": {
+        "query": {
+          "email": "ada+test@sub.example.co.uk"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.email",
+          "requirements": [
+            "plus-and-subdomain"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.getUserByEmail",
+          "arguments": [
+            "ada+test@sub.example.co.uk"
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_user_by_email&email=ada%2Btest%40sub.example.co.uk"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        }
+      }
+    },
+    {
+      "id": "single-label-domain",
+      "input": {
+        "query": {
+          "email": "ada@corp"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.email",
+          "requirements": [
+            "single-label-domain"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.getUserByEmail",
+          "arguments": [
+            "ada@corp"
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_user_by_email&email=ada%40corp"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        }
+      }
+    },
+    {
+      "id": "domain-literal",
+      "input": {
+        "query": {
+          "email": "ada@[192.168.1.1]"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.email",
+          "requirements": [
+            "domain-literal"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.getUserByEmail",
+          "arguments": [
+            "ada@[192.168.1.1]"
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_user_by_email&email=ada%40%5B192.168.1.1%5D"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        }
+      }
+    },
+    {
+      "id": "missing-address",
+      "input": {
+        "query": {}
+      },
+      "covers": [
+        {
+          "parameter": "query.email",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "no-at-sign",
+      "input": {
+        "query": {
+          "email": "not-an-address"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.email",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "two-at-signs",
+      "input": {
+        "query": {
+          "email": "ada@a@b"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.email",
+          "requirements": [
+            "two-at-signs"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "leading-space",
+      "input": {
+        "query": {
+          "email": " ada@example.com"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.email",
+          "requirements": [
+            "whitespace"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "trailing-line-feed",
+      "input": {
+        "query": {
+          "email": "ada@example.com\n"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.email",
+          "requirements": [
+            "terminal"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "empty-address",
+      "input": {
+        "query": {
+          "email": ""
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.email",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "query": {
+          "email": "ada@example.com"
+        },
+        "user_id": 1
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

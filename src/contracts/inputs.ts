@@ -16,6 +16,34 @@ export const entryIdSchema = z.string().regex(
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?![\s\S])/u,
 );
 export const attachmentIdSchema = z.union([positiveIdSchema, entryIdSchema]);
+/*
+ * The lookup form the driver enforces for get_user_by_email: exactly one '@' with
+ * non-empty, whitespace-free parts on either side. It deliberately does not require a
+ * dotted domain, because self-hosted, LDAP, AD and SSO instances legitimately store
+ * single-label domains and domain literals, and TestRail owns the authoritative rule.
+ * The user write payloads are stricter, which is the driver's own inconsistency rather
+ * than this boundary's.
+ */
+export const lookupEmailSchema = z.string().regex(/^[^\s@]+@[^\s@]+(?![\s\S])/u);
+
+/*
+ * The stricter address the driver's user write payloads declare, which requires a dotted
+ * domain. Its source is the driver's own, restated here only because that one carries no
+ * flags while this server requires the Unicode flag for JSON Schema parity; the two are
+ * held to the same verdicts by a test, so a change in the driver fails the suite rather
+ * than silently widening or narrowing what a write accepts.
+ *
+ * It is stricter than lookupEmailSchema on purpose and not by this server's choice: an
+ * address a self-hosted instance stores and this server can look up may still be one the
+ * driver's write payload refuses.
+ */
+// The escapes below are the driver's own. This pattern is compared to it
+// source-for-source by a test, so normalising them here would break the very check that
+// detects the driver changing the rule.
+// eslint-disable-next-line no-useless-escape
+export const writeEmailPattern = /^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/u;
+export const writeEmailSchema = z.string().regex(writeEmailPattern);
+
 export const refsSchema = z.union([z.string(), z.array(z.string())]);
 /** One identifier or several. The driver joins a list with commas and would drop an empty one. */
 export const idFilterSchema = z.union([positiveIdSchema, z.array(positiveIdSchema).min(1)]);

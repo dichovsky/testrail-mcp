@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T08",
+    "http_method": "GET",
+    "route": "get_user/{user_id}",
+    "tool": "testrail_get_user",
+    "driver_method": "users.getUser"
+  },
+  "sources": [
+    {
+      "id": "driver-module-users",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/users.ts",
+      "supports": "Every method validates its identifier and places it as the path segment of the matching endpoint. getUserByEmail checks the address against a deliberately loose shape rule, one @ with non-empty whitespace-free parts, and refuses anything else before dispatch; its comment records that single-label domains and domain literals are legitimate on self-hosted, LDAP, AD and SSO instances and that authoritative format validation is TestRail's. getUsers takes an optional project and addresses get_users/{project_id} when it is given. updateGroup injects the path identifier into the body as group_id, overwriting whatever the caller supplied, because TestRail rejects a body without it. No write payload is parsed by a public method, so every payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "driver-schema-users",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/users.ts",
+      "supports": "UserSchema is the reply shape and is permissive: role_id, is_admin, group_ids and the enterprise fields are all nullish because older servers omit them and get_current_user returns a reduced record, and mfa_required admits an integer because TestRail Cloud wire-encodes it as 0 or 1. UserAddPayloadSchema requires a non-empty name and an email in a dotted-domain format, and declares role_id, group_ids and assigned_projects as positive integers; UserUpdatePayloadSchema makes every field optional. GroupSchema carries id, name and a nullish user_ids. AddGroupPayloadSchema requires name; UpdateGroupPayloadSchema makes it optional and its comment records that TestRail accepts an empty update body. RoleSchema carries id, name, is_default and a nullish is_project_admin."
+    },
+    {
+      "id": "testrail-users",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077978310292-Users",
+      "supports": "get_user and get_user_by_email return one user, the latter taking the address as a query parameter. get_users returns an array and accepts an optional project in the path; from TestRail 6.6 only administrators may omit it, and the project form omits inactive users, omits users holding only global access, and reports each role at its project level. add_user requires name and email and accepts is_active, is_admin, role_id, group_ids, mfa_required, email_notifications, sso_enabled and assigned_projects, with is_active defaulting to false; update_user supports the same fields. The reference's get_current_user section contradicts the endpoint's own purpose by listing a required user_id parameter while describing the user making the request."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "One identifier in the path and no request body, so every field beyond it is refused."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the user, returned as the driver received it. The reply schema is deliberately permissive: older servers omit the role and enterprise fields entirely, and mfa_required arrives as 0 or 1 rather than a boolean on TestRail Cloud."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    }
+  ],
+  "baseline": "representative-id",
+  "parameters": [
+    {
+      "id": "user_id",
+      "input_path": [
+        "user_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The user to read. No coercion; passed positionally and sent verbatim as the only path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "user_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module-users",
+        "testrail-users"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-id",
+      "input": {
+        "user_id": 1
+      },
+      "covers": [
+        {
+          "parameter": "user_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.getUser",
+          "arguments": [
+            1
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_user/1"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": {
+        "user_id": 9007199254740991
+      },
+      "covers": [
+        {
+          "parameter": "user_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.getUser",
+          "arguments": [
+            9007199254740991
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_user/9007199254740991"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "user_id": 1,
+        "email": "ada@example.com"
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

@@ -11,6 +11,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `add_cases` | 12 | 18 | Complete input manifest |
 | `add_config` | 3 | 8 | Complete input manifest |
 | `add_config_group` | 3 | 8 | Complete input manifest |
+| `add_group` | 3 | 10 | Complete input manifest |
 | `add_label` | 3 | 10 | Complete input manifest |
 | `add_milestone` | 8 | 12 | Complete input manifest |
 | `add_plan` | 27 | 38 | Complete input manifest |
@@ -25,6 +26,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `add_section` | 5 | 10 | Complete input manifest |
 | `add_shared_step` | 5 | 11 | Complete input manifest |
 | `add_suite` | 3 | 9 | Complete input manifest |
+| `add_user` | 11 | 22 | Complete input manifest |
 | `close_plan` | 1 | 3 | Complete input manifest |
 | `close_run` | 1 | 3 | Complete input manifest |
 | `copy_cases_to_section` | 3 | 6 | Complete input manifest |
@@ -32,6 +34,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `delete_cases` | 5 | 11 | Complete input manifest |
 | `delete_config` | 1 | 3 | Complete input manifest |
 | `delete_config_group` | 1 | 3 | Complete input manifest |
+| `delete_group` | 1 | 3 | Complete input manifest |
 | `delete_label` | 1 | 3 | Complete input manifest |
 | `delete_labels` | 2 | 10 | Complete input manifest |
 | `delete_milestone` | 1 | 3 | Complete input manifest |
@@ -52,6 +55,9 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `get_case_titles` | 1 | 5 | Complete input manifest |
 | `get_cases` | 25 | 24 | Complete input manifest |
 | `get_configs` | 1 | 3 | Complete input manifest |
+| `get_current_user` | 0 | 2 | Complete input manifest |
+| `get_group` | 1 | 3 | Complete input manifest |
+| `get_groups` | 5 | 10 | Complete input manifest |
 | `get_history_for_case` | 10 | 16 | Complete input manifest |
 | `get_label` | 1 | 3 | Complete input manifest |
 | `get_labels` | 10 | 16 | Complete input manifest |
@@ -64,6 +70,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `get_results` | 12 | 19 | Complete input manifest |
 | `get_results_for_case` | 13 | 19 | Complete input manifest |
 | `get_results_for_run` | 15 | 24 | Complete input manifest |
+| `get_roles` | 5 | 10 | Complete input manifest |
 | `get_run` | 1 | 3 | Complete input manifest |
 | `get_runs` | 18 | 23 | Complete input manifest |
 | `get_section` | 1 | 3 | Complete input manifest |
@@ -75,6 +82,9 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `get_suites` | 10 | 16 | Complete input manifest |
 | `get_test` | 2 | 7 | Complete input manifest |
 | `get_tests` | 12 | 20 | Complete input manifest |
+| `get_user` | 1 | 3 | Complete input manifest |
+| `get_user_by_email` | 1 | 11 | Complete input manifest |
+| `get_users` | 1 | 7 | Complete input manifest |
 | `move_cases_to_section` | 4 | 6 | Complete input manifest |
 | `move_section` | 3 | 15 | Complete input manifest |
 | `update_bdd` | 4 | 10 | Complete input manifest |
@@ -82,6 +92,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `update_cases` | 14 | 15 | Complete input manifest |
 | `update_config` | 3 | 8 | Complete input manifest |
 | `update_config_group` | 3 | 8 | Complete input manifest |
+| `update_group` | 4 | 11 | Complete input manifest |
 | `update_label` | 4 | 9 | Complete input manifest |
 | `update_milestone` | 10 | 14 | Complete input manifest |
 | `update_plan` | 8 | 11 | Complete input manifest |
@@ -94,6 +105,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `update_suite` | 3 | 8 | Complete input manifest |
 | `update_test` | 3 | 10 | Complete input manifest |
 | `update_tests` | 3 | 13 | Complete input manifest |
+| `update_user` | 12 | 20 | Complete input manifest |
 
 Case counts are authored cases; a parameter that references the shared domain library ([tests/fixtures/domains.json](../tests/fixtures/domains.json)) derives further rejections at load, one per proven invalid value. There are **75 endpoints without a manifest**, **no partial manifests**, and **58 complete input manifests**. A partial file names its remaining fields under `review.pending`. `parameterCoverageReport()` returns the exact sorted tool names in each group; its test compares their union with all 133 inventory names. Completing a manifest requires reviewing the endpoint's entire parameter surface against sources, not merely deleting its pending text.
 
@@ -145,6 +157,13 @@ Three of the six label endpoints are undocumented. TestRail's Labels reference c
 TestRail caps a label title at 20 characters and the boundary does not. The driver's schema records that the limit is deliberately left to the server so the client does not duplicate a rule TestRail may change independently, and this server follows it: an over-long title is sent and TestRail's refusal is reported as it arrived. The official CLI takes the other side and checks the length in its own command layer, so the two disagree; the manifest names the rule `server-limit` and covers it with a fixture rather than leaving the decision implicit. `update_label` is the other driver-checked body in this family: it asks for the owning project even though the label is identified by its own ID in the path, and the driver validates that `project_id` before dispatch.
 
 Both milestone list filters are booleans at the boundary and reach TestRail as 1 or 0. The driver also accepts deprecated numeric spellings of the same two filters, which are not exposed: one name per filter is one thing to keep true, so the numeric form is refused here rather than quietly accepted as a second way to say the same thing. `parent_id` admits no null in either milestone payload and TestRail documents no way to clear it, so detaching a sub-milestone is not reachable through the pinned driver. TestRail's own `update_milestone` table lists four fields while its heading promises partial updates and the driver's payload type carries the create fields as well; the wider set is accepted and the disagreement is recorded in the manifest rather than resolved silently. Sources: [label schemas](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/labels.ts), [milestone schemas](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/milestones.ts), [TestRail labels](https://support.testrail.com/hc/en-us/articles/38961149782036-Labels), [TestRail milestones](https://support.testrail.com/hc/en-us/articles/7077723976084-Milestones).
+
+
+The Users family holds the server's only two endpoints that take nothing at all and its only input that sits under `query` while reaching the wire as a path segment. `get_current_user` and the two response-driven lists carry no parameter, and `get_users` carries an optional project whose presence selects a different endpoint, `get_users/{project_id}`, rather than filtering the same one: TestRail requires that form of non-administrators from 6.6 and returns a narrower set through it, omitting inactive users and users who hold only global access. The registered route is the bare one because the endpoint has two forms, so the project is a query-scoped input whose wire encoding the manifest states outright. `get_users` is also the one list TestRail documents as a bare array while every sibling documents an envelope; the driver accepts the array, the wrapper and a null collection and resolves all three to an array, which the family suite proves by sending each shape through the same tool.
+
+`update_group` carries its own identifier twice. TestRail rejects a body without `group_id`, so the driver injects the path identifier after spreading the caller's payload, which means a caller's own value would be overwritten rather than sent. The boundary refuses the field instead, on the same ground as the plan-entry fields refused in T06: accepting a value that cannot take effect is the same lie as forwarding one TestRail ignores. The fixtures record the injected identifier in the expected request body, so a driver that stopped injecting it would fail rather than quietly start sending bodies TestRail refuses.
+
+The user write payloads demand a stricter address than the lookup accepts, and that gap is the driver's own. `getUserByEmail` checks only the shape, one `@` with non-empty whitespace-free parts, and its comment argues that single-label domains and domain literals are legitimate on self-hosted, LDAP, AD and SSO instances and that authoritative validation is TestRail's; the write payloads then apply a dotted-domain format that refuses those same addresses. Both rules are honoured as declared rather than reconciled here, so on such an instance a user may be readable and not writable. The write format also had to be restated in [src/contracts/inputs.ts](../src/contracts/inputs.ts), because the driver's regular expression carries no flags while this server requires the Unicode flag for JSON Schema parity; a restatement is a duplicate until something holds the two together, so a test compares their sources and their verdicts on a corpus of addresses and fails if the driver ever changes the rule. Sources: [user module](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/users.ts), [user schemas](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/users.ts), [TestRail users](https://support.testrail.com/hc/en-us/articles/7077978310292-Users), [TestRail groups](https://support.testrail.com/hc/en-us/articles/7077338821012-Groups).
 
 ## Review procedure
 

@@ -8,6 +8,7 @@ import {
   EditResultPayloadSchema,
   MoveSectionPayloadSchema,
   UpdateProjectUserAssignmentPayloadSchema,
+  UserAddPayloadSchema,
   type TestRailClient,
 } from '@dichovsky/testrail-api-client';
 import type { JsonSchemaType } from '@modelcontextprotocol/server';
@@ -31,6 +32,9 @@ import {
   positiveIdSchema,
   refsSchema,
   strictObject,
+  lookupEmailSchema,
+  writeEmailPattern,
+  writeEmailSchema,
 } from '../src/contracts/inputs.js';
 
 const validator = new AjvJsonSchemaValidator();
@@ -396,5 +400,49 @@ describe('structural page/all input discrimination', () => {
     const responseDriven = createListInput({ pagination: 'response-driven' });
     const input = responseDriven.parse({ _mcp: { pagination: 'all' } });
     if (input._mcp?.pagination === 'all') expectTypeOf(input._mcp).not.toHaveProperty('page_size');
+  });
+});
+
+/*
+ * The user write payloads carry the driver's email format, whose regular expression has
+ * no flags while this server requires the Unicode flag for JSON Schema parity. The
+ * pattern is therefore restated in src/contracts/inputs.ts, and a restatement is a
+ * duplicate until something holds the two together. This does: a driver that loosens or
+ * tightens the format fails here rather than quietly changing what a write accepts.
+ */
+describe('the restated user email format', () => {
+  const driverPattern = (() => {
+    const definition = UserAddPayloadSchema.shape.email._zod.def as {
+      checks?: { _zod: { def: { pattern?: RegExp } } }[];
+    };
+    const found = (definition.checks ?? []).map((check) => check._zod.def.pattern).find((p) => p instanceof RegExp);
+    if (!found) throw new Error('The driver no longer declares an email pattern on its user write payload');
+    return found;
+  })();
+
+  it('restates the driver\'s own source, differing only by the Unicode flag', () => {
+    expect(writeEmailPattern.source).toBe(driverPattern.source);
+    expect(writeEmailPattern.flags).toBe('u');
+    expect(driverPattern.flags).toBe('');
+  });
+
+  it.each([
+    'ada@example.com', 'a.b+c@sub.example.co.uk', 'o\'brien@x.io', 'a_b@x.io', 'ADA@EXAMPLE.COM',
+    'ada@corp', 'user@localhost', 'user@[10.0.0.1]', 'nope', 'a@@b', ' ada@example.com', 'ada@example.com\n',
+    'ada@example.c', 'ada@.com', '@example.com',
+  ])('agrees with the driver on %j', (address) => {
+    expect(writeEmailPattern.test(address)).toBe(driverPattern.test(address));
+  });
+
+  /*
+   * The lookup is deliberately looser than the write. Stating it here keeps the gap
+   * visible: an address this server can look a user up by may still be one it cannot
+   * create or update that user with.
+   */
+  it('is stricter than the lookup form, which the driver intends', () => {
+    for (const address of ['ada@corp', 'user@localhost', 'user@[10.0.0.1]']) {
+      expect(lookupEmailSchema.safeParse(address).success, address).toBe(true);
+      expect(writeEmailSchema.safeParse(address).success, address).toBe(false);
+    }
   });
 });
