@@ -34,7 +34,7 @@
   "outer_result": {
     "driver": "void",
     "tool_data": "null",
-    "notes": "The method resolves with no value and the wrapper reports data: null. Deleting a milestone removes its sub-milestones with it and cannot be undone. The runs and plans that pointed at it are left without a milestone rather than deleted."
+    "notes": "The method resolves with no value and the wrapper reports data: null. TestRail's reference states only that deleting a milestone cannot be undone. It does not say what becomes of the milestone's sub-milestones, which the entity carries under its milestones field, nor of the runs and plans that pointed at it, and neither does the driver; the tool therefore claims neither, because a blast radius no cited source states is not one this manifest can promise."
   },
   "requirements": [
     {

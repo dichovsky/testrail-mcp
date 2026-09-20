@@ -358,7 +358,7 @@ export const deleteMilestone = defineOperation({
   route: 'delete_milestone/{milestone_id}',
   family: 'T07',
   driverBinding: 'milestones.deleteMilestone',
-  summary: 'Delete a TestRail milestone with its sub-milestones. This cannot be undone. The runs and plans that pointed at it are not deleted; they are left without a milestone.',
+  summary: 'Delete a TestRail milestone. This cannot be undone. TestRail\'s reference states nothing further: what becomes of the milestone\'s sub-milestones, and of the runs and plans that pointed at it, is not documented, so read the milestone first if that matters.',
   inputSchema: deleteMilestoneInput,
   argumentMap: [{ input: 'milestone_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },

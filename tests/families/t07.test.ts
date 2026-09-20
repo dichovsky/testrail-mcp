@@ -88,9 +88,10 @@ describe('T07 the two shapes of a label mutation reply', () => {
 });
 
 /*
- * The one endpoint in this server with no path segment at all, and one of only two
- * whose body the driver checks itself. Sending it to the wrong URL, or letting an empty
- * list through, would ask TestRail to delete something other than what was named.
+ * The only endpoint in this family with no path segment, and one of the four payloads the
+ * pinned driver checks before dispatch anywhere in this server. Sending it to the wrong
+ * URL, or letting an empty list through, would ask TestRail to delete something other
+ * than what was named.
  */
 describe('T07 bulk label deletion', () => {
   it('posts the identifiers to the bare endpoint with no trailing segment', async () => {

@@ -2878,7 +2878,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_delete_milestone
 
-Delete a TestRail milestone with its sub-milestones. This cannot be undone. The runs and plans that pointed at it are not deleted; they are left without a milestone. Required path arguments: milestone_id. Changes TestRail data.
+Delete a TestRail milestone. This cannot be undone. TestRail's reference states nothing further: what becomes of the milestone's sub-milestones, and of the runs and plans that pointed at it, is not documented, so read the milestone first if that matters. Required path arguments: milestone_id. Changes TestRail data.
 
 REST: `POST delete_milestone/{milestone_id}`. Driver: `milestones.deleteMilestone`. Family: T07.
 
