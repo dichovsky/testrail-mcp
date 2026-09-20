@@ -5776,7 +5776,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 {
   "annotations": {
     "readOnlyHint": false,
-    "destructiveHint": false,
+    "destructiveHint": true,
     "idempotentHint": true,
     "openWorldHint": true
   },
@@ -6188,7 +6188,6 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
         "type": "object",
         "properties": {
           "labels": {
-            "minItems": 1,
             "type": "array",
             "items": {
               "anyOf": [
@@ -6266,7 +6265,6 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
             }
           },
           "labels": {
-            "minItems": 1,
             "type": "array",
             "items": {
               "anyOf": [

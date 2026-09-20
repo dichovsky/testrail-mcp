@@ -197,7 +197,7 @@
           ]
         }
       },
-      "semantics": "The labels to assign, named by ID or by title and mixed freely, as TestRail documents. The driver accepts any number for an ID and forwards the payload without parsing it, so the boundary holds numeric members to the identifier domain and requires at least one: an empty array would ask TestRail to assign nothing.",
+      "semantics": "The labels to assign, named by ID or by title and mixed freely, as TestRail documents. The driver accepts any number for an ID and forwards the payload without parsing it, so the boundary holds numeric members to the identifier domain. These endpoints replace a test's labels rather than adding to them, so an empty array is the way to clear them and is sent as such; it is also the only way, since labels are the one field of a test the API can change.",
       "driver": {
         "argument": 0,
         "path": [
@@ -238,8 +238,8 @@
         },
         {
           "id": "empty",
-          "kind": "invalid",
-          "description": "Reject an empty array, which would assign nothing."
+          "kind": "valid",
+          "description": "Accept an empty array and send it, which clears the test's labels."
         },
         {
           "id": "required",
@@ -589,7 +589,9 @@
       "input": {
         "body": {
           "test_ids": [
-            1
+            1,
+            2,
+            3
           ],
           "labels": []
         }
@@ -603,8 +605,54 @@
         }
       ],
       "expect": {
-        "kind": "rejected",
-        "code": "INVALID_ARGUMENT"
+        "kind": "accepted",
+        "driver": {
+          "binding": "tests.updateTests",
+          "arguments": [
+            {
+              "test_ids": [
+                1,
+                2,
+                3
+              ],
+              "labels": []
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_tests",
+          "json": {
+            "test_ids": [
+              1,
+              2,
+              3
+            ],
+            "labels": []
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "test_ids": [
+              1,
+              2,
+              3
+            ],
+            "labels": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "test_ids": [
+              1,
+              2,
+              3
+            ],
+            "labels": []
+          }
+        }
       }
     },
     {

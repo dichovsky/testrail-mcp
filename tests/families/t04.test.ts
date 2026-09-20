@@ -99,6 +99,75 @@ describe('T04 results that are not the entity they name', () => {
     } finally { await runtime.shutdown(); }
   });
 
+  it('blames the reply, not the server, when the data cannot be assembled', async () => {
+    // A server that ignores with_data answers with the test alone. The driver builds
+    // one record out of three parts and throws while reading the parts that are not
+    // there, which must not reach the caller as a fault in this server.
+    const plain = { id: 100, case_id: 1, run_id: 1, status_id: 5, title: 'Verify line spacing' };
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(plain), { headers: { 'content-type': 'application/json' } }),
+    );
+    const runtime = runtimeFor(fetch);
+    try {
+      const result = await executeToolCall(
+        operation('testrail_get_test'),
+        { test_id: 100, query: { with_data: '1' } },
+        { runtime, configuration },
+      );
+      expect(result.isError).toBe(true);
+      const { error } = result.structuredContent as { error: { code: string } };
+      expect(error.code).toBe('INVALID_RESPONSE');
+      expect(JSON.stringify(result.structuredContent)).not.toContain('server failed');
+    } finally { await runtime.shutdown(); }
+  });
+
+  it('still returns a drifted test with data, reporting the drift as a warning', async () => {
+    /*
+     * Drift inside a well-formed reply is advisory, and asking for the data must not
+     * turn it into a failure: the parts are all present, so the record assembles and
+     * the drifted field is reported alongside it.
+     */
+    const drifted = { id: 100, case_id: 1, run_id: 1, status_id: '5', title: 'Verify line spacing' };
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ test: drifted, results: [], attachments: [] }), {
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const runtime = runtimeFor(fetch);
+    try {
+      const result = await executeToolCall(
+        operation('testrail_get_test'),
+        { test_id: 100, query: { with_data: '1' } },
+        { runtime, configuration },
+      );
+      expect(result.isError).toBeUndefined();
+      const { data, warnings } = result.structuredContent as { data: { status_id: unknown }; warnings?: unknown[] };
+      expect(data.status_id).toBe('5');
+      expect(warnings).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
+    } finally { await runtime.shutdown(); }
+  });
+
+  it('clears a test\'s labels when given an empty array', async () => {
+    // Replacing the set with the empty set is how a label comes off, and these two
+    // tools are the only ones that can do it.
+    const cleared = { id: 100, case_id: 1, run_id: 1, status_id: 5, title: 'Verify line spacing', labels: [] };
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(cleared), { headers: { 'content-type': 'application/json' } }),
+    );
+    const runtime = runtimeFor(fetch);
+    try {
+      const result = await executeToolCall(
+        operation('testrail_update_test'),
+        { test_id: 100, body: { labels: [] } },
+        { runtime, configuration },
+      );
+      expect(result.isError).toBeUndefined();
+      expect((result.structuredContent as { data: unknown }).data).toEqual(cleared);
+      const sent = fetch.mock.calls[0]?.[1] as { body?: string } | undefined;
+      expect(JSON.parse(sent?.body ?? 'null')).toEqual({ labels: [] });
+    } finally { await runtime.shutdown(); }
+  });
+
   it('merges a test\'s results and attachments into the record when asked for them', async () => {
     const test = { id: 100, case_id: 1, run_id: 1, status_id: 5, title: 'Verify line spacing' };
     const body = { test, results: [{ id: 1, test_id: 100, status_id: 5 }], attachments: [{ id: 'a1', name: 'shot.png' }] };

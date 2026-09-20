@@ -4,6 +4,7 @@ import {
   type GetRunsOptions, type GetTestsOptions,
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
+import { AdapterError } from '../../contracts/errors.js';
 import {
   createListInput, idFilterSchema, nonnegativeIntegerSchema, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
@@ -53,14 +54,20 @@ const getRunsInput = createListInput({
   pagination: 'controlled',
 });
 
+/** Derived from the driver's own option type, so a rename there fails the build here. */
+type RunFilter = Omit<GetRunsOptions, 'limit' | 'offset'>;
+
+/*
+ * Every value is checked to be an option the driver still has. Deriving the type alone
+ * would not do that: the helper below builds its object dynamically, and a record of
+ * unknown values stays assignable to a type whose properties are all optional, so a
+ * renamed option would silently stop being sent rather than fail to compile.
+ */
 const runFilterNames = {
   created_after: 'createdAfter', created_before: 'createdBefore', created_by: 'createdBy',
   include_plan_runs: 'includePlanRuns', is_completed: 'isCompleted', milestone_id: 'milestoneId',
   refs: 'refs', suite_id: 'suiteId',
-} as const;
-
-/** Derived from the driver's own option type, so a rename there fails the build here. */
-type RunFilter = Omit<GetRunsOptions, 'limit' | 'offset'>;
+} as const satisfies Readonly<Record<string, keyof RunFilter>>;
 
 function runFilter(query: object | undefined): RunFilter {
   const source = (query ?? {}) as Record<string, unknown>;
@@ -183,8 +190,12 @@ export const updateRun = defineOperation({
     single: driverCall(updateRunInput, 'runs.updateRun', (method, input) => method(input.run_id, input.body)),
   },
   files: { kind: 'none' },
-  // Applying the same field values again leaves the run in the same state.
-  effects: { testRail: 'write', destructive: false, idempotent: true },
+  /*
+   * Applying the same field values again leaves the run in the same state, so this is
+   * idempotent. It is also destructive: narrowing the case selection removes the tests
+   * that fall outside it, and their results with them, which no later call restores.
+   */
+  effects: { testRail: 'write', destructive: true, idempotent: true },
   retry: 'json-write',
 } as const satisfies OperationDefinition);
 
@@ -269,9 +280,23 @@ export const getTest = defineOperation({
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: TestSchema },
   pagination: {
     kind: 'none',
-    single: driverCall(getTestInput, 'tests.getTest', (method, input) => {
+    single: driverCall(getTestInput, 'tests.getTest', async (method, input) => {
       const data = withData(input.query);
-      return data === undefined ? method(input.test_id) : method(input.test_id, { withData: data });
+      if (data === undefined) return method(input.test_id);
+      try {
+        return await method(input.test_id, { withData: data });
+      } catch (error) {
+        /*
+         * Asking for the data makes the driver build one record out of TestRail's
+         * test, results and attachments. Response validation is advisory, so a reply
+         * that is not that shape reaches the assembly anyway and it throws while
+         * reading the parts it cannot find. That is the response failing to be what
+         * the endpoint documents, not a fault in this server, and saying so is the
+         * difference between blaming TestRail's body and blaming the adapter.
+         */
+        if (error instanceof TypeError) throw new AdapterError('INVALID_RESPONSE');
+        throw error;
+      }
     }),
   },
   files: { kind: 'none' },
@@ -291,11 +316,15 @@ const getTestsInput = createListInput({
 
 type TestFilter = Omit<GetTestsOptions, 'limit' | 'offset' | 'status_id' | 'label_id'>;
 
+/** Checked against the driver's option type for the same reason as the run filters. */
+const testFilterNames = { status_id: 'statusId', label_id: 'labelId' } as const satisfies Readonly<Record<string, keyof TestFilter>>;
+
 function testFilter(query: object | undefined): TestFilter {
   const source = (query ?? {}) as Record<string, unknown>;
   const filter: Record<string, unknown> = {};
-  if (source.status_id !== undefined) filter.statusId = source.status_id;
-  if (source.label_id !== undefined) filter.labelId = source.label_id;
+  for (const [name, option] of Object.entries(testFilterNames)) {
+    if (source[name] !== undefined) filter[option] = source[name];
+  }
   return filter;
 }
 
@@ -340,8 +369,16 @@ export const getTests = defineOperation({
   retry: 'ordinary-read',
 } as const satisfies OperationDefinition);
 
-/** A label is named by its ID or its title, as TestRail documents for these two tools. */
-const labelListSchema = z.array(z.union([positiveIdSchema, z.string()])).min(1);
+/**
+ * A label is named by its ID or its title, as TestRail documents for these two tools.
+ *
+ * The array is not held to a minimum length. These endpoints replace a test's labels
+ * rather than adding to them, so the empty array is how a caller clears them, and this
+ * is the only field of a test the API can change: refusing it would leave the server
+ * able to attach a label and never to remove one. The Cases family takes the same view
+ * of the identical field.
+ */
+const labelListSchema = z.array(z.union([positiveIdSchema, z.string()]));
 
 const updateTestInput = strictObject({
   test_id: positiveIdSchema,

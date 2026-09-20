@@ -573,9 +573,10 @@
               "type": "object"
             }
           }
-        }
+        },
+        "additionalProperties": false
       },
-      "semantics": "A selection filter in the form the TestRail interface produces: a mode, which the payload declares as a string rather than a number, and a filters map whose keys name a field such as cases:priority_id and whose values are the filter for it. The values are forwarded as given, since TestRail's own examples vary their shape from one field to the next.",
+      "semantics": "A selection filter in the form the TestRail interface produces: a mode, which the payload declares as a string rather than a number, and a filters map whose keys name a field such as cases:priority_id and whose values are the filter for it. The values are forwarded as given, since TestRail's own examples vary their shape from one field to the next. The object itself carries nothing beyond those two fields, and an extra one is refused.",
       "driver": {
         "argument": 1,
         "path": [
@@ -618,6 +619,11 @@
           "id": "omitted",
           "kind": "omitted",
           "description": "Send no filter when the caller did not supply one."
+        },
+        {
+          "id": "ignored-when-cases-named",
+          "kind": "valid",
+          "description": "Send the filter even alongside a non-empty case_ids, which TestRail's precedence rules say it will ignore. Which field governs the selection is TestRail's decision, not one this adapter makes by dropping a field."
         }
       ]
     }
@@ -1192,6 +1198,177 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    {
+      "id": "selection-and-filter",
+      "input": {
+        "project_id": 3,
+        "body": {
+          "name": "Both",
+          "include_all": false,
+          "case_ids": [
+            1,
+            2,
+            3
+          ],
+          "dynamic_filters": {
+            "mode": "1",
+            "filters": {
+              "cases:priority_id": {
+                "values": [
+                  2
+                ]
+              },
+              "cases:title": {
+                "mode": "2",
+                "filters": [
+                  {
+                    "op": 5,
+                    "value": "Login"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.dynamic_filters",
+          "requirements": [
+            "ignored-when-cases-named"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.addRun",
+          "arguments": [
+            3,
+            {
+              "name": "Both",
+              "include_all": false,
+              "case_ids": [
+                1,
+                2,
+                3
+              ],
+              "dynamic_filters": {
+                "mode": "1",
+                "filters": {
+                  "cases:priority_id": {
+                    "values": [
+                      2
+                    ]
+                  },
+                  "cases:title": {
+                    "mode": "2",
+                    "filters": [
+                      {
+                        "op": 5,
+                        "value": "Login"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_run/3",
+          "json": {
+            "name": "Both",
+            "include_all": false,
+            "case_ids": [
+              1,
+              2,
+              3
+            ],
+            "dynamic_filters": {
+              "mode": "1",
+              "filters": {
+                "cases:priority_id": {
+                  "values": [
+                    2
+                  ]
+                },
+                "cases:title": {
+                  "mode": "2",
+                  "filters": [
+                    {
+                      "op": 5,
+                      "value": "Login"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 9942,
+            "name": "Test Run Name",
+            "description": null,
+            "suite_id": 10,
+            "project_id": 3,
+            "plan_id": null,
+            "milestone_id": null,
+            "assignedto_id": null,
+            "include_all": false,
+            "is_completed": false,
+            "completed_on": null,
+            "config": null,
+            "config_ids": [],
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 46,
+            "retest_count": 0,
+            "failed_count": 0,
+            "created_by": 376,
+            "created_on": 1775495967,
+            "updated_on": 1775495967,
+            "refs": null,
+            "url": "https://test.testrail.io/index.php?/runs/view/123",
+            "start_on": null,
+            "due_on": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 9942,
+            "name": "Test Run Name",
+            "description": null,
+            "suite_id": 10,
+            "project_id": 3,
+            "plan_id": null,
+            "milestone_id": null,
+            "assignedto_id": null,
+            "include_all": false,
+            "is_completed": false,
+            "completed_on": null,
+            "config": null,
+            "config_ids": [],
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 46,
+            "retest_count": 0,
+            "failed_count": 0,
+            "created_by": 376,
+            "created_on": 1775495967,
+            "updated_on": 1775495967,
+            "refs": null,
+            "url": "https://test.testrail.io/index.php?/runs/view/123",
+            "start_on": null,
+            "due_on": null
           }
         }
       }
