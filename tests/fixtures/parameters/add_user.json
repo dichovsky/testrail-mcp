@@ -1,0 +1,1635 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T08",
+    "http_method": "POST",
+    "route": "add_user",
+    "tool": "testrail_add_user",
+    "driver_method": "users.addUser"
+  },
+  "sources": [
+    {
+      "id": "driver-module-users",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/users.ts",
+      "supports": "Every method validates its identifier and places it as the path segment of the matching endpoint. getUserByEmail checks the address against a deliberately loose shape rule, one @ with non-empty whitespace-free parts, and refuses anything else before dispatch; its comment records that single-label domains and domain literals are legitimate on self-hosted, LDAP, AD and SSO instances and that authoritative format validation is TestRail's. getUsers takes an optional project and addresses get_users/{project_id} when it is given. updateGroup injects the path identifier into the body as group_id, overwriting whatever the caller supplied, because TestRail rejects a body without it. No write payload is parsed by a public method, so every payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "driver-schema-users",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/users.ts",
+      "supports": "UserSchema is the reply shape and is permissive: role_id, is_admin, group_ids and the enterprise fields are all nullish because older servers omit them and get_current_user returns a reduced record, and mfa_required admits an integer because TestRail Cloud wire-encodes it as 0 or 1. UserAddPayloadSchema requires a non-empty name and an email in a dotted-domain format, and declares role_id, group_ids and assigned_projects as positive integers; UserUpdatePayloadSchema makes every field optional. GroupSchema carries id, name and a nullish user_ids. AddGroupPayloadSchema requires name; UpdateGroupPayloadSchema makes it optional and its comment records that TestRail accepts an empty update body. RoleSchema carries id, name, is_default and a nullish is_project_admin."
+    },
+    {
+      "id": "driver-common",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/common.ts",
+      "supports": "zObject uses passthrough, so the declared payload types admit unknown properties; the MCP boundary must reject them separately."
+    },
+    {
+      "id": "testrail-users",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077978310292-Users",
+      "supports": "get_user and get_user_by_email return one user, the latter taking the address as a query parameter. get_users returns an array and accepts an optional project in the path; from TestRail 6.6 only administrators may omit it, and the project form omits inactive users, omits users holding only global access, and reports each role at its project level. add_user requires name and email and accepts is_active, is_admin, role_id, group_ids, mfa_required, email_notifications, sso_enabled and assigned_projects, with is_active defaulting to false; update_user supports the same fields. The reference's get_current_user section contradicts the endpoint's own purpose by listing a required user_id parameter while describing the user making the request."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "One of the endpoints with no path segment: everything is in the body. The driver does not parse this payload, so every rule here is the boundary's alone, including the address format, which is the driver's declared one restated with the Unicode flag this server requires and held to the driver's own verdicts by a test."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the created user in the get_user format; entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-body",
+      "kind": "invalid",
+      "description": "Reject an unknown body field, including id, which TestRail assigns."
+    }
+  ],
+  "baseline": "full-body",
+  "parameters": [
+    {
+      "id": "body",
+      "input_path": [
+        "body"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "object",
+        "required": [
+          "name",
+          "email"
+        ]
+      },
+      "semantics": "No coercion. The JSON object is passed as the driver's only argument and sent unchanged.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "body"
+        ],
+        "encoding": "JSON object sent unchanged."
+      },
+      "sources": [
+        "driver-module-users",
+        "driver-schema-users"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the object at driver argument 0 as the JSON request body."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an object."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a body that is not an object before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing body."
+        }
+      ]
+    },
+    {
+      "id": "body.name",
+      "input_path": [
+        "body",
+        "name"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The user's full name, which TestRail requires. No coercion; TestRail owns the format.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "name"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "name"
+        ],
+        "encoding": "JSON string under name."
+      },
+      "sources": [
+        "driver-schema-users",
+        "testrail-users"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "empty",
+          "kind": "invalid",
+          "description": "Reject an empty name, which the driver's payload type declares non-empty."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a body without it."
+        }
+      ]
+    },
+    {
+      "id": "body.email",
+      "input_path": [
+        "body",
+        "email"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The user's address, which TestRail requires. The format is stricter than the lookup tool's and demands a dotted domain. No coercion; TestRail owns the format.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "email"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "email"
+        ],
+        "encoding": "JSON string under email."
+      },
+      "sources": [
+        "driver-schema-users",
+        "testrail-users"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "dotted-domain",
+          "kind": "invalid",
+          "description": "Reject an address whose domain carries no dot, although the lookup tool accepts one. The driver's write payload declares the stricter format and this boundary honours it; the consequence is that a user a self-hosted or directory instance stores may be readable here and not writable."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a body without it."
+        }
+      ]
+    },
+    {
+      "id": "body.is_active",
+      "input_path": [
+        "body",
+        "is_active"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "Whether the user is active. TestRail defaults it to false on creation, so a user created without it is inactive.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "is_active"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "is_active"
+        ],
+        "encoding": "JSON boolean under is_active."
+      },
+      "sources": [
+        "driver-schema-users",
+        "testrail-users"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the flag under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept true and send it."
+        },
+        {
+          "id": "false-value",
+          "kind": "valid",
+          "description": "Accept false and send it, rather than dropping it as if it were absent."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a numeric stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no flag when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.is_admin",
+      "input_path": [
+        "body",
+        "is_admin"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "Whether the user is a TestRail administrator.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "is_admin"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "is_admin"
+        ],
+        "encoding": "JSON boolean under is_admin."
+      },
+      "sources": [
+        "driver-schema-users",
+        "testrail-users"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the flag under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept true and send it."
+        },
+        {
+          "id": "false-value",
+          "kind": "valid",
+          "description": "Accept false and send it, rather than dropping it as if it were absent."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a numeric stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no flag when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.role_id",
+      "input_path": [
+        "body",
+        "role_id"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain_ref": "positive_id",
+      "semantics": "The global role to give the user. The driver forwards any number, so the boundary holds it to the identifier domain.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "role_id"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "role_id"
+        ],
+        "encoding": "JSON integer under role_id."
+      },
+      "sources": [
+        "driver-schema-users",
+        "testrail-users"
+      ]
+    },
+    {
+      "id": "body.group_ids",
+      "input_path": [
+        "body",
+        "group_ids"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "semantics": "The groups the user belongs to. A supplied list replaces the whole membership rather than adding to it. The driver forwards any number, so the boundary holds every member to the identifier domain.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "group_ids"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "group_ids"
+        ],
+        "encoding": "JSON array of integers under group_ids."
+      },
+      "sources": [
+        "driver-schema-users",
+        "testrail-users"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member in order under group_ids."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a list of identifiers."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-positive member before driver invocation."
+        },
+        {
+          "id": "empty",
+          "kind": "valid",
+          "description": "Accept an empty array and send it, which asks TestRail for a user in no group."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no list when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.mfa_required",
+      "input_path": [
+        "body",
+        "mfa_required"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "Whether multi-factor authentication is required for the user. Omitted, TestRail applies the instance setting.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "mfa_required"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "mfa_required"
+        ],
+        "encoding": "JSON boolean under mfa_required."
+      },
+      "sources": [
+        "driver-schema-users",
+        "testrail-users"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the flag under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept true and send it."
+        },
+        {
+          "id": "false-value",
+          "kind": "valid",
+          "description": "Accept false and send it, rather than dropping it as if it were absent."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a numeric stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no flag when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.email_notifications",
+      "input_path": [
+        "body",
+        "email_notifications"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "Whether the user receives email notifications. TestRail defaults it to true.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "email_notifications"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "email_notifications"
+        ],
+        "encoding": "JSON boolean under email_notifications."
+      },
+      "sources": [
+        "driver-schema-users",
+        "testrail-users"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the flag under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept true and send it."
+        },
+        {
+          "id": "false-value",
+          "kind": "valid",
+          "description": "Accept false and send it, rather than dropping it as if it were absent."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a numeric stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no flag when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.sso_enabled",
+      "input_path": [
+        "body",
+        "sso_enabled"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "Whether single sign-on is enabled for the user. Omitted, TestRail applies the instance setting.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "sso_enabled"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "sso_enabled"
+        ],
+        "encoding": "JSON boolean under sso_enabled."
+      },
+      "sources": [
+        "driver-schema-users",
+        "testrail-users"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the flag under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept true and send it."
+        },
+        {
+          "id": "false-value",
+          "kind": "valid",
+          "description": "Accept false and send it, rather than dropping it as if it were absent."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a numeric stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no flag when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.assigned_projects",
+      "input_path": [
+        "body",
+        "assigned_projects"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "semantics": "The projects a project-level administrator administers. A supplied list replaces the whole set. The driver forwards any number, so the boundary holds every member to the identifier domain.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "assigned_projects"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "assigned_projects"
+        ],
+        "encoding": "JSON array of integers under assigned_projects."
+      },
+      "sources": [
+        "driver-schema-users",
+        "testrail-users"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member in order under assigned_projects."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a list of identifiers."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-positive member before driver invocation."
+        },
+        {
+          "id": "empty",
+          "kind": "valid",
+          "description": "Accept an empty array and send it, which administers no project."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no list when the caller did not supply one."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "full-body",
+      "input": {
+        "body": {
+          "name": "Ada Lovelace",
+          "email": "ada@example.com",
+          "is_active": true,
+          "is_admin": false,
+          "role_id": 3,
+          "group_ids": [
+            7
+          ],
+          "mfa_required": true,
+          "email_notifications": true,
+          "sso_enabled": false,
+          "assigned_projects": [
+            1,
+            2
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.email",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.is_active",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.is_admin",
+          "requirements": [
+            "false-value"
+          ]
+        },
+        {
+          "parameter": "body.role_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.group_ids",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.mfa_required",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.email_notifications",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.sso_enabled",
+          "requirements": [
+            "false-value"
+          ]
+        },
+        {
+          "parameter": "body.assigned_projects",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.addUser",
+          "arguments": [
+            {
+              "name": "Ada Lovelace",
+              "email": "ada@example.com",
+              "is_active": true,
+              "is_admin": false,
+              "role_id": 3,
+              "group_ids": [
+                7
+              ],
+              "mfa_required": true,
+              "email_notifications": true,
+              "sso_enabled": false,
+              "assigned_projects": [
+                1,
+                2
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_user",
+          "json": {
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "is_admin": false,
+            "role_id": 3,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": true,
+            "email_notifications": true,
+            "sso_enabled": false,
+            "assigned_projects": [
+              1,
+              2
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        }
+      }
+    },
+    {
+      "id": "minimal-body",
+      "input": {
+        "body": {
+          "name": "Ada Lovelace",
+          "email": "ada@example.com"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.is_active",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.is_admin",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.role_id",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.group_ids",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.mfa_required",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.email_notifications",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.sso_enabled",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.assigned_projects",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.addUser",
+          "arguments": [
+            {
+              "name": "Ada Lovelace",
+              "email": "ada@example.com"
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_user",
+          "json": {
+            "name": "Ada Lovelace",
+            "email": "ada@example.com"
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        }
+      }
+    },
+    {
+      "id": "flags-cleared",
+      "input": {
+        "body": {
+          "name": "Ada Lovelace",
+          "email": "ada@example.com",
+          "is_active": false,
+          "is_admin": false,
+          "mfa_required": false,
+          "email_notifications": false,
+          "sso_enabled": false,
+          "group_ids": [],
+          "assigned_projects": []
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.is_active",
+          "requirements": [
+            "false-value"
+          ]
+        },
+        {
+          "parameter": "body.mfa_required",
+          "requirements": [
+            "false-value"
+          ]
+        },
+        {
+          "parameter": "body.email_notifications",
+          "requirements": [
+            "false-value"
+          ]
+        },
+        {
+          "parameter": "body.group_ids",
+          "requirements": [
+            "empty"
+          ]
+        },
+        {
+          "parameter": "body.assigned_projects",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.addUser",
+          "arguments": [
+            {
+              "name": "Ada Lovelace",
+              "email": "ada@example.com",
+              "is_active": false,
+              "is_admin": false,
+              "mfa_required": false,
+              "email_notifications": false,
+              "sso_enabled": false,
+              "group_ids": [],
+              "assigned_projects": []
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_user",
+          "json": {
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": false,
+            "is_admin": false,
+            "mfa_required": false,
+            "email_notifications": false,
+            "sso_enabled": false,
+            "group_ids": [],
+            "assigned_projects": []
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-values",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": "ada@example.com",
+          "role_id": 9007199254740991,
+          "group_ids": [
+            9007199254740991
+          ],
+          "assigned_projects": [
+            9007199254740991
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.role_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.addUser",
+          "arguments": [
+            {
+              "name": "Ada",
+              "email": "ada@example.com",
+              "role_id": 9007199254740991,
+              "group_ids": [
+                9007199254740991
+              ],
+              "assigned_projects": [
+                9007199254740991
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_user",
+          "json": {
+            "name": "Ada",
+            "email": "ada@example.com",
+            "role_id": 9007199254740991,
+            "group_ids": [
+              9007199254740991
+            ],
+            "assigned_projects": [
+              9007199254740991
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        }
+      }
+    },
+    {
+      "id": "administrator-with-sso",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": "ada@example.com",
+          "is_admin": true,
+          "sso_enabled": true
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.is_admin",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.sso_enabled",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.addUser",
+          "arguments": [
+            {
+              "name": "Ada",
+              "email": "ada@example.com",
+              "is_admin": true,
+              "sso_enabled": true
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_user",
+          "json": {
+            "name": "Ada",
+            "email": "ada@example.com",
+            "is_admin": true,
+            "sso_enabled": true
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        }
+      }
+    },
+    {
+      "id": "missing-body",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-body",
+      "input": {
+        "body": []
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-name",
+      "input": {
+        "body": {
+          "email": "ada@example.com"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "empty-name",
+      "input": {
+        "body": {
+          "name": "",
+          "email": "ada@example.com"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-name",
+      "input": {
+        "body": {
+          "name": 7,
+          "email": "ada@example.com"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-email",
+      "input": {
+        "body": {
+          "name": "Ada"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.email",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-email",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": 7
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.email",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "single-label-domain",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": "ada@corp"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.email",
+          "requirements": [
+            "dotted-domain"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-is-active",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": "ada@example.com",
+          "is_active": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.is_active",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-is-admin",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": "ada@example.com",
+          "is_admin": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.is_admin",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-mfa",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": "ada@example.com",
+          "mfa_required": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.mfa_required",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-notifications",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": "ada@example.com",
+          "email_notifications": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.email_notifications",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-sso",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": "ada@example.com",
+          "sso_enabled": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.sso_enabled",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "zero-group",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": "ada@example.com",
+          "group_ids": [
+            0
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.group_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "zero-project",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": "ada@example.com",
+          "assigned_projects": [
+            0
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.assigned_projects",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-body",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": "ada@example.com",
+          "id": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-body"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": "ada@example.com"
+        },
+        "user_id": 1
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

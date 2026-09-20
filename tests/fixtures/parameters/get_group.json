@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T08",
+    "http_method": "GET",
+    "route": "get_group/{group_id}",
+    "tool": "testrail_get_group",
+    "driver_method": "users.getGroup"
+  },
+  "sources": [
+    {
+      "id": "driver-module-users",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/users.ts",
+      "supports": "Every method validates its identifier and places it as the path segment of the matching endpoint. getUserByEmail checks the address against a deliberately loose shape rule, one @ with non-empty whitespace-free parts, and refuses anything else before dispatch; its comment records that single-label domains and domain literals are legitimate on self-hosted, LDAP, AD and SSO instances and that authoritative format validation is TestRail's. getUsers takes an optional project and addresses get_users/{project_id} when it is given. updateGroup injects the path identifier into the body as group_id, overwriting whatever the caller supplied, because TestRail rejects a body without it. No write payload is parsed by a public method, so every payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "driver-schema-users",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/users.ts",
+      "supports": "UserSchema is the reply shape and is permissive: role_id, is_admin, group_ids and the enterprise fields are all nullish because older servers omit them and get_current_user returns a reduced record, and mfa_required admits an integer because TestRail Cloud wire-encodes it as 0 or 1. UserAddPayloadSchema requires a non-empty name and an email in a dotted-domain format, and declares role_id, group_ids and assigned_projects as positive integers; UserUpdatePayloadSchema makes every field optional. GroupSchema carries id, name and a nullish user_ids. AddGroupPayloadSchema requires name; UpdateGroupPayloadSchema makes it optional and its comment records that TestRail accepts an empty update body. RoleSchema carries id, name, is_default and a nullish is_project_admin."
+    },
+    {
+      "id": "testrail-groups",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077338821012-Groups",
+      "supports": "get_group and get_groups return a group and an envelope of groups. add_group takes name and user_ids; update_group supports the same fields and states that a supplied user_ids sets the group's members to match it exactly, with no way to add or remove one member. delete_group returns no group data."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "One identifier in the path and no request body, so every field beyond it is refused."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the group and the IDs of its members; user_ids is nullish in the driver's reply schema, so an absent membership is not an error. Entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    }
+  ],
+  "baseline": "representative-id",
+  "parameters": [
+    {
+      "id": "group_id",
+      "input_path": [
+        "group_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The group to read. No coercion; passed positionally and sent verbatim as the only path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "group_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module-users",
+        "testrail-groups"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-id",
+      "input": {
+        "group_id": 7
+      },
+      "covers": [
+        {
+          "parameter": "group_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.getGroup",
+          "arguments": [
+            7
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_group/7"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 7,
+            "name": "QA",
+            "user_ids": [
+              1,
+              2
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 7,
+            "name": "QA",
+            "user_ids": [
+              1,
+              2
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": {
+        "group_id": 9007199254740991
+      },
+      "covers": [
+        {
+          "parameter": "group_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.getGroup",
+          "arguments": [
+            9007199254740991
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_group/9007199254740991"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 7,
+            "name": "QA",
+            "user_ids": [
+              1,
+              2
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 7,
+            "name": "QA",
+            "user_ids": [
+              1,
+              2
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "group_id": 7,
+        "name": "QA"
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

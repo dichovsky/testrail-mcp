@@ -16,6 +16,38 @@ export const entryIdSchema = z.string().regex(
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?![\s\S])/u,
 );
 export const attachmentIdSchema = z.union([positiveIdSchema, entryIdSchema]);
+/*
+ * The lookup form the driver enforces for get_user_by_email: exactly one '@' with
+ * non-empty, whitespace-free parts on either side. It deliberately does not require a
+ * dotted domain, because self-hosted, LDAP, AD and SSO instances legitimately store
+ * single-label domains and domain literals, and TestRail owns the authoritative rule.
+ * The user write payloads are stricter, which is the driver's own inconsistency rather
+ * than this boundary's.
+ */
+export const lookupEmailSchema = z.string().regex(/^[^\s@]+@[^\s@]+(?![\s\S])/u);
+
+/*
+ * The stricter address the driver's user write payloads declare, which requires a dotted
+ * domain. The driver asks for that format by selecting Zod's built-in email validator
+ * rather than writing a rule of its own, and this is the expression that selection
+ * currently resolves to, restated here only because the original carries no flags while
+ * this server requires the Unicode flag for JSON Schema parity.
+ *
+ * A restatement is a duplicate until something holds the two together, so a test compares
+ * them and fails on either kind of drift: the driver choosing a different format, or the
+ * validator it selected changing underneath it.
+ *
+ * It is stricter than lookupEmailSchema on purpose and not by this server's choice: an
+ * address a self-hosted instance stores and this server can look up may still be one the
+ * driver's write payload refuses.
+ */
+// The escapes below come from that expression verbatim. A test compares this pattern to
+// it source-for-source, so normalising them here would break the very check that detects
+// the rule changing.
+// eslint-disable-next-line no-useless-escape
+export const writeEmailPattern = /^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/u;
+export const writeEmailSchema = z.string().regex(writeEmailPattern);
+
 export const refsSchema = z.union([z.string(), z.array(z.string())]);
 /** One identifier or several. The driver joins a list with commas and would drop an empty one. */
 export const idFilterSchema = z.union([positiveIdSchema, z.array(positiveIdSchema).min(1)]);

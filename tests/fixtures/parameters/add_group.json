@@ -1,0 +1,567 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T08",
+    "http_method": "POST",
+    "route": "add_group",
+    "tool": "testrail_add_group",
+    "driver_method": "users.addGroup"
+  },
+  "sources": [
+    {
+      "id": "driver-module-users",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/users.ts",
+      "supports": "Every method validates its identifier and places it as the path segment of the matching endpoint. getUserByEmail checks the address against a deliberately loose shape rule, one @ with non-empty whitespace-free parts, and refuses anything else before dispatch; its comment records that single-label domains and domain literals are legitimate on self-hosted, LDAP, AD and SSO instances and that authoritative format validation is TestRail's. getUsers takes an optional project and addresses get_users/{project_id} when it is given. updateGroup injects the path identifier into the body as group_id, overwriting whatever the caller supplied, because TestRail rejects a body without it. No write payload is parsed by a public method, so every payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "driver-schema-users",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/users.ts",
+      "supports": "UserSchema is the reply shape and is permissive: role_id, is_admin, group_ids and the enterprise fields are all nullish because older servers omit them and get_current_user returns a reduced record, and mfa_required admits an integer because TestRail Cloud wire-encodes it as 0 or 1. UserAddPayloadSchema requires a non-empty name and an email in a dotted-domain format, and declares role_id, group_ids and assigned_projects as positive integers; UserUpdatePayloadSchema makes every field optional. GroupSchema carries id, name and a nullish user_ids. AddGroupPayloadSchema requires name; UpdateGroupPayloadSchema makes it optional and its comment records that TestRail accepts an empty update body. RoleSchema carries id, name, is_default and a nullish is_project_admin."
+    },
+    {
+      "id": "driver-common",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/common.ts",
+      "supports": "zObject uses passthrough, so the declared payload types admit unknown properties; the MCP boundary must reject them separately."
+    },
+    {
+      "id": "testrail-groups",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077338821012-Groups",
+      "supports": "get_group and get_groups return a group and an envelope of groups. add_group takes name and user_ids; update_group supports the same fields and states that a supplied user_ids sets the group's members to match it exactly, with no way to add or remove one member. delete_group returns no group data."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "No path segment: everything is in the body. The driver does not parse this payload, so requiring a name is the boundary's rule alone."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the created group in the get_group format; entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-body",
+      "kind": "invalid",
+      "description": "Reject an unknown body field, including id, which TestRail assigns."
+    }
+  ],
+  "baseline": "full-body",
+  "parameters": [
+    {
+      "id": "body",
+      "input_path": [
+        "body"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "object",
+        "required": [
+          "name"
+        ]
+      },
+      "semantics": "No coercion. The JSON object is passed as the driver's only argument and sent unchanged.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "body"
+        ],
+        "encoding": "JSON object sent unchanged."
+      },
+      "sources": [
+        "driver-module-users",
+        "driver-schema-users"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the object at driver argument 0 as the JSON request body."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an object."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a body that is not an object before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing body."
+        }
+      ]
+    },
+    {
+      "id": "body.name",
+      "input_path": [
+        "body",
+        "name"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The group's name, which TestRail requires. No coercion; TestRail owns the format.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "name"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "name"
+        ],
+        "encoding": "JSON string under name."
+      },
+      "sources": [
+        "driver-schema-users",
+        "testrail-groups"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a body without it."
+        }
+      ]
+    },
+    {
+      "id": "body.user_ids",
+      "input_path": [
+        "body",
+        "user_ids"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "semantics": "The users the group starts with. The driver forwards any number, so the boundary holds every member to the identifier domain.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "user_ids"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "user_ids"
+        ],
+        "encoding": "JSON array of integers under user_ids."
+      },
+      "sources": [
+        "driver-schema-users",
+        "testrail-groups"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member in order under user_ids."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a list of identifiers."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-positive member before driver invocation."
+        },
+        {
+          "id": "empty",
+          "kind": "valid",
+          "description": "Accept an empty array and send it, which asks TestRail for a group with no members."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no list when the caller did not supply one."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "full-body",
+      "input": {
+        "body": {
+          "name": "QA",
+          "user_ids": [
+            1,
+            2
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.user_ids",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.addGroup",
+          "arguments": [
+            {
+              "name": "QA",
+              "user_ids": [
+                1,
+                2
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_group",
+          "json": {
+            "name": "QA",
+            "user_ids": [
+              1,
+              2
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 7,
+            "name": "QA",
+            "user_ids": [
+              1,
+              2
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 7,
+            "name": "QA",
+            "user_ids": [
+              1,
+              2
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "name-only",
+      "input": {
+        "body": {
+          "name": "QA"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.user_ids",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.addGroup",
+          "arguments": [
+            {
+              "name": "QA"
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_group",
+          "json": {
+            "name": "QA"
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 7,
+            "name": "QA",
+            "user_ids": [
+              1,
+              2
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 7,
+            "name": "QA",
+            "user_ids": [
+              1,
+              2
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "no-members",
+      "input": {
+        "body": {
+          "name": "QA",
+          "user_ids": []
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.user_ids",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.addGroup",
+          "arguments": [
+            {
+              "name": "QA",
+              "user_ids": []
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_group",
+          "json": {
+            "name": "QA",
+            "user_ids": []
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 7,
+            "name": "QA",
+            "user_ids": [
+              1,
+              2
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 7,
+            "name": "QA",
+            "user_ids": [
+              1,
+              2
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "missing-body",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-body",
+      "input": {
+        "body": []
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-name",
+      "input": {
+        "body": {}
+      },
+      "covers": [
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-name",
+      "input": {
+        "body": {
+          "name": 7
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "zero-member",
+      "input": {
+        "body": {
+          "name": "QA",
+          "user_ids": [
+            0
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.user_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-body",
+      "input": {
+        "body": {
+          "name": "QA",
+          "id": 7
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-body"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "body": {
+          "name": "QA"
+        },
+        "group_id": 7
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

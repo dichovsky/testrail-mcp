@@ -42,6 +42,10 @@ import {
   DeleteLabelsPayloadSchema,
   UpdateLabelPayloadSchema,
   UpdateMilestonePayloadSchema,
+  AddGroupPayloadSchema,
+  UpdateGroupPayloadSchema,
+  UserAddPayloadSchema,
+  UserUpdatePayloadSchema,
 } from '@dichovsky/testrail-api-client';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -185,6 +189,7 @@ describe('independent parameter manifest format', () => {
       'testrail_add_cases',
       'testrail_add_config',
       'testrail_add_config_group',
+      'testrail_add_group',
       'testrail_add_label',
       'testrail_add_milestone',
       'testrail_add_plan',
@@ -199,6 +204,7 @@ describe('independent parameter manifest format', () => {
       'testrail_add_section',
       'testrail_add_shared_step',
       'testrail_add_suite',
+      'testrail_add_user',
       'testrail_close_plan',
       'testrail_close_run',
       'testrail_copy_cases_to_section',
@@ -206,6 +212,7 @@ describe('independent parameter manifest format', () => {
       'testrail_delete_cases',
       'testrail_delete_config',
       'testrail_delete_config_group',
+      'testrail_delete_group',
       'testrail_delete_label',
       'testrail_delete_labels',
       'testrail_delete_milestone',
@@ -226,6 +233,9 @@ describe('independent parameter manifest format', () => {
       'testrail_get_case_titles',
       'testrail_get_cases',
       'testrail_get_configs',
+      'testrail_get_current_user',
+      'testrail_get_group',
+      'testrail_get_groups',
       'testrail_get_history_for_case',
       'testrail_get_label',
       'testrail_get_labels',
@@ -238,6 +248,7 @@ describe('independent parameter manifest format', () => {
       'testrail_get_results',
       'testrail_get_results_for_case',
       'testrail_get_results_for_run',
+      'testrail_get_roles',
       'testrail_get_run',
       'testrail_get_runs',
       'testrail_get_section',
@@ -249,6 +260,9 @@ describe('independent parameter manifest format', () => {
       'testrail_get_suites',
       'testrail_get_test',
       'testrail_get_tests',
+      'testrail_get_user',
+      'testrail_get_user_by_email',
+      'testrail_get_users',
       'testrail_move_cases_to_section',
       'testrail_move_section',
       'testrail_update_bdd',
@@ -256,6 +270,7 @@ describe('independent parameter manifest format', () => {
       'testrail_update_cases',
       'testrail_update_config',
       'testrail_update_config_group',
+      'testrail_update_group',
       'testrail_update_label',
       'testrail_update_milestone',
       'testrail_update_plan',
@@ -268,9 +283,10 @@ describe('independent parameter manifest format', () => {
       'testrail_update_suite',
       'testrail_update_test',
       'testrail_update_tests',
+      'testrail_update_user',
     ]);
     expect(report.partialEndpoints).toEqual([]);
-    expect(report.pendingEndpoints).toHaveLength(45);
+    expect(report.pendingEndpoints).toHaveLength(33);
     expect([...report.reviewedEndpoints, ...report.pendingEndpoints].sort())
       .toEqual(inventory.map(({ tool }) => tool).sort());
     expect(report.pendingEndpoints).toContain('testrail_add_attachment_to_case');
@@ -927,6 +943,62 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
     case 'milestones.deleteMilestone': {
       const [milestoneId] = z.tuple([z.number()]).parse(expected.driver.arguments);
       return client.milestones.deleteMilestone(milestoneId);
+    }
+    case 'users.getCurrentUser': {
+      z.tuple([]).parse(expected.driver.arguments);
+      return client.users.getCurrentUser();
+    }
+    case 'users.getUser': {
+      const [userId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.users.getUser(userId);
+    }
+    case 'users.getUserByEmail': {
+      const [email] = z.tuple([z.string()]).parse(expected.driver.arguments);
+      return client.users.getUserByEmail(email);
+    }
+    case 'users.getUsers': {
+      const [projectId] = z.tuple([z.number().optional()]).parse(expected.driver.arguments);
+      return projectId === undefined ? client.users.getUsers() : client.users.getUsers(projectId);
+    }
+    case 'users.addUser': {
+      const [payload] = z.tuple([UserAddPayloadSchema]).parse(expected.driver.arguments);
+      return client.users.addUser(payload);
+    }
+    case 'users.updateUser': {
+      const [userId, payload] = z.tuple([z.number(), UserUpdatePayloadSchema]).parse(expected.driver.arguments);
+      return client.users.updateUser(userId, payload);
+    }
+    case 'users.getGroup': {
+      const [groupId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.users.getGroup(groupId);
+    }
+    case 'users.getGroupsPage': {
+      z.tuple([]).parse(expected.driver.arguments);
+      return client.users.getGroupsPage();
+    }
+    case 'users.getAllGroups': {
+      const [options] = z.tuple([z.strictObject(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.users.getAllGroups(present(options));
+    }
+    case 'users.addGroup': {
+      const [payload] = z.tuple([AddGroupPayloadSchema]).parse(expected.driver.arguments);
+      return client.users.addGroup(payload);
+    }
+    case 'users.updateGroup': {
+      const [groupId, payload] = z.tuple([z.number(), UpdateGroupPayloadSchema]).parse(expected.driver.arguments);
+      return client.users.updateGroup(groupId, payload);
+    }
+    case 'users.deleteGroup': {
+      const [groupId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.users.deleteGroup(groupId);
+    }
+    case 'metadata.getRolesPage': {
+      z.tuple([]).parse(expected.driver.arguments);
+      return client.metadata.getRolesPage();
+    }
+    case 'metadata.getAllRoles': {
+      const [options] = z.tuple([z.strictObject(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.metadata.getAllRoles(present(options));
     }
     default: throw new Error(`Missing independent driver evidence harness: ${expected.driver.binding}`);
   }

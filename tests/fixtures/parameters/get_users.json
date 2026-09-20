@@ -1,0 +1,459 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T08",
+    "http_method": "GET",
+    "route": "get_users",
+    "tool": "testrail_get_users",
+    "driver_method": "users.getUsers"
+  },
+  "sources": [
+    {
+      "id": "driver-module-users",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/users.ts",
+      "supports": "Every method validates its identifier and places it as the path segment of the matching endpoint. getUserByEmail checks the address against a deliberately loose shape rule, one @ with non-empty whitespace-free parts, and refuses anything else before dispatch; its comment records that single-label domains and domain literals are legitimate on self-hosted, LDAP, AD and SSO instances and that authoritative format validation is TestRail's. getUsers takes an optional project and addresses get_users/{project_id} when it is given. updateGroup injects the path identifier into the body as group_id, overwriting whatever the caller supplied, because TestRail rejects a body without it. No write payload is parsed by a public method, so every payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "driver-schema-users",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/users.ts",
+      "supports": "UserSchema is the reply shape and is permissive: role_id, is_admin, group_ids and the enterprise fields are all nullish because older servers omit them and get_current_user returns a reduced record, and mfa_required admits an integer because TestRail Cloud wire-encodes it as 0 or 1. UserAddPayloadSchema requires a non-empty name and an email in a dotted-domain format, and declares role_id, group_ids and assigned_projects as positive integers; UserUpdatePayloadSchema makes every field optional. GroupSchema carries id, name and a nullish user_ids. AddGroupPayloadSchema requires name; UpdateGroupPayloadSchema makes it optional and its comment records that TestRail accepts an empty update body. RoleSchema carries id, name, is_default and a nullish is_project_admin."
+    },
+    {
+      "id": "driver-list",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/list.ts",
+      "supports": "listOf and unwrapList accept either a bare array or a collection wrapper, and treat a null collection as empty, so get_users resolves to an array whichever of the three shapes TestRail sends."
+    },
+    {
+      "id": "testrail-users",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077978310292-Users",
+      "supports": "get_user and get_user_by_email return one user, the latter taking the address as a query parameter. get_users returns an array and accepts an optional project in the path; from TestRail 6.6 only administrators may omit it, and the project form omits inactive users, omits users holding only global access, and reports each role at its project level. add_user requires name and email and accepts is_active, is_admin, role_id, group_ids, mfa_required, email_notifications, sso_enabled and assigned_projects, with is_active defaulting to false; update_user supports the same fields. The reference's get_current_user section contradicts the endpoint's own purpose by listing a required user_id parameter while describing the user making the request."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "The project is optional and is the one input in this server that sits under query while reaching the wire as a path segment: the registered route carries no placeholder because the endpoint has two forms, and supplying the project selects the second. The two forms are not one list with a filter applied, so the manifest records both."
+  },
+  "outer_result": {
+    "driver": "array",
+    "tool_data": "array",
+    "notes": "TestRail documents a bare array here while every sibling list documents an envelope. The driver accepts the bare array, the users wrapper and a null collection, and resolves to an array in all three cases, so a caller sees one shape whichever the server sends."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-query",
+      "kind": "invalid",
+      "description": "Reject an unknown query field rather than dropping it and widening the result."
+    },
+    {
+      "id": "bare-array",
+      "kind": "mapping",
+      "description": "Return the users as an array when TestRail answers with a bare array."
+    },
+    {
+      "id": "wrapped",
+      "kind": "mapping",
+      "description": "Return the same array when TestRail answers with a users wrapper."
+    },
+    {
+      "id": "null-collection",
+      "kind": "mapping",
+      "description": "Return an empty array, not an error, when TestRail answers with a null users collection."
+    }
+  ],
+  "baseline": "every-user",
+  "parameters": [
+    {
+      "id": "query.project_id",
+      "input_path": [
+        "query",
+        "project_id"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain_ref": "positive_id",
+      "semantics": "The project to scope the list to. Omitted, the call reads every user and needs administrator access; supplied, it reads the users with explicit access to that project, which TestRail requires of non-administrators from 6.6 and which also omits inactive users, omits users holding only global access, and reports each role at its project level. The driver validates it before dispatch, so a non-positive value is the driver's refusal rather than the boundary's alone.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "project_id"
+        ],
+        "encoding": "Appended as a path segment, get_users/{project_id}; omitted entirely when the caller sends none, which is a different endpoint rather than the same one with a blank value."
+      },
+      "sources": [
+        "driver-module-users",
+        "testrail-users"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "every-user",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "query.project_id",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "$input",
+          "requirements": [
+            "bare-array"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.getUsers",
+          "arguments": []
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_users"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": [
+            {
+              "id": 1,
+              "name": "Ada Lovelace",
+              "email": "ada@example.com",
+              "is_active": true,
+              "role_id": 3,
+              "role": "Tester",
+              "is_admin": false,
+              "email_notifications": true,
+              "group_ids": [
+                7
+              ],
+              "mfa_required": 0,
+              "sso_enabled": null,
+              "assigned_projects": null
+            }
+          ]
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 1,
+              "name": "Ada Lovelace",
+              "email": "ada@example.com",
+              "is_active": true,
+              "role_id": 3,
+              "role": "Tester",
+              "is_admin": false,
+              "email_notifications": true,
+              "group_ids": [
+                7
+              ],
+              "mfa_required": 0,
+              "sso_enabled": null,
+              "assigned_projects": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "scoped-to-project",
+      "input": {
+        "query": {
+          "project_id": 5
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.project_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.getUsers",
+          "arguments": [
+            5
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_users/5"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": [
+            {
+              "id": 1,
+              "name": "Ada Lovelace",
+              "email": "ada@example.com",
+              "is_active": true,
+              "role_id": 3,
+              "role": "Tester",
+              "is_admin": false,
+              "email_notifications": true,
+              "group_ids": [
+                7
+              ],
+              "mfa_required": 0,
+              "sso_enabled": null,
+              "assigned_projects": null
+            }
+          ]
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 1,
+              "name": "Ada Lovelace",
+              "email": "ada@example.com",
+              "is_active": true,
+              "role_id": 3,
+              "role": "Tester",
+              "is_admin": false,
+              "email_notifications": true,
+              "group_ids": [
+                7
+              ],
+              "mfa_required": 0,
+              "sso_enabled": null,
+              "assigned_projects": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "largest-safe-project",
+      "input": {
+        "query": {
+          "project_id": 9007199254740991
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.project_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.getUsers",
+          "arguments": [
+            9007199254740991
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_users/9007199254740991"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": [
+            {
+              "id": 1,
+              "name": "Ada Lovelace",
+              "email": "ada@example.com",
+              "is_active": true,
+              "role_id": 3,
+              "role": "Tester",
+              "is_admin": false,
+              "email_notifications": true,
+              "group_ids": [
+                7
+              ],
+              "mfa_required": 0,
+              "sso_enabled": null,
+              "assigned_projects": null
+            }
+          ]
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 1,
+              "name": "Ada Lovelace",
+              "email": "ada@example.com",
+              "is_active": true,
+              "role_id": 3,
+              "role": "Tester",
+              "is_admin": false,
+              "email_notifications": true,
+              "group_ids": [
+                7
+              ],
+              "mfa_required": 0,
+              "sso_enabled": null,
+              "assigned_projects": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wrapped-collection",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "wrapped"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.getUsers",
+          "arguments": []
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_users"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "users": [
+              {
+                "id": 1,
+                "name": "Ada Lovelace",
+                "email": "ada@example.com",
+                "is_active": true,
+                "role_id": 3,
+                "role": "Tester",
+                "is_admin": false,
+                "email_notifications": true,
+                "group_ids": [
+                  7
+                ],
+                "mfa_required": 0,
+                "sso_enabled": null,
+                "assigned_projects": null
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 1,
+              "name": "Ada Lovelace",
+              "email": "ada@example.com",
+              "is_active": true,
+              "role_id": 3,
+              "role": "Tester",
+              "is_admin": false,
+              "email_notifications": true,
+              "group_ids": [
+                7
+              ],
+              "mfa_required": 0,
+              "sso_enabled": null,
+              "assigned_projects": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "null-collection",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "null-collection"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.getUsers",
+          "arguments": []
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_users"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "users": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": []
+        }
+      }
+    },
+    {
+      "id": "unknown-query",
+      "input": {
+        "query": {
+          "is_active": true
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-query"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "project_id": 5
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}
