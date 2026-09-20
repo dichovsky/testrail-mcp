@@ -1,0 +1,1416 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T05",
+    "http_method": "POST",
+    "route": "add_results/{run_id}",
+    "tool": "testrail_add_results",
+    "driver_method": "results.addResults"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/results.ts",
+      "supports": "addResults validates the run ID, places it as the only path segment of add_results, forwards the JSON payload unchanged in one request and parses the reply as an array of results."
+    },
+    {
+      "id": "driver-schema",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/results.ts",
+      "supports": "AddResultPayloadSchema requires status_id and accepts comment, version, elapsed, defects, assignedto_id and a custom_fields record. The bulk payloads wrap an array of the same fields under results, each entry additionally requiring test_id or case_id. EditResultPayloadSchema makes every field optional, declares custom_step_results outright and carries no custom_fields record; its refinement rejects an empty payload. None of these is parsed by the public method, which forwards the payload as given, so every payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "driver-common",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/common.ts",
+      "supports": "zObject uses passthrough, so the declared payload type admits unknown and custom_ properties alike; the MCP boundary must reject ordinary unknown names separately."
+    },
+    {
+      "id": "testrail-results",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077819312404-Results",
+      "supports": "add_result/{test_id} records a result against one test and takes status_id, comment, version, elapsed, defects and assignedto_id, plus custom fields submitted with their system name prefixed with custom_, of which the step results are one. add_result_for_case/{run_id}/{case_id} takes the same fields while naming the case rather than the test. add_results/{run_id} and add_results_for_cases/{run_id} wrap an array of those entries under results, each naming its test or case, and every referenced test must belong to the named run; TestRail returns the created results in the order they were sent. The documentation states that each entry needs at least one of the status, comment or assignee fields, while the driver's payload requires status_id outright, so a comment-only or assignment-only result cannot be recorded through this client."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "flat_custom_prefix",
+    "notes": "Strictness is an MCP boundary requirement at every depth, and here it is the only enforcement: the driver forwards this payload without parsing it. Each entry accepts exactly the fields of a single result, with custom values as flat custom_ properties and the driver's nested custom_fields container refused."
+  },
+  "outer_result": {
+    "driver": "array",
+    "tool_data": "array",
+    "notes": "TestRail answers with the created results in the order the entries were sent, returned as the driver received them; entity-field drift is advisory. Every referenced test must belong to the named run, and the adapter neither splits the array nor retries it. Response validation is advisory here, so a reply that is not the documented array still resolves in the driver and this boundary is what refuses it: the outcome reported is acknowledged rather than unknown, because TestRail accepted the submission and repeating it would record every entry a second time. That differs from the bulk case writes, whose driver method fails closed and never resolves."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-body",
+      "kind": "invalid",
+      "description": "Reject an unknown ordinary field in the body or in any entry; only custom_ names extend an entry."
+    },
+    {
+      "id": "custom-fields-container",
+      "kind": "invalid",
+      "description": "Reject the driver's nested custom_fields object in any entry. TestRail reads custom values only as flat custom_ properties, the step results among them."
+    },
+    {
+      "id": "no-split",
+      "kind": "mapping",
+      "description": "Send exactly one request carrying every entry. The adapter never splits the array, never retries and never reorders it, since TestRail answers in the order it was sent."
+    }
+  ],
+  "baseline": "two-entries",
+  "parameters": [
+    {
+      "id": "run_id",
+      "input_path": [
+        "run_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The run every entry belongs to. No coercion; passed positionally and sent verbatim as the only path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "run_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-results"
+      ]
+    },
+    {
+      "id": "body",
+      "input_path": [
+        "body"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "object",
+        "required": [
+          "results"
+        ]
+      },
+      "semantics": "No coercion. The JSON object is passed as the driver's second argument and sent unchanged.",
+      "driver": {
+        "argument": 1,
+        "path": []
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "body"
+        ],
+        "encoding": "JSON object sent unchanged."
+      },
+      "sources": [
+        "driver-module",
+        "driver-schema"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the object at driver argument 1 as the JSON request body."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an object carrying the entries."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a body that is not an object before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing body."
+        }
+      ]
+    },
+    {
+      "id": "body.results",
+      "input_path": [
+        "body",
+        "results"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "object"
+        }
+      },
+      "semantics": "The entries to record, each naming its test and taking the fields of a single result. The driver states no minimum length; the boundary requires one, because an empty array asks TestRail to record nothing and no other field gives it a purpose.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "results"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "results"
+        ],
+        "encoding": "JSON array of objects under results."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-results"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every entry in order under results."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept several entries and send them in the order given."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject an entry that is not an object before driver invocation."
+        },
+        {
+          "id": "empty",
+          "kind": "invalid",
+          "description": "Reject an empty array, which would record nothing."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a body without results."
+        }
+      ]
+    },
+    {
+      "id": "body[].test_id",
+      "input_path": [
+        "body",
+        "results",
+        "*",
+        "test_id"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The test the entry is recorded against, which must belong to the named run. The driver forwards any number, so the boundary holds it to the identifier domain.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "results",
+          "*",
+          "test_id"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "test_id"
+        ],
+        "encoding": "JSON integer under test_id in each entry."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-results"
+      ]
+    },
+    {
+      "id": "body[].status_id",
+      "input_path": [
+        "body",
+        "results",
+        "*",
+        "status_id"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The outcome for that entry. TestRail's documentation lists it alongside comment and assignedto_id as alternatives while the driver's payload requires it, so a comment-only entry is not reachable through this client. The driver forwards any number, so the boundary holds it to the identifier domain.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "results",
+          "*",
+          "status_id"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "status_id"
+        ],
+        "encoding": "JSON integer under status_id in each entry."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-results"
+      ]
+    },
+    {
+      "id": "body[].comment",
+      "input_path": [
+        "body",
+        "results",
+        "*",
+        "comment"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The comment or error message for that entry. No coercion; TestRail owns the format.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "results",
+          "*",
+          "comment"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "comment"
+        ],
+        "encoding": "JSON string under comment in each entry."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-results"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name in its entry."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no comment for an entry that supplied none."
+        }
+      ]
+    },
+    {
+      "id": "body[].version",
+      "input_path": [
+        "body",
+        "results",
+        "*",
+        "version"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The build version that entry ran against. No coercion; TestRail owns the format.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "results",
+          "*",
+          "version"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "version"
+        ],
+        "encoding": "JSON string under version in each entry."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-results"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name in its entry."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no version for an entry that supplied none."
+        }
+      ]
+    },
+    {
+      "id": "body[].elapsed",
+      "input_path": [
+        "body",
+        "results",
+        "*",
+        "elapsed"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "How long that test took, as a timespan. No coercion; TestRail owns the format.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "results",
+          "*",
+          "elapsed"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "elapsed"
+        ],
+        "encoding": "JSON string under elapsed in each entry."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-results"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name in its entry."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no elapsed for an entry that supplied none."
+        }
+      ]
+    },
+    {
+      "id": "body[].defects",
+      "input_path": [
+        "body",
+        "results",
+        "*",
+        "defects"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "A comma-separated list of defect references. No coercion; TestRail owns the format.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "results",
+          "*",
+          "defects"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "defects"
+        ],
+        "encoding": "JSON string under defects in each entry."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-results"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name in its entry."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no defects for an entry that supplied none."
+        }
+      ]
+    },
+    {
+      "id": "body[].assignedto_id",
+      "input_path": [
+        "body",
+        "results",
+        "*",
+        "assignedto_id"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain_ref": "positive_id",
+      "semantics": "The user that test is assigned to. The driver forwards any number, so the boundary holds it to the identifier domain.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "results",
+          "*",
+          "assignedto_id"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "assignedto_id"
+        ],
+        "encoding": "JSON integer under assignedto_id in each entry."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-results"
+      ]
+    },
+    {
+      "id": "body[].custom_*",
+      "input_path": [
+        "body",
+        "results",
+        "*",
+        "custom_*"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {},
+      "semantics": "Any JSON value under a flat custom_ name in any entry, the step results among them. Values are preserved as given; an ordinary unknown name is rejected rather than passed through.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "results",
+          "*",
+          "custom_*"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "custom_*"
+        ],
+        "encoding": "Flat JSON properties retained under their exact names in each entry."
+      },
+      "sources": [
+        "driver-schema",
+        "driver-common",
+        "testrail-results"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every custom_ property flat in its entry."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept structured step results in an entry."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject an ordinary unknown key used in place of a custom_ key."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no custom properties for an entry that supplied none."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "two-entries",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            {
+              "test_id": 101,
+              "status_id": 5,
+              "comment": "This test failed",
+              "defects": "TR-7",
+              "custom_step_results": [
+                {
+                  "content": "Step 1",
+                  "expected": "Expected Result 1",
+                  "actual": "Actual Result 1",
+                  "status_id": 1
+                }
+              ]
+            },
+            {
+              "test_id": 102,
+              "status_id": 1,
+              "comment": "This test passed",
+              "elapsed": "5m",
+              "version": "1.0 RC1",
+              "assignedto_id": 5
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "run_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.results",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].test_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].status_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].comment",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].version",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].elapsed",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].defects",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].assignedto_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].custom_*",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-split"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "results.addResults",
+          "arguments": [
+            1,
+            {
+              "results": [
+                {
+                  "test_id": 101,
+                  "status_id": 5,
+                  "comment": "This test failed",
+                  "defects": "TR-7",
+                  "custom_step_results": [
+                    {
+                      "content": "Step 1",
+                      "expected": "Expected Result 1",
+                      "actual": "Actual Result 1",
+                      "status_id": 1
+                    }
+                  ]
+                },
+                {
+                  "test_id": 102,
+                  "status_id": 1,
+                  "comment": "This test passed",
+                  "elapsed": "5m",
+                  "version": "1.0 RC1",
+                  "assignedto_id": 5
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_results/1",
+          "json": {
+            "results": [
+              {
+                "test_id": 101,
+                "status_id": 5,
+                "comment": "This test failed",
+                "defects": "TR-7",
+                "custom_step_results": [
+                  {
+                    "content": "Step 1",
+                    "expected": "Expected Result 1",
+                    "actual": "Actual Result 1",
+                    "status_id": 1
+                  }
+                ]
+              },
+              {
+                "test_id": 102,
+                "status_id": 1,
+                "comment": "This test passed",
+                "elapsed": "5m",
+                "version": "1.0 RC1",
+                "assignedto_id": 5
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": [
+            {
+              "id": 1,
+              "test_id": 101,
+              "status_id": 5,
+              "comment": "This test failed",
+              "defects": "TR-7",
+              "created_by": 1,
+              "created_on": 1393851801
+            },
+            {
+              "id": 2,
+              "test_id": 102,
+              "status_id": 1,
+              "comment": "This test passed",
+              "elapsed": "5m",
+              "version": "1.0 RC1",
+              "created_by": 1,
+              "created_on": 1393851900
+            }
+          ]
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 1,
+              "test_id": 101,
+              "status_id": 5,
+              "comment": "This test failed",
+              "defects": "TR-7",
+              "created_by": 1,
+              "created_on": 1393851801
+            },
+            {
+              "id": 2,
+              "test_id": 102,
+              "status_id": 1,
+              "comment": "This test passed",
+              "elapsed": "5m",
+              "version": "1.0 RC1",
+              "created_by": 1,
+              "created_on": 1393851900
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "minimal-entry",
+      "input": {
+        "run_id": 9007199254740991,
+        "body": {
+          "results": [
+            {
+              "test_id": 9007199254740991,
+              "status_id": 9007199254740991
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "run_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body[].test_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body[].status_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body[].comment",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body[].version",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body[].elapsed",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body[].defects",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body[].custom_*",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body[].assignedto_id",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "results.addResults",
+          "arguments": [
+            9007199254740991,
+            {
+              "results": [
+                {
+                  "test_id": 9007199254740991,
+                  "status_id": 9007199254740991
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_results/9007199254740991",
+          "json": {
+            "results": [
+              {
+                "test_id": 9007199254740991,
+                "status_id": 9007199254740991
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": []
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": []
+        }
+      }
+    },
+    {
+      "id": "largest-safe-assignee",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            {
+              "test_id": 1,
+              "status_id": 1,
+              "assignedto_id": 9007199254740991
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body[].assignedto_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "results.addResults",
+          "arguments": [
+            1,
+            {
+              "results": [
+                {
+                  "test_id": 1,
+                  "status_id": 1,
+                  "assignedto_id": 9007199254740991
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_results/1",
+          "json": {
+            "results": [
+              {
+                "test_id": 1,
+                "status_id": 1,
+                "assignedto_id": 9007199254740991
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": []
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": []
+        }
+      }
+    },
+    {
+      "id": "missing-body",
+      "input": {
+        "run_id": 1
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-body",
+      "input": {
+        "run_id": 1,
+        "body": []
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-results",
+      "input": {
+        "run_id": 1,
+        "body": {}
+      },
+      "covers": [
+        {
+          "parameter": "body.results",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "empty-results",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": []
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.results",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "entry-not-object",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            "done"
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.results",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-identifier",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            {
+              "status_id": 1
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body[].test_id",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "zero-identifier",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            {
+              "test_id": 0,
+              "status_id": 1
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body[].test_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-status",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            {
+              "test_id": 101
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body[].status_id",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "zero-status",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            {
+              "test_id": 101,
+              "status_id": 0
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body[].status_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-comment",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            {
+              "test_id": 101,
+              "status_id": 1,
+              "comment": 7
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body[].comment",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-version",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            {
+              "test_id": 101,
+              "status_id": 1,
+              "version": 7
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body[].version",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-elapsed",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            {
+              "test_id": 101,
+              "status_id": 1,
+              "elapsed": 15
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body[].elapsed",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-defects",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            {
+              "test_id": 101,
+              "status_id": 1,
+              "defects": [
+                "TR-7"
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body[].defects",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "zero-assignee",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            {
+              "test_id": 101,
+              "status_id": 1,
+              "assignedto_id": 0
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body[].assignedto_id",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-entry-field",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            {
+              "test_id": 101,
+              "status_id": 1,
+              "unexpected": true
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-body"
+          ]
+        },
+        {
+          "parameter": "body[].custom_*",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "custom-fields-container",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            {
+              "test_id": 101,
+              "status_id": 1,
+              "custom_fields": {
+                "custom_note": "x"
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "custom-fields-container"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            {
+              "test_id": 101,
+              "status_id": 1
+            }
+          ]
+        },
+        "results": []
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}
