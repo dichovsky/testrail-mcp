@@ -1,0 +1,238 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-21"
+  },
+  "endpoint": {
+    "family_id": "T09",
+    "http_method": "POST",
+    "route": "update_dataset/{dataset_id}",
+    "tool": "testrail_update_dataset",
+    "driver_method": "datasets.updateDataset"
+  },
+  "sources": [
+    {
+      "id": "driver-module-datasets",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/datasets.ts",
+      "supports": "updateDataset validates the dataset identifier, posts to update_dataset/{dataset_id} with the payload as the JSON body and parses the reply with DatasetSchema. The payload is passed through unexamined: no public method parses UpdateDatasetPayloadSchema, so every payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "driver-schema-datasets",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/datasets.ts",
+      "supports": "UpdateDatasetPayloadSchema declares both name and variables optional and records that an empty body is intentionally allowed and forwarded, which TestRail treats as a no-op. The variables map is the same string-to-string form the creation payload takes."
+    },
+    {
+      "id": "testrail-datasets",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077300491540-Datasets",
+      "supports": "update_dataset updates an existing dataset; its parameter table carries dataset_id alone, marked required, and the article states the request body has the same format as add_dataset and the reply the same format too. It does not state whether a supplied variables map replaces the dataset's values or merges into them. The documented 400 causes include an invalid dataset name, a dataset name that already exists in the project, and variable/value pairs containing invalid data such as a variable name that does not exist or values not submitted as strings. 403 covers insufficient project permissions, no add/edit permission for Test Data within the project, and \"Not an Enterprise license/subscription\"."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "The variables map is the documented extension point and its keys stay open; the payload's own fields do not, so an unknown field beside name and variables is refused, including the id the article's add_dataset example shows and its parameter tables never list. Whether a supplied map replaces or merges is TestRail's behaviour and is not documented, so this boundary neither claims one nor relies on it: it sends what the caller wrote."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the updated dataset in the get_dataset format, so the variables sent as a name-to-value map come back as an array of entries carrying server-assigned identifiers. Entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-body",
+      "kind": "invalid",
+      "description": "Reject an unknown body field, including the id the article's example shows and its parameter table does not document."
+    },
+    {
+      "id": "empty-body",
+      "kind": "valid",
+      "description": "Accept an empty body and send it unchanged, which TestRail treats as a no-op, rather than refusing it locally or inventing fields to fill it."
+    }
+  ],
+  "baseline": "full-body",
+  "parameters": [
+    {
+      "id": "dataset_id",
+      "input_path": ["dataset_id"],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The dataset to update. No coercion; passed positionally and sent verbatim as the only path segment.",
+      "driver": { "argument": 0, "path": [] },
+      "wire": {
+        "location": "path",
+        "names": ["dataset_id"],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": ["driver-module-datasets", "testrail-datasets"]
+    },
+    {
+      "id": "body",
+      "input_path": ["body"],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": { "type": "object" },
+      "semantics": "No coercion. The JSON object is passed as the driver's second argument and sent unchanged. The object itself is required even though every field in it is optional, so a no-op is written out as an empty object rather than left implicit.",
+      "driver": { "argument": 1, "path": [] },
+      "wire": { "location": "json", "names": ["body"], "encoding": "JSON object sent unchanged." },
+      "sources": ["driver-module-datasets", "driver-schema-datasets"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the object at driver argument 1 as the JSON request body." },
+        { "id": "valid", "kind": "valid", "description": "Accept an object." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a body that is not an object before driver invocation." },
+        { "id": "required", "kind": "required", "description": "Reject a missing body." }
+      ]
+    },
+    {
+      "id": "body.name",
+      "input_path": ["body", "name"],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": { "type": "string" },
+      "semantics": "A new name for the dataset. No coercion; TestRail owns the format and the uniqueness rule within the project.",
+      "driver": { "argument": 1, "path": ["name"] },
+      "wire": { "location": "json", "names": ["name"], "encoding": "JSON string under name." },
+      "sources": ["driver-schema-datasets", "testrail-datasets"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value under its own name." },
+        { "id": "valid", "kind": "valid", "description": "Accept a string." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-string value before driver invocation." },
+        { "id": "omitted", "kind": "omitted", "description": "Send no name key when the caller did not supply one, so the dataset keeps the name it has." }
+      ]
+    },
+    {
+      "id": "body.variables",
+      "input_path": ["body", "variables"],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": { "type": "object", "additionalProperties": { "type": "string" } },
+      "semantics": "The values this dataset gives the project's variables, keyed by variable name. Keys are open because they name instance data; every value must be a string, which is the rule TestRail states and refuses on.",
+      "driver": { "argument": 1, "path": ["variables"] },
+      "wire": { "location": "json", "names": ["variables"], "encoding": "JSON object of string values under variables; keys are sent verbatim." },
+      "sources": ["driver-schema-datasets", "testrail-datasets"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve every key and value under variables, without renaming a key or reshaping the map into the array the reads return." },
+        { "id": "valid", "kind": "valid", "description": "Accept a map of variable names to string values." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-string value before driver invocation, which is the one rule about this map TestRail states plainly." },
+        { "id": "empty", "kind": "valid", "description": "Accept an empty map and send it rather than dropping the key, since dropping it would change what TestRail is asked to do." },
+        { "id": "omitted", "kind": "omitted", "description": "Send no variables key when the caller did not supply one." }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "full-body",
+      "input": { "dataset_id": 2, "body": { "name": "Renamed", "variables": { "vara": "test" } } },
+      "covers": [
+        { "parameter": "dataset_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "body", "requirements": ["mapping", "valid"] },
+        { "parameter": "body.name", "requirements": ["mapping", "valid"] },
+        { "parameter": "body.variables", "requirements": ["mapping", "valid"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "datasets.updateDataset", "arguments": [2, { "name": "Renamed", "variables": { "vara": "test" } }] },
+        "wire": { "method": "POST", "endpoint": "update_dataset/2", "json": { "name": "Renamed", "variables": { "vara": "test" } } },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "id": 2, "name": "Renamed", "variables": [{ "id": 3, "name": "vara", "value": "test" }] }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": { "id": 2, "name": "Renamed", "variables": [{ "id": 3, "name": "vara", "value": "test" }] }
+        }
+      }
+    },
+    {
+      "id": "empty-body",
+      "input": { "dataset_id": 2, "body": {} },
+      "covers": [
+        { "parameter": "body.name", "requirements": ["omitted"] },
+        { "parameter": "body.variables", "requirements": ["omitted"] },
+        { "parameter": "$input", "requirements": ["empty-body"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "datasets.updateDataset", "arguments": [2, {}] },
+        "wire": { "method": "POST", "endpoint": "update_dataset/2", "json": {} },
+        "upstream_response": {
+          "kind": "json",
+          "body": { "id": 2, "name": "Default", "variables": [{ "id": 3, "name": "vara", "value": "test" }] }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": { "id": 2, "name": "Default", "variables": [{ "id": 3, "name": "vara", "value": "test" }] }
+        }
+      }
+    },
+    {
+      "id": "empty-variables",
+      "input": { "dataset_id": 2, "body": { "variables": {} } },
+      "covers": [{ "parameter": "body.variables", "requirements": ["empty"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "datasets.updateDataset", "arguments": [2, { "variables": {} }] },
+        "wire": { "method": "POST", "endpoint": "update_dataset/2", "json": { "variables": {} } },
+        "upstream_response": { "kind": "json", "body": { "id": 2, "name": "Default", "variables": [] } },
+        "driver_result": { "kind": "json", "value": { "id": 2, "name": "Default", "variables": [] } }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": { "dataset_id": 9007199254740991, "body": { "name": "Renamed" } },
+      "covers": [{ "parameter": "dataset_id", "requirements": ["upper-bound"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "datasets.updateDataset", "arguments": [9007199254740991, { "name": "Renamed" }] },
+        "wire": { "method": "POST", "endpoint": "update_dataset/9007199254740991", "json": { "name": "Renamed" } },
+        "upstream_response": { "kind": "json", "body": { "id": 9007199254740991, "name": "Renamed" } },
+        "driver_result": { "kind": "json", "value": { "id": 9007199254740991, "name": "Renamed" } }
+      }
+    },
+    {
+      "id": "body-missing",
+      "input": { "dataset_id": 2 },
+      "covers": [{ "parameter": "body", "requirements": ["required"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "body-not-object",
+      "input": { "dataset_id": 2, "body": "Renamed" },
+      "covers": [{ "parameter": "body", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "name-not-string",
+      "input": { "dataset_id": 2, "body": { "name": 5 } },
+      "covers": [{ "parameter": "body.name", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "variable-value-not-string",
+      "input": { "dataset_id": 2, "body": { "variables": { "vara": null } } },
+      "covers": [{ "parameter": "body.variables", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-body-field",
+      "input": { "dataset_id": 2, "body": { "id": 2, "name": "Renamed" } },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-body"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": { "dataset_id": 2, "body": { "name": "Renamed" }, "project_id": 7 },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    }
+  ]
+}

@@ -1,0 +1,326 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-21"
+  },
+  "endpoint": {
+    "family_id": "T09",
+    "http_method": "GET",
+    "route": "get_dataset/{dataset_id}",
+    "tool": "testrail_get_dataset",
+    "driver_method": "datasets.getDataset"
+  },
+  "sources": [
+    {
+      "id": "driver-module-datasets",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/datasets.ts",
+      "supports": "getDataset validates the identifier and places it as the only path segment of get_dataset/{dataset_id}, parsing the reply with DatasetSchema. It sends no query and no body, and issues exactly one request: nothing resolves the variable identifiers the reply carries into a second call."
+    },
+    {
+      "id": "driver-schema-datasets",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/datasets.ts",
+      "supports": "DatasetSchema declares id and name as required scalars and variables as a nullish array, so a dataset that omits the key parses. Each entry declares id and name as required scalars and value as nullable, which is how an unset variable is modelled. zObject's passthrough preserves any forward-compatible key the server adds."
+    },
+    {
+      "id": "testrail-datasets",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077300491540-Datasets",
+      "supports": "get_dataset retrieves one dataset by dataset_id, which the parameter table lists as the only parameter and marks required. The documented response fields are id, name and a variables array whose entries carry the variable's id, its name and the value from this dataset. The documented failures are 400 for an invalid or missing dataset_id, 401 for authentication failure, and 403 for insufficient project permissions or \"Not an Enterprise license/subscription\"."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "One identifier in the path and no request body at all, so every field beside it is refused. Strictness is an MCP boundary requirement; TestRail's own refusals for an unknown dataset, a project the caller cannot access, or an instance without an Enterprise license all arrive from upstream and are reported as they arrive."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the dataset object and the driver hands it back parsed; entity-field drift is advisory. The reply's variables array is a projection carrying server-assigned identifiers, which is not the name-to-value map the write payloads take."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "single-request",
+      "kind": "mapping",
+      "description": "Send exactly one request. The identifiers in the reply's variables array are never resolved by a follow-up call."
+    },
+    {
+      "id": "null-value",
+      "kind": "valid",
+      "description": "Return a variable entry whose value is null rather than refusing the reply or coercing the null away."
+    },
+    {
+      "id": "absent-variables",
+      "kind": "valid",
+      "description": "Return a dataset that carries no variables key at all rather than inventing an empty array for it."
+    }
+  ],
+  "baseline": "representative-id",
+  "parameters": [
+    {
+      "id": "dataset_id",
+      "input_path": [
+        "dataset_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The dataset to read. No coercion; passed positionally and sent verbatim as the only path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "dataset_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module-datasets",
+        "testrail-datasets"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-id",
+      "input": {
+        "dataset_id": 183
+      },
+      "covers": [
+        {
+          "parameter": "dataset_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "$input",
+          "requirements": [
+            "single-request"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "datasets.getDataset",
+          "arguments": [
+            183
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_dataset/183"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 183,
+            "name": "Default",
+            "variables": [
+              {
+                "id": 1171,
+                "name": "age",
+                "value": "41"
+              },
+              {
+                "id": 1172,
+                "name": "browser",
+                "value": "Chrome"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 183,
+            "name": "Default",
+            "variables": [
+              {
+                "id": 1171,
+                "name": "age",
+                "value": "41"
+              },
+              {
+                "id": 1172,
+                "name": "browser",
+                "value": "Chrome"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": {
+        "dataset_id": 9007199254740991
+      },
+      "covers": [
+        {
+          "parameter": "dataset_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "datasets.getDataset",
+          "arguments": [
+            9007199254740991
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_dataset/9007199254740991"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 9007199254740991,
+            "name": "Default",
+            "variables": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 9007199254740991,
+            "name": "Default",
+            "variables": []
+          }
+        }
+      }
+    },
+    {
+      "id": "unset-variable-value",
+      "input": {
+        "dataset_id": 184
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "null-value"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "datasets.getDataset",
+          "arguments": [
+            184
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_dataset/184"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 184,
+            "name": "Partly filled",
+            "variables": [
+              {
+                "id": 1171,
+                "name": "age",
+                "value": null
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 184,
+            "name": "Partly filled",
+            "variables": [
+              {
+                "id": 1171,
+                "name": "age",
+                "value": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "variables-absent",
+      "input": {
+        "dataset_id": 185
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "absent-variables"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "datasets.getDataset",
+          "arguments": [
+            185
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_dataset/185"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 185,
+            "name": "Empty"
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 185,
+            "name": "Empty"
+          }
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "dataset_id": 183,
+        "body": {}
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

@@ -11,6 +11,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `add_cases` | 12 | 18 | Complete input manifest |
 | `add_config` | 3 | 8 | Complete input manifest |
 | `add_config_group` | 3 | 8 | Complete input manifest |
+| `add_dataset` | 4 | 11 | Complete input manifest |
 | `add_group` | 3 | 10 | Complete input manifest |
 | `add_label` | 3 | 10 | Complete input manifest |
 | `add_milestone` | 8 | 12 | Complete input manifest |
@@ -27,6 +28,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `add_shared_step` | 5 | 11 | Complete input manifest |
 | `add_suite` | 3 | 9 | Complete input manifest |
 | `add_user` | 11 | 22 | Complete input manifest |
+| `add_variable` | 3 | 8 | Complete input manifest |
 | `close_plan` | 1 | 3 | Complete input manifest |
 | `close_run` | 1 | 3 | Complete input manifest |
 | `copy_cases_to_section` | 3 | 6 | Complete input manifest |
@@ -34,6 +36,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `delete_cases` | 5 | 11 | Complete input manifest |
 | `delete_config` | 1 | 3 | Complete input manifest |
 | `delete_config_group` | 1 | 3 | Complete input manifest |
+| `delete_dataset` | 1 | 3 | Complete input manifest |
 | `delete_group` | 1 | 3 | Complete input manifest |
 | `delete_label` | 1 | 3 | Complete input manifest |
 | `delete_labels` | 2 | 10 | Complete input manifest |
@@ -46,6 +49,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `delete_section` | 2 | 7 | Complete input manifest |
 | `delete_shared_step` | 2 | 7 | Complete input manifest |
 | `delete_suite` | 2 | 7 | Complete input manifest |
+| `delete_variable` | 1 | 3 | Complete input manifest |
 | `edit_result` | 10 | 17 | Complete input manifest |
 | `get_attachment` | 1 | 12 | Complete input manifest |
 | `get_attachments_for_plan_entry` | 2 | 11 | Complete input manifest |
@@ -56,6 +60,8 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `get_cases` | 25 | 24 | Complete input manifest |
 | `get_configs` | 1 | 3 | Complete input manifest |
 | `get_current_user` | 0 | 2 | Complete input manifest |
+| `get_dataset` | 1 | 5 | Complete input manifest |
+| `get_datasets` | 6 | 10 | Complete input manifest |
 | `get_group` | 1 | 3 | Complete input manifest |
 | `get_groups` | 5 | 10 | Complete input manifest |
 | `get_history_for_case` | 10 | 16 | Complete input manifest |
@@ -85,6 +91,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `get_user` | 1 | 3 | Complete input manifest |
 | `get_user_by_email` | 1 | 11 | Complete input manifest |
 | `get_users` | 1 | 7 | Complete input manifest |
+| `get_variables` | 6 | 10 | Complete input manifest |
 | `move_cases_to_section` | 4 | 6 | Complete input manifest |
 | `move_section` | 3 | 15 | Complete input manifest |
 | `update_bdd` | 4 | 10 | Complete input manifest |
@@ -92,6 +99,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `update_cases` | 14 | 15 | Complete input manifest |
 | `update_config` | 3 | 8 | Complete input manifest |
 | `update_config_group` | 3 | 8 | Complete input manifest |
+| `update_dataset` | 4 | 10 | Complete input manifest |
 | `update_group` | 4 | 11 | Complete input manifest |
 | `update_label` | 4 | 9 | Complete input manifest |
 | `update_milestone` | 10 | 14 | Complete input manifest |
@@ -106,8 +114,9 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `update_test` | 3 | 10 | Complete input manifest |
 | `update_tests` | 3 | 13 | Complete input manifest |
 | `update_user` | 12 | 20 | Complete input manifest |
+| `update_variable` | 3 | 8 | Complete input manifest |
 
-Case counts are authored cases; a parameter that references the shared domain library ([tests/fixtures/domains.json](../tests/fixtures/domains.json)) derives further rejections at load, one per proven invalid value. There are **33 endpoints without a manifest**, **no partial manifests**, and **100 complete input manifests**. A partial file names its remaining fields under `review.pending`. `parameterCoverageReport()` returns the exact sorted tool names in each group; its test compares their union with all 133 inventory names. Completing a manifest requires reviewing the endpoint's entire parameter surface against sources, not merely deleting its pending text.
+Case counts are authored cases; a parameter that references the shared domain library ([tests/fixtures/domains.json](../tests/fixtures/domains.json)) derives further rejections at load, one per proven invalid value. There are **24 endpoints without a manifest**, **no partial manifests**, and **109 complete input manifests**. A partial file names its remaining fields under `review.pending`. `parameterCoverageReport()` returns the exact sorted tool names in each group; its test compares their union with all 133 inventory names. Completing a manifest requires reviewing the endpoint's entire parameter surface against sources, not merely deleting its pending text.
 
 ## Format and integration
 
@@ -127,7 +136,7 @@ Endpoints without inputs use `parameters: []`, an accepted empty-object fixture 
 
 `parameterCoverageReport(manifests, inventory)` lists reviewed, complete, partial and absent endpoints. A family contract suite should load its files, validate each literal input with both the production runtime schema and emitted JSON Schema, assert rejected inputs cause no driver invocation, and compare accepted calls and injected-fetch requests with the fixture's literal expectations. Runtime schemas, generated schema acceptance, driver arguments and wire serialization are separate assertions. Do not generate expected requests or domains from the registry being tested.
 
-The format also represents text responses, JSON/void outer variants and multipart fields. A reply that is not the shape an endpoint documents is the reply's fault, not the adapter's: asking `get_test` for a test's data makes the driver assemble one record out of three parts, and a reply missing them is reported as an invalid response rather than as an internal failure. Two bulk writes that look alike can differ in what they can honestly report. An unusable success from the bulk case writes is an unknown outcome, because the driver method fails closed and never resolves; the same reply from the bulk result writes is an acknowledged one, because response validation there is advisory, so the driver resolves and the boundary refuses the body after TestRail has already accepted the submission. A result is not always the entity its name suggests: `update_tests` acknowledges a bulk label assignment by echoing the IDs and labels rather than returning the tests, and `get_test` merges a test's results and attachments into one record when they are asked for. `get_bdd` is the one endpoint of this API that answers with text rather than JSON, and `get_shared_step_history` the one whose paging is response-driven: it documents no request controls, so its fixtures send none and its page result says a continuation cannot be requested by offset. Multipart expectations describe decoded part name, filename, media type and synthetic UTF-8 contents, independently of a generated boundary string. `files` entries declare the synthetic files an upload fixture needs: a token, a filename and the contents. A manifest cannot name an absolute path, because it is authored by hand and read on every machine that runs the suite, so [tests/contracts/uploads.ts](../tests/contracts/uploads.ts) materializes each declared file into a temporary directory for the length of one case and substitutes `{{token}}` with that path wherever it appears, in the fixture's input and in its expected driver arguments alike. The BDD upload examples are the first to use this. A multipart request body is compared part by part rather than as an opaque object, since the boundary string is generated per request and says nothing about what was sent. The parts are read out of the encoded request rather than the form data handed to the encoder, because the encoding is where a name or a media type can still change: a part whose type the caller left undeclared is written as `application/octet-stream`. They are read inside the request as well, since the driver owns an upload's streams and cancels them once it settles. A case cannot declare both JSON and multipart request bodies.
+The format also represents text responses, JSON/void outer variants and multipart fields. A reply that is not the shape an endpoint documents is the reply's fault, not the adapter's: asking `get_test` for a test's data makes the driver assemble one record out of three parts, and a reply missing them is reported as an invalid response rather than as an internal failure. Two bulk writes that look alike can differ in what they can honestly report. An unusable success from the bulk case writes is an unknown outcome, because the driver method fails closed and never resolves; the same reply from the bulk result writes is an acknowledged one, because response validation there is advisory, so the driver resolves and the boundary refuses the body after TestRail has already accepted the submission. A result is not always the entity its name suggests: `update_tests` acknowledges a bulk label assignment by echoing the IDs and labels rather than returning the tests, and `get_test` merges a test's results and attachments into one record when they are asked for. `get_bdd` is the one endpoint of this API that answers with text rather than JSON. Response-driven paging is no longer the single case this sentence once described: `get_shared_step_history` was the first, and `get_groups`, `get_roles`, `get_datasets` and `get_variables` page the same way, five of the twenty lists in the registry. Each documents no request controls, so their fixtures send none and their page results say a continuation cannot be requested by offset. Multipart expectations describe decoded part name, filename, media type and synthetic UTF-8 contents, independently of a generated boundary string. `files` entries declare the synthetic files an upload fixture needs: a token, a filename and the contents. A manifest cannot name an absolute path, because it is authored by hand and read on every machine that runs the suite, so [tests/contracts/uploads.ts](../tests/contracts/uploads.ts) materializes each declared file into a temporary directory for the length of one case and substitutes `{{token}}` with that path wherever it appears, in the fixture's input and in its expected driver arguments alike. The BDD upload examples are the first to use this. A multipart request body is compared part by part rather than as an opaque object, since the boundary string is generated per request and says nothing about what was sent. The parts are read out of the encoded request rather than the form data handed to the encoder, because the encoding is where a name or a media type can still change: a part whose type the caller left undeclared is written as `application/octet-stream`. They are read inside the request as well, since the driver owns an upload's streams and cancels them once it settles. A case cannot declare both JSON and multipart request bodies.
 
 ## Reviewed source decisions
 
@@ -164,6 +173,13 @@ The Users family holds the server's only two endpoints that take nothing at all 
 `update_group` carries its own identifier twice. TestRail rejects a body without `group_id`, so the driver injects the path identifier after spreading the caller's payload, which means a caller's own value would be overwritten rather than sent. The boundary refuses the field instead, on the same ground as the plan-entry fields refused in T06: accepting a value that cannot take effect is the same lie as forwarding one TestRail ignores. The fixtures record the injected identifier in the expected request body, so a driver that stopped injecting it would fail rather than quietly start sending bodies TestRail refuses.
 
 The user write payloads demand a stricter address than the lookup accepts, and that gap is the driver's own. `getUserByEmail` checks only the shape, one `@` with non-empty whitespace-free parts, and its comment argues that single-label domains and domain literals are legitimate on self-hosted, LDAP, AD and SSO instances and that authoritative validation is TestRail's; the write payloads then apply a dotted-domain format that refuses those same addresses. Both rules are honoured as declared rather than reconciled here, so on such an instance a user may be readable and not writable. The write format also had to be restated in [src/contracts/inputs.ts](../src/contracts/inputs.ts). The driver asks for that format by selecting Zod's built-in email validator rather than writing a rule of its own, and the expression that selection resolves to carries no flags, while this server requires the Unicode flag for JSON Schema parity. A restatement is a duplicate until something holds the two together, so a test compares their sources and their verdicts on a corpus of addresses; it fails both if the driver chooses a different format and if the validator it selected changes underneath it. Sources: [user module](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/users.ts), [user schemas](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/users.ts), [TestRail users](https://support.testrail.com/hc/en-us/articles/7077978310292-Users), [TestRail groups](https://support.testrail.com/hc/en-us/articles/7077338821012-Groups).
+
+
+Datasets and variables are the server's only endpoints gated by an instance's edition, and its only request body whose keys are the caller's own strings. TestRail documents a 403 "Not an Enterprise license/subscription" on all nine, which this boundary cannot anticipate: an instance's edition is not an argument, so the call is made and the refusal reported. The driver separates that refusal from an ordinary permission denial by matching the phrasing TestRail uses, and this server keeps the separation, publishing `LICENSE_REQUIRED` rather than `PERMISSION_DENIED`, because one is answered by a licence and the other by an administrator. The family suite asserts both codes against the same endpoint so a widened match would fail rather than collapse the two.
+
+A dataset's values are written as a map from variable name to value and read back as an array of entries carrying server-assigned identifiers. The two shapes are not interchangeable and neither is converted into the other here. The map's keys stay open because they name instance data, while the payload's own fields do not, so an unknown field beside `name` and `variables` is refused, including the `id` that TestRail's `add_dataset` and `add_variable` examples show in a request body and their parameter tables never list. Values must be strings, which is the one rule about the map TestRail states plainly; an empty map and an absent one are different requests and both are forwarded as written. The family suite writes variable names that collide with this server's own vocabulary, `limit`, `offset`, `_mcp` and `variables` among them, since this is the only place a caller's string becomes a request key and the only place such a collision could be misread.
+
+Two claims about these endpoints are deliberately not made. TestRail does not state whether a supplied `variables` map replaces a dataset's values or merges into them, so neither manifest claims one; the tool advises sending the full map instead, which is correct under either reading, and `update_dataset` is published non-destructive on the same convention as the other seventeen updates. TestRail does state two cascades, that deleting a dataset removes its values and that deleting a variable removes the corresponding values from every dataset, and both are TestRail's own: this server neither enumerates datasets before a variable deletion nor repairs anything after one, which its fixtures record as a single request. Sources: [dataset module](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/datasets.ts), [variable module](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/variables.ts), [dataset schemas](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/datasets.ts), [variable schemas](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/variables.ts), [TestRail datasets](https://support.testrail.com/hc/en-us/articles/7077300491540-Datasets), [TestRail variables](https://support.testrail.com/hc/en-us/articles/7077979742868-Variables).
 
 ## Review procedure
 

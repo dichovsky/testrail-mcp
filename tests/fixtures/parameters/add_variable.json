@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-21"
+  },
+  "endpoint": {
+    "family_id": "T09",
+    "http_method": "POST",
+    "route": "add_variable/{project_id}",
+    "tool": "testrail_add_variable",
+    "driver_method": "variables.addVariable"
+  },
+  "sources": [
+    {
+      "id": "driver-module-variables",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/variables.ts",
+      "supports": "addVariable validates the project identifier, posts to add_variable/{project_id} with the payload as the JSON body and parses the reply with VariableSchema. The payload is passed through unexamined: no public method parses AddVariablePayloadSchema, so every payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "driver-schema-variables",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/variables.ts",
+      "supports": "AddVariablePayloadSchema declares a single required name of type string and nothing else. VariableSchema declares the reply as exactly two required non-nullable fields, id and name; there is no value field, because a value belongs to a dataset."
+    },
+    {
+      "id": "testrail-variables",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077979742868-Variables",
+      "supports": "add_variable creates a variable in a project; its parameter table carries project_id alone, marked required. The documented response fields are the id and name of the newly added variable. The documented 400 causes are an invalid or missing project_id, an invalid variable name, a variable name that already exists within the project, and exceeding the number of allowed variables. 403 covers insufficient project permissions, no add/edit permission for Test Data within the project, and \"Not an Enterprise license/subscription\". The example request body also shows an id, which the parameter table does not document."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "One identifier in the path and a body of exactly one documented field. An unknown body field is refused, including the id the article's example shows and its parameter table never lists: TestRail assigns the identifier. Whether the name is free within the project is TestRail's rule and its refusal arrives from upstream."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the created variable, which carries an identifier and a name only. Entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-body",
+      "kind": "invalid",
+      "description": "Reject an unknown body field, including the id the article's example shows and TestRail assigns."
+    }
+  ],
+  "baseline": "full-body",
+  "parameters": [
+    {
+      "id": "project_id",
+      "input_path": ["project_id"],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The project the variable is created in. No coercion; passed positionally and sent verbatim as the only path segment.",
+      "driver": { "argument": 0, "path": [] },
+      "wire": {
+        "location": "path",
+        "names": ["project_id"],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": ["driver-module-variables", "testrail-variables"]
+    },
+    {
+      "id": "body",
+      "input_path": ["body"],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": { "type": "object", "required": ["name"] },
+      "semantics": "No coercion. The JSON object is passed as the driver's second argument and sent unchanged.",
+      "driver": { "argument": 1, "path": [] },
+      "wire": { "location": "json", "names": ["body"], "encoding": "JSON object sent unchanged." },
+      "sources": ["driver-module-variables", "driver-schema-variables"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the object at driver argument 1 as the JSON request body." },
+        { "id": "valid", "kind": "valid", "description": "Accept an object." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a body that is not an object before driver invocation." },
+        { "id": "required", "kind": "required", "description": "Reject a missing body." }
+      ]
+    },
+    {
+      "id": "body.name",
+      "input_path": ["body", "name"],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": { "type": "string" },
+      "semantics": "The variable's name, which TestRail requires and which dataset write payloads later key their values by. No coercion; TestRail owns the format and the uniqueness rule within the project.",
+      "driver": { "argument": 1, "path": ["name"] },
+      "wire": { "location": "json", "names": ["name"], "encoding": "JSON string under name." },
+      "sources": ["driver-schema-variables", "testrail-variables"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value under its own name." },
+        { "id": "valid", "kind": "valid", "description": "Accept a string." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-string value before driver invocation." },
+        { "id": "required", "kind": "required", "description": "Reject a body without it." }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "full-body",
+      "input": { "project_id": 12, "body": { "name": "f" } },
+      "covers": [
+        { "parameter": "project_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "body", "requirements": ["mapping", "valid"] },
+        { "parameter": "body.name", "requirements": ["mapping", "valid"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "variables.addVariable", "arguments": [12, { "name": "f" }] },
+        "wire": { "method": "POST", "endpoint": "add_variable/12", "json": { "name": "f" } },
+        "upstream_response": { "kind": "json", "body": { "id": 1675, "name": "f" } },
+        "driver_result": { "kind": "json", "value": { "id": 1675, "name": "f" } }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": { "project_id": 9007199254740991, "body": { "name": "f" } },
+      "covers": [{ "parameter": "project_id", "requirements": ["upper-bound"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "variables.addVariable", "arguments": [9007199254740991, { "name": "f" }] },
+        "wire": { "method": "POST", "endpoint": "add_variable/9007199254740991", "json": { "name": "f" } },
+        "upstream_response": { "kind": "json", "body": { "id": 1676, "name": "f" } },
+        "driver_result": { "kind": "json", "value": { "id": 1676, "name": "f" } }
+      }
+    },
+    {
+      "id": "body-missing",
+      "input": { "project_id": 12 },
+      "covers": [{ "parameter": "body", "requirements": ["required"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "body-not-object",
+      "input": { "project_id": 12, "body": "f" },
+      "covers": [{ "parameter": "body", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "name-missing",
+      "input": { "project_id": 12, "body": {} },
+      "covers": [{ "parameter": "body.name", "requirements": ["required"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "name-not-string",
+      "input": { "project_id": 12, "body": { "name": 613 } },
+      "covers": [{ "parameter": "body.name", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-body-field",
+      "input": { "project_id": 12, "body": { "id": 613, "name": "f" } },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-body"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": { "project_id": 12, "body": { "name": "f" }, "name": "f" },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    }
+  ]
+}

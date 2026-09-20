@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-21"
+  },
+  "endpoint": {
+    "family_id": "T09",
+    "http_method": "POST",
+    "route": "update_variable/{variable_id}",
+    "tool": "testrail_update_variable",
+    "driver_method": "variables.updateVariable"
+  },
+  "sources": [
+    {
+      "id": "driver-module-variables",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/variables.ts",
+      "supports": "updateVariable validates the variable identifier, posts to update_variable/{variable_id} with the payload as the JSON body and parses the reply with VariableSchema. The payload is passed through unexamined: no public method parses UpdateVariablePayloadSchema, so every payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "driver-schema-variables",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/variables.ts",
+      "supports": "UpdateVariablePayloadSchema declares name optional and nothing else, and records that an empty body is intentionally accepted as a no-op rather than refused client-side, because TestRail itself accepts it and returns the unchanged variable."
+    },
+    {
+      "id": "testrail-variables",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077979742868-Variables",
+      "supports": "update_variable updates an existing variable; its parameter table carries variable_id alone, marked required, and the article states the request body has the same format as add_variable. The documented response fields are id and name. The documented 400 causes are an invalid or missing variable_id, an invalid variable name, and a variable name that already exists within the project. 403 covers insufficient project permissions, no add/edit permission for Test Data within the project, and \"Not an Enterprise license/subscription\"."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "One identifier in the path and a body of exactly one documented optional field. An unknown body field is refused, including the id the article's add_variable example shows and its parameter tables never list. Whether the new name is free within the project is TestRail's rule and its refusal arrives from upstream."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the variable, which carries an identifier and a name only. A rename does not touch the values datasets give the variable: those are keyed to the variable, so they stay with it under its new name. Entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-body",
+      "kind": "invalid",
+      "description": "Reject an unknown body field, including the id the article's example shows and TestRail assigns."
+    },
+    {
+      "id": "empty-body",
+      "kind": "valid",
+      "description": "Accept an empty body and send it unchanged, which TestRail treats as a no-op returning the unchanged variable, rather than refusing it locally."
+    }
+  ],
+  "baseline": "full-body",
+  "parameters": [
+    {
+      "id": "variable_id",
+      "input_path": ["variable_id"],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The variable to update. No coercion; passed positionally and sent verbatim as the only path segment.",
+      "driver": { "argument": 0, "path": [] },
+      "wire": {
+        "location": "path",
+        "names": ["variable_id"],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": ["driver-module-variables", "testrail-variables"]
+    },
+    {
+      "id": "body",
+      "input_path": ["body"],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": { "type": "object" },
+      "semantics": "No coercion. The JSON object is passed as the driver's second argument and sent unchanged. The object itself is required even though the one field in it is optional, so a no-op is written out as an empty object rather than left implicit.",
+      "driver": { "argument": 1, "path": [] },
+      "wire": { "location": "json", "names": ["body"], "encoding": "JSON object sent unchanged." },
+      "sources": ["driver-module-variables", "driver-schema-variables"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the object at driver argument 1 as the JSON request body." },
+        { "id": "valid", "kind": "valid", "description": "Accept an object." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a body that is not an object before driver invocation." },
+        { "id": "required", "kind": "required", "description": "Reject a missing body." }
+      ]
+    },
+    {
+      "id": "body.name",
+      "input_path": ["body", "name"],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": { "type": "string" },
+      "semantics": "A new name for the variable. No coercion; TestRail owns the format and the uniqueness rule within the project.",
+      "driver": { "argument": 1, "path": ["name"] },
+      "wire": { "location": "json", "names": ["name"], "encoding": "JSON string under name." },
+      "sources": ["driver-schema-variables", "testrail-variables"],
+      "requirements": [
+        { "id": "mapping", "kind": "mapping", "description": "Preserve the value under its own name." },
+        { "id": "valid", "kind": "valid", "description": "Accept a string." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-string value before driver invocation." },
+        { "id": "omitted", "kind": "omitted", "description": "Send no name key when the caller did not supply one, so the variable keeps the name it has." }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "full-body",
+      "input": { "variable_id": 611, "body": { "name": "renamed" } },
+      "covers": [
+        { "parameter": "variable_id", "requirements": ["mapping", "valid"] },
+        { "parameter": "body", "requirements": ["mapping", "valid"] },
+        { "parameter": "body.name", "requirements": ["mapping", "valid"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "variables.updateVariable", "arguments": [611, { "name": "renamed" }] },
+        "wire": { "method": "POST", "endpoint": "update_variable/611", "json": { "name": "renamed" } },
+        "upstream_response": { "kind": "json", "body": { "id": 611, "name": "renamed" } },
+        "driver_result": { "kind": "json", "value": { "id": 611, "name": "renamed" } }
+      }
+    },
+    {
+      "id": "empty-body",
+      "input": { "variable_id": 611, "body": {} },
+      "covers": [
+        { "parameter": "body.name", "requirements": ["omitted"] },
+        { "parameter": "$input", "requirements": ["empty-body"] }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "variables.updateVariable", "arguments": [611, {}] },
+        "wire": { "method": "POST", "endpoint": "update_variable/611", "json": {} },
+        "upstream_response": { "kind": "json", "body": { "id": 611, "name": "d" } },
+        "driver_result": { "kind": "json", "value": { "id": 611, "name": "d" } }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": { "variable_id": 9007199254740991, "body": { "name": "renamed" } },
+      "covers": [{ "parameter": "variable_id", "requirements": ["upper-bound"] }],
+      "expect": {
+        "kind": "accepted",
+        "driver": { "binding": "variables.updateVariable", "arguments": [9007199254740991, { "name": "renamed" }] },
+        "wire": { "method": "POST", "endpoint": "update_variable/9007199254740991", "json": { "name": "renamed" } },
+        "upstream_response": { "kind": "json", "body": { "id": 9007199254740991, "name": "renamed" } },
+        "driver_result": { "kind": "json", "value": { "id": 9007199254740991, "name": "renamed" } }
+      }
+    },
+    {
+      "id": "body-missing",
+      "input": { "variable_id": 611 },
+      "covers": [{ "parameter": "body", "requirements": ["required"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "body-not-object",
+      "input": { "variable_id": 611, "body": "renamed" },
+      "covers": [{ "parameter": "body", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "name-not-string",
+      "input": { "variable_id": 611, "body": { "name": 613 } },
+      "covers": [{ "parameter": "body.name", "requirements": ["invalid"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-body-field",
+      "input": { "variable_id": 611, "body": { "id": 611, "name": "renamed" } },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-body"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": { "variable_id": 611, "body": { "name": "renamed" }, "project_id": 12 },
+      "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    }
+  ]
+}
