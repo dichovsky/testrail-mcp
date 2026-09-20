@@ -1,0 +1,2257 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T04",
+    "http_method": "GET",
+    "route": "get_runs/{project_id}",
+    "tool": "testrail_get_runs",
+    "driver_method": "runs.getRuns"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/runs.ts",
+      "supports": "getRunsPage and getAllRuns validate the project ID and place it as the only path segment. createdAfter, createdBefore and refs are forwarded unchanged; createdBy, milestoneId and suiteId go through serializeIdFilter; includePlanRuns and isCompleted are converted from booleans to 1 or 0. The query is built in that fixed order ahead of the paging controls, and the envelope collection is named runs. The deprecated refsFilter option, which would send refs and refs_filter together for servers before TestRail 10.4, is not surfaced by this tool."
+    },
+    {
+      "id": "driver-utils",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/utils.ts",
+      "supports": "serializeIdFilter validates one identifier or each member of an array with validateId and joins an array with commas; serializeIdList joins a list without validating it and omits an empty one."
+    },
+    {
+      "id": "driver-paginated-list",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/paginated-list.ts",
+      "supports": "The page helper validates limit and offset before dispatch and appends them after the filters. The all helper copies only pageSize, startOffset, maxPages, maxItems, maxDurationMs and maxBytes from its options."
+    },
+    {
+      "id": "driver-pagination",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
+      "supports": "collectAllPages validates every bound before the first request, defaults pageSize to 250 and startOffset to 0, requires the first envelope offset to equal startOffset, and stops when _links.next is null."
+    },
+    {
+      "id": "driver-url",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/url.ts",
+      "supports": "buildEndpoint appends controls path-style after an ampersand, skips undefined values and percent-encodes every key and value independently."
+    },
+    {
+      "id": "testrail-runs",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077874763156-Runs",
+      "supports": "get_runs/{project_id} returns the runs of a project that are not part of a test plan, and points readers at get_plans for those. Its filters are created_after and created_before as UNIX timestamps, created_by as a comma-separated user-ID list, include_plan_runs and is_completed as 0 or 1, milestone_id and suite_id as comma-separated ID lists, refs as a single reference, and limit and offset. It returns up to 250 entries inside an offset, limit, size and _links envelope. The fields, status_id, label_id, priority_id, assignedto_id and updated_by filters require TestRail 10.8 and are outside the pinned driver."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement at every depth. TestRail documents every creator filter as a comma-separated list, but the driver's option for created_by is an array alone, so this tool takes an array there and a single ID or an array for the two filters whose option accepts both. Filters the pinned driver does not carry are rejected as unknown query keys rather than dropped."
+  },
+  "outer_result": {
+    "driver": "page",
+    "tool_data": "array",
+    "notes": "Page mode returns the driver's decoded page and all mode the collected array. Runs belonging to a test plan appear only when include_plan_runs asks for them; reading a plan is the other way to reach them. Entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-query",
+      "kind": "invalid",
+      "description": "Reject an unsupported query key rather than discarding it."
+    },
+    {
+      "id": "unknown-control",
+      "kind": "invalid",
+      "description": "Reject an unknown _mcp control rather than discarding it."
+    },
+    {
+      "id": "page-controls-in-all",
+      "kind": "invalid",
+      "description": "Reject query.limit or query.offset together with pagination all; page_size and start_offset are the only paging controls of an aggregate."
+    },
+    {
+      "id": "all-controls-in-page",
+      "kind": "invalid",
+      "description": "Reject an aggregate bound in page mode, where nothing would apply it."
+    }
+  ],
+  "baseline": "page-controls",
+  "parameters": [
+    {
+      "id": "project_id",
+      "input_path": [
+        "project_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "No coercion. The validated number is passed positionally to either helper and appears verbatim in the path of every request.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "project_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-runs"
+      ]
+    },
+    {
+      "id": "query.created_after",
+      "input_path": [
+        "query",
+        "created_after"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain_ref": "unix_timestamp",
+      "semantics": "Only runs created after this time. Passed to either helper as createdAfter and sent unchanged as the created_after control; omitted entirely when absent.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "createdAfter"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "created_after"
+        ],
+        "encoding": "Decimal integer appended path-style before the paging controls."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-runs"
+      ]
+    },
+    {
+      "id": "query.created_before",
+      "input_path": [
+        "query",
+        "created_before"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain_ref": "unix_timestamp",
+      "semantics": "Only runs created before this time. Passed to either helper as createdBefore and sent unchanged as the created_before control; omitted entirely when absent.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "createdBefore"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "created_before"
+        ],
+        "encoding": "Decimal integer appended path-style before the paging controls."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-runs"
+      ]
+    },
+    {
+      "id": "query.created_by",
+      "input_path": [
+        "query",
+        "created_by"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "semantics": "Creators to match, as user IDs. The driver's option for this filter is an array rather than the scalar-or-array its neighbours accept, so this tool takes an array and sends it comma-joined; an empty one would drop the filter and is refused.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "createdBy"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "created_by"
+        ],
+        "encoding": "Decimal integers joined by commas, percent-encoded as %2C, appended path-style before the paging controls."
+      },
+      "sources": [
+        "driver-module",
+        "driver-utils",
+        "driver-url",
+        "testrail-runs"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member under created_by."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a list of user IDs and send them comma-joined."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-positive member before driver invocation."
+        },
+        {
+          "id": "empty",
+          "kind": "invalid",
+          "description": "Reject an empty list rather than letting the driver drop the filter."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no control when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "query.include_plan_runs",
+      "input_path": [
+        "query",
+        "include_plan_runs"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "Whether runs belonging to a test plan are listed as well as standalone ones. Taken as a boolean here and converted by the driver to the 1 or 0 TestRail reads; omitting it sends no control, which is not the same as sending either value.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "includePlanRuns"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "include_plan_runs"
+        ],
+        "encoding": "include_plan_runs=1 for true and include_plan_runs=0 for false, appended path-style before the paging controls."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-runs"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value as the includePlanRuns option."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept true and send include_plan_runs=1, listing plan runs too."
+        },
+        {
+          "id": "false",
+          "kind": "valid",
+          "description": "Accept false and send include_plan_runs=0, listing standalone runs only."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a numeric stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no control when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "query.is_completed",
+      "input_path": [
+        "query",
+        "is_completed"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "Whether completed or active runs are listed. Taken as a boolean here and converted by the driver to the 1 or 0 TestRail reads; omitting it sends no control, which is not the same as sending either value.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "isCompleted"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "is_completed"
+        ],
+        "encoding": "is_completed=1 for true and is_completed=0 for false, appended path-style before the paging controls."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-runs"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value as the isCompleted option."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept true and send is_completed=1, listing completed runs."
+        },
+        {
+          "id": "false",
+          "kind": "valid",
+          "description": "Accept false and send is_completed=0, listing active runs only."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a numeric stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no control when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "query.milestone_id",
+      "input_path": [
+        "query",
+        "milestone_id"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain_ref": "id_filter",
+      "semantics": "Milestones to match. Passed to either helper as milestoneId and sent comma-joined as the milestone_id control; omitted entirely when absent.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "milestoneId"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "milestone_id"
+        ],
+        "encoding": "Decimal integers joined by commas, percent-encoded as %2C, appended path-style before the paging controls."
+      },
+      "sources": [
+        "driver-module",
+        "driver-utils",
+        "driver-url",
+        "testrail-runs"
+      ]
+    },
+    {
+      "id": "query.refs",
+      "input_path": [
+        "query",
+        "refs"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "A single reference to match, as TestRail documents it for this endpoint. No coercion; an array is not accepted here.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "refs"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "refs"
+        ],
+        "encoding": "Percent-encoded string appended path-style before suite_id."
+      },
+      "sources": [
+        "driver-module",
+        "driver-url",
+        "testrail-runs"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the string as the refs option and control."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a reference string, including characters that must be percent-encoded."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject an array of references before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no refs control when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "query.suite_id",
+      "input_path": [
+        "query",
+        "suite_id"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain_ref": "id_filter",
+      "semantics": "Suites to match. Passed to either helper as suiteId and sent comma-joined as the suite_id control; omitted entirely when absent.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "suiteId"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "suite_id"
+        ],
+        "encoding": "Decimal integers joined by commas, percent-encoded as %2C, appended path-style last among the filters."
+      },
+      "sources": [
+        "driver-module",
+        "driver-utils",
+        "driver-url",
+        "testrail-runs"
+      ]
+    },
+    {
+      "id": "query.limit",
+      "input_path": [
+        "query",
+        "limit"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain_ref": "pagination_limit",
+      "semantics": "Page mode only. Sent explicitly on every page request: the caller's value, or 50 when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "limit"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "limit"
+        ],
+        "encoding": "Decimal integer appended path-style after the filters."
+      },
+      "sources": [
+        "driver-paginated-list",
+        "driver-url",
+        "testrail-runs"
+      ]
+    },
+    {
+      "id": "query.offset",
+      "input_path": [
+        "query",
+        "offset"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain_ref": "pagination_offset",
+      "semantics": "Page mode only. Sent explicitly on every page request: the caller's value, or 0 when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "offset"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "offset"
+        ],
+        "encoding": "Decimal integer appended path-style after limit."
+      },
+      "sources": [
+        "driver-paginated-list",
+        "driver-url",
+        "testrail-runs"
+      ]
+    },
+    {
+      "id": "_mcp.pagination",
+      "input_path": [
+        "_mcp",
+        "pagination"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain": {
+        "enum": [
+          "page",
+          "all"
+        ]
+      },
+      "semantics": "Selects the public page helper or the bounded all helper. Never passed to the driver.",
+      "driver": null,
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized upstream."
+      },
+      "sources": [
+        "driver-module"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Select the page helper for page and the all helper for all."
+        },
+        {
+          "id": "page",
+          "kind": "valid",
+          "description": "Accept an explicit page mode."
+        },
+        {
+          "id": "all",
+          "kind": "valid",
+          "description": "Accept all mode."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject an unknown mode before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Use page mode when omitted."
+        }
+      ]
+    },
+    {
+      "id": "_mcp.page_size",
+      "input_path": [
+        "_mcp",
+        "page_size"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_page_size",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded as the driver's pageSize when supplied; the driver's own default of 250 applies when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "pageSize"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "limit"
+        ],
+        "encoding": "Sent as the limit control of every request the aggregate issues."
+      },
+      "sources": [
+        "driver-paginated-list",
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.start_offset",
+      "input_path": [
+        "_mcp",
+        "start_offset"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_start_offset",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded as the driver's startOffset when supplied; the aggregate starts at 0 when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "startOffset"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "offset"
+        ],
+        "encoding": "Sent as the offset of the first request; later offsets follow the continuation links."
+      },
+      "sources": [
+        "driver-paginated-list",
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.max_items",
+      "input_path": [
+        "_mcp",
+        "max_items"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_items",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "maxItems"
+        ]
+      },
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized; bounds the collection inside the driver."
+      },
+      "sources": [
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.max_pages",
+      "input_path": [
+        "_mcp",
+        "max_pages"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_pages",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "maxPages"
+        ]
+      },
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized; bounds the collection inside the driver."
+      },
+      "sources": [
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.max_bytes",
+      "input_path": [
+        "_mcp",
+        "max_bytes"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_bytes",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "maxBytes"
+        ]
+      },
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized; bounds the serialized item bytes inside the driver."
+      },
+      "sources": [
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.max_duration_ms",
+      "input_path": [
+        "_mcp",
+        "max_duration_ms"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_duration_ms",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "maxDurationMs"
+        ]
+      },
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized; bounds the aggregate's wall-clock time inside the driver."
+      },
+      "sources": [
+        "driver-pagination"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "defaults",
+      "input": {
+        "project_id": 3
+      },
+      "covers": [
+        {
+          "parameter": "query.created_after",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "query.created_before",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "query.created_by",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "query.include_plan_runs",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "query.is_completed",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "query.milestone_id",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "query.refs",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "query.suite_id",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "query.limit",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "query.offset",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.pagination",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.getRunsPage",
+          "arguments": [
+            3,
+            {
+              "limit": 50,
+              "offset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_runs/3&limit=50&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 50,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "runs": [
+              {
+                "id": 9942,
+                "name": "Test Run Name",
+                "description": null,
+                "suite_id": 10,
+                "project_id": 3,
+                "plan_id": null,
+                "milestone_id": null,
+                "assignedto_id": null,
+                "include_all": false,
+                "is_completed": false,
+                "completed_on": null,
+                "config": null,
+                "config_ids": [],
+                "passed_count": 0,
+                "blocked_count": 0,
+                "untested_count": 46,
+                "retest_count": 0,
+                "failed_count": 0,
+                "created_by": 376,
+                "created_on": 1775495967,
+                "updated_on": 1775495967,
+                "refs": null,
+                "url": "https://test.testrail.io/index.php?/runs/view/123",
+                "start_on": null,
+                "due_on": null
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [
+              {
+                "id": 9942,
+                "name": "Test Run Name",
+                "description": null,
+                "suite_id": 10,
+                "project_id": 3,
+                "plan_id": null,
+                "milestone_id": null,
+                "assignedto_id": null,
+                "include_all": false,
+                "is_completed": false,
+                "completed_on": null,
+                "config": null,
+                "config_ids": [],
+                "passed_count": 0,
+                "blocked_count": 0,
+                "untested_count": 46,
+                "retest_count": 0,
+                "failed_count": 0,
+                "created_by": 376,
+                "created_on": 1775495967,
+                "updated_on": 1775495967,
+                "refs": null,
+                "url": "https://test.testrail.io/index.php?/runs/view/123",
+                "start_on": null,
+                "due_on": null
+              }
+            ],
+            "offset": 0,
+            "limit": 50,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "page-controls",
+      "input": {
+        "project_id": 3,
+        "query": {
+          "limit": 50,
+          "offset": 50
+        }
+      },
+      "covers": [
+        {
+          "parameter": "project_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "query.limit",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "query.offset",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.getRunsPage",
+          "arguments": [
+            3,
+            {
+              "limit": 50,
+              "offset": 50
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_runs/3&limit=50&offset=50"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 50,
+            "limit": 50,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": "/api/v2/get_runs/3&limit=50&offset=0"
+            },
+            "runs": [
+              {
+                "id": 9942,
+                "name": "Test Run Name",
+                "description": null,
+                "suite_id": 10,
+                "project_id": 3,
+                "plan_id": null,
+                "milestone_id": null,
+                "assignedto_id": null,
+                "include_all": false,
+                "is_completed": false,
+                "completed_on": null,
+                "config": null,
+                "config_ids": [],
+                "passed_count": 0,
+                "blocked_count": 0,
+                "untested_count": 46,
+                "retest_count": 0,
+                "failed_count": 0,
+                "created_by": 376,
+                "created_on": 1775495967,
+                "updated_on": 1775495967,
+                "refs": null,
+                "url": "https://test.testrail.io/index.php?/runs/view/123",
+                "start_on": null,
+                "due_on": null
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [
+              {
+                "id": 9942,
+                "name": "Test Run Name",
+                "description": null,
+                "suite_id": 10,
+                "project_id": 3,
+                "plan_id": null,
+                "milestone_id": null,
+                "assignedto_id": null,
+                "include_all": false,
+                "is_completed": false,
+                "completed_on": null,
+                "config": null,
+                "config_ids": [],
+                "passed_count": 0,
+                "blocked_count": 0,
+                "untested_count": 46,
+                "retest_count": 0,
+                "failed_count": 0,
+                "created_by": 376,
+                "created_on": 1775495967,
+                "updated_on": 1775495967,
+                "refs": null,
+                "url": "https://test.testrail.io/index.php?/runs/view/123",
+                "start_on": null,
+                "due_on": null
+              }
+            ],
+            "offset": 50,
+            "limit": 50,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": "/api/v2/get_runs/3&limit=50&offset=0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "filters",
+      "input": {
+        "project_id": 3,
+        "query": {
+          "created_after": 1775000000,
+          "created_before": 1775999999,
+          "created_by": [
+            1,
+            2
+          ],
+          "include_plan_runs": true,
+          "is_completed": false,
+          "milestone_id": 7,
+          "refs": "TR-1 & #2",
+          "suite_id": 10
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.created_after",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "query.created_before",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "query.created_by",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "query.include_plan_runs",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "query.is_completed",
+          "requirements": [
+            "false"
+          ]
+        },
+        {
+          "parameter": "query.milestone_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "query.refs",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "query.suite_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.getRunsPage",
+          "arguments": [
+            3,
+            {
+              "createdAfter": 1775000000,
+              "createdBefore": 1775999999,
+              "createdBy": [
+                1,
+                2
+              ],
+              "includePlanRuns": true,
+              "isCompleted": false,
+              "milestoneId": 7,
+              "refs": "TR-1 & #2",
+              "suiteId": 10,
+              "limit": 50,
+              "offset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_runs/3&created_after=1775000000&created_before=1775999999&created_by=1%2C2&include_plan_runs=1&is_completed=0&milestone_id=7&refs=TR-1%20%26%20%232&suite_id=10&limit=50&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 50,
+            "size": 0,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "runs": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [],
+            "offset": 0,
+            "limit": 50,
+            "size": 0,
+            "_links": {
+              "next": null,
+              "prev": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "completed-and-standalone",
+      "input": {
+        "project_id": 3,
+        "query": {
+          "include_plan_runs": false,
+          "is_completed": true,
+          "milestone_id": [
+            7,
+            8
+          ],
+          "suite_id": [
+            10,
+            11
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.include_plan_runs",
+          "requirements": [
+            "false"
+          ]
+        },
+        {
+          "parameter": "query.is_completed",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "query.milestone_id",
+          "requirements": [
+            "list"
+          ]
+        },
+        {
+          "parameter": "query.suite_id",
+          "requirements": [
+            "list"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.getRunsPage",
+          "arguments": [
+            3,
+            {
+              "includePlanRuns": false,
+              "isCompleted": true,
+              "milestoneId": [
+                7,
+                8
+              ],
+              "suiteId": [
+                10,
+                11
+              ],
+              "limit": 50,
+              "offset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_runs/3&include_plan_runs=0&is_completed=1&milestone_id=7%2C8&suite_id=10%2C11&limit=50&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 50,
+            "size": 0,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "runs": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [],
+            "offset": 0,
+            "limit": 50,
+            "size": 0,
+            "_links": {
+              "next": null,
+              "prev": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-values",
+      "input": {
+        "project_id": 9007199254740991,
+        "query": {
+          "created_after": 9007199254740991,
+          "created_before": 9007199254740991,
+          "created_by": [
+            9007199254740991
+          ],
+          "milestone_id": 9007199254740991,
+          "suite_id": 9007199254740991,
+          "limit": 250
+        }
+      },
+      "covers": [
+        {
+          "parameter": "project_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "query.created_after",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "query.created_before",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "query.milestone_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "query.suite_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "query.limit",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.getRunsPage",
+          "arguments": [
+            9007199254740991,
+            {
+              "createdAfter": 9007199254740991,
+              "createdBefore": 9007199254740991,
+              "createdBy": [
+                9007199254740991
+              ],
+              "milestoneId": 9007199254740991,
+              "suiteId": 9007199254740991,
+              "limit": 250,
+              "offset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_runs/9007199254740991&created_after=9007199254740991&created_before=9007199254740991&created_by=9007199254740991&milestone_id=9007199254740991&suite_id=9007199254740991&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 0,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "runs": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [],
+            "offset": 0,
+            "limit": 250,
+            "size": 0,
+            "_links": {
+              "next": null,
+              "prev": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "epoch-timestamps",
+      "input": {
+        "project_id": 3,
+        "query": {
+          "created_after": 0,
+          "created_before": 0
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.created_after",
+          "requirements": [
+            "zero"
+          ]
+        },
+        {
+          "parameter": "query.created_before",
+          "requirements": [
+            "zero"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.getRunsPage",
+          "arguments": [
+            3,
+            {
+              "createdAfter": 0,
+              "createdBefore": 0,
+              "limit": 50,
+              "offset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_runs/3&created_after=0&created_before=0&limit=50&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 50,
+            "size": 0,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "runs": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [],
+            "offset": 0,
+            "limit": 50,
+            "size": 0,
+            "_links": {
+              "next": null,
+              "prev": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "first-page-by-name",
+      "input": {
+        "project_id": 3,
+        "query": {
+          "offset": 0
+        },
+        "_mcp": {
+          "pagination": "page"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.offset",
+          "requirements": [
+            "zero"
+          ]
+        },
+        {
+          "parameter": "_mcp.pagination",
+          "requirements": [
+            "mapping",
+            "page"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.getRunsPage",
+          "arguments": [
+            3,
+            {
+              "limit": 50,
+              "offset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_runs/3&limit=50&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 50,
+            "size": 0,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "runs": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [],
+            "offset": 0,
+            "limit": 50,
+            "size": 0,
+            "_links": {
+              "next": null,
+              "prev": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "all-defaults",
+      "input": {
+        "project_id": 3,
+        "_mcp": {
+          "pagination": "all"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.pagination",
+          "requirements": [
+            "mapping",
+            "all"
+          ]
+        },
+        {
+          "parameter": "_mcp.page_size",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.start_offset",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_items",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_pages",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_bytes",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_duration_ms",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.getAllRuns",
+          "arguments": [
+            3,
+            {
+              "maxItems": 1000,
+              "maxPages": 20,
+              "maxBytes": 1048576,
+              "maxDurationMs": 45000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_runs/3&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "runs": [
+              {
+                "id": 9942,
+                "name": "Test Run Name",
+                "description": null,
+                "suite_id": 10,
+                "project_id": 3,
+                "plan_id": null,
+                "milestone_id": null,
+                "assignedto_id": null,
+                "include_all": false,
+                "is_completed": false,
+                "completed_on": null,
+                "config": null,
+                "config_ids": [],
+                "passed_count": 0,
+                "blocked_count": 0,
+                "untested_count": 46,
+                "retest_count": 0,
+                "failed_count": 0,
+                "created_by": 376,
+                "created_on": 1775495967,
+                "updated_on": 1775495967,
+                "refs": null,
+                "url": "https://test.testrail.io/index.php?/runs/view/123",
+                "start_on": null,
+                "due_on": null
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 9942,
+              "name": "Test Run Name",
+              "description": null,
+              "suite_id": 10,
+              "project_id": 3,
+              "plan_id": null,
+              "milestone_id": null,
+              "assignedto_id": null,
+              "include_all": false,
+              "is_completed": false,
+              "completed_on": null,
+              "config": null,
+              "config_ids": [],
+              "passed_count": 0,
+              "blocked_count": 0,
+              "untested_count": 46,
+              "retest_count": 0,
+              "failed_count": 0,
+              "created_by": 376,
+              "created_on": 1775495967,
+              "updated_on": 1775495967,
+              "refs": null,
+              "url": "https://test.testrail.io/index.php?/runs/view/123",
+              "start_on": null,
+              "due_on": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "all-filters",
+      "input": {
+        "project_id": 3,
+        "query": {
+          "created_by": [
+            1
+          ],
+          "is_completed": true,
+          "milestone_id": 7,
+          "refs": "TR-1",
+          "suite_id": 10,
+          "created_after": 1775000000,
+          "created_before": 1775999999,
+          "include_plan_runs": true
+        },
+        "_mcp": {
+          "pagination": "all",
+          "page_size": 25,
+          "start_offset": 100,
+          "max_items": 10,
+          "max_pages": 2,
+          "max_bytes": 1024,
+          "max_duration_ms": 5000
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.created_after",
+          "requirements": [
+            "mapping"
+          ]
+        },
+        {
+          "parameter": "query.created_before",
+          "requirements": [
+            "mapping"
+          ]
+        },
+        {
+          "parameter": "query.created_by",
+          "requirements": [
+            "mapping"
+          ]
+        },
+        {
+          "parameter": "query.include_plan_runs",
+          "requirements": [
+            "mapping"
+          ]
+        },
+        {
+          "parameter": "query.is_completed",
+          "requirements": [
+            "mapping"
+          ]
+        },
+        {
+          "parameter": "query.milestone_id",
+          "requirements": [
+            "mapping"
+          ]
+        },
+        {
+          "parameter": "query.refs",
+          "requirements": [
+            "mapping"
+          ]
+        },
+        {
+          "parameter": "query.suite_id",
+          "requirements": [
+            "mapping"
+          ]
+        },
+        {
+          "parameter": "_mcp.page_size",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "_mcp.start_offset",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_items",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_pages",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_bytes",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_duration_ms",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.getAllRuns",
+          "arguments": [
+            3,
+            {
+              "createdAfter": 1775000000,
+              "createdBefore": 1775999999,
+              "createdBy": [
+                1
+              ],
+              "includePlanRuns": true,
+              "isCompleted": true,
+              "milestoneId": 7,
+              "refs": "TR-1",
+              "suiteId": 10,
+              "pageSize": 25,
+              "startOffset": 100,
+              "maxItems": 10,
+              "maxPages": 2,
+              "maxBytes": 1024,
+              "maxDurationMs": 5000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_runs/3&created_after=1775000000&created_before=1775999999&created_by=1&include_plan_runs=1&is_completed=1&milestone_id=7&refs=TR-1&suite_id=10&limit=25&offset=100"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 100,
+            "limit": 25,
+            "size": 0,
+            "_links": {
+              "next": null,
+              "prev": "/api/v2/get_runs/3&limit=25&offset=75"
+            },
+            "runs": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": []
+        }
+      }
+    },
+    {
+      "id": "all-ceilings",
+      "input": {
+        "project_id": 3,
+        "_mcp": {
+          "pagination": "all",
+          "max_items": 1000,
+          "max_pages": 20,
+          "max_bytes": 1048576,
+          "max_duration_ms": 45000
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.max_items",
+          "requirements": [
+            "ceiling"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_pages",
+          "requirements": [
+            "ceiling"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_bytes",
+          "requirements": [
+            "ceiling"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_duration_ms",
+          "requirements": [
+            "ceiling"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.getAllRuns",
+          "arguments": [
+            3,
+            {
+              "maxItems": 1000,
+              "maxPages": 20,
+              "maxBytes": 1048576,
+              "maxDurationMs": 45000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_runs/3&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 0,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "runs": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": []
+        }
+      }
+    },
+    {
+      "id": "largest-aggregate-page",
+      "input": {
+        "project_id": 3,
+        "_mcp": {
+          "pagination": "all",
+          "page_size": 250
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.page_size",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.getAllRuns",
+          "arguments": [
+            3,
+            {
+              "maxItems": 1000,
+              "maxPages": 20,
+              "maxBytes": 1048576,
+              "maxDurationMs": 45000,
+              "pageSize": 250
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_runs/3&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 0,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "runs": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": []
+        }
+      }
+    },
+    {
+      "id": "aggregate-from-start",
+      "input": {
+        "project_id": 3,
+        "_mcp": {
+          "pagination": "all",
+          "start_offset": 0
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.start_offset",
+          "requirements": [
+            "zero"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.getAllRuns",
+          "arguments": [
+            3,
+            {
+              "maxItems": 1000,
+              "maxPages": 20,
+              "maxBytes": 1048576,
+              "maxDurationMs": 45000,
+              "startOffset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_runs/3&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 0,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "runs": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": []
+        }
+      }
+    },
+    {
+      "id": "empty-creators",
+      "input": {
+        "project_id": 3,
+        "query": {
+          "created_by": []
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.created_by",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "zero-creator",
+      "input": {
+        "project_id": 3,
+        "query": {
+          "created_by": [
+            0
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.created_by",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "numeric-include-plan-runs",
+      "input": {
+        "project_id": 3,
+        "query": {
+          "include_plan_runs": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.include_plan_runs",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "numeric-is-completed",
+      "input": {
+        "project_id": 3,
+        "query": {
+          "is_completed": 0
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.is_completed",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "refs-array",
+      "input": {
+        "project_id": 3,
+        "query": {
+          "refs": [
+            "TR-1"
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.refs",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "pagination-unknown-mode",
+      "input": {
+        "project_id": 3,
+        "_mcp": {
+          "pagination": "stream"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.pagination",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "project_id": 3,
+        "suite_id": 10
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-query",
+      "input": {
+        "project_id": 3,
+        "query": {
+          "status_id": [
+            1
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-query"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-control",
+      "input": {
+        "project_id": 3,
+        "_mcp": {
+          "pagination": "all",
+          "unexpected": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-control"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "page-controls-in-all",
+      "input": {
+        "project_id": 3,
+        "query": {
+          "limit": 50
+        },
+        "_mcp": {
+          "pagination": "all"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "page-controls-in-all"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "all-controls-in-page",
+      "input": {
+        "project_id": 3,
+        "_mcp": {
+          "pagination": "page",
+          "max_items": 5
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "all-controls-in-page"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

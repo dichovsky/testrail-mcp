@@ -1,0 +1,763 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T04",
+    "http_method": "POST",
+    "route": "update_tests",
+    "tool": "testrail_update_tests",
+    "driver_method": "tests.updateTests"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/tests.ts",
+      "supports": "updateTests validates every member of test_ids as an identifier, posts to update_tests with no path segment, forwards the JSON payload unchanged and parses the reply against UpdateTestsResponseSchema."
+    },
+    {
+      "id": "driver-schema",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/tests.ts",
+      "supports": "UpdateTestsLabelsPayloadSchema declares test_ids and labels as required arrays. UpdateTestsResponseSchema records that this endpoint acknowledges the assignment with the IDs and labels rather than returning the tests, and that modelling it as a test list made every successful call resolve to an empty array."
+    },
+    {
+      "id": "testrail-tests",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077990441108-Tests",
+      "supports": "update_test/{test_id} updates the labels assigned to an existing test and requires labels, an array of label IDs, titles or both. update_tests assigns the same labels to several tests in one call and does not support a different set per test; its example request and response carry test_ids, although its parameter table names a single test_id, and its response echoes the IDs and labels rather than returning the tests."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement at every depth. The endpoint takes no path argument, so the body carries everything: the tests to change and the labels to give them."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail acknowledges the assignment by echoing the test IDs and the labels applied; it does not return the tests, so a caller wanting to see one reads it afterwards. One request covers every listed test, whichever runs they belong to."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-body",
+      "kind": "invalid",
+      "description": "Reject an unknown body field rather than forwarding it."
+    },
+    {
+      "id": "no-split",
+      "kind": "mapping",
+      "description": "Send exactly one request carrying every listed test. The adapter never splits the list or retries on its own."
+    }
+  ],
+  "baseline": "representative",
+  "parameters": [
+    {
+      "id": "body",
+      "input_path": [
+        "body"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "object"
+      },
+      "semantics": "No coercion. The JSON object is the driver's only argument and is sent unchanged.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "body"
+        ],
+        "encoding": "JSON object sent unchanged."
+      },
+      "sources": [
+        "driver-module",
+        "driver-schema"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the object at driver argument 0 as the JSON request body."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an object carrying the tests and the labels."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a body that is not an object before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing body."
+        }
+      ]
+    },
+    {
+      "id": "body.test_ids",
+      "input_path": [
+        "body",
+        "test_ids"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "semantics": "The tests to change, which need not belong to one run. The driver validates each member as an identifier before dispatch, and the boundary requires at least one: an empty list names nothing to update.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "test_ids"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "test_ids"
+        ],
+        "encoding": "JSON array of integers under test_ids."
+      },
+      "sources": [
+        "driver-module",
+        "driver-schema",
+        "testrail-tests"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member in order under test_ids."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a list of identifiers."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-positive or fractional member before driver invocation."
+        },
+        {
+          "id": "empty",
+          "kind": "invalid",
+          "description": "Reject an empty list, which names nothing to update."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a body without test_ids."
+        }
+      ]
+    },
+    {
+      "id": "body.labels",
+      "input_path": [
+        "body",
+        "labels"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "semantics": "The labels to assign, named by ID or by title and mixed freely, as TestRail documents. The driver accepts any number for an ID and forwards the payload without parsing it, so the boundary holds numeric members to the identifier domain. These endpoints replace a test's labels rather than adding to them, so an empty array is the way to clear them and is sent as such; it is also the only way, since labels are the one field of a test the API can change.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "labels"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "labels"
+        ],
+        "encoding": "JSON array of integers and strings under labels."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-tests"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member in order under labels."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an ID and a title together."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a boolean member before driver invocation."
+        },
+        {
+          "id": "zero-id",
+          "kind": "invalid",
+          "description": "Reject a label ID of zero, which can never name a label."
+        },
+        {
+          "id": "empty",
+          "kind": "valid",
+          "description": "Accept an empty array and send it, which clears the test's labels."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a body without labels."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative",
+      "input": {
+        "body": {
+          "test_ids": [
+            1,
+            2,
+            3
+          ],
+          "labels": [
+            1,
+            "label2"
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.test_ids",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.labels",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-split"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "tests.updateTests",
+          "arguments": [
+            {
+              "test_ids": [
+                1,
+                2,
+                3
+              ],
+              "labels": [
+                1,
+                "label2"
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_tests",
+          "json": {
+            "test_ids": [
+              1,
+              2,
+              3
+            ],
+            "labels": [
+              1,
+              "label2"
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "test_ids": [
+              1,
+              2,
+              3
+            ],
+            "labels": [
+              {
+                "id": 1,
+                "title": "label1"
+              },
+              {
+                "id": 2,
+                "title": "label2"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "test_ids": [
+              1,
+              2,
+              3
+            ],
+            "labels": [
+              {
+                "id": 1,
+                "title": "label1"
+              },
+              {
+                "id": 2,
+                "title": "label2"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-ids",
+      "input": {
+        "body": {
+          "test_ids": [
+            9007199254740991
+          ],
+          "labels": [
+            9007199254740991
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.test_ids",
+          "requirements": [
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "tests.updateTests",
+          "arguments": [
+            {
+              "test_ids": [
+                9007199254740991
+              ],
+              "labels": [
+                9007199254740991
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_tests",
+          "json": {
+            "test_ids": [
+              9007199254740991
+            ],
+            "labels": [
+              9007199254740991
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "test_ids": [
+              1,
+              2,
+              3
+            ],
+            "labels": [
+              {
+                "id": 1,
+                "title": "label1"
+              },
+              {
+                "id": 2,
+                "title": "label2"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "test_ids": [
+              1,
+              2,
+              3
+            ],
+            "labels": [
+              {
+                "id": 1,
+                "title": "label1"
+              },
+              {
+                "id": 2,
+                "title": "label2"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "missing-body",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-body",
+      "input": {
+        "body": []
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-test-ids",
+      "input": {
+        "body": {
+          "labels": [
+            1
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.test_ids",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "empty-test-ids",
+      "input": {
+        "body": {
+          "test_ids": [],
+          "labels": [
+            1
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.test_ids",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "zero-test-id",
+      "input": {
+        "body": {
+          "test_ids": [
+            0
+          ],
+          "labels": [
+            1
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.test_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-labels",
+      "input": {
+        "body": {
+          "test_ids": [
+            1
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.labels",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "empty-labels",
+      "input": {
+        "body": {
+          "test_ids": [
+            1,
+            2,
+            3
+          ],
+          "labels": []
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.labels",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "tests.updateTests",
+          "arguments": [
+            {
+              "test_ids": [
+                1,
+                2,
+                3
+              ],
+              "labels": []
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_tests",
+          "json": {
+            "test_ids": [
+              1,
+              2,
+              3
+            ],
+            "labels": []
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "test_ids": [
+              1,
+              2,
+              3
+            ],
+            "labels": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "test_ids": [
+              1,
+              2,
+              3
+            ],
+            "labels": []
+          }
+        }
+      }
+    },
+    {
+      "id": "boolean-label",
+      "input": {
+        "body": {
+          "test_ids": [
+            1
+          ],
+          "labels": [
+            true
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.labels",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "zero-label-id",
+      "input": {
+        "body": {
+          "test_ids": [
+            1
+          ],
+          "labels": [
+            0
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.labels",
+          "requirements": [
+            "zero-id"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-body",
+      "input": {
+        "body": {
+          "test_ids": [
+            1
+          ],
+          "labels": [
+            1
+          ],
+          "run_id": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-body"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "body": {
+          "test_ids": [
+            1
+          ],
+          "labels": [
+            1
+          ]
+        },
+        "test_ids": [
+          1
+        ]
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

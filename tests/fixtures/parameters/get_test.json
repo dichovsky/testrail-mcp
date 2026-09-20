@@ -1,0 +1,542 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T04",
+    "http_method": "GET",
+    "route": "get_test/{test_id}",
+    "tool": "testrail_get_test",
+    "driver_method": "tests.getTest"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/tests.ts",
+      "supports": "getTest validates the test ID and appends with_data only when the caller supplies it, refusing any value other than the strings 0 and 1 before dispatch. With 1 it parses the reply as a test with its results and attachments and returns them merged into one record; otherwise it parses a plain test."
+    },
+    {
+      "id": "testrail-tests",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077990441108-Tests",
+      "supports": "get_test/{test_id} takes the test ID and the with_data filter, which returns the test results and attachments alongside the test when set to 1. The response carries the test's own fields and the case fields copied into it under their custom_ names. The assigned_to_id filter requires TestRail 10.8 and is outside the pinned driver."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement at every depth. with_data is the string TestRail reads rather than a boolean, because that is the value the driver validates and sends."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "The test is returned as the driver received it, including the case fields copied into it under their custom_ names. With with_data set to 1 the driver merges TestRail's results and attachments into the same record, which is why one record covers both forms; entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-query",
+      "kind": "invalid",
+      "description": "Reject an unsupported query key rather than discarding it."
+    }
+  ],
+  "baseline": "representative-id",
+  "parameters": [
+    {
+      "id": "test_id",
+      "input_path": [
+        "test_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "No coercion. The validated number is passed positionally and appears verbatim in the path.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "test_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-tests"
+      ]
+    },
+    {
+      "id": "query.with_data",
+      "input_path": [
+        "query",
+        "with_data"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain": {
+        "enum": [
+          "0",
+          "1"
+        ]
+      },
+      "semantics": "The string TestRail reads, not a boolean: 1 asks for the results and attachments alongside the test and 0 asks for the test alone. The driver refuses any other value before dispatch, and omitting it sends no control at all.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "withData"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "with_data"
+        ],
+        "encoding": "with_data=0 or with_data=1 appended path-style; nothing is appended when omitted."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-tests"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value as the withData option at driver argument 1."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept \"1\" and receive the results and attachments alongside."
+        },
+        {
+          "id": "plain",
+          "kind": "valid",
+          "description": "Accept \"0\" and send it, receiving the test alone."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a boolean in place of the string before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no control when the caller did not supply one."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-id",
+      "input": {
+        "test_id": 100
+      },
+      "covers": [
+        {
+          "parameter": "test_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "query.with_data",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "tests.getTest",
+          "arguments": [
+            100
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_test/100"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 100,
+            "case_id": 1,
+            "run_id": 1,
+            "status_id": 5,
+            "title": "Verify line spacing on multi-page document",
+            "assignedto_id": 1,
+            "priority_id": 2,
+            "type_id": 4,
+            "estimate": "1m 5s",
+            "estimate_forecast": null,
+            "custom_preconds": "Signed in",
+            "custom_expected": "The lines are evenly spaced",
+            "labels": [
+              {
+                "id": 1,
+                "title": "label1"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 100,
+            "case_id": 1,
+            "run_id": 1,
+            "status_id": 5,
+            "title": "Verify line spacing on multi-page document",
+            "assignedto_id": 1,
+            "priority_id": 2,
+            "type_id": 4,
+            "estimate": "1m 5s",
+            "estimate_forecast": null,
+            "custom_preconds": "Signed in",
+            "custom_expected": "The lines are evenly spaced",
+            "labels": [
+              {
+                "id": 1,
+                "title": "label1"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": {
+        "test_id": 9007199254740991
+      },
+      "covers": [
+        {
+          "parameter": "test_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "tests.getTest",
+          "arguments": [
+            9007199254740991
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_test/9007199254740991"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 100,
+            "case_id": 1,
+            "run_id": 1,
+            "status_id": 5,
+            "title": "Verify line spacing on multi-page document",
+            "assignedto_id": 1,
+            "priority_id": 2,
+            "type_id": 4,
+            "estimate": "1m 5s",
+            "estimate_forecast": null,
+            "custom_preconds": "Signed in",
+            "custom_expected": "The lines are evenly spaced",
+            "labels": [
+              {
+                "id": 1,
+                "title": "label1"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 100,
+            "case_id": 1,
+            "run_id": 1,
+            "status_id": 5,
+            "title": "Verify line spacing on multi-page document",
+            "assignedto_id": 1,
+            "priority_id": 2,
+            "type_id": 4,
+            "estimate": "1m 5s",
+            "estimate_forecast": null,
+            "custom_preconds": "Signed in",
+            "custom_expected": "The lines are evenly spaced",
+            "labels": [
+              {
+                "id": 1,
+                "title": "label1"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "plain-test",
+      "input": {
+        "test_id": 100,
+        "query": {
+          "with_data": "0"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.with_data",
+          "requirements": [
+            "plain"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "tests.getTest",
+          "arguments": [
+            100,
+            {
+              "withData": "0"
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_test/100&with_data=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 100,
+            "case_id": 1,
+            "run_id": 1,
+            "status_id": 5,
+            "title": "Verify line spacing on multi-page document",
+            "assignedto_id": 1,
+            "priority_id": 2,
+            "type_id": 4,
+            "estimate": "1m 5s",
+            "estimate_forecast": null,
+            "custom_preconds": "Signed in",
+            "custom_expected": "The lines are evenly spaced",
+            "labels": [
+              {
+                "id": 1,
+                "title": "label1"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 100,
+            "case_id": 1,
+            "run_id": 1,
+            "status_id": 5,
+            "title": "Verify line spacing on multi-page document",
+            "assignedto_id": 1,
+            "priority_id": 2,
+            "type_id": 4,
+            "estimate": "1m 5s",
+            "estimate_forecast": null,
+            "custom_preconds": "Signed in",
+            "custom_expected": "The lines are evenly spaced",
+            "labels": [
+              {
+                "id": 1,
+                "title": "label1"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "with-results-and-attachments",
+      "input": {
+        "test_id": 100,
+        "query": {
+          "with_data": "1"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.with_data",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "tests.getTest",
+          "arguments": [
+            100,
+            {
+              "withData": "1"
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_test/100&with_data=1"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "test": {
+              "id": 100,
+              "case_id": 1,
+              "run_id": 1,
+              "status_id": 5,
+              "title": "Verify line spacing on multi-page document",
+              "assignedto_id": 1,
+              "priority_id": 2,
+              "type_id": 4,
+              "estimate": "1m 5s",
+              "estimate_forecast": null,
+              "custom_preconds": "Signed in",
+              "custom_expected": "The lines are evenly spaced",
+              "labels": [
+                {
+                  "id": 1,
+                  "title": "label1"
+                }
+              ]
+            },
+            "results": [
+              {
+                "id": 1,
+                "test_id": 100,
+                "status_id": 5
+              }
+            ],
+            "attachments": [
+              {
+                "id": "a1",
+                "name": "screenshot.png"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 100,
+            "case_id": 1,
+            "run_id": 1,
+            "status_id": 5,
+            "title": "Verify line spacing on multi-page document",
+            "assignedto_id": 1,
+            "priority_id": 2,
+            "type_id": 4,
+            "estimate": "1m 5s",
+            "estimate_forecast": null,
+            "custom_preconds": "Signed in",
+            "custom_expected": "The lines are evenly spaced",
+            "labels": [
+              {
+                "id": 1,
+                "title": "label1"
+              }
+            ],
+            "results": [
+              {
+                "id": 1,
+                "test_id": 100,
+                "status_id": 5
+              }
+            ],
+            "attachments": [
+              {
+                "id": "a1",
+                "name": "screenshot.png"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "boolean-with-data",
+      "input": {
+        "test_id": 100,
+        "query": {
+          "with_data": true
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.with_data",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-query",
+      "input": {
+        "test_id": 100,
+        "query": {
+          "assigned_to_id": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-query"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "test_id": 100,
+        "run_id": 1
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

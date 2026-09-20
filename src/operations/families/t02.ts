@@ -61,13 +61,20 @@ const getCasesInput = createListInput({
   pagination: 'controlled',
 });
 
-/** REST filter name to driver option name; every filter is renamed to camelCase. */
+type CaseFilter = Omit<GetCasesOptions, 'limit' | 'offset'>;
+
+/**
+ * REST filter name to driver option name; every filter is renamed to camelCase. Each
+ * value is checked to be an option the driver still has, because the helper below
+ * builds its object dynamically and a renamed option would otherwise stop being sent
+ * without failing to compile.
+ */
 const caseFilterNames = {
   suite_id: 'suiteId', section_id: 'sectionId', type_id: 'typeId', priority_id: 'priorityId',
   template_id: 'templateId', milestone_id: 'milestoneId', created_after: 'createdAfter',
   created_before: 'createdBefore', created_by: 'createdBy', filter: 'filter', updated_after: 'updatedAfter',
   updated_before: 'updatedBefore', updated_by: 'updatedBy', label_id: 'labelId', refs: 'refs',
-} as const;
+} as const satisfies Readonly<Record<string, keyof CaseFilter>>;
 
 /** Filters the driver joins with commas; refs is repeated instead and the rest are scalars. */
 const listFilters = new Set(['type_id', 'priority_id', 'template_id', 'milestone_id', 'created_by', 'updated_by', 'label_id']);
@@ -78,8 +85,6 @@ function caseFilterMappings(call: 'page' | 'all'): readonly ArgumentMapping[] {
     serialization: name === 'refs' ? 'query-repeated' : listFilters.has(name) ? 'query-list' : 'query-scalar',
   }));
 }
-
-type CaseFilter = Omit<GetCasesOptions, 'limit' | 'offset'>;
 
 /** Renamed filters, carried over only when supplied so the driver sends nothing for the rest. */
 function caseFilter(query: object | undefined): CaseFilter {

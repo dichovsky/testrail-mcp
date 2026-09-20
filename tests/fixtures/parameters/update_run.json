@@ -1,0 +1,1819 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T04",
+    "http_method": "POST",
+    "route": "update_run/{run_id}",
+    "tool": "testrail_update_run",
+    "driver_method": "runs.updateRun"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/runs.ts",
+      "supports": "updateRun validates the run ID, places it as the only path segment of update_run, forwards the JSON payload unchanged and parses the reply advisorily against RunSchema."
+    },
+    {
+      "id": "driver-schema",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/runs.ts",
+      "supports": "AddRunPayloadSchema requires name and accepts suite_id, description, milestone_id, assignedto_id, include_all, case_ids, refs, start_on, due_on and dynamic_filters, whose mode is a string and whose filters is a record of records. UpdateRunPayloadSchema is the same without suite_id and with name optional. Neither is parsed by the public method, which forwards the payload as given, so every payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "testrail-runs",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077874763156-Runs",
+      "supports": "add_run/{project_id} requires the project and takes suite_id (optional only in single-suite mode), name, description, milestone_id, assignedto_id, include_all (default true), case_ids, refs (TestRail 6.1 or later), start_on, due_on and dynamic_filters, which follows the UI selection filter. Its precedence table states that dynamic_filters applies only when include_all is false or absent and case_ids is empty or absent, and that case_ids wins whenever it names cases. update_run/{run_id} supports the same fields except suite_id and applies partial updates."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement at every depth, and here it is the only enforcement: the driver forwards this payload without parsing it. suite_id is absent because a run's suite cannot be changed after it exists, which is the one field add_run takes and this endpoint does not."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the updated run in the get_run format, returned as the driver received it; entity-field drift is advisory. Sending include_all or case_ids replaces the run's case selection rather than adding to it."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-body",
+      "kind": "invalid",
+      "description": "Reject an unknown ordinary body field rather than forwarding it."
+    },
+    {
+      "id": "selection-precedence",
+      "kind": "mapping",
+      "description": "Send include_all, case_ids and dynamic_filters exactly as the caller supplied them. TestRail decides which of them governs the selection, and the adapter neither resolves that precedence nor drops the fields it would ignore."
+    }
+  ],
+  "baseline": "full-body",
+  "parameters": [
+    {
+      "id": "run_id",
+      "input_path": [
+        "run_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "No coercion. The validated number is passed positionally and appears verbatim in the path.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "run_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-runs"
+      ]
+    },
+    {
+      "id": "body",
+      "input_path": [
+        "body"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "object"
+      },
+      "semantics": "No coercion. The JSON object is passed as the driver's payload argument and sent unchanged.",
+      "driver": {
+        "argument": 1,
+        "path": []
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "body"
+        ],
+        "encoding": "JSON object sent unchanged."
+      },
+      "sources": [
+        "driver-module",
+        "driver-schema"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the object at driver argument 1 as the JSON request body."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an object."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a body that is not an object before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing body."
+        }
+      ]
+    },
+    {
+      "id": "body.name",
+      "input_path": [
+        "body",
+        "name"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The new name. Omitted leaves it unchanged. No coercion.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "name"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "name"
+        ],
+        "encoding": "JSON string under name."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-runs"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the name under its own name in the body."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string name before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no name when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.description",
+      "input_path": [
+        "body",
+        "description"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The run's description. No coercion.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "description"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "description"
+        ],
+        "encoding": "JSON string under description."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-runs"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the description under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string description before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no description when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.milestone_id",
+      "input_path": [
+        "body",
+        "milestone_id"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain_ref": "positive_id",
+      "semantics": "The milestone to link the run to. The driver forwards any number and its declared type admits no null, so the boundary holds it to the identifier domain; unlinking is not available through the pinned driver.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "milestone_id"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "milestone_id"
+        ],
+        "encoding": "JSON integer under milestone_id."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-runs"
+      ]
+    },
+    {
+      "id": "body.assignedto_id",
+      "input_path": [
+        "body",
+        "assignedto_id"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain_ref": "positive_id",
+      "semantics": "The user the whole run is assigned to. The driver forwards any number and its declared type admits no null, so the boundary holds it to the identifier domain; unlinking is not available through the pinned driver.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "assignedto_id"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "assignedto_id"
+        ],
+        "encoding": "JSON integer under assignedto_id."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-runs"
+      ]
+    },
+    {
+      "id": "body.include_all",
+      "input_path": [
+        "body",
+        "include_all"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "true takes every case of the suite and false takes a selection. TestRail treats an absent value as true, and reads this together with case_ids and dynamic_filters under its documented precedence rules, so omitting it is a third state rather than a synonym for either value.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "include_all"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "include_all"
+        ],
+        "encoding": "JSON boolean under include_all."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-runs"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the flag under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept false and send it, leaving the selection to case_ids or dynamic_filters."
+        },
+        {
+          "id": "all-cases",
+          "kind": "valid",
+          "description": "Accept true and send it, taking every case of the suite."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a numeric stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no flag when the caller did not supply one, leaving TestRail's default."
+        }
+      ]
+    },
+    {
+      "id": "body.case_ids",
+      "input_path": [
+        "body",
+        "case_ids"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "semantics": "The cases to include. The driver forwards any number, so the boundary holds every member to the identifier domain. An empty array is meaningful and is not refused: TestRail's precedence rules make a dynamic filter effective only when case_ids is empty or absent.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "case_ids"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "case_ids"
+        ],
+        "encoding": "JSON array of integers under case_ids."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-runs"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member in order under case_ids."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a list of case identifiers."
+        },
+        {
+          "id": "empty",
+          "kind": "valid",
+          "description": "Accept an empty array and send it, which is what lets a dynamic filter apply."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-positive member before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no selection when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.refs",
+      "input_path": [
+        "body",
+        "refs"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "A comma-separated list of references in one string, as TestRail documents it (TestRail 6.1 or later). No coercion; an array is not the documented form.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "refs"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "refs"
+        ],
+        "encoding": "JSON string under refs."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-runs"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the references string under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a comma-separated string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject an array of references before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no references when the caller did not supply them."
+        }
+      ]
+    },
+    {
+      "id": "body.start_on",
+      "input_path": [
+        "body",
+        "start_on"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain_ref": "unix_timestamp",
+      "semantics": "The run's start date. Seconds since the Unix epoch, as TestRail documents. The driver forwards any number, so the boundary holds it to the timestamp domain.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "start_on"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "start_on"
+        ],
+        "encoding": "JSON integer under start_on."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-runs"
+      ]
+    },
+    {
+      "id": "body.due_on",
+      "input_path": [
+        "body",
+        "due_on"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain_ref": "unix_timestamp",
+      "semantics": "The run's end date. Seconds since the Unix epoch, as TestRail documents. The driver forwards any number, so the boundary holds it to the timestamp domain.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "due_on"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "due_on"
+        ],
+        "encoding": "JSON integer under due_on."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-runs"
+      ]
+    },
+    {
+      "id": "body.dynamic_filters",
+      "input_path": [
+        "body",
+        "dynamic_filters"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "object",
+        "required": [
+          "mode",
+          "filters"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string"
+          },
+          "filters": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "semantics": "A selection filter in the form the TestRail interface produces: a mode, which the payload declares as a string rather than a number, and a filters map whose keys name a field such as cases:priority_id and whose values are the filter for it. The values are forwarded as given, since TestRail's own examples vary their shape from one field to the next. The object itself carries nothing beyond those two fields, and an extra one is refused.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "dynamic_filters"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "dynamic_filters"
+        ],
+        "encoding": "JSON object under dynamic_filters, sent unchanged."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-runs"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the filter object under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a mode and a filters map covering more than one field."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a filter object without its mode before driver invocation."
+        },
+        {
+          "id": "mode-string",
+          "kind": "invalid",
+          "description": "Reject a numeric mode, which the payload declares as a string."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no filter when the caller did not supply one."
+        },
+        {
+          "id": "ignored-when-cases-named",
+          "kind": "valid",
+          "description": "Send the filter even alongside a non-empty case_ids, which TestRail's precedence rules say it will ignore. Which field governs the selection is TestRail's decision, not one this adapter makes by dropping a field."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "full-body",
+      "input": {
+        "run_id": 9942,
+        "body": {
+          "name": "Nightly regression",
+          "description": "Runs every night",
+          "milestone_id": 7,
+          "assignedto_id": 5,
+          "include_all": false,
+          "case_ids": [
+            1,
+            2,
+            3
+          ],
+          "refs": "SAN-1",
+          "start_on": 1775000000,
+          "due_on": 1775999999
+        }
+      },
+      "covers": [
+        {
+          "parameter": "run_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.description",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.milestone_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.assignedto_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.include_all",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.case_ids",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.refs",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.start_on",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.due_on",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.dynamic_filters",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "$input",
+          "requirements": [
+            "selection-precedence"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.updateRun",
+          "arguments": [
+            9942,
+            {
+              "name": "Nightly regression",
+              "description": "Runs every night",
+              "milestone_id": 7,
+              "assignedto_id": 5,
+              "include_all": false,
+              "case_ids": [
+                1,
+                2,
+                3
+              ],
+              "refs": "SAN-1",
+              "start_on": 1775000000,
+              "due_on": 1775999999
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_run/9942",
+          "json": {
+            "name": "Nightly regression",
+            "description": "Runs every night",
+            "milestone_id": 7,
+            "assignedto_id": 5,
+            "include_all": false,
+            "case_ids": [
+              1,
+              2,
+              3
+            ],
+            "refs": "SAN-1",
+            "start_on": 1775000000,
+            "due_on": 1775999999
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 9942,
+            "name": "Test Run Name",
+            "description": null,
+            "suite_id": 10,
+            "project_id": 3,
+            "plan_id": null,
+            "milestone_id": null,
+            "assignedto_id": null,
+            "include_all": false,
+            "is_completed": false,
+            "completed_on": null,
+            "config": null,
+            "config_ids": [],
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 46,
+            "retest_count": 0,
+            "failed_count": 0,
+            "created_by": 376,
+            "created_on": 1775495967,
+            "updated_on": 1775495967,
+            "refs": null,
+            "url": "https://test.testrail.io/index.php?/runs/view/123",
+            "start_on": null,
+            "due_on": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 9942,
+            "name": "Test Run Name",
+            "description": null,
+            "suite_id": 10,
+            "project_id": 3,
+            "plan_id": null,
+            "milestone_id": null,
+            "assignedto_id": null,
+            "include_all": false,
+            "is_completed": false,
+            "completed_on": null,
+            "config": null,
+            "config_ids": [],
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 46,
+            "retest_count": 0,
+            "failed_count": 0,
+            "created_by": 376,
+            "created_on": 1775495967,
+            "updated_on": 1775495967,
+            "refs": null,
+            "url": "https://test.testrail.io/index.php?/runs/view/123",
+            "start_on": null,
+            "due_on": null
+          }
+        }
+      }
+    },
+    {
+      "id": "empty-body",
+      "input": {
+        "run_id": 9942,
+        "body": {}
+      },
+      "covers": [
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.description",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.milestone_id",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.assignedto_id",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.include_all",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.case_ids",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.refs",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.start_on",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.due_on",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.updateRun",
+          "arguments": [
+            9942,
+            {}
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_run/9942",
+          "json": {}
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 9942,
+            "name": "Test Run Name",
+            "description": null,
+            "suite_id": 10,
+            "project_id": 3,
+            "plan_id": null,
+            "milestone_id": null,
+            "assignedto_id": null,
+            "include_all": false,
+            "is_completed": false,
+            "completed_on": null,
+            "config": null,
+            "config_ids": [],
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 46,
+            "retest_count": 0,
+            "failed_count": 0,
+            "created_by": 376,
+            "created_on": 1775495967,
+            "updated_on": 1775495967,
+            "refs": null,
+            "url": "https://test.testrail.io/index.php?/runs/view/123",
+            "start_on": null,
+            "due_on": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 9942,
+            "name": "Test Run Name",
+            "description": null,
+            "suite_id": 10,
+            "project_id": 3,
+            "plan_id": null,
+            "milestone_id": null,
+            "assignedto_id": null,
+            "include_all": false,
+            "is_completed": false,
+            "completed_on": null,
+            "config": null,
+            "config_ids": [],
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 46,
+            "retest_count": 0,
+            "failed_count": 0,
+            "created_by": 376,
+            "created_on": 1775495967,
+            "updated_on": 1775495967,
+            "refs": null,
+            "url": "https://test.testrail.io/index.php?/runs/view/123",
+            "start_on": null,
+            "due_on": null
+          }
+        }
+      }
+    },
+    {
+      "id": "dynamic-selection",
+      "input": {
+        "run_id": 9942,
+        "body": {
+          "include_all": false,
+          "case_ids": [],
+          "dynamic_filters": {
+            "mode": "1",
+            "filters": {
+              "cases:priority_id": {
+                "values": [
+                  2
+                ]
+              },
+              "cases:title": {
+                "mode": "2",
+                "filters": [
+                  {
+                    "op": 5,
+                    "value": "Login"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.case_ids",
+          "requirements": [
+            "empty"
+          ]
+        },
+        {
+          "parameter": "body.dynamic_filters",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.updateRun",
+          "arguments": [
+            9942,
+            {
+              "include_all": false,
+              "case_ids": [],
+              "dynamic_filters": {
+                "mode": "1",
+                "filters": {
+                  "cases:priority_id": {
+                    "values": [
+                      2
+                    ]
+                  },
+                  "cases:title": {
+                    "mode": "2",
+                    "filters": [
+                      {
+                        "op": 5,
+                        "value": "Login"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_run/9942",
+          "json": {
+            "include_all": false,
+            "case_ids": [],
+            "dynamic_filters": {
+              "mode": "1",
+              "filters": {
+                "cases:priority_id": {
+                  "values": [
+                    2
+                  ]
+                },
+                "cases:title": {
+                  "mode": "2",
+                  "filters": [
+                    {
+                      "op": 5,
+                      "value": "Login"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 9942,
+            "name": "Test Run Name",
+            "description": null,
+            "suite_id": 10,
+            "project_id": 3,
+            "plan_id": null,
+            "milestone_id": null,
+            "assignedto_id": null,
+            "include_all": false,
+            "is_completed": false,
+            "completed_on": null,
+            "config": null,
+            "config_ids": [],
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 46,
+            "retest_count": 0,
+            "failed_count": 0,
+            "created_by": 376,
+            "created_on": 1775495967,
+            "updated_on": 1775495967,
+            "refs": null,
+            "url": "https://test.testrail.io/index.php?/runs/view/123",
+            "start_on": null,
+            "due_on": null,
+            "dynamic_filters": {
+              "mode": "1",
+              "filters": {
+                "cases:priority_id": {
+                  "values": [
+                    2
+                  ]
+                },
+                "cases:title": {
+                  "mode": "2",
+                  "filters": [
+                    {
+                      "op": 5,
+                      "value": "Login"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 9942,
+            "name": "Test Run Name",
+            "description": null,
+            "suite_id": 10,
+            "project_id": 3,
+            "plan_id": null,
+            "milestone_id": null,
+            "assignedto_id": null,
+            "include_all": false,
+            "is_completed": false,
+            "completed_on": null,
+            "config": null,
+            "config_ids": [],
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 46,
+            "retest_count": 0,
+            "failed_count": 0,
+            "created_by": 376,
+            "created_on": 1775495967,
+            "updated_on": 1775495967,
+            "refs": null,
+            "url": "https://test.testrail.io/index.php?/runs/view/123",
+            "start_on": null,
+            "due_on": null,
+            "dynamic_filters": {
+              "mode": "1",
+              "filters": {
+                "cases:priority_id": {
+                  "values": [
+                    2
+                  ]
+                },
+                "cases:title": {
+                  "mode": "2",
+                  "filters": [
+                    {
+                      "op": 5,
+                      "value": "Login"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "selection-and-filter",
+      "input": {
+        "run_id": 9942,
+        "body": {
+          "include_all": false,
+          "case_ids": [
+            1,
+            2,
+            3
+          ],
+          "dynamic_filters": {
+            "mode": "1",
+            "filters": {
+              "cases:priority_id": {
+                "values": [
+                  2
+                ]
+              },
+              "cases:title": {
+                "mode": "2",
+                "filters": [
+                  {
+                    "op": 5,
+                    "value": "Login"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.dynamic_filters",
+          "requirements": [
+            "ignored-when-cases-named"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.updateRun",
+          "arguments": [
+            9942,
+            {
+              "include_all": false,
+              "case_ids": [
+                1,
+                2,
+                3
+              ],
+              "dynamic_filters": {
+                "mode": "1",
+                "filters": {
+                  "cases:priority_id": {
+                    "values": [
+                      2
+                    ]
+                  },
+                  "cases:title": {
+                    "mode": "2",
+                    "filters": [
+                      {
+                        "op": 5,
+                        "value": "Login"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_run/9942",
+          "json": {
+            "include_all": false,
+            "case_ids": [
+              1,
+              2,
+              3
+            ],
+            "dynamic_filters": {
+              "mode": "1",
+              "filters": {
+                "cases:priority_id": {
+                  "values": [
+                    2
+                  ]
+                },
+                "cases:title": {
+                  "mode": "2",
+                  "filters": [
+                    {
+                      "op": 5,
+                      "value": "Login"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 9942,
+            "name": "Test Run Name",
+            "description": null,
+            "suite_id": 10,
+            "project_id": 3,
+            "plan_id": null,
+            "milestone_id": null,
+            "assignedto_id": null,
+            "include_all": false,
+            "is_completed": false,
+            "completed_on": null,
+            "config": null,
+            "config_ids": [],
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 46,
+            "retest_count": 0,
+            "failed_count": 0,
+            "created_by": 376,
+            "created_on": 1775495967,
+            "updated_on": 1775495967,
+            "refs": null,
+            "url": "https://test.testrail.io/index.php?/runs/view/123",
+            "start_on": null,
+            "due_on": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 9942,
+            "name": "Test Run Name",
+            "description": null,
+            "suite_id": 10,
+            "project_id": 3,
+            "plan_id": null,
+            "milestone_id": null,
+            "assignedto_id": null,
+            "include_all": false,
+            "is_completed": false,
+            "completed_on": null,
+            "config": null,
+            "config_ids": [],
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 46,
+            "retest_count": 0,
+            "failed_count": 0,
+            "created_by": 376,
+            "created_on": 1775495967,
+            "updated_on": 1775495967,
+            "refs": null,
+            "url": "https://test.testrail.io/index.php?/runs/view/123",
+            "start_on": null,
+            "due_on": null
+          }
+        }
+      }
+    },
+    {
+      "id": "every-case",
+      "input": {
+        "run_id": 9007199254740991,
+        "body": {
+          "include_all": true,
+          "milestone_id": 9007199254740991,
+          "assignedto_id": 9007199254740991,
+          "start_on": 0,
+          "due_on": 0
+        }
+      },
+      "covers": [
+        {
+          "parameter": "run_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body.include_all",
+          "requirements": [
+            "all-cases"
+          ]
+        },
+        {
+          "parameter": "body.milestone_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body.assignedto_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body.start_on",
+          "requirements": [
+            "zero"
+          ]
+        },
+        {
+          "parameter": "body.due_on",
+          "requirements": [
+            "zero"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.updateRun",
+          "arguments": [
+            9007199254740991,
+            {
+              "include_all": true,
+              "milestone_id": 9007199254740991,
+              "assignedto_id": 9007199254740991,
+              "start_on": 0,
+              "due_on": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_run/9007199254740991",
+          "json": {
+            "include_all": true,
+            "milestone_id": 9007199254740991,
+            "assignedto_id": 9007199254740991,
+            "start_on": 0,
+            "due_on": 0
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 9942,
+            "name": "Test Run Name",
+            "description": null,
+            "suite_id": 10,
+            "project_id": 3,
+            "plan_id": null,
+            "milestone_id": null,
+            "assignedto_id": null,
+            "include_all": false,
+            "is_completed": false,
+            "completed_on": null,
+            "config": null,
+            "config_ids": [],
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 46,
+            "retest_count": 0,
+            "failed_count": 0,
+            "created_by": 376,
+            "created_on": 1775495967,
+            "updated_on": 1775495967,
+            "refs": null,
+            "url": "https://test.testrail.io/index.php?/runs/view/123",
+            "start_on": null,
+            "due_on": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 9942,
+            "name": "Test Run Name",
+            "description": null,
+            "suite_id": 10,
+            "project_id": 3,
+            "plan_id": null,
+            "milestone_id": null,
+            "assignedto_id": null,
+            "include_all": false,
+            "is_completed": false,
+            "completed_on": null,
+            "config": null,
+            "config_ids": [],
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 46,
+            "retest_count": 0,
+            "failed_count": 0,
+            "created_by": 376,
+            "created_on": 1775495967,
+            "updated_on": 1775495967,
+            "refs": null,
+            "url": "https://test.testrail.io/index.php?/runs/view/123",
+            "start_on": null,
+            "due_on": null
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-dates",
+      "input": {
+        "run_id": 9942,
+        "body": {
+          "start_on": 9007199254740991,
+          "due_on": 9007199254740991,
+          "case_ids": [
+            9007199254740991
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.start_on",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body.due_on",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body.case_ids",
+          "requirements": [
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "runs.updateRun",
+          "arguments": [
+            9942,
+            {
+              "start_on": 9007199254740991,
+              "due_on": 9007199254740991,
+              "case_ids": [
+                9007199254740991
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_run/9942",
+          "json": {
+            "start_on": 9007199254740991,
+            "due_on": 9007199254740991,
+            "case_ids": [
+              9007199254740991
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 9942,
+            "name": "Test Run Name",
+            "description": null,
+            "suite_id": 10,
+            "project_id": 3,
+            "plan_id": null,
+            "milestone_id": null,
+            "assignedto_id": null,
+            "include_all": false,
+            "is_completed": false,
+            "completed_on": null,
+            "config": null,
+            "config_ids": [],
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 46,
+            "retest_count": 0,
+            "failed_count": 0,
+            "created_by": 376,
+            "created_on": 1775495967,
+            "updated_on": 1775495967,
+            "refs": null,
+            "url": "https://test.testrail.io/index.php?/runs/view/123",
+            "start_on": null,
+            "due_on": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 9942,
+            "name": "Test Run Name",
+            "description": null,
+            "suite_id": 10,
+            "project_id": 3,
+            "plan_id": null,
+            "milestone_id": null,
+            "assignedto_id": null,
+            "include_all": false,
+            "is_completed": false,
+            "completed_on": null,
+            "config": null,
+            "config_ids": [],
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 46,
+            "retest_count": 0,
+            "failed_count": 0,
+            "created_by": 376,
+            "created_on": 1775495967,
+            "updated_on": 1775495967,
+            "refs": null,
+            "url": "https://test.testrail.io/index.php?/runs/view/123",
+            "start_on": null,
+            "due_on": null
+          }
+        }
+      }
+    },
+    {
+      "id": "missing-body",
+      "input": {
+        "run_id": 9942
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-body",
+      "input": {
+        "run_id": 9942,
+        "body": []
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-name",
+      "input": {
+        "run_id": 9942,
+        "body": {
+          "name": 7
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-description",
+      "input": {
+        "run_id": 9942,
+        "body": {
+          "description": 7
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.description",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "numeric-include-all",
+      "input": {
+        "run_id": 9942,
+        "body": {
+          "include_all": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.include_all",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "zero-case-id",
+      "input": {
+        "run_id": 9942,
+        "body": {
+          "case_ids": [
+            0
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.case_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "refs-array",
+      "input": {
+        "run_id": 9942,
+        "body": {
+          "refs": [
+            "SAN-1"
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.refs",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "filter-without-mode",
+      "input": {
+        "run_id": 9942,
+        "body": {
+          "dynamic_filters": {
+            "filters": {}
+          }
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.dynamic_filters",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "numeric-filter-mode",
+      "input": {
+        "run_id": 9942,
+        "body": {
+          "dynamic_filters": {
+            "mode": 1,
+            "filters": {}
+          }
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.dynamic_filters",
+          "requirements": [
+            "mode-string"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "suite-not-updatable",
+      "input": {
+        "run_id": 9942,
+        "body": {
+          "suite_id": 10
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-body"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "run_id": 9942,
+        "body": {},
+        "name": "Smoke"
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

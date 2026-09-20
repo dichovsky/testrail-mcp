@@ -55,11 +55,16 @@ const getBddsInput = createListInput({
 /** Derived from the driver's own option type, so a rename there fails the build here. */
 type BddFilter = Omit<GetBddsOptions, 'limit' | 'offset'>;
 
+/** Each value is checked to be an option the driver still has. */
+const bddFilterNames = {
+  suite_id: 'suiteId', section_id: 'sectionId', label_id: 'labelId', refs: 'refs',
+} as const satisfies Readonly<Record<string, keyof BddFilter>>;
+
 /** Renamed filters, carried over only when supplied so the driver sends nothing for the rest. */
 function bddFilter(query: object | undefined): BddFilter {
   const source = (query ?? {}) as Record<string, unknown>;
   const filter: Record<string, unknown> = {};
-  for (const [name, option] of [['suite_id', 'suiteId'], ['section_id', 'sectionId'], ['label_id', 'labelId'], ['refs', 'refs']] as const) {
+  for (const [name, option] of Object.entries(bddFilterNames)) {
     if (source[name] !== undefined) filter[option] = source[name];
   }
   return filter;
@@ -221,13 +226,15 @@ const getSharedStepsInput = createListInput({
   pagination: 'controlled',
 });
 
+/** Derived from the driver's own option type, so a rename there fails the build here. */
+type SharedStepFilter = Omit<GetSharedStepsOptions, 'limit' | 'offset'>;
+
+/** Each value is checked to be an option the driver still has, which the type alone
+ * does not do for an object built dynamically. */
 const sharedStepFilterNames = {
   created_after: 'createdAfter', created_before: 'createdBefore', created_by: 'createdBy',
   updated_after: 'updatedAfter', updated_before: 'updatedBefore', refs: 'refs',
-} as const;
-
-/** Derived from the driver's own option type, so a rename there fails the build here. */
-type SharedStepFilter = Omit<GetSharedStepsOptions, 'limit' | 'offset'>;
+} as const satisfies Readonly<Record<string, keyof SharedStepFilter>>;
 
 function sharedStepFilter(query: object | undefined): SharedStepFilter {
   const source = (query ?? {}) as Record<string, unknown>;
