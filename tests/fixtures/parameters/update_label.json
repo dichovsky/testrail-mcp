@@ -1,0 +1,563 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T07",
+    "http_method": "POST",
+    "route": "update_label/{label_id}",
+    "tool": "testrail_update_label",
+    "driver_method": "labels.updateLabel"
+  },
+  "sources": [
+    {
+      "id": "driver-module-labels",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/labels.ts",
+      "supports": "Every method validates its identifier and places it as the only path segment of the matching endpoint. updateLabel additionally validates payload.project_id, and deleteLabels checks that label_ids is a non-empty array and validates every member, so those two payload rules are the driver's rather than the boundary's alone. The reads parse against LabelSchema, the two writes against LabelWriteResponseSchema, and the two deletes pass no schema and resolve with no value."
+    },
+    {
+      "id": "driver-schema-labels",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/labels.ts",
+      "supports": "LabelSchema carries id, title, name, created_by and created_on, with created_by a union of number and string because the reference quotes it while leaving created_on unquoted. LabelWriteResponseSchema is a union of that flat label and an object wrapping it under a label key, which it transforms to the flat form, so a mutation resolves with one shape whichever TestRail sends. AddLabelPayloadSchema carries a required title, and its comment records that TestRail's 20-character cap is deliberately left to the server. UpdateLabelPayloadSchema requires a positive project_id and a title. DeleteLabelsPayloadSchema requires a non-empty array of positive label_ids."
+    },
+    {
+      "id": "driver-common",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/common.ts",
+      "supports": "zObject uses passthrough, so the declared payload types admit unknown properties; the MCP boundary must reject them separately."
+    },
+    {
+      "id": "testrail-labels",
+      "url": "https://support.testrail.com/hc/en-us/articles/38961149782036-Labels",
+      "supports": "The reference documents get_label, get_labels and update_label only. get_labels takes the project plus limit and offset and no other filter. update_label takes project_id and title, both required, and caps the title at 20 characters. It documents neither add_label, delete_label nor delete_labels, so those three rest on the driver and on the official TestRail CLI."
+    },
+    {
+      "id": "trcli-labels",
+      "url": "https://github.com/gurock/trcli/blob/e723052d0898da6a501972c6855eddf487cd51bb/trcli/commands/cmd_labels.py",
+      "supports": "The official TestRail CLI reads a label mutation's reply as label_data.get('label', label_data), handling both the wrapped and the flat form, and sends add and update as the driver does. It enforces the 20-character title cap in its own command layer rather than relying on the server."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "This is the one label write TestRail's reference documents, and it asks for the owning project in the body even though the label is identified by its own ID in the path. The driver validates that project_id itself before dispatch, so its refusals are the driver's; the title requirement is the boundary's alone, and the 20-character cap is left to the server."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "The same union as the create: flat or wrapped under a label key, unwrapped by the driver to one flat record."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-body",
+      "kind": "invalid",
+      "description": "Reject an unknown body field."
+    },
+    {
+      "id": "wrapped-reply",
+      "kind": "mapping",
+      "description": "Return the same flat label whether TestRail answers with the label itself or wraps it under a label key."
+    }
+  ],
+  "baseline": "representative-update",
+  "parameters": [
+    {
+      "id": "label_id",
+      "input_path": [
+        "label_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The label to rename. No coercion; passed positionally and sent verbatim as the only path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "label_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module-labels",
+        "testrail-labels"
+      ]
+    },
+    {
+      "id": "body",
+      "input_path": [
+        "body"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "object",
+        "required": [
+          "project_id",
+          "title"
+        ]
+      },
+      "semantics": "No coercion. The JSON object is passed as the driver's second argument and sent unchanged.",
+      "driver": {
+        "argument": 1,
+        "path": []
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "body"
+        ],
+        "encoding": "JSON object sent unchanged."
+      },
+      "sources": [
+        "driver-module-labels",
+        "driver-schema-labels"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the object at driver argument 1 as the JSON request body."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an object."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a body that is not an object before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing body."
+        }
+      ]
+    },
+    {
+      "id": "body.project_id",
+      "input_path": [
+        "body",
+        "project_id"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The project the label belongs to, which TestRail requires here. The driver validates it before dispatch, so a non-positive value is refused by the driver rather than by the boundary alone.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "project_id"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "project_id"
+        ],
+        "encoding": "JSON integer under project_id."
+      },
+      "sources": [
+        "driver-module-labels",
+        "driver-schema-labels",
+        "testrail-labels"
+      ]
+    },
+    {
+      "id": "body.title",
+      "input_path": [
+        "body",
+        "title"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The label's new title. TestRail caps it at 20 characters and refuses a longer one itself. No coercion; TestRail owns the format.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "title"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "title"
+        ],
+        "encoding": "JSON string under title."
+      },
+      "sources": [
+        "driver-schema-labels",
+        "testrail-labels",
+        "trcli-labels"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a body without it."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-update",
+      "input": {
+        "label_id": 9,
+        "body": {
+          "project_id": 1,
+          "title": "renamed"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "label_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.project_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.title",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "labels.updateLabel",
+          "arguments": [
+            9,
+            {
+              "project_id": 1,
+              "title": "renamed"
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_label/9",
+          "json": {
+            "project_id": 1,
+            "title": "renamed"
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "title": "regression",
+            "created_by": "2",
+            "created_on": 1646058671
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "title": "regression",
+            "created_by": "2",
+            "created_on": 1646058671
+          }
+        }
+      }
+    },
+    {
+      "id": "wrapped-reply",
+      "input": {
+        "label_id": 9,
+        "body": {
+          "project_id": 1,
+          "title": "renamed"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "wrapped-reply"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "labels.updateLabel",
+          "arguments": [
+            9,
+            {
+              "project_id": 1,
+              "title": "renamed"
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_label/9",
+          "json": {
+            "project_id": 1,
+            "title": "renamed"
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "label": {
+              "id": 1,
+              "title": "regression",
+              "created_by": "2",
+              "created_on": 1646058671
+            }
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "title": "regression",
+            "created_by": "2",
+            "created_on": 1646058671
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-values",
+      "input": {
+        "label_id": 9007199254740991,
+        "body": {
+          "project_id": 9007199254740991,
+          "title": "renamed"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "label_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body.project_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "labels.updateLabel",
+          "arguments": [
+            9007199254740991,
+            {
+              "project_id": 9007199254740991,
+              "title": "renamed"
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_label/9007199254740991",
+          "json": {
+            "project_id": 9007199254740991,
+            "title": "renamed"
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "title": "regression",
+            "created_by": "2",
+            "created_on": 1646058671
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "title": "regression",
+            "created_by": "2",
+            "created_on": 1646058671
+          }
+        }
+      }
+    },
+    {
+      "id": "missing-body",
+      "input": {
+        "label_id": 9
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-body",
+      "input": {
+        "label_id": 9,
+        "body": []
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-title",
+      "input": {
+        "label_id": 9,
+        "body": {
+          "project_id": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.title",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-title",
+      "input": {
+        "label_id": 9,
+        "body": {
+          "project_id": 1,
+          "title": 7
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.title",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-body",
+      "input": {
+        "label_id": 9,
+        "body": {
+          "project_id": 1,
+          "title": "renamed",
+          "name": "renamed"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-body"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "label_id": 9,
+        "body": {
+          "project_id": 1,
+          "title": "renamed"
+        },
+        "title": "renamed"
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

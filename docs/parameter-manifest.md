@@ -11,6 +11,8 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `add_cases` | 12 | 18 | Complete input manifest |
 | `add_config` | 3 | 8 | Complete input manifest |
 | `add_config_group` | 3 | 8 | Complete input manifest |
+| `add_label` | 3 | 10 | Complete input manifest |
+| `add_milestone` | 8 | 12 | Complete input manifest |
 | `add_plan` | 27 | 38 | Complete input manifest |
 | `add_plan_entry` | 20 | 29 | Complete input manifest |
 | `add_project` | 4 | 10 | Complete input manifest |
@@ -30,6 +32,9 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `delete_cases` | 5 | 11 | Complete input manifest |
 | `delete_config` | 1 | 3 | Complete input manifest |
 | `delete_config_group` | 1 | 3 | Complete input manifest |
+| `delete_label` | 1 | 3 | Complete input manifest |
+| `delete_labels` | 2 | 10 | Complete input manifest |
+| `delete_milestone` | 1 | 3 | Complete input manifest |
 | `delete_plan` | 1 | 3 | Complete input manifest |
 | `delete_plan_entry` | 2 | 4 | Complete input manifest |
 | `delete_project` | 1 | 3 | Complete input manifest |
@@ -48,6 +53,10 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `get_cases` | 25 | 24 | Complete input manifest |
 | `get_configs` | 1 | 3 | Complete input manifest |
 | `get_history_for_case` | 10 | 16 | Complete input manifest |
+| `get_label` | 1 | 3 | Complete input manifest |
+| `get_labels` | 10 | 16 | Complete input manifest |
+| `get_milestone` | 1 | 3 | Complete input manifest |
+| `get_milestones` | 12 | 21 | Complete input manifest |
 | `get_plan` | 1 | 3 | Complete input manifest |
 | `get_plans` | 16 | 24 | Complete input manifest |
 | `get_project` | 1 | 3 | Complete input manifest |
@@ -73,6 +82,8 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `update_cases` | 14 | 15 | Complete input manifest |
 | `update_config` | 3 | 8 | Complete input manifest |
 | `update_config_group` | 3 | 8 | Complete input manifest |
+| `update_label` | 4 | 9 | Complete input manifest |
+| `update_milestone` | 10 | 14 | Complete input manifest |
 | `update_plan` | 8 | 11 | Complete input manifest |
 | `update_plan_entry` | 12 | 20 | Complete input manifest |
 | `update_project` | 11 | 29 | Complete input manifest |
@@ -125,6 +136,15 @@ A nested run is held to the same rule. TestRail's reference names `assignedto_id
 An effect annotation is now a gate rather than a per-endpoint assertion. `effects.destructive` is published as the MCP `destructiveHint`, which is what a host uses to decide whether to ask before calling, and until T06 nothing compared it against anything: the manifests describe arguments and replies, and the registration audits compare response shapes. `update_plan_entry` shipped as non-destructive although narrowing its case selection deletes tests and results in every run the entry generated, while the two siblings that destroy strictly less were both flagged correctly. [tests/effects.test.ts](../tests/effects.test.ts) states the rules over the whole registry instead: every removal is destructive, no read is, and a write that is not a creation and can narrow an existing run's case selection is. A rule has to be argued with, where a per-endpoint restatement could simply be edited to agree with a mistake.
 
 Three plan filters are rewritten between the caller and the wire, and the boolean is the one that can fail silently. `created_by` and `milestone_id` are comma-joined from a list, which is visible in the rendered query string, while `is_completed` is sent as `1` or `0`, so a `false` treated as absent would quietly ask for every plan instead of the open ones. The family suite asserts all three in the rendered query string on the first request, and the boolean again on an aggregate continuation, because a filter that survives only the first request returns a correct first page and a wrong remainder.
+
+
+Three of the six label endpoints are undocumented. TestRail's Labels reference covers `get_label`, `get_labels` and `update_label` only; `add_label`, `delete_label` and `delete_labels` appear in neither table, so their evidence is the driver's module and the [official TestRail CLI](https://github.com/gurock/trcli/blob/e723052d0898da6a501972c6855eddf487cd51bb/trcli/commands/cmd_labels.py), which sends the same requests. A label mutation's reply has shipped both flat and wrapped under a `label` key, and the CLI reads it as `label_data.get('label', label_data)`; the driver's response schema is a union that unwraps the wrapper, so a caller sees one flat record whichever form arrives, which the family suite proves by running both replies through the same tool and comparing the results.
+
+`delete_labels` is the only endpoint in the server with no path segment, and one of only two whose body the driver checks itself: it refuses a value that is not an array, an empty array and any non-positive member, each with a stated validation error before dispatch. Its manifest writes that list out instead of referencing the shared identifier-list domain, because the enforcement genuinely differs by binding. The same scalar that `labels.deleteLabels` refuses with a `TestRailValidationError` makes `cases.getCaseTitles`, the domain's probe, throw a `TypeError` instead, so referencing the shared domain here would have recorded a crash where the truth is a stated check. That is the concern tracked by the follow-up on proving a shared domain at every binding that references it, now with a measured example.
+
+TestRail caps a label title at 20 characters and the boundary does not. The driver's schema records that the limit is deliberately left to the server so the client does not duplicate a rule TestRail may change independently, and this server follows it: an over-long title is sent and TestRail's refusal is reported as it arrived. The official CLI takes the other side and checks the length in its own command layer, so the two disagree; the manifest names the rule `server-limit` and covers it with a fixture rather than leaving the decision implicit. `update_label` is the other driver-checked body: it asks for the owning project even though the label is identified by its own ID in the path, and the driver validates that `project_id` before dispatch.
+
+Both milestone list filters are booleans at the boundary and reach TestRail as 1 or 0. The driver also accepts deprecated numeric spellings of the same two filters, which are not exposed: one name per filter is one thing to keep true, so the numeric form is refused here rather than quietly accepted as a second way to say the same thing. `parent_id` admits no null in either milestone payload and TestRail documents no way to clear it, so detaching a sub-milestone is not reachable through the pinned driver. TestRail's own `update_milestone` table lists four fields while its heading promises partial updates and the driver's payload type carries the create fields as well; the wider set is accepted and the disagreement is recorded in the manifest rather than resolved silently. Sources: [label schemas](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/labels.ts), [milestone schemas](https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/milestones.ts), [TestRail labels](https://support.testrail.com/hc/en-us/articles/38961149782036-Labels), [TestRail milestones](https://support.testrail.com/hc/en-us/articles/7077723976084-Milestones).
 
 ## Review procedure
 

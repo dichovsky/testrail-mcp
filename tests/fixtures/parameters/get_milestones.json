@@ -1,0 +1,1962 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T07",
+    "http_method": "GET",
+    "route": "get_milestones/{project_id}",
+    "tool": "testrail_get_milestones",
+    "driver_method": "milestones.getMilestones"
+  },
+  "sources": [
+    {
+      "id": "driver-module-milestones",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/milestones.ts",
+      "supports": "Every method validates its identifier and places it as the only path segment of the matching endpoint. The list step converts the isCompleted and isStarted booleans to the 1 and 0 TestRail reads and sends neither when they are absent. The reads and the two writes parse against MilestoneSchema; the delete passes no schema and resolves with no value. No payload is parsed by a public method, so every milestone payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "driver-schema-milestones",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/milestones.ts",
+      "supports": "AddMilestonePayloadSchema requires name and accepts description, due_on, start_on, parent_id and refs. UpdateMilestonePayloadSchema makes name optional and adds the is_completed and is_started booleans. parent_id is a plain optional number in both: it admits no null, so detaching a sub-milestone is not reachable through this driver."
+    },
+    {
+      "id": "driver-paginated-list",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/paginated-list.ts",
+      "supports": "The shared executor issues the page request with the caller's controls, and the all helper walks the envelope's next link under the supplied bounds."
+    },
+    {
+      "id": "driver-pagination",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
+      "supports": "The aggregate bounds maxItems, maxPages, maxBytes and maxDurationMs stop the walk and are never serialized upstream."
+    },
+    {
+      "id": "driver-url",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/url.ts",
+      "supports": "Query parameters are appended path-style after the endpoint token, each value percent encoded."
+    },
+    {
+      "id": "testrail-milestones",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077723976084-Milestones",
+      "supports": "get_milestones takes is_completed and is_started, each 1 or 0, plus limit and offset from TestRail 6.7. add_milestone requires name and accepts description, due_on, start_on, parent_id and refs, with parent_id from TestRail 5.3 and refs from 6.4. update_milestone supports partial updates; its own table lists is_completed, is_started, parent_id and start_on, while the endpoint accepts the add fields too. Deleting a milestone cannot be undone. No field is documented as clearable by null."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Both filters are booleans at this boundary and reach TestRail as 1 or 0. The driver also accepts the deprecated numeric spellings, which are not exposed, so the numeric form is refused here rather than quietly accepted as a second way to say the same thing."
+  },
+  "outer_result": {
+    "driver": "page",
+    "tool_data": "array",
+    "notes": "Page mode returns the driver's decoded page and all mode the collected array; entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-query",
+      "kind": "invalid",
+      "description": "Reject an unknown query field rather than dropping it and widening the result."
+    },
+    {
+      "id": "unknown-control",
+      "kind": "invalid",
+      "description": "Reject an unknown adapter control rather than ignoring it."
+    },
+    {
+      "id": "mode-exclusive",
+      "kind": "invalid",
+      "description": "Reject a control belonging to the other call mode, rather than accepting it and never using it."
+    }
+  ],
+  "baseline": "defaults",
+  "parameters": [
+    {
+      "id": "project_id",
+      "input_path": [
+        "project_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The project whose entries are listed. No coercion; passed positionally and sent verbatim as the only path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "project_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module-milestones",
+        "testrail-milestones"
+      ]
+    },
+    {
+      "id": "query.is_completed",
+      "input_path": [
+        "query",
+        "is_completed"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "Whether completed or open milestones are listed. Taken as a boolean here and converted by the driver to the 1 or 0 TestRail reads; omitting it sends no filter, which is not the same as sending either value. The driver also accepts a deprecated numeric spelling of this filter, which is not exposed: one name for one filter is one thing to keep true.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "isCompleted"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "is_completed"
+        ],
+        "encoding": "is_completed=1 for true and is_completed=0 for false, appended path-style before is_started."
+      },
+      "sources": [
+        "driver-module-milestones",
+        "testrail-milestones"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value as the isCompleted option."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept true and send is_completed=1."
+        },
+        {
+          "id": "false-value",
+          "kind": "valid",
+          "description": "Accept false and send is_completed=0, which is a filter rather than the absence of one."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject the numeric spelling TestRail uses on the wire, which is the driver's deprecated alias rather than this boundary's input."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no filter when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "query.is_started",
+      "input_path": [
+        "query",
+        "is_started"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "Whether started or upcoming milestones are listed, supported on TestRail 5.3 or later. Taken as a boolean here and converted by the driver to the 1 or 0 TestRail reads; omitting it sends no filter, which is not the same as sending either value. The driver also accepts a deprecated numeric spelling of this filter, which is not exposed: one name for one filter is one thing to keep true.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "isStarted"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "is_started"
+        ],
+        "encoding": "is_started=1 for true and is_started=0 for false, appended path-style after is_completed."
+      },
+      "sources": [
+        "driver-module-milestones",
+        "testrail-milestones"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value as the isStarted option."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept true and send is_started=1."
+        },
+        {
+          "id": "false-value",
+          "kind": "valid",
+          "description": "Accept false and send is_started=0, which is a filter rather than the absence of one."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject the numeric spelling TestRail uses on the wire, which is the driver's deprecated alias rather than this boundary's input."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no filter when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "query.limit",
+      "input_path": [
+        "query",
+        "limit"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain_ref": "pagination_limit",
+      "semantics": "Page mode only. Sent explicitly on every page request: the caller's value, or 50 when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "limit"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "limit"
+        ],
+        "encoding": "Decimal integer appended path-style after the filters."
+      },
+      "sources": [
+        "driver-paginated-list",
+        "driver-url",
+        "testrail-milestones"
+      ]
+    },
+    {
+      "id": "query.offset",
+      "input_path": [
+        "query",
+        "offset"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain_ref": "pagination_offset",
+      "semantics": "Page mode only. Sent explicitly on every page request: the caller's value, or 0 when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "offset"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "offset"
+        ],
+        "encoding": "Decimal integer appended path-style after limit."
+      },
+      "sources": [
+        "driver-paginated-list",
+        "driver-url",
+        "testrail-milestones"
+      ]
+    },
+    {
+      "id": "_mcp.pagination",
+      "input_path": [
+        "_mcp",
+        "pagination"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain": {
+        "enum": [
+          "page",
+          "all"
+        ]
+      },
+      "semantics": "Selects the public page helper or the bounded all helper. Never passed to the driver.",
+      "driver": null,
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized upstream."
+      },
+      "sources": [
+        "driver-module-milestones"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Select the page helper for page and the all helper for all."
+        },
+        {
+          "id": "page",
+          "kind": "valid",
+          "description": "Accept an explicit page mode."
+        },
+        {
+          "id": "all",
+          "kind": "valid",
+          "description": "Accept all mode."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject an unknown mode before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Use page mode when omitted."
+        }
+      ]
+    },
+    {
+      "id": "_mcp.page_size",
+      "input_path": [
+        "_mcp",
+        "page_size"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_page_size",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded as the driver's pageSize when supplied; the driver's own default of 250 applies when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "pageSize"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "limit"
+        ],
+        "encoding": "Sent as the limit control of every request the aggregate issues."
+      },
+      "sources": [
+        "driver-paginated-list",
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.start_offset",
+      "input_path": [
+        "_mcp",
+        "start_offset"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_start_offset",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded as the driver's startOffset when supplied; the aggregate starts at 0 when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "startOffset"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "offset"
+        ],
+        "encoding": "Sent as the offset of the first request; later offsets follow the continuation links."
+      },
+      "sources": [
+        "driver-paginated-list",
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.max_items",
+      "input_path": [
+        "_mcp",
+        "max_items"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_items",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "maxItems"
+        ]
+      },
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized; bounds the collection inside the driver."
+      },
+      "sources": [
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.max_pages",
+      "input_path": [
+        "_mcp",
+        "max_pages"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_pages",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "maxPages"
+        ]
+      },
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized; bounds the collection inside the driver."
+      },
+      "sources": [
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.max_bytes",
+      "input_path": [
+        "_mcp",
+        "max_bytes"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_bytes",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "maxBytes"
+        ]
+      },
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized; bounds the serialized item bytes inside the driver."
+      },
+      "sources": [
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.max_duration_ms",
+      "input_path": [
+        "_mcp",
+        "max_duration_ms"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_duration_ms",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "maxDurationMs"
+        ]
+      },
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized; bounds the aggregate's wall-clock time inside the driver."
+      },
+      "sources": [
+        "driver-pagination"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "defaults",
+      "input": {
+        "project_id": 1
+      },
+      "covers": [
+        {
+          "parameter": "query.is_completed",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "query.is_started",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "query.limit",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "query.offset",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.pagination",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "milestones.getMilestonesPage",
+          "arguments": [
+            1,
+            {
+              "limit": 50,
+              "offset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_milestones/1&limit=50&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 50,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "milestones": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ],
+            "offset": 0,
+            "limit": 50,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "page-controls",
+      "input": {
+        "project_id": 1,
+        "query": {
+          "limit": 10,
+          "offset": 20
+        }
+      },
+      "covers": [
+        {
+          "parameter": "project_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "query.limit",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "query.offset",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "milestones.getMilestonesPage",
+          "arguments": [
+            1,
+            {
+              "limit": 10,
+              "offset": 20
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_milestones/1&limit=10&offset=20"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 20,
+            "limit": 10,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "milestones": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ],
+            "offset": 20,
+            "limit": 10,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "first-page-by-name",
+      "input": {
+        "project_id": 1,
+        "query": {
+          "limit": 250,
+          "offset": 0
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.limit",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "query.offset",
+          "requirements": [
+            "zero"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "milestones.getMilestonesPage",
+          "arguments": [
+            1,
+            {
+              "limit": 250,
+              "offset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_milestones/1&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "milestones": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ],
+            "offset": 0,
+            "limit": 250,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-project",
+      "input": {
+        "project_id": 9007199254740991
+      },
+      "covers": [
+        {
+          "parameter": "project_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "milestones.getMilestonesPage",
+          "arguments": [
+            9007199254740991,
+            {
+              "limit": 50,
+              "offset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_milestones/9007199254740991&limit=50&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 50,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "milestones": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ],
+            "offset": 0,
+            "limit": 50,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "all-defaults",
+      "input": {
+        "project_id": 1,
+        "_mcp": {
+          "pagination": "all"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.pagination",
+          "requirements": [
+            "mapping",
+            "all"
+          ]
+        },
+        {
+          "parameter": "_mcp.page_size",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.start_offset",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_items",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_pages",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_bytes",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_duration_ms",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "milestones.getAllMilestones",
+          "arguments": [
+            1,
+            {
+              "maxItems": 1000,
+              "maxPages": 20,
+              "maxBytes": 1048576,
+              "maxDurationMs": 45000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_milestones/1&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "milestones": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 5,
+              "name": "Release 2.0",
+              "description": null,
+              "start_on": null,
+              "started_on": null,
+              "is_completed": false,
+              "completed_on": null,
+              "due_on": 1646999999,
+              "project_id": 1,
+              "parent_id": null,
+              "refs": null,
+              "is_started": true,
+              "url": "https://example.testrail.io/index.php?/milestones/view/5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "all-bounds",
+      "input": {
+        "project_id": 1,
+        "_mcp": {
+          "pagination": "all",
+          "max_items": 10,
+          "max_pages": 2,
+          "max_bytes": 1024,
+          "max_duration_ms": 5000
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.max_items",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_pages",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_bytes",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_duration_ms",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "milestones.getAllMilestones",
+          "arguments": [
+            1,
+            {
+              "maxItems": 10,
+              "maxPages": 2,
+              "maxBytes": 1024,
+              "maxDurationMs": 5000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_milestones/1&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "milestones": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 5,
+              "name": "Release 2.0",
+              "description": null,
+              "start_on": null,
+              "started_on": null,
+              "is_completed": false,
+              "completed_on": null,
+              "due_on": 1646999999,
+              "project_id": 1,
+              "parent_id": null,
+              "refs": null,
+              "is_started": true,
+              "url": "https://example.testrail.io/index.php?/milestones/view/5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "all-ceilings",
+      "input": {
+        "project_id": 1,
+        "_mcp": {
+          "pagination": "all",
+          "max_items": 1000,
+          "max_pages": 20,
+          "max_bytes": 1048576,
+          "max_duration_ms": 45000
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.max_items",
+          "requirements": [
+            "ceiling"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_pages",
+          "requirements": [
+            "ceiling"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_bytes",
+          "requirements": [
+            "ceiling"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_duration_ms",
+          "requirements": [
+            "ceiling"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "milestones.getAllMilestones",
+          "arguments": [
+            1,
+            {
+              "maxItems": 1000,
+              "maxPages": 20,
+              "maxBytes": 1048576,
+              "maxDurationMs": 45000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_milestones/1&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 0,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "milestones": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": []
+        }
+      }
+    },
+    {
+      "id": "largest-aggregate-page",
+      "input": {
+        "project_id": 1,
+        "_mcp": {
+          "pagination": "all",
+          "page_size": 250
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.page_size",
+          "requirements": [
+            "mapping",
+            "valid",
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "milestones.getAllMilestones",
+          "arguments": [
+            1,
+            {
+              "pageSize": 250,
+              "maxItems": 1000,
+              "maxPages": 20,
+              "maxBytes": 1048576,
+              "maxDurationMs": 45000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_milestones/1&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "milestones": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 5,
+              "name": "Release 2.0",
+              "description": null,
+              "start_on": null,
+              "started_on": null,
+              "is_completed": false,
+              "completed_on": null,
+              "due_on": 1646999999,
+              "project_id": 1,
+              "parent_id": null,
+              "refs": null,
+              "is_started": true,
+              "url": "https://example.testrail.io/index.php?/milestones/view/5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "aggregate-from-start",
+      "input": {
+        "project_id": 1,
+        "_mcp": {
+          "pagination": "all",
+          "start_offset": 0
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.start_offset",
+          "requirements": [
+            "mapping",
+            "valid",
+            "zero"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "milestones.getAllMilestones",
+          "arguments": [
+            1,
+            {
+              "startOffset": 0,
+              "maxItems": 1000,
+              "maxPages": 20,
+              "maxBytes": 1048576,
+              "maxDurationMs": 45000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_milestones/1&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "milestones": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 5,
+              "name": "Release 2.0",
+              "description": null,
+              "start_on": null,
+              "started_on": null,
+              "is_completed": false,
+              "completed_on": null,
+              "due_on": 1646999999,
+              "project_id": 1,
+              "parent_id": null,
+              "refs": null,
+              "is_started": true,
+              "url": "https://example.testrail.io/index.php?/milestones/view/5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "explicit-page-mode",
+      "input": {
+        "project_id": 1,
+        "_mcp": {
+          "pagination": "page"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.pagination",
+          "requirements": [
+            "page"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "milestones.getMilestonesPage",
+          "arguments": [
+            1,
+            {
+              "limit": 50,
+              "offset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_milestones/1&limit=50&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 50,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "milestones": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ],
+            "offset": 0,
+            "limit": 50,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "pagination-unknown-mode",
+      "input": {
+        "project_id": 1,
+        "_mcp": {
+          "pagination": "every"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.pagination",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "project_id": 1,
+        "limit": 10
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-query",
+      "input": {
+        "project_id": 1,
+        "query": {
+          "name": "x"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-query"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-control",
+      "input": {
+        "project_id": 1,
+        "_mcp": {
+          "pagination": "all",
+          "max_results": 10
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-control"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "page-controls-in-all",
+      "input": {
+        "project_id": 1,
+        "query": {
+          "limit": 10
+        },
+        "_mcp": {
+          "pagination": "all"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "mode-exclusive"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "all-controls-in-page",
+      "input": {
+        "project_id": 1,
+        "_mcp": {
+          "max_items": 10
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "mode-exclusive"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "filters",
+      "input": {
+        "project_id": 1,
+        "query": {
+          "is_completed": true,
+          "is_started": true
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.is_completed",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "query.is_started",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "milestones.getMilestonesPage",
+          "arguments": [
+            1,
+            {
+              "isCompleted": true,
+              "isStarted": true,
+              "limit": 50,
+              "offset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_milestones/1&is_completed=1&is_started=1&limit=50&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 50,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "milestones": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ],
+            "offset": 0,
+            "limit": 50,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "open-and-upcoming",
+      "input": {
+        "project_id": 1,
+        "query": {
+          "is_completed": false,
+          "is_started": false
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.is_completed",
+          "requirements": [
+            "false-value"
+          ]
+        },
+        {
+          "parameter": "query.is_started",
+          "requirements": [
+            "false-value"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "milestones.getMilestonesPage",
+          "arguments": [
+            1,
+            {
+              "isCompleted": false,
+              "isStarted": false,
+              "limit": 50,
+              "offset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_milestones/1&is_completed=0&is_started=0&limit=50&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 50,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "milestones": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ],
+            "offset": 0,
+            "limit": 50,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "all-filters",
+      "input": {
+        "project_id": 1,
+        "_mcp": {
+          "pagination": "all"
+        },
+        "query": {
+          "is_completed": false,
+          "is_started": true
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.is_completed",
+          "requirements": [
+            "mapping"
+          ]
+        },
+        {
+          "parameter": "query.is_started",
+          "requirements": [
+            "mapping"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "milestones.getAllMilestones",
+          "arguments": [
+            1,
+            {
+              "isCompleted": false,
+              "isStarted": true,
+              "maxItems": 1000,
+              "maxPages": 20,
+              "maxBytes": 1048576,
+              "maxDurationMs": 45000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_milestones/1&is_completed=0&is_started=1&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "milestones": [
+              {
+                "id": 5,
+                "name": "Release 2.0",
+                "description": null,
+                "start_on": null,
+                "started_on": null,
+                "is_completed": false,
+                "completed_on": null,
+                "due_on": 1646999999,
+                "project_id": 1,
+                "parent_id": null,
+                "refs": null,
+                "is_started": true,
+                "url": "https://example.testrail.io/index.php?/milestones/view/5"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 5,
+              "name": "Release 2.0",
+              "description": null,
+              "start_on": null,
+              "started_on": null,
+              "is_completed": false,
+              "completed_on": null,
+              "due_on": 1646999999,
+              "project_id": 1,
+              "parent_id": null,
+              "refs": null,
+              "is_started": true,
+              "url": "https://example.testrail.io/index.php?/milestones/view/5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "numeric-is-completed",
+      "input": {
+        "project_id": 1,
+        "query": {
+          "is_completed": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.is_completed",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "numeric-is-started",
+      "input": {
+        "project_id": 1,
+        "query": {
+          "is_started": 0
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.is_started",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

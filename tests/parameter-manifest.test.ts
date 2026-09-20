@@ -37,6 +37,11 @@ import {
   UpdatePlanEntryPayloadSchema,
   UpdatePlanPayloadSchema,
   UpdateRunInPlanEntryPayloadSchema,
+  AddLabelPayloadSchema,
+  AddMilestonePayloadSchema,
+  DeleteLabelsPayloadSchema,
+  UpdateLabelPayloadSchema,
+  UpdateMilestonePayloadSchema,
 } from '@dichovsky/testrail-api-client';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -180,6 +185,8 @@ describe('independent parameter manifest format', () => {
       'testrail_add_cases',
       'testrail_add_config',
       'testrail_add_config_group',
+      'testrail_add_label',
+      'testrail_add_milestone',
       'testrail_add_plan',
       'testrail_add_plan_entry',
       'testrail_add_project',
@@ -199,6 +206,9 @@ describe('independent parameter manifest format', () => {
       'testrail_delete_cases',
       'testrail_delete_config',
       'testrail_delete_config_group',
+      'testrail_delete_label',
+      'testrail_delete_labels',
+      'testrail_delete_milestone',
       'testrail_delete_plan',
       'testrail_delete_plan_entry',
       'testrail_delete_project',
@@ -217,6 +227,10 @@ describe('independent parameter manifest format', () => {
       'testrail_get_cases',
       'testrail_get_configs',
       'testrail_get_history_for_case',
+      'testrail_get_label',
+      'testrail_get_labels',
+      'testrail_get_milestone',
+      'testrail_get_milestones',
       'testrail_get_plan',
       'testrail_get_plans',
       'testrail_get_project',
@@ -242,6 +256,8 @@ describe('independent parameter manifest format', () => {
       'testrail_update_cases',
       'testrail_update_config',
       'testrail_update_config_group',
+      'testrail_update_label',
+      'testrail_update_milestone',
       'testrail_update_plan',
       'testrail_update_plan_entry',
       'testrail_update_project',
@@ -254,7 +270,7 @@ describe('independent parameter manifest format', () => {
       'testrail_update_tests',
     ]);
     expect(report.partialEndpoints).toEqual([]);
-    expect(report.pendingEndpoints).toHaveLength(56);
+    expect(report.pendingEndpoints).toHaveLength(45);
     expect([...report.reviewedEndpoints, ...report.pendingEndpoints].sort())
       .toEqual(inventory.map(({ tool }) => tool).sort());
     expect(report.pendingEndpoints).toContain('testrail_add_attachment_to_case');
@@ -390,6 +406,10 @@ const runFilterOptions = z.strictObject({
   createdAfter: z.number().optional(), createdBefore: z.number().optional(), createdBy: z.array(z.number()).optional(),
   includePlanRuns: z.boolean().optional(), isCompleted: z.boolean().optional(),
   milestoneId: idOrList.optional(), refs: z.string().optional(), suiteId: idOrList.optional(),
+});
+/** The milestone filters under the driver's option names, as a fixture writes them. */
+const milestoneFilterOptions = z.strictObject({
+  isCompleted: z.boolean().optional(), isStarted: z.boolean().optional(),
 });
 /** The plan filters under the driver's option names, as a fixture writes them. */
 const planFilterOptions = z.strictObject({
@@ -853,6 +873,60 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
     case 'plans.deleteRunFromPlanEntry': {
       const [runId] = z.tuple([z.number()]).parse(expected.driver.arguments);
       return client.plans.deleteRunFromPlanEntry(runId);
+    }
+    case 'labels.getLabel': {
+      const [labelId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.labels.getLabel(labelId);
+    }
+    case 'labels.getLabelsPage': {
+      const [projectId, options] = z.tuple([z.number(), z.strictObject({ limit: z.number(), offset: z.number() })])
+        .parse(expected.driver.arguments);
+      return client.labels.getLabelsPage(projectId, options);
+    }
+    case 'labels.getAllLabels': {
+      const [projectId, options] = z.tuple([z.number(), z.strictObject(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.labels.getAllLabels(projectId, present(options));
+    }
+    case 'labels.addLabel': {
+      const [projectId, payload] = z.tuple([z.number(), AddLabelPayloadSchema]).parse(expected.driver.arguments);
+      return client.labels.addLabel(projectId, payload);
+    }
+    case 'labels.updateLabel': {
+      const [labelId, payload] = z.tuple([z.number(), UpdateLabelPayloadSchema]).parse(expected.driver.arguments);
+      return client.labels.updateLabel(labelId, payload);
+    }
+    case 'labels.deleteLabel': {
+      const [labelId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.labels.deleteLabel(labelId);
+    }
+    case 'labels.deleteLabels': {
+      const [payload] = z.tuple([DeleteLabelsPayloadSchema]).parse(expected.driver.arguments);
+      return client.labels.deleteLabels(payload);
+    }
+    case 'milestones.getMilestone': {
+      const [milestoneId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.milestones.getMilestone(milestoneId);
+    }
+    case 'milestones.getMilestonesPage': {
+      const [projectId, options] = z.tuple([z.number(), milestoneFilterOptions.extend({ limit: z.number(), offset: z.number() })])
+        .parse(expected.driver.arguments);
+      return client.milestones.getMilestonesPage(projectId, present(options));
+    }
+    case 'milestones.getAllMilestones': {
+      const [projectId, options] = z.tuple([z.number(), milestoneFilterOptions.extend(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.milestones.getAllMilestones(projectId, present(options));
+    }
+    case 'milestones.addMilestone': {
+      const [projectId, payload] = z.tuple([z.number(), AddMilestonePayloadSchema]).parse(expected.driver.arguments);
+      return client.milestones.addMilestone(projectId, payload);
+    }
+    case 'milestones.updateMilestone': {
+      const [milestoneId, payload] = z.tuple([z.number(), UpdateMilestonePayloadSchema]).parse(expected.driver.arguments);
+      return client.milestones.updateMilestone(milestoneId, payload);
+    }
+    case 'milestones.deleteMilestone': {
+      const [milestoneId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.milestones.deleteMilestone(milestoneId);
     }
     default: throw new Error(`Missing independent driver evidence harness: ${expected.driver.binding}`);
   }
