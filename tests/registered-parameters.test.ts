@@ -265,24 +265,64 @@ describe('production registrations send what their fixtures promise', () => {
   }
 });
 
+/** An aggregate fixture that names no bound of its own, so the configuration must supply them. */
+function leavesEveryBoundToTheConfiguration(input: Record<string, unknown>): boolean {
+  const control = input['_mcp'];
+  if (typeof control !== 'object' || control === null || Array.isArray(control)) return false;
+  const record = control as Record<string, unknown>;
+  if (record['pagination'] !== 'all') return false;
+  return (['max_items', 'max_pages', 'max_bytes', 'max_duration_ms'] as const)
+    .every((bound) => record[bound] === undefined);
+}
+
 describe('configured limits reach the aggregate', () => {
-  // Every fixture is invoked with the default limits, so the fixtures alone cannot tell
-  // context.limits apart from a hard-coded DEFAULT_LIMITS. This can.
-  it('forwards the operator\'s bounds, not the built-in defaults, when the caller sets none', async () => {
-    const operation = operationRegistry.get('testrail_get_projects');
-    if (operation?.pagination.kind !== 'controlled') throw new Error('Missing controlled get_projects registration');
-    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(
-      JSON.stringify({ offset: 0, limit: 250, size: 0, _links: { next: null, prev: null }, projects: [] }),
-      { headers: { 'content-type': 'application/json' } },
-    ));
-    const client = new TestRailClient({ baseUrl: 'https://example.test', email: 'fixture@example.test', apiKey: 'synthetic', allowPrivateHosts: true, fetch });
-    const all = vi.spyOn(client.projects, 'getAllProjects');
-    try {
-      const limits = { ...DEFAULT_LIMITS, max_all_items: 5, max_all_pages: 2, max_all_bytes: 512, max_all_duration_ms: 1_000 };
-      await operation.pagination.all.invoke(client, { _mcp: { pagination: 'all' } }, { limits });
-      expect(all.mock.calls).toEqual([[{ maxItems: 5, maxPages: 2, maxBytes: 512, maxDurationMs: 1_000 }]]);
-    } finally { client.destroy(); }
+  /*
+   * Every fixture is invoked with the default limits, so the fixtures alone cannot tell
+   * context.limits apart from a hard-coded DEFAULT_LIMITS. This can.
+   *
+   * It runs over every controlled list rather than one exemplar. A single instantiated
+   * tool proves only itself: the T07 review showed that replacing context.limits with a
+   * literal copy of the defaults in one family's aggregate call left the whole suite
+   * green, because nothing outside get_projects was ever asked.
+   */
+  const controlled = operationRegistry.entries.filter(({ pagination }) => pagination.kind === 'controlled');
+
+  it('covers every controlled list', () => {
+    expect(controlled.length).toBeGreaterThan(1);
   });
+
+  it.each(controlled.map((entry) => [entry.tool, entry] as const))(
+    '%s forwards the operator\'s bounds, not the built-in defaults, when the caller sets none',
+    async (tool, entry) => {
+      if (entry.pagination.kind !== 'controlled') throw new Error(`${tool}: not a controlled list`);
+      const manifest = manifests.find(({ endpoint }) => endpoint.tool === tool);
+      const fixture = manifest?.cases.find((candidate) => candidate.expect.kind === 'accepted'
+        && leavesEveryBoundToTheConfiguration(candidate.input));
+      if (!fixture || fixture.expect.kind !== 'accepted') {
+        throw new Error(`${tool}: no aggregate fixture leaves every bound to the configuration`);
+      }
+      // The endpoint's own reply, so the driver's collection step sees the shape it expects
+      // and stops after one page.
+      const reply = fixture.expect.upstream_response;
+      const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(
+        JSON.stringify(reply.kind === 'json' ? reply.body : {}),
+        { headers: { 'content-type': 'application/json' } },
+      ));
+      const client = new TestRailClient({ baseUrl: 'https://example.test', email: 'fixture@example.test', apiKey: 'synthetic', allowPrivateHosts: true, fetch });
+      const [moduleName, methodName] = entry.pagination.all.binding.split('.');
+      if (moduleName === undefined || methodName === undefined) throw new Error(`${tool}: unreadable binding`);
+      type DriverMethod = (...args: unknown[]) => Promise<unknown>;
+      const module = (client as unknown as Record<string, Record<string, DriverMethod>>)[moduleName];
+      if (module === undefined) throw new Error(`${tool}: no driver module ${moduleName}`);
+      const all = vi.spyOn(module, methodName);
+      try {
+        const limits = { ...DEFAULT_LIMITS, max_all_items: 5, max_all_pages: 2, max_all_bytes: 512, max_all_duration_ms: 1_000 };
+        await entry.pagination.all.invoke(client, fixture.input, { limits });
+        // The bounds are the last argument whatever else the endpoint takes ahead of them.
+        const options = all.mock.calls[0]?.at(-1);
+        expect(options, tool).toMatchObject({ maxItems: 5, maxPages: 2, maxBytes: 512, maxDurationMs: 1_000 });
+      } finally { client.destroy(); }
+    });
 });
 
 describe('independent fixture → schema → real public driver', () => {

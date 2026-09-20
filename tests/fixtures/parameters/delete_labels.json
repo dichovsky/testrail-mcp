@@ -1,0 +1,476 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T07",
+    "http_method": "POST",
+    "route": "delete_labels",
+    "tool": "testrail_delete_labels",
+    "driver_method": "labels.deleteLabels"
+  },
+  "sources": [
+    {
+      "id": "driver-module-labels",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/labels.ts",
+      "supports": "Every method validates its identifier and places it as the only path segment of the matching endpoint. updateLabel additionally validates payload.project_id, and deleteLabels checks that label_ids is a non-empty array and validates every member, so those two payload rules are the driver's rather than the boundary's alone. The reads parse against LabelSchema, the two writes against LabelWriteResponseSchema, and the two deletes pass no schema and resolve with no value."
+    },
+    {
+      "id": "driver-schema-labels",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/labels.ts",
+      "supports": "LabelSchema carries id, title, name, created_by and created_on, with created_by a union of number and string because the reference quotes it while leaving created_on unquoted. LabelWriteResponseSchema is a union of that flat label and an object wrapping it under a label key, which it transforms to the flat form, so a mutation resolves with one shape whichever TestRail sends. AddLabelPayloadSchema carries a required title, and its comment records that TestRail's 20-character cap is deliberately left to the server. UpdateLabelPayloadSchema requires a positive project_id and a title. DeleteLabelsPayloadSchema requires a non-empty array of positive label_ids."
+    },
+    {
+      "id": "driver-common",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/common.ts",
+      "supports": "zObject uses passthrough, so the declared payload types admit unknown properties; the MCP boundary must reject them separately."
+    },
+    {
+      "id": "testrail-labels",
+      "url": "https://support.testrail.com/hc/en-us/articles/38961149782036-Labels",
+      "supports": "The reference documents get_label, get_labels and update_label only. get_labels takes the project plus limit and offset and no other filter. update_label takes project_id and title, both required, and caps the title at 20 characters. It documents neither add_label, delete_label nor delete_labels, so those three rest on the driver and on the official TestRail CLI."
+    },
+    {
+      "id": "trcli-labels",
+      "url": "https://github.com/gurock/trcli/blob/e723052d0898da6a501972c6855eddf487cd51bb/trcli/commands/cmd_labels.py",
+      "supports": "The official TestRail CLI reads a label mutation's reply as label_data.get('label', label_data), handling both the wrapped and the flat form, and sends add and update as the driver does. It enforces the 20-character title cap in its own command layer rather than relying on the server."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "The only endpoint in this family with no path segment at all: the labels are named by their own IDs in the body, and no project is given. TestRail's reference does not document it. The driver checks this payload itself, which is unusual here and is why every rejection below is recorded as the driver's."
+  },
+  "outer_result": {
+    "driver": "void",
+    "tool_data": "null",
+    "notes": "The method resolves with no value and the wrapper reports data: null. TestRail returns no per-label outcome, so a caller that needs to know which labels are gone reads them afterwards; the adapter does not follow up on its own, and deletion cannot be undone."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "no-cascade",
+      "kind": "mapping",
+      "description": "Send exactly one request. The adapter never follows up with further calls to find or repair what the deletion removed."
+    },
+    {
+      "id": "unknown-body",
+      "kind": "invalid",
+      "description": "Reject an unknown body field, including a project_id, which this endpoint does not take."
+    }
+  ],
+  "baseline": "representative-ids",
+  "parameters": [
+    {
+      "id": "body",
+      "input_path": [
+        "body"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "object",
+        "required": [
+          "label_ids"
+        ]
+      },
+      "semantics": "No coercion. The JSON object is passed as the driver's only argument and sent unchanged.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "body"
+        ],
+        "encoding": "JSON object sent unchanged."
+      },
+      "sources": [
+        "driver-module-labels",
+        "driver-schema-labels"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the object at driver argument 0 as the JSON request body."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an object."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a body that is not an object before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing body."
+        }
+      ]
+    },
+    {
+      "id": "body.label_ids",
+      "input_path": [
+        "body",
+        "label_ids"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "semantics": "The labels to delete, each by its own ID. The driver checks this list itself before dispatch: it refuses a value that is not an array, an empty array and any member that is not a positive integer, each with a stated validation error. That is why this parameter is not written against the shared identifier-list domain, whose enforcement was proven at a different binding where the same list crashes the driver instead of being refused by it.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "label_ids"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "label_ids"
+        ],
+        "encoding": "JSON array of integers under label_ids."
+      },
+      "sources": [
+        "driver-module-labels",
+        "driver-schema-labels"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member in order under label_ids."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a list of label identifiers."
+        },
+        {
+          "id": "upper-bound",
+          "kind": "valid",
+          "description": "Accept the largest safe integer as a member."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-positive member before dispatch."
+        },
+        {
+          "id": "scalar",
+          "kind": "invalid",
+          "description": "Reject a single identifier that is not wrapped in an array."
+        },
+        {
+          "id": "empty",
+          "kind": "invalid",
+          "description": "Reject an empty array, which would name no label to delete."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a body without it."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-ids",
+      "input": {
+        "body": {
+          "label_ids": [
+            1,
+            2,
+            3
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.label_ids",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-cascade"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "labels.deleteLabels",
+          "arguments": [
+            {
+              "label_ids": [
+                1,
+                2,
+                3
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "delete_labels",
+          "json": {
+            "label_ids": [
+              1,
+              2,
+              3
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {}
+        },
+        "driver_result": {
+          "kind": "void"
+        }
+      }
+    },
+    {
+      "id": "largest-safe-member",
+      "input": {
+        "body": {
+          "label_ids": [
+            9007199254740991
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.label_ids",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "labels.deleteLabels",
+          "arguments": [
+            {
+              "label_ids": [
+                9007199254740991
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "delete_labels",
+          "json": {
+            "label_ids": [
+              9007199254740991
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {}
+        },
+        "driver_result": {
+          "kind": "void"
+        }
+      }
+    },
+    {
+      "id": "missing-body",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-body",
+      "input": {
+        "body": []
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-label-ids",
+      "input": {
+        "body": {}
+      },
+      "covers": [
+        {
+          "parameter": "body.label_ids",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "empty-label-ids",
+      "input": {
+        "body": {
+          "label_ids": []
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.label_ids",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "zero-member",
+      "input": {
+        "body": {
+          "label_ids": [
+            1,
+            0
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.label_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "scalar-label-ids",
+      "input": {
+        "body": {
+          "label_ids": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.label_ids",
+          "requirements": [
+            "scalar"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-body",
+      "input": {
+        "body": {
+          "label_ids": [
+            1
+          ],
+          "project_id": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-body"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "body": {
+          "label_ids": [
+            1
+          ]
+        },
+        "project_id": 1
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

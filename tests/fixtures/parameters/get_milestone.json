@@ -1,0 +1,227 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T07",
+    "http_method": "GET",
+    "route": "get_milestone/{milestone_id}",
+    "tool": "testrail_get_milestone",
+    "driver_method": "milestones.getMilestone"
+  },
+  "sources": [
+    {
+      "id": "driver-module-milestones",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/milestones.ts",
+      "supports": "Every method validates its identifier and places it as the only path segment of the matching endpoint. The list step converts the isCompleted and isStarted booleans to the 1 and 0 TestRail reads and sends neither when they are absent. The reads and the two writes parse against MilestoneSchema; the delete passes no schema and resolves with no value. No payload is parsed by a public method, so every milestone payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "driver-schema-milestones",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/milestones.ts",
+      "supports": "AddMilestonePayloadSchema requires name and accepts description, due_on, start_on, parent_id and refs. UpdateMilestonePayloadSchema makes name optional and adds the is_completed and is_started booleans. parent_id is a plain optional number in both: it admits no null, so detaching a sub-milestone is not reachable through this driver."
+    },
+    {
+      "id": "testrail-milestones",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077723976084-Milestones",
+      "supports": "get_milestones takes is_completed and is_started, each 1 or 0, plus limit and offset from TestRail 6.7. add_milestone requires name and accepts description, due_on, start_on, parent_id and refs, with parent_id from TestRail 5.3 and refs from 6.4. update_milestone supports partial updates; its own table lists is_completed, is_started, parent_id and start_on, while the endpoint accepts the add fields too. Deleting a milestone cannot be undone. No field is documented as clearable by null."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "The endpoint takes one identifier in the path and no request body, so every field beyond it is refused."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the entity, returned as the driver received it; entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    }
+  ],
+  "baseline": "representative-id",
+  "parameters": [
+    {
+      "id": "milestone_id",
+      "input_path": [
+        "milestone_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The milestone to read. No coercion; passed positionally and sent verbatim as the only path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "milestone_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module-milestones",
+        "testrail-milestones"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-id",
+      "input": {
+        "milestone_id": 5
+      },
+      "covers": [
+        {
+          "parameter": "milestone_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "milestones.getMilestone",
+          "arguments": [
+            5
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_milestone/5"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 5,
+            "name": "Release 2.0",
+            "description": null,
+            "start_on": null,
+            "started_on": null,
+            "is_completed": false,
+            "completed_on": null,
+            "due_on": 1646999999,
+            "project_id": 1,
+            "parent_id": null,
+            "refs": null,
+            "is_started": true,
+            "url": "https://example.testrail.io/index.php?/milestones/view/5"
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 5,
+            "name": "Release 2.0",
+            "description": null,
+            "start_on": null,
+            "started_on": null,
+            "is_completed": false,
+            "completed_on": null,
+            "due_on": 1646999999,
+            "project_id": 1,
+            "parent_id": null,
+            "refs": null,
+            "is_started": true,
+            "url": "https://example.testrail.io/index.php?/milestones/view/5"
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": {
+        "milestone_id": 9007199254740991
+      },
+      "covers": [
+        {
+          "parameter": "milestone_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "milestones.getMilestone",
+          "arguments": [
+            9007199254740991
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_milestone/9007199254740991"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 5,
+            "name": "Release 2.0",
+            "description": null,
+            "start_on": null,
+            "started_on": null,
+            "is_completed": false,
+            "completed_on": null,
+            "due_on": 1646999999,
+            "project_id": 1,
+            "parent_id": null,
+            "refs": null,
+            "is_started": true,
+            "url": "https://example.testrail.io/index.php?/milestones/view/5"
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 5,
+            "name": "Release 2.0",
+            "description": null,
+            "start_on": null,
+            "started_on": null,
+            "is_completed": false,
+            "completed_on": null,
+            "due_on": 1646999999,
+            "project_id": 1,
+            "parent_id": null,
+            "refs": null,
+            "is_started": true,
+            "url": "https://example.testrail.io/index.php?/milestones/view/5"
+          }
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "milestone_id": 5,
+        "project_id": 1
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}
