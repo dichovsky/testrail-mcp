@@ -1,0 +1,526 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T06",
+    "http_method": "POST",
+    "route": "update_config_group/{config_group_id}",
+    "tool": "testrail_update_config_group",
+    "driver_method": "configurations.updateConfigurationGroup"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/configurations.ts",
+      "supports": "Every method validates its identifier, places it as the only path segment of the matching endpoint and forwards any JSON payload unchanged. The two reads parse against ConfigurationGroupSchema and ConfigurationSchema; the two deletes resolve with no value."
+    },
+    {
+      "id": "driver-schema",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/configurations.ts",
+      "supports": "ConfigurationGroupSchema carries id, name, project_id and a configs array; ConfigurationSchema carries id, name and group_id. The add payloads require name and the update payloads make it optional. No payload is parsed by the public method, which forwards it as given, so every payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "testrail-configurations",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077298488340-Configurations",
+      "supports": "get_configs/{project_id} returns the configuration groups of a project, each with its configurations. add_config_group and add_config require a name; update_config_group and update_config take an optional name. Every one of these endpoints requires TestRail 5.2 or later. Deleting a group cannot be undone and removes every configuration in it; deleting either does not affect closed plans and runs, nor active ones until they are next updated."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement at every depth, and here it is the only enforcement: the driver forwards this payload without parsing it. The name is the only field these endpoints carry."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the configuration group as the driver received it; entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-body",
+      "kind": "invalid",
+      "description": "Reject an unknown body field rather than forwarding it; the name is the only field this endpoint carries."
+    }
+  ],
+  "baseline": "representative",
+  "parameters": [
+    {
+      "id": "config_group_id",
+      "input_path": [
+        "config_group_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The group to rename. No coercion; passed positionally and sent verbatim as the only path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "config_group_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-configurations"
+      ]
+    },
+    {
+      "id": "body",
+      "input_path": [
+        "body"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "object"
+      },
+      "semantics": "No coercion. The JSON object is passed as the driver's second argument and sent unchanged.",
+      "driver": {
+        "argument": 1,
+        "path": []
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "body"
+        ],
+        "encoding": "JSON object sent unchanged."
+      },
+      "sources": [
+        "driver-module",
+        "driver-schema"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the object at driver argument 1 as the JSON request body."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an object."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a body that is not an object before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing body."
+        }
+      ]
+    },
+    {
+      "id": "body.name",
+      "input_path": [
+        "body",
+        "name"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The new name of the group. Omitting it leaves the name unchanged. No coercion.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "name"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "name"
+        ],
+        "encoding": "JSON string under name."
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-configurations"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the name under its own name in the body."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string name before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no name when the caller did not supply one."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative",
+      "input": {
+        "config_group_id": 1,
+        "body": {
+          "name": "Browsers"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "config_group_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "configurations.updateConfigurationGroup",
+          "arguments": [
+            1,
+            {
+              "name": "Browsers"
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_config_group/1",
+          "json": {
+            "name": "Browsers"
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Browsers",
+            "project_id": 1,
+            "configs": [
+              {
+                "id": 3,
+                "name": "Chrome",
+                "group_id": 1
+              },
+              {
+                "id": 4,
+                "name": "Firefox",
+                "group_id": 1
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Browsers",
+            "project_id": 1,
+            "configs": [
+              {
+                "id": 3,
+                "name": "Chrome",
+                "group_id": 1
+              },
+              {
+                "id": 4,
+                "name": "Firefox",
+                "group_id": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": {
+        "config_group_id": 9007199254740991,
+        "body": {
+          "name": "Browsers"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "config_group_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "configurations.updateConfigurationGroup",
+          "arguments": [
+            9007199254740991,
+            {
+              "name": "Browsers"
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_config_group/9007199254740991",
+          "json": {
+            "name": "Browsers"
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Browsers",
+            "project_id": 1,
+            "configs": [
+              {
+                "id": 3,
+                "name": "Chrome",
+                "group_id": 1
+              },
+              {
+                "id": 4,
+                "name": "Firefox",
+                "group_id": 1
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Browsers",
+            "project_id": 1,
+            "configs": [
+              {
+                "id": 3,
+                "name": "Chrome",
+                "group_id": 1
+              },
+              {
+                "id": 4,
+                "name": "Firefox",
+                "group_id": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "empty-body",
+      "input": {
+        "config_group_id": 1,
+        "body": {}
+      },
+      "covers": [
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "configurations.updateConfigurationGroup",
+          "arguments": [
+            1,
+            {}
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_config_group/1",
+          "json": {}
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Browsers",
+            "project_id": 1,
+            "configs": [
+              {
+                "id": 3,
+                "name": "Chrome",
+                "group_id": 1
+              },
+              {
+                "id": 4,
+                "name": "Firefox",
+                "group_id": 1
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Browsers",
+            "project_id": 1,
+            "configs": [
+              {
+                "id": 3,
+                "name": "Chrome",
+                "group_id": 1
+              },
+              {
+                "id": 4,
+                "name": "Firefox",
+                "group_id": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "missing-body",
+      "input": {
+        "config_group_id": 1
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-body",
+      "input": {
+        "config_group_id": 1,
+        "body": []
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-name",
+      "input": {
+        "config_group_id": 1,
+        "body": {
+          "name": 7
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-body",
+      "input": {
+        "config_group_id": 1,
+        "body": {
+          "name": "x",
+          "project_id": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-body"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "config_group_id": 1,
+        "body": {
+          "name": "x"
+        },
+        "name": "x"
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

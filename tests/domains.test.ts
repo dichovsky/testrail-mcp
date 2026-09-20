@@ -2,7 +2,7 @@ import { TestRailClient, TestRailValidationError } from '@dichovsky/testrail-api
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
 import {
-  aggregateLimitDefaults, caseIdsSchema, idFilterSchema, nonnegativeIntegerSchema, positiveIdSchema,
+  aggregateLimitDefaults, caseIdsSchema, entryIdSchema, idFilterSchema, nonnegativeIntegerSchema, positiveIdSchema,
 } from '../src/contracts/inputs.js';
 import { auditDomainLibrary, loadDomainLibrary, type ParameterDomain } from './contracts/domains.js';
 
@@ -40,6 +40,9 @@ async function probe(client: TestRailClient, binding: string, value: unknown): P
       return;
     case 'cases.getCaseTitles':
       await client.cases.getCaseTitles(value as number[]);
+      return;
+    case 'attachments.getAttachmentsForPlanEntry':
+      await client.attachments.getAttachmentsForPlanEntry(1, value as string);
       return;
     default:
       throw new Error(`No probe harness for binding ${binding}`);
@@ -79,6 +82,7 @@ const adapterSchema: Readonly<Record<string, z.ZodType>> = {
   id_filter: idFilterSchema,
   unix_timestamp: nonnegativeIntegerSchema,
   case_ids: caseIdsSchema,
+  entry_id: entryIdSchema,
 };
 
 describe('shared parameter domains', () => {

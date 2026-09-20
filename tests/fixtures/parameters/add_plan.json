@@ -1,0 +1,4679 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T06",
+    "http_method": "POST",
+    "route": "add_plan/{project_id}",
+    "tool": "testrail_add_plan",
+    "driver_method": "plans.addPlan"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/plans.ts",
+      "supports": "Every write validates its identifiers, an entry identifier through the UUID validator, places them as the path segments of the matching endpoint and forwards the JSON payload unchanged. The replies are parsed advisorily against PlanSchema, PlanEntrySchema or RunSchema."
+    },
+    {
+      "id": "driver-schema",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/plans.ts",
+      "supports": "AddPlanPayloadSchema requires name and accepts description, milestone_id, start_on, due_on, refs and an entries array. An entry carries suite_id, name, description, assignedto_id, include_all, case_ids, config_ids, a runs array, dynamic_filters, start_on, due_on and refs; a nested run carries name, description, assignedto_id, include_all, case_ids, config_ids and refs. AddPlanEntryPayloadSchema matches an entry. UpdatePlanEntryPayloadSchema omits config_ids and runs, which TestRail does not accept, and suite_id, which the endpoint's request body does not carry. AddRunToPlanEntryPayloadSchema requires config_ids and omits name, which TestRail derives from the configuration; UpdateRunInPlanEntryPayloadSchema omits both. No payload is parsed by the public method, so every payload rule is enforced at the MCP boundary alone."
+    },
+    {
+      "id": "driver-common",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/common.ts",
+      "supports": "zObject uses passthrough, so the declared payload types admit unknown properties; the MCP boundary must reject them separately."
+    },
+    {
+      "id": "testrail-plans",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077711537684-Plans",
+      "supports": "add_plan requires name and accepts description, milestone_id, start_on, due_on and an entries array. add_plan_entry takes suite_id, required for projects with multiple suites or baseline support, plus name, description, assignedto_id, include_all, case_ids, config_ids, refs, start_on, due_on and runs; its top-level config_ids lists the combined configurations for the entry's runs, and every configuration a nested run names must appear in it, each run naming one full combination with one configuration per group. The reference states that config_ids and runs are not supported on update_plan_entry. add_run_to_plan_entry requires config_ids and takes description, assignedto_id, start_on, due_on, include_all, case_ids and refs; TestRail derives the run's name from its configuration."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement at every depth of the payload, and here it is the only enforcement: the driver forwards this payload without parsing it. The entry and nested-run objects are held to the same rule as the plan itself, so a field misplaced one level up or down is refused rather than silently sent."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the created plan, entries included, returned as the driver received it; entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-body",
+      "kind": "invalid",
+      "description": "Reject an unknown field of the plan itself, including one that belongs to an entry rather than the plan."
+    },
+    {
+      "id": "unknown-entry",
+      "kind": "invalid",
+      "description": "Reject an unknown field of an entry, including one that belongs to the plan rather than the entry."
+    },
+    {
+      "id": "unknown-run",
+      "kind": "invalid",
+      "description": "Reject an unknown field of a nested run, including one that belongs to the entry rather than the run."
+    }
+  ],
+  "baseline": "full-plan",
+  "parameters": [
+    {
+      "id": "project_id",
+      "input_path": [
+        "project_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The project the plan is created in. No coercion; passed positionally and sent verbatim as a path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "project_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-plans"
+      ]
+    },
+    {
+      "id": "body",
+      "input_path": [
+        "body"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "object",
+        "required": [
+          "name"
+        ]
+      },
+      "semantics": "No coercion. The JSON object is passed as the driver's payload argument and sent unchanged.",
+      "driver": {
+        "argument": 1,
+        "path": []
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "body"
+        ],
+        "encoding": "JSON object sent unchanged."
+      },
+      "sources": [
+        "driver-module",
+        "driver-schema"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the object at driver argument 1 as the JSON request body."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an object."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a body that is not an object before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing body."
+        }
+      ]
+    },
+    {
+      "id": "body.name",
+      "input_path": [
+        "body",
+        "name"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "name"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "required",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The plan's name, which TestRail requires. No coercion; TestRail owns the format.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "name"
+        ],
+        "encoding": "JSON string under name."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a body without it."
+        }
+      ]
+    },
+    {
+      "id": "body.description",
+      "input_path": [
+        "body",
+        "description"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "description"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The plan's description. No coercion; TestRail owns the format.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "description"
+        ],
+        "encoding": "JSON string under description."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send nothing for it when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.milestone_id",
+      "input_path": [
+        "body",
+        "milestone_id"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "milestone_id"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain_ref": "positive_id",
+      "semantics": "The milestone the plan belongs to. The driver forwards any number, so the boundary holds it to the identifier domain.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "milestone_id"
+        ],
+        "encoding": "JSON integer under milestone_id."
+      }
+    },
+    {
+      "id": "body.start_on",
+      "input_path": [
+        "body",
+        "start_on"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "start_on"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain_ref": "unix_timestamp",
+      "semantics": "The plan's start date. Seconds since the Unix epoch, as TestRail documents. The driver forwards any number, so the boundary holds it to the timestamp domain.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "start_on"
+        ],
+        "encoding": "JSON integer under start_on."
+      }
+    },
+    {
+      "id": "body.due_on",
+      "input_path": [
+        "body",
+        "due_on"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "due_on"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain_ref": "unix_timestamp",
+      "semantics": "The plan's end date. Seconds since the Unix epoch, as TestRail documents. The driver forwards any number, so the boundary holds it to the timestamp domain.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "due_on"
+        ],
+        "encoding": "JSON integer under due_on."
+      }
+    },
+    {
+      "id": "body.refs",
+      "input_path": [
+        "body",
+        "refs"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "refs"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "A comma-separated list of references, supported on TestRail 6.3 or later. No coercion; TestRail owns the format.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "refs"
+        ],
+        "encoding": "JSON string under refs."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send nothing for it when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.entries",
+      "input_path": [
+        "body",
+        "entries"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      },
+      "semantics": "The entries to create with the plan. Each entry generates one run per configuration combination it names, so the plan's runs are described here rather than created separately.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "entries"
+        ],
+        "encoding": "JSON array of objects under entries in each entry."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member in order under entries."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a list of objects."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a value that is not an array before driver invocation."
+        },
+        {
+          "id": "member",
+          "kind": "invalid",
+          "description": "Reject an entry that is not an object before driver invocation."
+        },
+        {
+          "id": "empty",
+          "kind": "valid",
+          "description": "Accept an empty array and send it."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send nothing for it when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.entries[].suite_id",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "suite_id"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "suite_id"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain_ref": "positive_id",
+      "semantics": "The suite the entry draws its cases from, which TestRail requires for a project with more than one suite or with baselines. The driver forwards any number, so the boundary holds it to the identifier domain.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "suite_id"
+        ],
+        "encoding": "JSON integer under suite_id in each entry."
+      }
+    },
+    {
+      "id": "body.entries[].name",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "name"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "name"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The entry's name, which its runs inherit. No coercion; TestRail owns the format.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "name"
+        ],
+        "encoding": "JSON string under name in each entry."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send nothing for it when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.entries[].description",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "description"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "description"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The entry's description. No coercion; TestRail owns the format.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "description"
+        ],
+        "encoding": "JSON string under description in each entry."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send nothing for it when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.entries[].assignedto_id",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "assignedto_id"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "assignedto_id"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain_ref": "positive_id",
+      "semantics": "The user the entry's runs are assigned to, which a nested run may override. The driver forwards any number, so the boundary holds it to the identifier domain.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "assignedto_id"
+        ],
+        "encoding": "JSON integer under assignedto_id in each entry."
+      }
+    },
+    {
+      "id": "body.entries[].include_all",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "include_all"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "include_all"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "Whether the entry's runs cover every case of the suite. TestRail treats a false value and an omitted one differently once case_ids is present, so the flag is forwarded as given.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "include_all"
+        ],
+        "encoding": "JSON boolean under include_all in each entry."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the flag under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept true and send it."
+        },
+        {
+          "id": "false-value",
+          "kind": "valid",
+          "description": "Accept false and send it, rather than dropping it as if it were absent."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a numeric stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no flag when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.entries[].case_ids",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "case_ids"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "case_ids"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "semantics": "The cases the entry's runs cover when include_all is false. The driver forwards any number, so the boundary holds every member to the identifier domain.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "case_ids"
+        ],
+        "encoding": "JSON array of integers under case_ids in each entry."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member in order under case_ids."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a list of identifiers."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-positive member before driver invocation."
+        },
+        {
+          "id": "empty",
+          "kind": "valid",
+          "description": "Accept an empty array and send it, which is what lets a dynamic filter decide the selection."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no list when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.entries[].config_ids",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "config_ids"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "config_ids"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "semantics": "Every configuration the entry spans. TestRail generates a run per combination, and a nested run may only name configurations drawn from this list. The driver forwards any number, so the boundary holds every member to the identifier domain.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "config_ids"
+        ],
+        "encoding": "JSON array of integers under config_ids in each entry."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member in order under config_ids."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a list of identifiers."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-positive member before driver invocation."
+        },
+        {
+          "id": "empty",
+          "kind": "valid",
+          "description": "Accept an empty array and send it, which asks TestRail for an entry spanning no configuration."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no list when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.entries[].dynamic_filters",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "dynamic_filters"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "dynamic_filters"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "object",
+        "required": [
+          "mode",
+          "filters"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "type": "string"
+          },
+          "filters": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "semantics": "A selection filter in the form the TestRail interface produces: a mode, which the payload declares as a string rather than a number, and a filters map whose keys name a field such as cases:priority_id. The values are forwarded as given, since TestRail's own examples vary their shape from one field to the next. The object carries nothing beyond those two fields, and an extra one is refused.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "dynamic_filters"
+        ],
+        "encoding": "JSON object under dynamic_filters in each entry, sent unchanged."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the filter object under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a mode and a filters map."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a filter object without its mode before driver invocation."
+        },
+        {
+          "id": "mode-string",
+          "kind": "invalid",
+          "description": "Reject a numeric mode, which the payload declares as a string."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no filter when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.entries[].start_on",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "start_on"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "start_on"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain_ref": "unix_timestamp",
+      "semantics": "The entry's start date. Seconds since the Unix epoch, as TestRail documents. The driver forwards any number, so the boundary holds it to the timestamp domain.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "start_on"
+        ],
+        "encoding": "JSON integer under start_on in each entry."
+      }
+    },
+    {
+      "id": "body.entries[].due_on",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "due_on"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "due_on"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain_ref": "unix_timestamp",
+      "semantics": "The entry's end date. Seconds since the Unix epoch, as TestRail documents. The driver forwards any number, so the boundary holds it to the timestamp domain.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "due_on"
+        ],
+        "encoding": "JSON integer under due_on in each entry."
+      }
+    },
+    {
+      "id": "body.entries[].refs",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "refs"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "refs"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The entry's references. No coercion; TestRail owns the format.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "refs"
+        ],
+        "encoding": "JSON string under refs in each entry."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send nothing for it when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.entries[].runs",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "runs"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "runs"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "array",
+        "items": {
+          "type": "object"
+        }
+      },
+      "semantics": "The runs of the entry, each naming one full combination drawn from the entry's configurations, one configuration per group. A run's own fields override the entry's defaults.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "runs"
+        ],
+        "encoding": "JSON array of objects under runs in each nested run."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member in order under runs."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a list of objects."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a value that is not an array before driver invocation."
+        },
+        {
+          "id": "member",
+          "kind": "invalid",
+          "description": "Reject a run that is not an object before driver invocation."
+        },
+        {
+          "id": "empty",
+          "kind": "valid",
+          "description": "Accept an empty array and send it."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send nothing for it when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.entries[].runs[].name",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "runs",
+        "*",
+        "name"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "runs",
+          "*",
+          "name"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The run's name, overriding the entry's. No coercion; TestRail owns the format.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "name"
+        ],
+        "encoding": "JSON string under name in each nested run."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send nothing for it when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.entries[].runs[].description",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "runs",
+        "*",
+        "description"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "runs",
+          "*",
+          "description"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The run's description. No coercion; TestRail owns the format.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "description"
+        ],
+        "encoding": "JSON string under description in each nested run."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send nothing for it when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.entries[].runs[].assignedto_id",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "runs",
+        "*",
+        "assignedto_id"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "runs",
+          "*",
+          "assignedto_id"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain_ref": "positive_id",
+      "semantics": "The user this one run is assigned to, overriding the entry's assignee. The driver forwards any number, so the boundary holds it to the identifier domain.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "assignedto_id"
+        ],
+        "encoding": "JSON integer under assignedto_id in each nested run."
+      }
+    },
+    {
+      "id": "body.entries[].runs[].include_all",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "runs",
+        "*",
+        "include_all"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "runs",
+          "*",
+          "include_all"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "Whether this one run covers every case of the suite, overriding the entry's flag.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "include_all"
+        ],
+        "encoding": "JSON boolean under include_all in each nested run."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the flag under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept true and send it."
+        },
+        {
+          "id": "false-value",
+          "kind": "valid",
+          "description": "Accept false and send it, rather than dropping it as if it were absent."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a numeric stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no flag when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.entries[].runs[].case_ids",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "runs",
+        "*",
+        "case_ids"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "runs",
+          "*",
+          "case_ids"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "semantics": "The cases this one run covers, overriding the entry's selection. The driver forwards any number, so the boundary holds every member to the identifier domain.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "case_ids"
+        ],
+        "encoding": "JSON array of integers under case_ids in each nested run."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member in order under case_ids."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a list of identifiers."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-positive member before driver invocation."
+        },
+        {
+          "id": "empty",
+          "kind": "valid",
+          "description": "Accept an empty array and send it, which is what lets the entry's own selection stand."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no list when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.entries[].runs[].config_ids",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "runs",
+        "*",
+        "config_ids"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "runs",
+          "*",
+          "config_ids"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "semantics": "The combination this one run covers, one configuration per group, drawn from the entry's configurations. The driver forwards any number, so the boundary holds every member to the identifier domain.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "config_ids"
+        ],
+        "encoding": "JSON array of integers under config_ids in each nested run."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member in order under config_ids."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a list of identifiers."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-positive member before driver invocation."
+        },
+        {
+          "id": "empty",
+          "kind": "valid",
+          "description": "Accept an empty array and send it, which names no combination for this run."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no list when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.entries[].runs[].refs",
+      "input_path": [
+        "body",
+        "entries",
+        "*",
+        "runs",
+        "*",
+        "refs"
+      ],
+      "scope": "body",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "entries",
+          "*",
+          "runs",
+          "*",
+          "refs"
+        ]
+      },
+      "sources": [
+        "driver-schema",
+        "testrail-plans"
+      ],
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The run's references. No coercion; TestRail owns the format.",
+      "wire": {
+        "location": "json",
+        "names": [
+          "refs"
+        ],
+        "encoding": "JSON string under refs in each nested run."
+      },
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send nothing for it when the caller did not supply one."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "full-plan",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "description": "Full pass",
+          "milestone_id": 3,
+          "start_on": 1646000000,
+          "due_on": 1646999999,
+          "refs": "TR-1",
+          "entries": [
+            {
+              "suite_id": 1,
+              "name": "Browser test",
+              "description": "Across browsers",
+              "assignedto_id": 5,
+              "include_all": true,
+              "case_ids": [
+                101,
+                102
+              ],
+              "config_ids": [
+                1,
+                2,
+                5,
+                6
+              ],
+              "dynamic_filters": {
+                "mode": "1",
+                "filters": {
+                  "cases:priority_id": {
+                    "values": [
+                      2
+                    ]
+                  }
+                }
+              },
+              "start_on": 1646000000,
+              "due_on": 1646999999,
+              "refs": "TR-2",
+              "runs": [
+                {
+                  "name": "Chrome, Windows 8",
+                  "description": "One combination",
+                  "assignedto_id": 6,
+                  "include_all": true,
+                  "case_ids": [
+                    101
+                  ],
+                  "config_ids": [
+                    1,
+                    5
+                  ],
+                  "refs": "TR-3"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "project_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.description",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.milestone_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.start_on",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.due_on",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.refs",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].suite_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].name",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].description",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].assignedto_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].include_all",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].case_ids",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].config_ids",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].dynamic_filters",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].start_on",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].due_on",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].refs",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].name",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].description",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].assignedto_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].include_all",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].case_ids",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].config_ids",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].refs",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "plans.addPlan",
+          "arguments": [
+            1,
+            {
+              "name": "Release 1.0",
+              "description": "Full pass",
+              "milestone_id": 3,
+              "start_on": 1646000000,
+              "due_on": 1646999999,
+              "refs": "TR-1",
+              "entries": [
+                {
+                  "suite_id": 1,
+                  "name": "Browser test",
+                  "description": "Across browsers",
+                  "assignedto_id": 5,
+                  "include_all": true,
+                  "case_ids": [
+                    101,
+                    102
+                  ],
+                  "config_ids": [
+                    1,
+                    2,
+                    5,
+                    6
+                  ],
+                  "dynamic_filters": {
+                    "mode": "1",
+                    "filters": {
+                      "cases:priority_id": {
+                        "values": [
+                          2
+                        ]
+                      }
+                    }
+                  },
+                  "start_on": 1646000000,
+                  "due_on": 1646999999,
+                  "refs": "TR-2",
+                  "runs": [
+                    {
+                      "name": "Chrome, Windows 8",
+                      "description": "One combination",
+                      "assignedto_id": 6,
+                      "include_all": true,
+                      "case_ids": [
+                        101
+                      ],
+                      "config_ids": [
+                        1,
+                        5
+                      ],
+                      "refs": "TR-3"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_plan/1",
+          "json": {
+            "name": "Release 1.0",
+            "description": "Full pass",
+            "milestone_id": 3,
+            "start_on": 1646000000,
+            "due_on": 1646999999,
+            "refs": "TR-1",
+            "entries": [
+              {
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": "Across browsers",
+                "assignedto_id": 5,
+                "include_all": true,
+                "case_ids": [
+                  101,
+                  102
+                ],
+                "config_ids": [
+                  1,
+                  2,
+                  5,
+                  6
+                ],
+                "dynamic_filters": {
+                  "mode": "1",
+                  "filters": {
+                    "cases:priority_id": {
+                      "values": [
+                        2
+                      ]
+                    }
+                  }
+                },
+                "start_on": 1646000000,
+                "due_on": 1646999999,
+                "refs": "TR-2",
+                "runs": [
+                  {
+                    "name": "Chrome, Windows 8",
+                    "description": "One combination",
+                    "assignedto_id": 6,
+                    "include_all": true,
+                    "case_ids": [
+                      101
+                    ],
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "refs": "TR-3"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-values",
+      "input": {
+        "project_id": 9007199254740991,
+        "body": {
+          "name": "Release 1.0",
+          "milestone_id": 9007199254740991,
+          "start_on": 9007199254740991,
+          "due_on": 9007199254740991,
+          "entries": [
+            {
+              "suite_id": 9007199254740991,
+              "assignedto_id": 9007199254740991,
+              "start_on": 9007199254740991,
+              "due_on": 9007199254740991,
+              "runs": [
+                {
+                  "assignedto_id": 9007199254740991
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "project_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body.milestone_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body.start_on",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body.due_on",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body.entries[].suite_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body.entries[].assignedto_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body.entries[].start_on",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body.entries[].due_on",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].assignedto_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "plans.addPlan",
+          "arguments": [
+            9007199254740991,
+            {
+              "name": "Release 1.0",
+              "milestone_id": 9007199254740991,
+              "start_on": 9007199254740991,
+              "due_on": 9007199254740991,
+              "entries": [
+                {
+                  "suite_id": 9007199254740991,
+                  "assignedto_id": 9007199254740991,
+                  "start_on": 9007199254740991,
+                  "due_on": 9007199254740991,
+                  "runs": [
+                    {
+                      "assignedto_id": 9007199254740991
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_plan/9007199254740991",
+          "json": {
+            "name": "Release 1.0",
+            "milestone_id": 9007199254740991,
+            "start_on": 9007199254740991,
+            "due_on": 9007199254740991,
+            "entries": [
+              {
+                "suite_id": 9007199254740991,
+                "assignedto_id": 9007199254740991,
+                "start_on": 9007199254740991,
+                "due_on": 9007199254740991,
+                "runs": [
+                  {
+                    "assignedto_id": 9007199254740991
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "epoch-dates",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "start_on": 0,
+          "due_on": 0,
+          "entries": [
+            {
+              "start_on": 0,
+              "due_on": 0
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.start_on",
+          "requirements": [
+            "zero"
+          ]
+        },
+        {
+          "parameter": "body.due_on",
+          "requirements": [
+            "zero"
+          ]
+        },
+        {
+          "parameter": "body.entries[].start_on",
+          "requirements": [
+            "zero"
+          ]
+        },
+        {
+          "parameter": "body.entries[].due_on",
+          "requirements": [
+            "zero"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "plans.addPlan",
+          "arguments": [
+            1,
+            {
+              "name": "Release 1.0",
+              "start_on": 0,
+              "due_on": 0,
+              "entries": [
+                {
+                  "start_on": 0,
+                  "due_on": 0
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_plan/1",
+          "json": {
+            "name": "Release 1.0",
+            "start_on": 0,
+            "due_on": 0,
+            "entries": [
+              {
+                "start_on": 0,
+                "due_on": 0
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "plan-without-entries",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.description",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.milestone_id",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.start_on",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.due_on",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.refs",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "plans.addPlan",
+          "arguments": [
+            1,
+            {
+              "name": "Release 1.0"
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_plan/1",
+          "json": {
+            "name": "Release 1.0"
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "bare-entry",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {}
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].suite_id",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].name",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].description",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].assignedto_id",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].include_all",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].case_ids",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].config_ids",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].dynamic_filters",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].start_on",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].due_on",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].refs",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "plans.addPlan",
+          "arguments": [
+            1,
+            {
+              "name": "Release 1.0",
+              "entries": [
+                {}
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_plan/1",
+          "json": {
+            "name": "Release 1.0",
+            "entries": [
+              {}
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "bare-run",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "runs": [
+                {}
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].runs[].name",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].description",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].assignedto_id",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].include_all",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].case_ids",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].config_ids",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].refs",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "plans.addPlan",
+          "arguments": [
+            1,
+            {
+              "name": "Release 1.0",
+              "entries": [
+                {
+                  "runs": [
+                    {}
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_plan/1",
+          "json": {
+            "name": "Release 1.0",
+            "entries": [
+              {
+                "runs": [
+                  {}
+                ]
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "no-entries",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": []
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "plans.addPlan",
+          "arguments": [
+            1,
+            {
+              "name": "Release 1.0",
+              "entries": []
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_plan/1",
+          "json": {
+            "name": "Release 1.0",
+            "entries": []
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "entry-without-runs",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "runs": []
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].runs",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "plans.addPlan",
+          "arguments": [
+            1,
+            {
+              "name": "Release 1.0",
+              "entries": [
+                {
+                  "runs": []
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_plan/1",
+          "json": {
+            "name": "Release 1.0",
+            "entries": [
+              {
+                "runs": []
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "empty-selections",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "case_ids": [],
+              "config_ids": [],
+              "runs": [
+                {
+                  "case_ids": [],
+                  "config_ids": []
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].case_ids",
+          "requirements": [
+            "empty"
+          ]
+        },
+        {
+          "parameter": "body.entries[].config_ids",
+          "requirements": [
+            "empty"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].case_ids",
+          "requirements": [
+            "empty"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].config_ids",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "plans.addPlan",
+          "arguments": [
+            1,
+            {
+              "name": "Release 1.0",
+              "entries": [
+                {
+                  "case_ids": [],
+                  "config_ids": [],
+                  "runs": [
+                    {
+                      "case_ids": [],
+                      "config_ids": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_plan/1",
+          "json": {
+            "name": "Release 1.0",
+            "entries": [
+              {
+                "case_ids": [],
+                "config_ids": [],
+                "runs": [
+                  {
+                    "case_ids": [],
+                    "config_ids": []
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "flags-cleared",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "include_all": false,
+              "runs": [
+                {
+                  "include_all": false
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].include_all",
+          "requirements": [
+            "false-value"
+          ]
+        },
+        {
+          "parameter": "body.entries[].runs[].include_all",
+          "requirements": [
+            "false-value"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "plans.addPlan",
+          "arguments": [
+            1,
+            {
+              "name": "Release 1.0",
+              "entries": [
+                {
+                  "include_all": false,
+                  "runs": [
+                    {
+                      "include_all": false
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_plan/1",
+          "json": {
+            "name": "Release 1.0",
+            "entries": [
+              {
+                "include_all": false,
+                "runs": [
+                  {
+                    "include_all": false
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 10,
+            "name": "Release 1.0",
+            "description": null,
+            "milestone_id": 3,
+            "assignedto_id": null,
+            "is_completed": false,
+            "completed_on": null,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "untested_count": 0,
+            "retest_count": 0,
+            "failed_count": 0,
+            "project_id": 1,
+            "created_on": 1646058671,
+            "created_by": 1,
+            "url": "https://example.testrail.io/index.php?/plans/view/10",
+            "start_on": null,
+            "due_on": null,
+            "entries": [
+              {
+                "id": "3933d74b-4282-44de-82ae-a6412808369d",
+                "suite_id": 1,
+                "name": "Browser test",
+                "description": null,
+                "include_all": true,
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "runs": [
+                  {
+                    "id": 13,
+                    "suite_id": 1,
+                    "name": "Chrome, Windows 8",
+                    "description": null,
+                    "milestone_id": null,
+                    "assignedto_id": null,
+                    "include_all": true,
+                    "is_completed": false,
+                    "completed_on": null,
+                    "config": "Chrome, Windows 8",
+                    "config_ids": [
+                      1,
+                      5
+                    ],
+                    "passed_count": 0,
+                    "blocked_count": 0,
+                    "untested_count": 8,
+                    "retest_count": 0,
+                    "failed_count": 0,
+                    "project_id": 1,
+                    "plan_id": 10,
+                    "created_on": 1646058671,
+                    "created_by": 1,
+                    "refs": null,
+                    "url": "https://example.testrail.io/index.php?/runs/view/13"
+                  }
+                ],
+                "refs": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "missing-body",
+      "input": {
+        "project_id": 1
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-body",
+      "input": {
+        "project_id": 1,
+        "body": []
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-name",
+      "input": {
+        "project_id": 1,
+        "body": {}
+      },
+      "covers": [
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-name",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": 7
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-description",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "P",
+          "description": 7
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.description",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-refs",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "P",
+          "refs": [
+            "TR-1"
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.refs",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-entries",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "P",
+          "entries": {}
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "entry-not-object",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "P",
+          "entries": [
+            7
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries",
+          "requirements": [
+            "member"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "entry-invalid-name",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "name": 7
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].name",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "entry-invalid-description",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "description": 7
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].description",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "entry-invalid-refs",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "refs": [
+                "TR-2"
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].refs",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "entry-invalid-include-all",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "include_all": 1
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].include_all",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "entry-invalid-case-id",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "case_ids": [
+                0
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].case_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "entry-invalid-config-id",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "config_ids": [
+                0
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].config_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "entry-filter-without-mode",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "dynamic_filters": {
+                "filters": {}
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].dynamic_filters",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "entry-filter-numeric-mode",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "dynamic_filters": {
+                "mode": 1,
+                "filters": {}
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].dynamic_filters",
+          "requirements": [
+            "mode-string"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-runs",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "runs": {}
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].runs",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "run-not-object",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "runs": [
+                7
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].runs",
+          "requirements": [
+            "member"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "run-invalid-name",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "runs": [
+                {
+                  "name": 7
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].runs[].name",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "run-invalid-description",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "runs": [
+                {
+                  "description": 7
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].runs[].description",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "run-invalid-refs",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "runs": [
+                {
+                  "refs": [
+                    "TR-3"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].runs[].refs",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "run-invalid-include-all",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "runs": [
+                {
+                  "include_all": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].runs[].include_all",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "run-invalid-case-id",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "runs": [
+                {
+                  "case_ids": [
+                    0
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].runs[].case_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "run-invalid-config-id",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "runs": [
+                {
+                  "config_ids": [
+                    0
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].runs[].config_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "P"
+        },
+        "name": "P"
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-body",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "P",
+          "assignedto_id": 5
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-body"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-entry-field",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "milestone_id": 3
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-entry"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-run-field",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "runs": [
+                {
+                  "suite_id": 1
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-run"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

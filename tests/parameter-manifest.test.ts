@@ -27,6 +27,16 @@ import {
   UpdateSectionPayloadSchema,
   UpdateSharedStepPayloadSchema,
   UpdateSuitePayloadSchema,
+  AddConfigurationGroupPayloadSchema,
+  AddConfigurationPayloadSchema,
+  AddPlanEntryPayloadSchema,
+  AddPlanPayloadSchema,
+  AddRunToPlanEntryPayloadSchema,
+  UpdateConfigurationGroupPayloadSchema,
+  UpdateConfigurationPayloadSchema,
+  UpdatePlanEntryPayloadSchema,
+  UpdatePlanPayloadSchema,
+  UpdateRunInPlanEntryPayloadSchema,
 } from '@dichovsky/testrail-api-client';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -168,21 +178,32 @@ describe('independent parameter manifest format', () => {
       'testrail_add_bdd',
       'testrail_add_case',
       'testrail_add_cases',
+      'testrail_add_config',
+      'testrail_add_config_group',
+      'testrail_add_plan',
+      'testrail_add_plan_entry',
       'testrail_add_project',
       'testrail_add_result',
       'testrail_add_result_for_case',
       'testrail_add_results',
       'testrail_add_results_for_cases',
       'testrail_add_run',
+      'testrail_add_run_to_plan_entry',
       'testrail_add_section',
       'testrail_add_shared_step',
       'testrail_add_suite',
+      'testrail_close_plan',
       'testrail_close_run',
       'testrail_copy_cases_to_section',
       'testrail_delete_case',
       'testrail_delete_cases',
+      'testrail_delete_config',
+      'testrail_delete_config_group',
+      'testrail_delete_plan',
+      'testrail_delete_plan_entry',
       'testrail_delete_project',
       'testrail_delete_run',
+      'testrail_delete_run_from_plan_entry',
       'testrail_delete_section',
       'testrail_delete_shared_step',
       'testrail_delete_suite',
@@ -194,7 +215,10 @@ describe('independent parameter manifest format', () => {
       'testrail_get_case',
       'testrail_get_case_titles',
       'testrail_get_cases',
+      'testrail_get_configs',
       'testrail_get_history_for_case',
+      'testrail_get_plan',
+      'testrail_get_plans',
       'testrail_get_project',
       'testrail_get_projects',
       'testrail_get_results',
@@ -216,8 +240,13 @@ describe('independent parameter manifest format', () => {
       'testrail_update_bdd',
       'testrail_update_case',
       'testrail_update_cases',
+      'testrail_update_config',
+      'testrail_update_config_group',
+      'testrail_update_plan',
+      'testrail_update_plan_entry',
       'testrail_update_project',
       'testrail_update_run',
+      'testrail_update_run_in_plan_entry',
       'testrail_update_section',
       'testrail_update_shared_step',
       'testrail_update_suite',
@@ -225,10 +254,10 @@ describe('independent parameter manifest format', () => {
       'testrail_update_tests',
     ]);
     expect(report.partialEndpoints).toEqual([]);
-    expect(report.pendingEndpoints).toHaveLength(75);
+    expect(report.pendingEndpoints).toHaveLength(56);
     expect([...report.reviewedEndpoints, ...report.pendingEndpoints].sort())
       .toEqual(inventory.map(({ tool }) => tool).sort());
-    expect(report.pendingEndpoints).toContain('testrail_add_plan');
+    expect(report.pendingEndpoints).toContain('testrail_add_attachment_to_case');
   });
 
   it('derives a control\'s rejections from the baseline of its own call mode', () => {
@@ -361,6 +390,11 @@ const runFilterOptions = z.strictObject({
   createdAfter: z.number().optional(), createdBefore: z.number().optional(), createdBy: z.array(z.number()).optional(),
   includePlanRuns: z.boolean().optional(), isCompleted: z.boolean().optional(),
   milestoneId: idOrList.optional(), refs: z.string().optional(), suiteId: idOrList.optional(),
+});
+/** The plan filters under the driver's option names, as a fixture writes them. */
+const planFilterOptions = z.strictObject({
+  createdAfter: z.number().optional(), createdBefore: z.number().optional(), createdBy: z.array(z.number()).optional(),
+  isCompleted: z.boolean().optional(), milestoneId: z.array(z.number()).optional(), refs: z.string().optional(),
 });
 /** The result filters under the driver's option names, as a fixture writes them. */
 const resultFilterOptions = z.strictObject({
@@ -736,6 +770,89 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
       const [sectionId, options] = z.tuple([z.number(), z.strictObject({ soft: z.boolean() }).optional()])
         .parse(expected.driver.arguments);
       return options === undefined ? client.sections.deleteSection(sectionId) : client.sections.deleteSection(sectionId, options);
+    }
+    case 'configurations.getConfigurations': {
+      const [projectId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.configurations.getConfigurations(projectId);
+    }
+    case 'configurations.addConfigurationGroup': {
+      const [projectId, payload] = z.tuple([z.number(), AddConfigurationGroupPayloadSchema]).parse(expected.driver.arguments);
+      return client.configurations.addConfigurationGroup(projectId, payload);
+    }
+    case 'configurations.updateConfigurationGroup': {
+      const [groupId, payload] = z.tuple([z.number(), UpdateConfigurationGroupPayloadSchema]).parse(expected.driver.arguments);
+      return client.configurations.updateConfigurationGroup(groupId, payload);
+    }
+    case 'configurations.deleteConfigurationGroup': {
+      const [groupId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.configurations.deleteConfigurationGroup(groupId);
+    }
+    case 'configurations.addConfiguration': {
+      const [groupId, payload] = z.tuple([z.number(), AddConfigurationPayloadSchema]).parse(expected.driver.arguments);
+      return client.configurations.addConfiguration(groupId, payload);
+    }
+    case 'configurations.updateConfiguration': {
+      const [configId, payload] = z.tuple([z.number(), UpdateConfigurationPayloadSchema]).parse(expected.driver.arguments);
+      return client.configurations.updateConfiguration(configId, payload);
+    }
+    case 'configurations.deleteConfiguration': {
+      const [configId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.configurations.deleteConfiguration(configId);
+    }
+    case 'plans.getPlan': {
+      const [planId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.plans.getPlan(planId);
+    }
+    case 'plans.getPlansPage': {
+      const [projectId, options] = z.tuple([z.number(), planFilterOptions.extend({ limit: z.number(), offset: z.number() })])
+        .parse(expected.driver.arguments);
+      return client.plans.getPlansPage(projectId, present(options));
+    }
+    case 'plans.getAllPlans': {
+      const [projectId, options] = z.tuple([z.number(), planFilterOptions.extend(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.plans.getAllPlans(projectId, present(options));
+    }
+    case 'plans.addPlan': {
+      const [projectId, payload] = z.tuple([z.number(), AddPlanPayloadSchema]).parse(expected.driver.arguments);
+      return client.plans.addPlan(projectId, payload);
+    }
+    case 'plans.updatePlan': {
+      const [planId, payload] = z.tuple([z.number(), UpdatePlanPayloadSchema]).parse(expected.driver.arguments);
+      return client.plans.updatePlan(planId, payload);
+    }
+    case 'plans.closePlan': {
+      const [planId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.plans.closePlan(planId);
+    }
+    case 'plans.deletePlan': {
+      const [planId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.plans.deletePlan(planId);
+    }
+    case 'plans.addPlanEntry': {
+      const [planId, payload] = z.tuple([z.number(), AddPlanEntryPayloadSchema]).parse(expected.driver.arguments);
+      return client.plans.addPlanEntry(planId, payload);
+    }
+    case 'plans.updatePlanEntry': {
+      const [planId, entryId, payload] = z.tuple([z.number(), z.string(), UpdatePlanEntryPayloadSchema])
+        .parse(expected.driver.arguments);
+      return client.plans.updatePlanEntry(planId, entryId, payload);
+    }
+    case 'plans.deletePlanEntry': {
+      const [planId, entryId] = z.tuple([z.number(), z.string()]).parse(expected.driver.arguments);
+      return client.plans.deletePlanEntry(planId, entryId);
+    }
+    case 'plans.addRunToPlanEntry': {
+      const [planId, entryId, payload] = z.tuple([z.number(), z.string(), AddRunToPlanEntryPayloadSchema])
+        .parse(expected.driver.arguments);
+      return client.plans.addRunToPlanEntry(planId, entryId, payload);
+    }
+    case 'plans.updateRunInPlanEntry': {
+      const [runId, payload] = z.tuple([z.number(), UpdateRunInPlanEntryPayloadSchema]).parse(expected.driver.arguments);
+      return client.plans.updateRunInPlanEntry(runId, payload);
+    }
+    case 'plans.deleteRunFromPlanEntry': {
+      const [runId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.plans.deleteRunFromPlanEntry(runId);
     }
     default: throw new Error(`Missing independent driver evidence harness: ${expected.driver.binding}`);
   }

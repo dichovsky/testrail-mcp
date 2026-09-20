@@ -1,0 +1,248 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-20"
+  },
+  "endpoint": {
+    "family_id": "T06",
+    "http_method": "POST",
+    "route": "delete_plan_entry/{plan_id}/{entry_id}",
+    "tool": "testrail_delete_plan_entry",
+    "driver_method": "plans.deletePlanEntry"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/plans.ts",
+      "supports": "Every write validates its identifiers, an entry identifier through the UUID validator, places them as the path segments of the matching endpoint and forwards the JSON payload unchanged. The replies are parsed advisorily against PlanSchema, PlanEntrySchema or RunSchema."
+    },
+    {
+      "id": "testrail-plans",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077711537684-Plans",
+      "supports": "add_plan requires name and accepts description, milestone_id, start_on, due_on and an entries array. add_plan_entry takes suite_id, required for projects with multiple suites or baseline support, plus name, description, assignedto_id, include_all, case_ids, config_ids, refs, start_on, due_on and runs; its top-level config_ids lists the combined configurations for the entry's runs, and every configuration a nested run names must appear in it, each run naming one full combination with one configuration per group. The reference states that config_ids and runs are not supported on update_plan_entry. add_run_to_plan_entry requires config_ids and takes description, assignedto_id, start_on, due_on, include_all, case_ids and refs; TestRail derives the run's name from its configuration."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "The endpoint takes its two identifiers in the path and no request body at all, so every field beyond them is refused."
+  },
+  "outer_result": {
+    "driver": "void",
+    "tool_data": "null",
+    "notes": "The method resolves with no value and the wrapper reports data: null. Deleting an entry removes every run it generated, with their tests and results, and cannot be undone."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "no-cascade",
+      "kind": "mapping",
+      "description": "Send exactly one request. The adapter never follows up with further calls to find or repair what the deletion removed."
+    }
+  ],
+  "baseline": "representative-ids",
+  "parameters": [
+    {
+      "id": "plan_id",
+      "input_path": [
+        "plan_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The plan the entry belongs to. No coercion; passed positionally and sent verbatim as a path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "plan_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-plans"
+      ]
+    },
+    {
+      "id": "entry_id",
+      "input_path": [
+        "entry_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "entry_id",
+      "semantics": "The entry to delete, as the plan's own reply reports it. It is not a run identifier, and deleting one run of the entry is a different tool. TestRail identifies a plan entry by a UUID rather than a number, and the driver validates its form before dispatch. No coercion; passed positionally and sent verbatim as a path segment.",
+      "driver": {
+        "argument": 1,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "entry_id"
+        ],
+        "encoding": "UUID path segment, sent verbatim in the case the caller supplied."
+      },
+      "sources": [
+        "driver-module",
+        "testrail-plans"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-ids",
+      "input": {
+        "plan_id": 10,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d"
+      },
+      "covers": [
+        {
+          "parameter": "plan_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "entry_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-cascade"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "plans.deletePlanEntry",
+          "arguments": [
+            10,
+            "3933d74b-4282-44de-82ae-a6412808369d"
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "delete_plan_entry/10/3933d74b-4282-44de-82ae-a6412808369d"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {}
+        },
+        "driver_result": {
+          "kind": "void"
+        }
+      }
+    },
+    {
+      "id": "upper-case-entry-id",
+      "input": {
+        "plan_id": 10,
+        "entry_id": "3933D74B-4282-44DE-82AE-A6412808369D"
+      },
+      "covers": [
+        {
+          "parameter": "entry_id",
+          "requirements": [
+            "case-insensitive"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "plans.deletePlanEntry",
+          "arguments": [
+            10,
+            "3933D74B-4282-44DE-82AE-A6412808369D"
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "delete_plan_entry/10/3933D74B-4282-44DE-82AE-A6412808369D"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {}
+        },
+        "driver_result": {
+          "kind": "void"
+        }
+      }
+    },
+    {
+      "id": "largest-safe-plan-id",
+      "input": {
+        "plan_id": 9007199254740991,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d"
+      },
+      "covers": [
+        {
+          "parameter": "plan_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "plans.deletePlanEntry",
+          "arguments": [
+            9007199254740991,
+            "3933d74b-4282-44de-82ae-a6412808369d"
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "delete_plan_entry/9007199254740991/3933d74b-4282-44de-82ae-a6412808369d"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {}
+        },
+        "driver_result": {
+          "kind": "void"
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "plan_id": 10,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "body": {}
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}
