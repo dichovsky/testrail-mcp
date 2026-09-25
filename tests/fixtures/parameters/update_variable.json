@@ -39,7 +39,7 @@
   "outer_result": {
     "driver": "record",
     "tool_data": "record",
-    "notes": "TestRail answers with the variable, which carries an identifier and a name only. A rename does not touch the values datasets give the variable: those are keyed to the variable, so they stay with it under its new name. Entity-field drift is advisory."
+    "notes": "TestRail answers with the variable, which carries an identifier and a name only. TestRail documents nothing about what a rename does to the values datasets already give the variable, and the reply carries only the variable itself, so this manifest records no outcome for them. The write payloads key values by variable name rather than by identifier, which makes the question a real one rather than an obviously safe rename. Entity-field drift is advisory."
   },
   "requirements": [
     {

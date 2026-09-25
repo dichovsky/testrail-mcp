@@ -18,7 +18,7 @@
     {
       "id": "driver-module-datasets",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/datasets.ts",
-      "supports": "DATASETS_PAGINATION is declared with requestControls false and an envelope response over the datasets collection, and its prepare step contributes the project alone as a path parameter. Neither getDatasetsPage nor getAllDatasets therefore sends a limit or an offset: the page helper takes the project alone and the aggregate takes it with the safety bounds. prepare validates the project identifier, so an invalid one is refused before any request."
+      "supports": "DATASETS_PAGINATION is declared with requestControls false and an envelope response over the datasets collection, and its prepare step contributes the project alone as a path parameter. Neither getDatasetsPage nor getAllDatasets therefore sends a limit or an offset of its own: the page helper takes the project alone and the aggregate takes it with the safety bounds, walking the envelope's next link for each further page and carrying whatever offset and limit TestRail put there. prepare validates the project identifier, so an invalid one is refused before any request."
     },
     {
       "id": "driver-paginated-list",

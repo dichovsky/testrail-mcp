@@ -5190,7 +5190,7 @@ TestRail effect: `read`. Driver retry policy: `ordinary-read`. Local file behavi
 
 ## testrail_get_dataset
 
-Get a single TestRail dataset with its variable values. Each entry of the returned variables array names a variable and the value this dataset gives it; a value may be null where the dataset leaves the variable unset, and the array itself may be absent on a dataset that has none. Datasets are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription. Required path arguments: dataset_id.
+Get a single TestRail dataset with its variable values. Each entry of the returned variables array names a variable and the value this dataset gives it; a value may be null where the dataset leaves the variable unset. The array itself may be missing, which the driver tolerates defensively for older revisions rather than TestRail documenting when it happens. Datasets are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription. Required path arguments: dataset_id.
 
 REST: `GET get_dataset/{dataset_id}`. Driver: `datasets.getDataset`. Family: T09.
 
@@ -10781,7 +10781,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_update_dataset
 
-Update a TestRail dataset. Both fields are optional and TestRail accepts an empty body as a no-op. TestRail does not state whether a supplied body.variables replaces the dataset's values or merges into them, so send the full map the dataset should end up with, which is correct under either reading. Every name in it must already exist as a variable of the project. Datasets are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription. Required path arguments: dataset_id. Changes TestRail data.
+Update a TestRail dataset. Both fields are optional and TestRail accepts an empty body as a no-op. TestRail does not state whether a supplied body.variables replaces the dataset's values or merges into them, so send the full map of values you want set, which is the safe instruction under either reading. Every name in it must already exist as a variable of the project. Clearing a value is not available: the map takes strings only, so there is no way to send an empty or null value for a name. Datasets are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription. Required path arguments: dataset_id. Changes TestRail data.
 
 REST: `POST update_dataset/{dataset_id}`. Driver: `datasets.updateDataset`. Family: T09.
 
@@ -12269,7 +12269,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_update_variable
 
-Rename a TestRail variable. The name is the only field, and TestRail accepts an empty body as a no-op. It refuses a name already used in the project. The values datasets give the variable are kept under the new name. Variables are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription. Required path arguments: variable_id. Changes TestRail data.
+Rename a TestRail variable. The name is the only field, and TestRail accepts an empty body as a no-op. It refuses a name already used in the project. TestRail does not document what a rename does to the values datasets already give the variable, so this server claims nothing about them. Variables are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription. Required path arguments: variable_id. Changes TestRail data.
 
 REST: `POST update_variable/{variable_id}`. Driver: `variables.updateVariable`. Family: T09.
 

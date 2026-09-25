@@ -31,7 +31,7 @@ export const getDataset = defineOperation({
   route: 'get_dataset/{dataset_id}',
   family: 'T09',
   driverBinding: 'datasets.getDataset',
-  summary: 'Get a single TestRail dataset with its variable values. Each entry of the returned variables array names a variable and the value this dataset gives it; a value may be null where the dataset leaves the variable unset, and the array itself may be absent on a dataset that has none. Datasets are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription.',
+  summary: 'Get a single TestRail dataset with its variable values. Each entry of the returned variables array names a variable and the value this dataset gives it; a value may be null where the dataset leaves the variable unset. The array itself may be missing, which the driver tolerates defensively for older revisions rather than TestRail documenting when it happens. Datasets are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription.',
   inputSchema: getDatasetInput,
   argumentMap: [{ input: 'dataset_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: DatasetSchema },
@@ -48,7 +48,9 @@ export const getDataset = defineOperation({
  * TestRail documents no request controls for this list: its parameter table carries the
  * project alone while the reply carries an offset, a limit and continuation links the
  * server chose. The driver's executor is declared without request controls to match, so
- * neither helper sends one and a complete read that stops at one of its safety bounds
+ * neither helper sends one of its own. The aggregate still walks the envelope's next
+ * link, so a continuation request carries the offset and limit TestRail chose there;
+ * what no one here chooses is the page size. A complete read that stops at a safety bound
  * cannot be resumed from where it stopped.
  */
 const getDatasetsInput = createListInput({
@@ -131,7 +133,7 @@ export const updateDataset = defineOperation({
   route: 'update_dataset/{dataset_id}',
   family: 'T09',
   driverBinding: 'datasets.updateDataset',
-  summary: 'Update a TestRail dataset. Both fields are optional and TestRail accepts an empty body as a no-op. TestRail does not state whether a supplied body.variables replaces the dataset\'s values or merges into them, so send the full map the dataset should end up with, which is correct under either reading. Every name in it must already exist as a variable of the project. Datasets are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription.',
+  summary: 'Update a TestRail dataset. Both fields are optional and TestRail accepts an empty body as a no-op. TestRail does not state whether a supplied body.variables replaces the dataset\'s values or merges into them, so send the full map of values you want set, which is the safe instruction under either reading. Every name in it must already exist as a variable of the project. Clearing a value is not available: the map takes strings only, so there is no way to send an empty or null value for a name. Datasets are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription.',
   inputSchema: updateDatasetInput,
   argumentMap: [
     { input: 'dataset_id', call: 'single', argument: 0, serialization: 'path' },
@@ -247,7 +249,7 @@ export const updateVariable = defineOperation({
   route: 'update_variable/{variable_id}',
   family: 'T09',
   driverBinding: 'variables.updateVariable',
-  summary: 'Rename a TestRail variable. The name is the only field, and TestRail accepts an empty body as a no-op. It refuses a name already used in the project. The values datasets give the variable are kept under the new name. Variables are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription.',
+  summary: 'Rename a TestRail variable. The name is the only field, and TestRail accepts an empty body as a no-op. It refuses a name already used in the project. TestRail does not document what a rename does to the values datasets already give the variable, so this server claims nothing about them. Variables are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription.',
   inputSchema: updateVariableInput,
   argumentMap: [
     { input: 'variable_id', call: 'single', argument: 0, serialization: 'path' },

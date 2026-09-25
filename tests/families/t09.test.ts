@@ -71,10 +71,12 @@ function envelope(collection: string, items: readonly unknown[], next: string | 
 }
 
 /*
- * A dataset's values are written as a map keyed by variable name, which is the only
- * place in this server where a caller's own strings become object keys of a request
- * body. Every other payload has a fixed field set, so nothing else can be mistaken for
- * a control. These names deliberately collide with this server's own vocabulary.
+ * A dataset's values are written as a map keyed by variable name. Other payloads also
+ * take caller-chosen body keys, but never bare ones: a case, result or shared-step
+ * extension must match custom_*, a namespace this server owns, so no key a caller
+ * invents there can be spelled like a control. Here the key is unconstrained caller
+ * text, which makes this the one place a collision is even expressible. These names
+ * deliberately collide with this server's own vocabulary.
  */
 describe('T09 the variable names a dataset write is allowed to use', () => {
   it('sends a name that collides with a paging control as the variable name it is', async () => {
