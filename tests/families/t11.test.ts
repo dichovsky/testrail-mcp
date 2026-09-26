@@ -39,7 +39,10 @@ function operation(tool: string) {
  * replaced, so what these tests prove about caching, coalescing and retries is what a real
  * call does. A test that wants a different retry budget or the cache turned on says so.
  */
-type DriverOverrides = { enableCache?: boolean; maxRetries?: number; timeout?: number; bodyTimeout?: number };
+type DriverOverrides = {
+  enableCache?: boolean; maxRetries?: number; timeout?: number; bodyTimeout?: number;
+  rateLimiter?: { maxRequests: number; windowMs: number };
+};
 
 function driverFor(fetch: ReturnType<typeof vi.fn>, overrides: DriverOverrides = {}) {
   return new TestRailClient({
@@ -213,6 +216,22 @@ describe('T11 every report run reaches TestRail exactly once', () => {
       const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(errorOf(result)).toMatchObject({ code, http_status: status, write_outcome: 'unknown' });
+    } finally { await runtime.shutdown(); }
+  });
+
+  /*
+   * The driver's own rate limiter refuses a run before sending it, with the same 429 a
+   * rate-limited TestRail returns, so the code and status cannot say which one answered.
+   */
+  it.each(GENERATORS)('%s reports a run the driver\'s own rate limiter refused as a 429 that was never sent', async (tool, _endpoint, urls) => {
+    const fetch = replying(urls);
+    const runtime = runtimeFor(fetch, { rateLimiter: { maxRequests: 1, windowMs: 60_000 } });
+    try {
+      const first = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      expect(first.isError).toBeFalsy();
+      const refused = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(errorOf(refused)).toMatchObject({ code: 'RATE_LIMITED', http_status: 429, write_outcome: 'unknown' });
     } finally { await runtime.shutdown(); }
   });
 
@@ -405,6 +424,7 @@ describe('T11 what a run returns', () => {
     // A failed run's outcome is read from write_outcome, which can be either of these.
     expect(description).toContain('acknowledged means TestRail returned a success reply this server could not use');
     expect(description).toContain('unknown is also what a refusal from TestRail carries, with its code and http_status saying what TestRail answered');
+    expect(description).toContain('a RATE_LIMITED 429 can instead come from the driver\'s own rate limiter, which refuses before sending and still reports unknown');
     // The retry contract is this family's own text, not the registry's appended sentence.
     expect(description).toContain('Neither this server nor its driver retries a run after a network error or a 5xx');
     expect(description).toContain('the driver re-sends only a rate-limited (429) request, which TestRail rejects before handling');
