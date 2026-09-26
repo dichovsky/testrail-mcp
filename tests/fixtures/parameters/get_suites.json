@@ -166,7 +166,7 @@
       "requiredness": "optional",
       "domain_ref": "aggregate_max_items",
       "baseline": "all-defaults",
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "semantics": "All mode only. Forwarded verbatim when supplied at or below the configured limit and refused with INVALID_ARGUMENT before dispatch above it; the configured limit is forwarded when omitted.",
       "driver": { "argument": 1, "path": ["maxItems"] },
       "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the collection inside the driver." },
       "sources": ["driver-pagination"]
@@ -178,7 +178,7 @@
       "requiredness": "optional",
       "domain_ref": "aggregate_max_pages",
       "baseline": "all-defaults",
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "semantics": "All mode only. Forwarded verbatim when supplied at or below the configured limit and refused with INVALID_ARGUMENT before dispatch above it; the configured limit is forwarded when omitted.",
       "driver": { "argument": 1, "path": ["maxPages"] },
       "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the collection inside the driver." },
       "sources": ["driver-pagination"]
@@ -190,7 +190,7 @@
       "requiredness": "optional",
       "domain_ref": "aggregate_max_bytes",
       "baseline": "all-defaults",
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "semantics": "All mode only. Forwarded verbatim when supplied at or below the configured limit and refused with INVALID_ARGUMENT before dispatch above it; the configured limit is forwarded when omitted.",
       "driver": { "argument": 1, "path": ["maxBytes"] },
       "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the serialized item bytes inside the driver." },
       "sources": ["driver-pagination"]
@@ -202,7 +202,7 @@
       "requiredness": "optional",
       "domain_ref": "aggregate_max_duration_ms",
       "baseline": "all-defaults",
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "semantics": "All mode only. Forwarded verbatim when supplied at or below the configured limit and refused with INVALID_ARGUMENT before dispatch above it; the configured limit is forwarded when omitted.",
       "driver": { "argument": 1, "path": ["maxDurationMs"] },
       "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the aggregate's wall-clock time inside the driver." },
       "sources": ["driver-pagination"]
