@@ -158,7 +158,9 @@ describe('capacity after the adapter watchdog', () => {
       watchdog.fireWatchdogs();
       for (const result of await Promise.all(calls)) expect(code(result)).toBe('TIMEOUT');
 
-      // Every caller has its answer, but every request is still open upstream.
+      // Every caller has its answer, but every request is still open upstream. The pause
+      // lets an early release happen first, so the assertion cannot pass on timing alone.
+      await settle();
       expect(runtime.stats().active).toBe(SLOTS);
       expect(code(await call(runtime, getProject, { project_id: 9 }))).toBe('BUSY');
       expect(upstream.calls).toBe(SLOTS);
@@ -190,6 +192,7 @@ describe('capacity after the driver aggregate deadline', () => {
       expect(upstream.calls).toBe(SLOTS);
       for (const result of results) expect(error(result)).toMatchObject(DURATION_STOP);
 
+      await settle();
       expect(runtime.stats().active).toBe(SLOTS);
       expect(code(await call(runtime, getProject, { project_id: 1 }))).toBe('BUSY');
       expect(upstream.calls).toBe(SLOTS);
@@ -252,6 +255,7 @@ describe('deferred DNS', () => {
       expect(lookups.calls).toBe(SLOTS);
       expect(lookups.settled).toBe(0);
 
+      await settle();
       // Each lookup is still outstanding, so each slot is still owned.
       expect(runtime.stats().active).toBe(SLOTS);
       expect(code(await call(runtime, getProject, { project_id: 1 }))).toBe('BUSY');
@@ -287,6 +291,7 @@ describe('deferred DNS', () => {
       await waitFor(() => lookups.calls === 1 && watchdog.watchdogs() === 1, 'the lookup');
       watchdog.fireWatchdogs();
       expect(code(await pending)).toBe('TIMEOUT');
+      await settle();
       expect(runtime.stats().active).toBe(1);
 
       lookups.releaseAll();
@@ -404,6 +409,7 @@ describe('coalesced identical reads', () => {
 
       watchdog.fireWatchdogs();
       for (const result of await Promise.all(calls)) expect(code(result)).toBe('TIMEOUT');
+      await settle();
       expect(runtime.stats().active).toBe(SLOTS);
       expect(code(await call(runtime, getProject, { project_id: 8 }))).toBe('BUSY');
       expect(upstream.calls).toBe(1);
@@ -443,6 +449,7 @@ describe('multipart upload cleanup', () => {
         .toMatchObject({ code: 'TIMEOUT', write_outcome: 'unknown' });
 
       // The request has not even been sent yet, so its staged copy must survive.
+      await settle();
       expect(await readdir(area.directory)).toHaveLength(2);
       expect(runtime.stats().active).toBe(1);
 
