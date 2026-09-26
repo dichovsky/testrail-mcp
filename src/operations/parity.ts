@@ -115,5 +115,6 @@ export function renderRegistryReference(registry: OperationRegistry, inventory: 
       lines.push(`| \`${entry.tool}\` | \`${entry.http_method} ${entry.route}\` | \`${entry.driver_method}\` | ${entry.family_id} |`);
     }
   }
-  return `${lines.join('\n')}\n`;
+  // One trailing newline, whichever section comes last.
+  return `${lines.join('\n').trimEnd()}\n`;
 }

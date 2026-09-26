@@ -318,6 +318,20 @@ describe('each gate fails on the mistake it exists to catch', () => {
       .toThrow('testrail_get_suite driver_binding: expected suites.getSuite, received projects.getProject');
   });
 
+  it('fails a registration whose HTTP method or route differs from the inventory', () => {
+    expect(compareRegistry(operationRegistry, inventory).differences).toEqual([]);
+    const project = registered('testrail_get_project');
+    // The wire method comes from the driver, so only this comparison sees a wrong one.
+    const posted = { ...project, method: 'POST' } as unknown as Operation;
+    const moved = { ...project, route: 'get_project/{project_id}/details' } as unknown as Operation;
+    for (const [broken, field, actual] of [[posted, 'method', 'POST'], [moved, 'route', 'get_project/{project_id}/details']] as const) {
+      const registry = createRegistry(...operationRegistry.entries.map((entry) => entry.tool === project.tool ? broken : entry));
+      expect(compareRegistry(registry, inventory).differences).toEqual([
+        { tool: project.tool, field, expected: field === 'method' ? 'GET' : 'get_project/{project_id}', actual },
+      ]);
+    }
+  });
+
   it('fails a list that claims page/all helpers its endpoint does not have', () => {
     expect(compareRegistry(operationRegistry, inventory).differences).toEqual([]);
     const forTest = registered('testrail_get_attachments_for_test');
