@@ -60,7 +60,7 @@
     {
       "id": "unknown-query",
       "kind": "invalid",
-      "description": "Reject an unknown query field rather than dropping it."
+      "description": "Reject a query field the endpoint does not define rather than dropping it."
     },
     {
       "id": "unknown-control",
@@ -75,7 +75,12 @@
     {
       "id": "page-control-refused",
       "kind": "invalid",
-      "description": "Reject a page-mode paging control, which this endpoint cannot carry and which would otherwise look honoured."
+      "description": "Reject a page-mode limit or offset. TestRail's field table describes both as fields of the reply, but documents neither as a request parameter, and the page helper would never send one, so accepting it would look honoured while nothing reached TestRail."
+    },
+    {
+      "id": "aggregate-control-refused",
+      "kind": "invalid",
+      "description": "Reject an aggregate page size or start offset, which a response-driven list cannot honour because the server chooses each page."
     },
     {
       "id": "bare-array",
@@ -757,7 +762,47 @@
       }
     },
     {
-      "id": "page-control-rejected",
+      "id": "page-limit-rejected",
+      "input": {
+        "query": {
+          "limit": 250
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "page-control-refused"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "page-offset-rejected",
+      "input": {
+        "query": {
+          "offset": 250
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "page-control-refused"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "aggregate-page-size-rejected",
       "input": {
         "_mcp": {
           "pagination": "all",
@@ -768,7 +813,28 @@
         {
           "parameter": "$input",
           "requirements": [
-            "page-control-refused"
+            "aggregate-control-refused"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "aggregate-start-offset-rejected",
+      "input": {
+        "_mcp": {
+          "pagination": "all",
+          "start_offset": 0
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "aggregate-control-refused"
           ]
         }
       ],
@@ -802,7 +868,7 @@
       "id": "unknown-query",
       "input": {
         "query": {
-          "offset": 250
+          "is_approved": true
         }
       },
       "covers": [

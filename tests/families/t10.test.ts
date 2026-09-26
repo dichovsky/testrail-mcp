@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TestRailClient } from '@dichovsky/testrail-api-client';
@@ -48,6 +48,19 @@ function runtimeFor(fetch: ReturnType<typeof vi.fn>) {
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+}
+
+/**
+ * Answer each request by the endpoint it names, so a test that makes several calls can
+ * tell them apart. An endpoint with no answer here is a request nobody expected.
+ */
+function routed(answers: Readonly<Record<string, unknown>>): ReturnType<typeof vi.fn> {
+  return vi.fn().mockImplementation((url: unknown) => {
+    const token = String(url).split('/api/v2/')[1]?.split(/[/&]/u)[0] ?? '';
+    return Promise.resolve(Object.hasOwn(answers, token)
+      ? json(answers[token])
+      : json({ error: `unexpected request to ${token}` }, 500));
+  });
 }
 
 /** A fresh response per call: a body reads once, so a shared one would be drained. */
@@ -122,17 +135,28 @@ describe('T10 the two status vocabularies and the two field lists', () => {
       const cases = await executeToolCall(operation('testrail_get_case_statuses'), {}, { runtime, configuration });
       expect(data(results)).toEqual([PASSED]);
       expect(data(cases)).toEqual([APPROVED, DRAFT]);
+      // Each reply is checked against its own vocabulary's schema, so neither drifts.
+      expect({ results: warnings(results), cases: warnings(cases) }).toEqual({ results: [], cases: [] });
       // Neither list is reshaped into the other's identifiers.
       expect((data(cases) as Record<string, unknown>[]).every((status) => !Object.hasOwn(status, 'id'))).toBe(true);
     } finally { await runtime.shutdown(); }
   });
 
   // The descriptions are the contract a model reads, so each must point away from the other list.
-  it('names the other list in each description', () => {
-    expect(operation('testrail_get_statuses').description).toContain('testrail_get_case_statuses');
-    expect(operation('testrail_get_case_statuses').description).toContain('testrail_get_statuses');
-    expect(operation('testrail_get_case_fields').description).toContain('testrail_get_result_fields');
-    expect(operation('testrail_get_result_fields').description).toContain('testrail_get_case_fields');
+  // Naming the other tool is not enough: the sentence must say it is the other list.
+  it('points each description away from the other list', () => {
+    const statuses = operation('testrail_get_statuses').description;
+    const caseStatuses = operation('testrail_get_case_statuses').description;
+    expect(statuses).toMatch(/These are not case statuses[^.]*testrail_get_case_statuses lists\./u);
+    expect(statuses).toContain('Passed');
+    expect(statuses).not.toMatch(/Draft|Approved|case_status_id/u);
+    expect(caseStatuses).toMatch(/These are not the execution statuses a test result records, which testrail_get_statuses lists\./u);
+    expect(caseStatuses).toMatch(/Draft or Approved, identified by case_status_id/u);
+    expect(caseStatuses).not.toMatch(/Passed|Failed/u);
+    expect(operation('testrail_get_case_fields').description)
+      .toMatch(/These are the fields of test cases; the fields of test results are listed by testrail_get_result_fields\./u);
+    expect(operation('testrail_get_result_fields').description)
+      .toMatch(/the fields a test result can carry, as opposed to the fields of a test case, which testrail_get_case_fields lists\./u);
   });
 });
 
@@ -296,6 +320,80 @@ describe('T10 field definitions arrive as TestRail sent them', () => {
 });
 
 /*
+ * Each read's registration names the driver schema its reply is checked against, and a
+ * wrong one would put a drift warning on every correct answer. TestRail's own documented
+ * examples, verbatim, must therefore come back unchanged and with no warning. The one
+ * exception, get_case_fields, is covered above: its documented example lacks fields the
+ * driver's schema requires.
+ */
+describe('T10 TestRail\'s documented examples', () => {
+  const RESULT_FIELDS = [
+    {
+      id: 11, is_active: true, type_id: 11, name: 'step_results', system_name: 'custom_step_results', label: 'Steps',
+      description: null,
+      configs: [{
+        context: { is_global: true, project_ids: null },
+        options: { is_required: false, format: 'markdown', has_expected: true, has_actual: true, rows: '5' },
+        id: '4be97c65ea2fd',
+      }],
+      display_order: 1, include_all: false, i18n_custom_id: 'fields_custom_step_results', template_ids: [2],
+    },
+    {
+      id: 21, is_active: true, type_id: 4, name: 'ai_traces', system_name: 'custom_ai_traces', label: 'Traces (URL)',
+      description: 'Trace URL for AI evaluation',
+      configs: [{
+        context: { is_global: true, project_ids: [] },
+        options: { is_required: false, default_value: '' },
+        id: '6e5d4c3b-7a8f-4e9d-8c6b-4a3e2d1c9b8f',
+      }],
+      display_order: 104, include_all: false, i18n_custom_id: 'fields_custom_ai_traces', template_ids: [5],
+    },
+  ];
+  it.each([
+    ['testrail_get_case_types', {}, [
+      { id: 1, is_default: false, name: 'Automated' },
+      { id: 2, is_default: false, name: 'Functionality' },
+      { id: 6, is_default: true, name: 'Other' },
+    ]],
+    ['testrail_get_priorities', {}, [
+      { id: 1, is_default: false, name: '1 - Don\'t Test', priority: 1, short_name: '1 - Don\'t' },
+      { id: 4, is_default: true, name: '4 - Must Test', priority: 4, short_name: '4 - Must' },
+    ]],
+    ['testrail_get_statuses', {}, [
+      PASSED,
+      { color_bright: 16631751, color_dark: 14250867, color_medium: 15829135, id: 5, is_final: true, is_system: true, is_untested: false, label: 'Failed', name: 'failed' },
+      { color_bright: 13684944, color_dark: 0, color_medium: 10526880, id: 6, is_final: false, is_system: false, is_untested: false, label: 'Custom', name: 'custom_status1' },
+    ]],
+    ['testrail_get_case_statuses', {}, [APPROVED, DRAFT]],
+    ['testrail_get_result_fields', {}, RESULT_FIELDS],
+    ['testrail_get_templates', { project_id: 7 }, [
+      { id: 1, name: 'Test Case (Text)', i18n_custom_id: 'templates_test_case_text', is_default: true },
+      { id: 2, name: 'Test Case (Steps)', i18n_custom_id: 'templates_test_case_steps', is_default: false },
+      { id: 3, name: 'Exploratory Session', i18n_custom_id: 'templates_exploratory_session', is_default: false },
+      { id: 4, name: 'Behaviour Driven Development', i18n_custom_id: 'templates_behaviour_driven_development', is_default: false },
+      { id: 5, name: 'AI Evaluation', i18n_custom_id: 'templates_ai_evaluation', is_default: false },
+    ]],
+    ['testrail_get_dynamic_filter_fields', { project_id: 7 }, [
+      { type_id: 6, system_name: 'status_id', label: 'Status', options: '1, Untested\n2, Retest\n3, Passed\n4, Failed' },
+      { type_id: 6, system_name: 'priority_id', label: 'Priority', options: '1, Low\n2, Medium\n3, High' },
+      { type_id: 1, system_name: 'title', label: 'Title', sub_filters: '1, Is\n2, Is Not\n5, Contains\n6, Does not contain' },
+      { type_id: 8, system_name: 'updated_on', label: 'Updated On', sub_filters: '1, Is\n2, Is Not\n3, Is Before\n4, Is After' },
+      { type_id: 12, system_name: 'custom_multiselect', label: 'Custom Multiselect', options: '1, Option 1\n2, Option 2' },
+    ]],
+    ['testrail_get_version', {}, { version: '10.6.0.1041' }],
+  ] as const)('%s returns the documented example unchanged and without drift', async (tool, input, example) => {
+    const fetch = replying(example);
+    const runtime = runtimeFor(fetch);
+    try {
+      const result = await executeToolCall(operation(tool), input, { runtime, configuration });
+      expect(result.isError).toBeUndefined();
+      expect(data(result)).toEqual(example);
+      expect(warnings(result)).toEqual([]);
+    } finally { await runtime.shutdown(); }
+  });
+});
+
+/*
  * The two project-scoped reads document a 400 for an unknown project and a 403 for one
  * the user cannot see. Those are answers about the instance, so they must arrive as the
  * two different errors they are, after the request rather than instead of it.
@@ -433,7 +531,10 @@ describe('T10 the version is asked for only when a caller asks', () => {
   }
 
   it('makes no version request to start, to list tools or to serve another tool', async () => {
-    const fetch = replying([{ id: 1, name: 'Automated', is_default: false }]);
+    const fetch = routed({
+      get_case_types: [{ id: 1, name: 'Automated', is_default: false }],
+      add_case_field: { id: 40, name: 'build', label: 'Build' },
+    });
     const session = await connect(fetch);
     try {
       const { tools } = await session.client.listTools();
@@ -442,13 +543,20 @@ describe('T10 the version is asked for only when a caller asks', () => {
       await session.client.callTool({ name: 'testrail_get_case_types', arguments: {} });
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(requested(fetch)).toMatch(/\/api\/v2\/get_case_types$/);
+      // A write is served the same way: its own request and nothing asked first.
+      const write = await session.client.callTool({ name: 'testrail_add_case_field', arguments: {
+        body: { type: 'String', name: 'build', label: 'Build', configs: [{ context: { is_global: true, project_ids: '' }, options: { is_required: true } }] },
+      } });
+      expect(write.isError).toBeFalsy();
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(requested(fetch, 1)).toMatch(/\/api\/v2\/add_case_field$/);
       expect(session.getVersion).not.toHaveBeenCalled();
     } finally { await session.close(); }
   });
 
   it.each(['5.0.0.1000', 'not a version', '10.7.1.1003'])(
     'offers the same catalog after the server reports %s', async (version) => {
-      const fetch = replying({ version });
+      const fetch = routed({ get_version: { version }, get_case_types: [{ id: 6, name: 'Other', is_default: true }] });
       const session = await connect(fetch);
       try {
         const before = (await session.client.listTools()).tools.map(({ name }) => name);
@@ -461,8 +569,32 @@ describe('T10 the version is asked for only when a caller asks', () => {
         expect(after).toEqual(before);
         // Nothing asked again on its own after the answer arrived.
         expect(fetch).toHaveBeenCalledTimes(1);
+        // And the answer gates nothing: another tool is still dispatched and served.
+        const other = await session.client.callTool({ name: 'testrail_get_case_types', arguments: {} });
+        expect(other.isError).toBeFalsy();
+        expect(fetch).toHaveBeenCalledTimes(2);
+        expect(requested(fetch, 1)).toMatch(/\/api\/v2\/get_case_types$/);
       } finally { await session.close(); }
     });
+
+  /*
+   * startServer composes the driver, runtime and transport over the process's own stdio,
+   * so it cannot be started in-process here, and the lifecycle suite that spawns it can
+   * see its output but not its requests. The source is the gate for it instead: nothing
+   * but the endpoint's own registration may name the endpoint or its driver method.
+   */
+  it('names the endpoint nowhere in the server but its own registration', async () => {
+    const root = new URL('../../src/', import.meta.url);
+    const files = (await readdir(root, { recursive: true }))
+      .map((file) => file.replaceAll('\\', '/'))
+      .filter((file) => file.endsWith('.ts'));
+    expect(files.length).toBeGreaterThan(20);
+    const naming: string[] = [];
+    for (const file of files) {
+      if (/getVersion|get_version/u.test(await readFile(new URL(file, root), 'utf8'))) naming.push(file);
+    }
+    expect(naming).toEqual(['operations/families/t10.ts']);
+  });
 
   it('reports a server without the endpoint as that server\'s answer, not a missing tool', async () => {
     const fetch = replying({ error: 'Unknown method \'get_version\'' }, 400);

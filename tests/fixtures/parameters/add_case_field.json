@@ -44,7 +44,7 @@
   "outer_result": {
     "driver": "record",
     "tool_data": "record",
-    "notes": "TestRail answers with the new field in a shape of its own: configs is a JSON-encoded string rather than the array get_case_fields returns, and its flags are 0 or 1 rather than booleans. The record is returned exactly as the driver received it, the string left unparsed, so a caller sees what TestRail sent. Entity-field drift is advisory. The reply in rules-left-to-testrail is a stand-in rather than a documented TestRail answer: the request breaks two rules the sources say TestRail enforces, that a Multiselect does not allow default_value and that name must be a slug, while a fixture can carry only a success body. The stand-in echoes the request and invents nothing; the case proves only that the request reaches the wire unchanged, and the refusal path is asserted in tests/families/t10.test.ts."
+    "notes": "TestRail answers with the new field in a shape of its own: configs is a JSON-encoded string rather than the array get_case_fields returns, and its flags are 0 or 1 rather than booleans. The record is returned exactly as the driver received it, the string left unparsed, so a caller sees what TestRail sent. Entity-field drift is advisory. The replies in rules-left-to-testrail and more-rules-left-to-testrail are stand-ins rather than documented TestRail answers. Each request breaks rules the sources say TestRail enforces: a default on a Multiselect and a name that is not a slug in the first; in the second a type the add_case_field reference does not list, indexing on a type TestRail does not index, and format and rows values outside those it documents. A fixture can carry only a success body, so each stand-in echoes the request and invents nothing; the cases prove only that the requests reach the wire unchanged, and the refusal path is asserted in tests/families/t10.test.ts."
   },
   "requirements": [
     {
@@ -168,6 +168,11 @@
           "id": "numeric-string",
           "kind": "valid",
           "description": "Accept a type number written as a string, which TestRail documents as an alternative to the name."
+        },
+        {
+          "id": "server-rule",
+          "kind": "valid",
+          "description": "Forward a type name the add_case_field reference does not list rather than refusing it: which types exist is TestRail's to say, and a copy here would refuse what a newer server accepts."
         },
         {
           "id": "invalid",
@@ -449,6 +454,11 @@
           "id": "invalid",
           "kind": "invalid",
           "description": "Reject a string stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "server-rule",
+          "kind": "valid",
+          "description": "Forward is_indexed on a type TestRail does not index rather than refusing it: eligibility, like the five-field limit, is TestRail's to enforce."
         },
         {
           "id": "omitted",
@@ -1104,6 +1114,11 @@
           "description": "Reject a non-string value before driver invocation."
         },
         {
+          "id": "server-rule",
+          "kind": "valid",
+          "description": "Forward a format other than plain or markdown rather than refusing it: the values are TestRail's to enforce."
+        },
+        {
           "id": "omitted",
           "kind": "omitted",
           "description": "Send no format when the caller did not supply one."
@@ -1160,6 +1175,11 @@
           "id": "invalid",
           "kind": "invalid",
           "description": "Reject a number, which TestRail documents as a string, before driver invocation."
+        },
+        {
+          "id": "server-rule",
+          "kind": "valid",
+          "description": "Forward a value outside \"3\" to \"10\" rather than refusing it: the range is TestRail's to enforce."
         },
         {
           "id": "omitted",
@@ -2295,6 +2315,122 @@
       }
     },
     {
+      "id": "more-rules-left-to-testrail",
+      "input": {
+        "body": {
+          "type": "Rating",
+          "name": "quality",
+          "label": "Quality",
+          "is_indexed": true,
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": false,
+                "format": "html",
+                "rows": "20"
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.type",
+          "requirements": [
+            "server-rule"
+          ]
+        },
+        {
+          "parameter": "body.is_indexed",
+          "requirements": [
+            "server-rule"
+          ]
+        },
+        {
+          "parameter": "body.configs[].options.format",
+          "requirements": [
+            "server-rule"
+          ]
+        },
+        {
+          "parameter": "body.configs[].options.rows",
+          "requirements": [
+            "server-rule"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.addCaseField",
+          "arguments": [
+            {
+              "type": "Rating",
+              "name": "quality",
+              "label": "Quality",
+              "is_indexed": true,
+              "configs": [
+                {
+                  "context": {
+                    "is_global": true,
+                    "project_ids": ""
+                  },
+                  "options": {
+                    "is_required": false,
+                    "format": "html",
+                    "rows": "20"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_case_field",
+          "json": {
+            "type": "Rating",
+            "name": "quality",
+            "label": "Quality",
+            "is_indexed": true,
+            "configs": [
+              {
+                "context": {
+                  "is_global": true,
+                  "project_ids": ""
+                },
+                "options": {
+                  "is_required": false,
+                  "format": "html",
+                  "rows": "20"
+                }
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 39,
+            "name": "quality",
+            "label": "Quality"
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 39,
+            "name": "quality",
+            "label": "Quality"
+          }
+        }
+      }
+    },
+    {
       "id": "body-missing",
       "input": {},
       "covers": [
@@ -2664,6 +2800,150 @@
       }
     },
     {
+      "id": "template-id-negative",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ],
+          "template_ids": [
+            -3
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.template_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "template-id-fractional",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ],
+          "template_ids": [
+            1.5
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.template_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "template-id-string",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ],
+          "template_ids": [
+            "1"
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.template_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "template-id-above-safe",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ],
+          "template_ids": [
+            9007199254740992
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.template_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
       "id": "configs-missing",
       "input": {
         "body": {
@@ -2966,6 +3246,146 @@
                 "is_global": false,
                 "project_ids": [
                   0
+                ]
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].context.project_ids",
+          "requirements": [
+            "invalid-member"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "project-id-negative",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": false,
+                "project_ids": [
+                  -3
+                ]
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].context.project_ids",
+          "requirements": [
+            "invalid-member"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "project-id-fractional",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": false,
+                "project_ids": [
+                  1.5
+                ]
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].context.project_ids",
+          "requirements": [
+            "invalid-member"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "project-id-string",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": false,
+                "project_ids": [
+                  "5"
+                ]
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].context.project_ids",
+          "requirements": [
+            "invalid-member"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "project-id-above-safe",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": false,
+                "project_ids": [
+                  9007199254740992
                 ]
               },
               "options": {
