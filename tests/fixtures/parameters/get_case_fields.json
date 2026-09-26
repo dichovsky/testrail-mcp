@@ -44,7 +44,7 @@
   "outer_result": {
     "driver": "array",
     "tool_data": "array",
-    "notes": "The reply is returned as the driver received it. configs stays the nested array of context and options objects it arrives as, and project_ids keeps whichever of null, an empty string or an array the server sent, since the driver no longer normalizes it. Entity-field drift is advisory: TestRail's own example omits is_active, include_all and template_ids, which the driver's schema requires, so a reply shaped like it is returned intact with a drift warning rather than refused."
+    "notes": "The reply is returned as the driver received it. configs stays the nested array of context and options objects it arrives as, and project_ids keeps whichever of null, an empty string or an array was sent, since the driver no longer normalizes it. Entity-field drift is advisory: TestRail's own example omits is_active, include_all and template_ids, which the driver's schema requires, so a reply shaped like it is returned intact with a drift warning rather than refused."
   },
   "requirements": [
     {

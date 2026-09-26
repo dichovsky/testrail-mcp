@@ -4451,7 +4451,7 @@ TestRail effect: `read`. Driver retry policy: `ordinary-read`. Local file behavi
 
 ## testrail_get_case_fields
 
-List the test case field definitions of the TestRail instance. A field can be configured differently per project: each entry of its configs applies where its context is global (is_global) or its project_ids include the project, and carries the options, such as is_required, used there. project_ids arrives as null, an empty string or an array depending on the server, and is returned as sent. type_id names the field type, for example 6 Dropdown, 10 Steps and 12 Multiselect. TestRail's 10.6.1 release notes say the list now carries system fields alongside custom ones, each flagged by is_system; before that it held custom fields only. These are the fields of test cases; the fields of test results are listed by testrail_get_result_fields.
+List the test case field definitions of the TestRail instance. A field can be configured differently per project: each entry of its configs applies where its context is global (is_global) or its project_ids include the project, and carries the options, such as is_required, used there. project_ids lists the projects of a project-scoped configuration; for a global one TestRail may send null, an empty string or an empty array. Each is returned as sent. type_id names the field type, for example 6 Dropdown, 10 Steps and 12 Multiselect. TestRail's 10.6.1 release notes say the list now carries system fields alongside custom ones, each flagged by is_system; before that it held custom fields only. These are the fields of test cases; the fields of test results are listed by testrail_get_result_fields.
 
 REST: `GET get_case_fields`. Driver: `metadata.getCaseFields`. Family: T10.
 
@@ -4477,7 +4477,7 @@ TestRail effect: `read`. Driver retry policy: `ordinary-read`. Local file behavi
 
 ## testrail_get_case_statuses
 
-List the TestRail case statuses: the statuses of test cases themselves, such as Draft or Approved, identified by case_status_id. is_approved marks an approved status and is_default the default status for test cases. These are not the execution statuses a test result records, which testrail_get_statuses lists. TestRail documents this endpoint as requiring TestRail Enterprise 7.3 or later. This endpoint accepts no paging controls, so the server chooses each page; a complete read that stops at one of its bounds cannot be resumed from where it stopped, and needs a larger bound instead. Returns the server-selected first page by default; manual continuation is unavailable. Use _mcp.pagination="all" for bounded complete retrieval.
+List the TestRail case statuses: the statuses of test cases themselves, such as Draft or Approved, identified by case_status_id. is_approved marks an approved status and is_default the default status for test cases. These are not the execution statuses a test result records, which testrail_get_statuses lists. TestRail documents this endpoint as requiring TestRail Enterprise 7.3 or later. TestRail documents no paging controls for it, so none are sent and the server chooses each page; a complete read that stops at one of its bounds cannot be resumed from where it stopped, and needs a larger bound instead. Returns the server-selected first page by default; manual continuation is unavailable. Use _mcp.pagination="all" for bounded complete retrieval.
 
 REST: `GET get_case_statuses`. Driver: `metadata.getCaseStatuses`. Family: T10.
 

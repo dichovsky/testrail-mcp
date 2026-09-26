@@ -28,12 +28,12 @@
     {
       "id": "driver-paginated-list",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/paginated-list.ts",
-      "supports": "An executor declared without request controls appends neither a limit nor an offset to the page request, and its aggregate copies only maxPages, maxItems, maxDurationMs and maxBytes. Its page and aggregate steps both decode each reply with the shared decodePage."
+      "supports": "The page step forwards only the limit and offset its caller passes, and getCaseStatusesPage passes none, so the page request carries neither. The aggregate of an executor declared without request controls copies only maxPages, maxItems, maxDurationMs and maxBytes from its options, so it sends no control of its own; a continuation carries the offset and limit from the envelope's next link. Both steps decode each reply with the shared decodePage."
     },
     {
       "id": "driver-pagination",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
-      "supports": "The aggregate bounds maxItems, maxPages, maxBytes and maxDurationMs stop the walk and are never serialized upstream. decodePage turns a bare array into a legacy-array page carrying items and size, and an envelope into an envelope page carrying the envelope's offset, limit, size and links."
+      "supports": "The aggregate bounds maxItems, maxPages, maxBytes and maxDurationMs stop the walk and are never serialized upstream. decodePage turns a bare array into a legacy-array page carrying items and size, and an envelope into an envelope page carrying the envelope's offset, limit, size and links. An envelope is read only when its links sit under _links as an object; one without is an invalid page."
     },
     {
       "id": "testrail-statuses",
@@ -49,7 +49,7 @@
   "outer_result": {
     "driver": "page",
     "tool_data": "array",
-    "notes": "Page mode returns the server-selected page as the driver decoded it, whichever of TestRail's two documented shapes arrives: an envelope keeps its offset, limit, size and links, and a bare array becomes a terminal page with no continuation. All mode returns the collected array, and an aggregate that stops at one of its bounds cannot be resumed from where it stopped. Entity-field drift is advisory."
+    "notes": "Page mode returns the server-selected page as the driver decoded it. The bare array of TestRail's example becomes a terminal page with no continuation, and an envelope whose links sit under _links, as TestRail's other list pages document them, keeps its offset, limit, size and links. An envelope keyed links, as this endpoint's field table literally names it, is refused as an invalid page, which the family suite pins. All mode returns the collected array, and an aggregate that stops at one of its bounds cannot be resumed from where it stopped. Entity-field drift is advisory."
   },
   "requirements": [
     {

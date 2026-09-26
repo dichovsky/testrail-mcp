@@ -39,12 +39,12 @@
   "input_policy": {
     "ordinary_fields": "reject",
     "custom_fields": "reject",
-    "notes": "The driver forwards whatever it is given, so the payload's shape is the boundary's alone to hold. It adopts the driver's declared fields at every depth and closes each object, so a reply-only field such as system_name, an unknown context key, or a Steps option such as has_expected that neither TestRail's add_case_field reference nor the driver declares is refused rather than forwarded with an effect nobody documents. template_ids is tightened to the identifier domain. Rules that depend on the field type or on instance state stay TestRail's: which types exist, which take a default, the slug format of name, the values of format and rows, index eligibility and the five-field limit. Those requests are forwarded and TestRail's refusal, if any, is reported as it arrived."
+    "notes": "The driver forwards whatever it is given, so the payload's shape is the boundary's alone to hold. It adopts the driver's declared fields at every depth and closes each object, so a reply-only field such as system_name, an unknown context key, or a step option such as has_expected that neither TestRail's add_case_field reference nor the driver's payload schema declares (the driver models it on read replies only) is refused rather than forwarded with an effect nobody documents. template_ids is tightened to the identifier domain. Rules that depend on the field type or on instance state stay TestRail's: which types exist, which take a default, the slug format of name, the values of format and rows, index eligibility and the five-field limit. Those requests are forwarded, and a refusal is reported as UPSTREAM_ERROR with TestRail's HTTP status; TestRail's own message text is not echoed."
   },
   "outer_result": {
     "driver": "record",
     "tool_data": "record",
-    "notes": "TestRail answers with the new field in a shape of its own: configs is a JSON-encoded string rather than the array get_case_fields returns, and its flags are 0 or 1 rather than booleans. The record is returned exactly as the driver received it, the string left unparsed, so a caller sees what TestRail sent. Entity-field drift is advisory."
+    "notes": "TestRail answers with the new field in a shape of its own: configs is a JSON-encoded string rather than the array get_case_fields returns, and its flags are 0 or 1 rather than booleans. The record is returned exactly as the driver received it, the string left unparsed, so a caller sees what TestRail sent. Entity-field drift is advisory. The reply in rules-left-to-testrail is a stand-in rather than a documented TestRail answer: the request breaks two rules the sources say TestRail enforces, that a Multiselect does not allow default_value and that name must be a slug, while a fixture can carry only a success body. The stand-in echoes the request and invents nothing; the case proves only that the request reaches the wire unchanged, and the refusal path is asserted in tests/families/t10.test.ts."
   },
   "requirements": [
     {
@@ -2278,42 +2278,18 @@
           "kind": "json",
           "body": {
             "id": 38,
-            "name": "target_platforms",
-            "system_name": "custom_case_target_platforms",
-            "entity_id": 1,
+            "name": "Target Platforms",
             "label": "Target Platforms",
-            "description": null,
-            "type_id": 12,
-            "location_id": 2,
-            "display_order": 7,
-            "configs": "[{\"context\":{\"is_global\":true,\"project_ids\":\"\"},\"options\":{\"is_required\":false,\"default_value\":\"1\",\"items\":\"1, iOS\\n2, Android\"},\"id\":\"c1\"}]",
-            "is_multi": 1,
-            "is_active": 1,
-            "status_id": 1,
-            "is_system": 0,
-            "include_all": 0,
-            "template_ids": []
+            "type_id": 12
           }
         },
         "driver_result": {
           "kind": "json",
           "value": {
             "id": 38,
-            "name": "target_platforms",
-            "system_name": "custom_case_target_platforms",
-            "entity_id": 1,
+            "name": "Target Platforms",
             "label": "Target Platforms",
-            "description": null,
-            "type_id": 12,
-            "location_id": 2,
-            "display_order": 7,
-            "configs": "[{\"context\":{\"is_global\":true,\"project_ids\":\"\"},\"options\":{\"is_required\":false,\"default_value\":\"1\",\"items\":\"1, iOS\\n2, Android\"},\"id\":\"c1\"}]",
-            "is_multi": 1,
-            "is_active": 1,
-            "status_id": 1,
-            "is_system": 0,
-            "include_all": 0,
-            "template_ids": []
+            "type_id": 12
           }
         }
       }

@@ -37,7 +37,7 @@ export const getCaseFields = defineOperation({
   route: 'get_case_fields',
   family: 'T10',
   driverBinding: 'metadata.getCaseFields',
-  summary: 'List the test case field definitions of the TestRail instance. A field can be configured differently per project: each entry of its configs applies where its context is global (is_global) or its project_ids include the project, and carries the options, such as is_required, used there. project_ids arrives as null, an empty string or an array depending on the server, and is returned as sent. type_id names the field type, for example 6 Dropdown, 10 Steps and 12 Multiselect. TestRail\'s 10.6.1 release notes say the list now carries system fields alongside custom ones, each flagged by is_system; before that it held custom fields only. These are the fields of test cases; the fields of test results are listed by testrail_get_result_fields.',
+  summary: 'List the test case field definitions of the TestRail instance. A field can be configured differently per project: each entry of its configs applies where its context is global (is_global) or its project_ids include the project, and carries the options, such as is_required, used there. project_ids lists the projects of a project-scoped configuration; for a global one TestRail may send null, an empty string or an empty array. Each is returned as sent. type_id names the field type, for example 6 Dropdown, 10 Steps and 12 Multiselect. TestRail\'s 10.6.1 release notes say the list now carries system fields alongside custom ones, each flagged by is_system; before that it held custom fields only. These are the fields of test cases; the fields of test results are listed by testrail_get_result_fields.',
   inputSchema: noInput,
   argumentMap: [],
   response: { shape: 'array', outerSchema: arrayResponse, entitySchema: CaseFieldSchema },
@@ -52,12 +52,13 @@ export const getCaseFields = defineOperation({
 
 /*
  * The driver parses none of this payload: addCaseField posts it as given. Its exported
- * schema is therefore the boundary's only statement of the shape, and it is adopted as
- * the fields to accept rather than as the rules to enforce. The nested context and
- * options objects become closed like every other payload here, so an option neither
- * TestRail's add_case_field reference nor the driver declares is refused rather than
- * forwarded with an effect nobody documents; the step toggles a read reply carries
- * (has_expected and its siblings) are such options.
+ * payload schema is therefore the boundary's only statement of the shape, and it is
+ * adopted with its fields and its checks, but not as a statement of TestRail's per-type
+ * rules. The nested context and options objects become closed like every other payload
+ * here, so an option neither TestRail's add_case_field reference nor the driver's payload
+ * schema declares is refused rather than forwarded with an effect nobody documents. The
+ * step toggles (has_expected and its siblings) are such options: the driver models them
+ * on read replies only.
  *
  * Per-type rules stay TestRail's. It states which types take default_value, what rows
  * and format accept, and which types can be indexed, and it may change any of them in a
@@ -187,10 +188,13 @@ export const getResultFields = defineOperation({
 /*
  * TestRail's reference contradicts itself on this reply: its example is a bare array,
  * while its field table documents an envelope carrying offset, limit, size, links and
- * case_statuses. The driver's executor reads either, and no request control is declared
- * because the reference documents none, so neither helper sends one. As with the other
- * response-driven lists, the aggregate walks the envelope's next link, and a complete
- * read that stops at a safety bound cannot be resumed from where it stopped.
+ * case_statuses. The driver's executor reads the bare array, and an envelope whose links
+ * sit under _links, as TestRail's other list pages document them; an envelope keyed links,
+ * as this field table literally names it, would be refused as an invalid page. No request
+ * control is declared because the reference documents none, so neither helper sends one
+ * of its own. As with the other response-driven lists, the aggregate walks the envelope's
+ * next link, a continuation carrying only the offset and limit TestRail put there, and a
+ * complete read that stops at a safety bound cannot be resumed from where it stopped.
  */
 const getCaseStatusesInput = createListInput({ path: {}, pagination: 'response-driven' });
 
@@ -200,7 +204,7 @@ export const getCaseStatuses = defineOperation({
   route: 'get_case_statuses',
   family: 'T10',
   driverBinding: 'metadata.getCaseStatuses',
-  summary: 'List the TestRail case statuses: the statuses of test cases themselves, such as Draft or Approved, identified by case_status_id. is_approved marks an approved status and is_default the default status for test cases. These are not the execution statuses a test result records, which testrail_get_statuses lists. TestRail documents this endpoint as requiring TestRail Enterprise 7.3 or later. This endpoint accepts no paging controls, so the server chooses each page; a complete read that stops at one of its bounds cannot be resumed from where it stopped, and needs a larger bound instead.',
+  summary: 'List the TestRail case statuses: the statuses of test cases themselves, such as Draft or Approved, identified by case_status_id. is_approved marks an approved status and is_default the default status for test cases. These are not the execution statuses a test result records, which testrail_get_statuses lists. TestRail documents this endpoint as requiring TestRail Enterprise 7.3 or later. TestRail documents no paging controls for it, so none are sent and the server chooses each page; a complete read that stops at one of its bounds cannot be resumed from where it stopped, and needs a larger bound instead.',
   inputSchema: getCaseStatusesInput,
   argumentMap: [...safetyControlMappings(0)],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: CaseStatusSchema },

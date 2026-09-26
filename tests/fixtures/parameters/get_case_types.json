@@ -23,7 +23,7 @@
     {
       "id": "driver-schema-metadata",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/metadata.ts",
-      "supports": "StatusSchema requires id, name, label, the three colour integers color_dark, color_medium and color_bright, and the booleans is_system, is_untested and is_final. PrioritySchema requires id, name, short_name, is_default and priority. CaseTypeSchema and TemplateSchema each require id, name and is_default and admit a nullish i18n_custom_id. DynamicFilterFieldSchema requires type_id, system_name and label and admits nullish options and sub_filters strings, its comment describing the two as mutually endpoint-dependent. TestRailVersionSchema requires a version string and its comment dates the endpoint to TestRail 10.6. Every object is passthrough, so unmodelled keys survive parsing."
+      "supports": "StatusSchema requires id, name, label, the three numeric colour fields color_dark, color_medium and color_bright, and the booleans is_system, is_untested and is_final. PrioritySchema requires id, name, short_name, is_default and priority. CaseTypeSchema and TemplateSchema each require id, name and is_default and admit a nullish i18n_custom_id. DynamicFilterFieldSchema requires type_id, system_name and label and admits nullish options and sub_filters strings, its comment describing the two as mutually endpoint-dependent. TestRailVersionSchema requires a version string and its comment dates the endpoint to TestRail 10.6. Every object is passthrough, so unmodelled keys survive parsing."
     },
     {
       "id": "testrail-case-types",

@@ -92,12 +92,15 @@ function envelope(items: readonly unknown[], next: string | null = null, offset 
 /*
  * TestRail has two status vocabularies that share a word. get_statuses lists what a test
  * result records, get_case_statuses what a test case itself is, and a model that reached
- * for the wrong one would report Draft as a test outcome or Passed as a review state.
+ * for the wrong one would report Draft as a test outcome or Passed as a review state. The
+ * two field lists pair up the same way, one for test cases and one for test results.
  */
-describe('T10 the two status vocabularies', () => {
+describe('T10 the two status vocabularies and the two field lists', () => {
   it.each([
     ['testrail_get_statuses', [PASSED], 'get_statuses'],
     ['testrail_get_case_statuses', envelope([APPROVED, DRAFT]), 'get_case_statuses'],
+    ['testrail_get_case_fields', [], 'get_case_fields'],
+    ['testrail_get_result_fields', [], 'get_result_fields'],
   ] as const)('%s reads its own endpoint and nothing else', async (tool, reply, endpoint) => {
     const fetch = replying(reply);
     const runtime = runtimeFor(fetch);
@@ -165,6 +168,24 @@ describe('T10 case statuses in either documented shape', () => {
     } finally { await runtime.shutdown(); }
   });
 
+  /*
+   * The field table names the envelope's links key links, while TestRail's other list
+   * pages and the driver use _links. The driver refuses an envelope without _links as an
+   * invalid page, and the family documentation says so; this pins that it still does, so
+   * the documentation cannot silently fall out of date.
+   */
+  it.each([{}, { _mcp: { pagination: 'all' } }] as const)(
+    'reports an envelope keyed links, as the field table names it, as an invalid reply (%j)', async (input) => {
+      const fetch = replying({ offset: 0, limit: 250, size: 1, links: { next: null, prev: null }, case_statuses: [APPROVED] });
+      const runtime = runtimeFor(fetch);
+      try {
+        const result = await executeToolCall(operation('testrail_get_case_statuses'), input, { runtime, configuration });
+        expect(result.isError).toBe(true);
+        expect(errorOf(result).code).toBe('INVALID_RESPONSE');
+        expect(fetch).toHaveBeenCalledTimes(1);
+      } finally { await runtime.shutdown(); }
+    });
+
   it('offers the bounded aggregate rather than an offset when the envelope has more', async () => {
     const fetch = replying(envelope([APPROVED], '/api/v2/get_case_statuses&limit=1&offset=1', 0, 1));
     const runtime = runtimeFor(fetch);
@@ -202,10 +223,12 @@ describe('T10 case statuses in either documented shape', () => {
 });
 
 /*
- * A field definition's configs are nested per project, and several of its values arrive
- * in more than one encoding depending on the server. The caller needs them exactly as
- * TestRail sent them: normalizing null to an empty array, or splitting a choices string,
- * would answer a question about the server with this server's guess instead.
+ * A field definition's configs are nested per project, and several of its values have
+ * more than one encoding: a global configuration's project_ids may be null, an empty
+ * string or an empty array, and TestRail's own examples use more than one of them. The
+ * caller needs them exactly as TestRail sent them: normalizing null to an empty array, or
+ * splitting a choices string, would answer a question about the server with this server's
+ * guess instead.
  */
 describe('T10 field definitions arrive as TestRail sent them', () => {
   const FIELD = {
