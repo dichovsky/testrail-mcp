@@ -32,17 +32,21 @@ Standard output carries protocol messages only. Diagnostics are one JSON object 
 
 Configuration is loaded before any transport exists, so a misconfigured server never emits a protocol message it cannot honour; it names the offending key on stderr, writes nothing to stdout, and exits non-zero. Shutdown is idempotent and runs once for whichever of stdin closure, `SIGINT` or `SIGTERM` arrives first: it stops admission, closes the connection, drains the runtime and disposes staging.
 
-## Two behaviours recorded rather than claimed
+## Three behaviours recorded rather than claimed
 
 **Cross-era key ordering.** The two eras serialize an advertised schema's keys in a different order — legacy emits `$schema` first, modern emits it after `required` — while carrying identical keys and values. Catalogs are therefore compared structurally across eras, and byte-for-byte only within one era, where determinism does hold.
 
 **Malformed lines get no reply.** The contract says malformed protocol messages stay protocol errors. The SDK's stdio transport drops a line it cannot parse without emitting `-32700` and without an error callback, and there is no id to answer. Emitting one would mean replacing the transport to correct a host-side fault, which is disproportionate. A test pins the observed behaviour — the line is skipped and the connection keeps serving — so a future SDK change surfaces here rather than inside a release claim. R01 should record this as evidence rather than assert the contract sentence unqualified.
+
+**A cancelled request id 0 is not cancelled.** The SDK's server drops a `notifications/cancelled` whose `requestId` is falsy (`if (!notification.params.requestId) return;`), so it treats id 0 as naming no request. A legacy connection spends id 0 on `initialize`, which is never cancelled. A 2026-07-28 client opens with a string-id discover probe, so its first ordinary request gets id 0. If that request is a tool call, cancelling it never reaches the handler: the call runs to completion and its reply is written anyway. Hosts list tools before calling one, so this needs an unusual client. It is an SDK fault, not worth replacing the protocol layer for, and a test pins it so an SDK upgrade surfaces here.
 
 ## Verification
 
 `tests/transport/protocol.test.ts` drives a real client over a linked in-memory transport: both eras with the negotiated era read from the connection rather than inferred, deterministic discovery with no upstream request, verbatim schema and annotations, the wrapper as structured content plus identical text, an argument rejection and an upstream failure as classified tool errors, and an unknown tool as a protocol error.
 
 `tests/transport/lifecycle.test.ts` drives the **packaged executable**: stdout is parsed line by line and every line must be a protocol message, diagnostics appear on stderr with no configured value, stdin closure exits zero, an unknown method returns `-32601`, and a malformed line is skipped without ending the session.
+
+`tests/transport/cancellation.test.ts` sends `notifications/cancelled` from a real client, in both eras, for registered tools that have already reached TestRail. The handler's signal aborts and the call ends `CANCELLED`, a write with `write_outcome: "unknown"`. The SDK then suppresses the response, so the client gets nothing for that id: neither the result nor the upstream reply that arrives later. The slot stays owned until that reply settles, the late reply raises no unhandled rejection, and the connection keeps serving. Because nothing is written back, the test wraps the pipeline to read the result the handler produced. Mutation-checked: not passing the handler's signal, and never recording dispatch, each fail it.
 
 `tests/transport/tool-call.test.ts` covers the pipeline directly with synthetic download and upload operations: a caller's identifier survives unchanged whether it is a number or a UUID, a staged copy is gone after a call refused at admission, and a cancelled upload keeps its copy until its request settles.
 
@@ -60,4 +64,4 @@ A third fault surfaced while writing the test for the second: the reserved uploa
 
 ## Not in this layer
 
-Endpoint registrations (T01–T12) and their parameter manifests. The catalog is empty, so a running server currently exposes zero tools; the transport is exercised by a synthetic operation that stands in for the families, because what it does with one entry is what it will do with 133.
+Endpoint registrations (T01–T12) and their parameter manifests. The protocol and tool-call suites above use a synthetic operation where one entry shows what the transport does with all 133; the cancellation suite uses the production catalog.

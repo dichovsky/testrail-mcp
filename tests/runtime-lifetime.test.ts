@@ -208,11 +208,12 @@ describe('capacity after the driver aggregate deadline', () => {
       await runtime.shutdown();
     }
   });
+
   /*
    * The driver bounds the request inside an aggregate with a timer set to the remaining
    * budget. That timer can fire a moment before the wall clock reaches the deadline, and
-   * the aggregate then rethrows the request's own 408 instead of its duration stop. Seen
-   * in about 2% of runs. Freezing the clock makes that ordering certain: the timer still
+   * the aggregate then rethrows the request's own 408 instead of its duration stop. It
+   * did in 4 of 200 local runs. Freezing the clock makes that ordering certain: the timer still
    * fires, and the clock never reaches the deadline.
    */
   it('reports the aggregate deadline as the same bound when the driver raises it on the request', async () => {
