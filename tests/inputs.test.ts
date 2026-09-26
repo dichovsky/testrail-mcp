@@ -1,6 +1,7 @@
 import {
   AddCasePayloadSchema,
   AddCasesBulkPayloadSchema,
+  AddDatasetPayloadSchema,
   AddPlanPayloadSchema,
   AddResultPayloadSchema,
   DeleteCasesPayloadSchema,
@@ -230,6 +231,28 @@ describe('strict reuse of public driver payload schemas', () => {
       { body: { mode: 'and', filters: 1 } },
     ]);
     expect(open.safeParse({ body: { mode: 'and', filters: {}, explicitly_open: () => 1 } }).success).toBe(false);
+  });
+
+  it('checks a record\'s __proto__ key as it checks every other key', () => {
+    // Zod's record parser skips this one key. JSON.parse keeps it as an own property, as
+    // an MCP request does, and it is that original object which reaches the driver.
+    const agree = (schema: z.ZodType<object>, text: string, valid: boolean): void => {
+      const value: unknown = JSON.parse(text);
+      const validateJson = validator.getValidator(inputJsonSchema(schema) as unknown as JsonSchemaType);
+      expect(schema.safeParse(value).success, text).toBe(valid);
+      expect(validateJson(value).valid, text).toBe(valid);
+    };
+    const dataset = strictObject({ body: payloadInput(AddDatasetPayloadSchema) });
+    agree(dataset, '{"body":{"name":"D","variables":{"__proto__":12345}}}', false);
+    agree(dataset, '{"body":{"name":"D","variables":{"__proto__":"x"}}}', true);
+    // A record nested in another record, as dynamic filters are.
+    const plan = strictObject({ body: payloadInput(AddPlanPayloadSchema) });
+    agree(plan, '{"body":{"name":"P","entries":[{"dynamic_filters":{"mode":"and","filters":{"__proto__":5}}}]}}', false);
+    agree(plan, '{"body":{"name":"P","entries":[{"dynamic_filters":{"mode":"and","filters":{"__proto__":{}}}}]}}', true);
+    // The key schema applies to it as well, where it constrains the name.
+    const named = strictObject({ body: payloadInput(z.record(z.string().regex(/^custom_/u), z.string())) });
+    agree(named, '{"body":{"__proto__":"x"}}', false);
+    agree(named, '{"body":{"custom_a":"x"}}', true);
   });
 
   it('retains driver array bounds and uses independently composed item extensions', () => {

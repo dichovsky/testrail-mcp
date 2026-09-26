@@ -616,6 +616,11 @@
           "description": "Reject a numeric mode, which the payload declares as a string."
         },
         {
+          "id": "filter-value",
+          "kind": "invalid",
+          "description": "Reject a filters value that is not an object, under any key, __proto__ included, before driver invocation."
+        },
+        {
           "id": "omitted",
           "kind": "omitted",
           "description": "Send no filter when the caller did not supply one."
@@ -1900,6 +1905,60 @@
           "parameter": "$input",
           "requirements": [
             "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "filter-value-not-object",
+      "input": {
+        "project_id": 3,
+        "body": {
+          "name": "Smoke",
+          "dynamic_filters": {
+            "mode": "and",
+            "filters": {
+              "cases:priority_id": 5
+            }
+          }
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.dynamic_filters",
+          "requirements": [
+            "filter-value"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "filter-value-under-proto",
+      "input": {
+        "project_id": 3,
+        "body": {
+          "name": "Smoke",
+          "dynamic_filters": {
+            "mode": "and",
+            "filters": {
+              "__proto__": 5
+            }
+          }
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.dynamic_filters",
+          "requirements": [
+            "filter-value"
           ]
         }
       ],
