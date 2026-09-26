@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { TestRailClient } from '@dichovsky/testrail-api-client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
@@ -143,11 +143,13 @@ describe('T12 get_attachment writes a new local file on every call', () => {
         expect(Object.keys(result).sort()).toEqual(['attachment_id', 'bytes', 'file_path']);
         expect(result.attachment_id).toBe(id);
         expect(result.bytes).toBe(Buffer.byteLength('PNG fixture bytes\n'));
-        expect(result.file_path.startsWith(env.downloads)).toBe(true);
+        // The configured directory is stored resolved: a temp path can pass through a symlink,
+        // as /var does on macOS, so the comparison is with what the server writes to.
+        expect(dirname(result.file_path)).toBe(env.configuration.downloadDirectory);
         expect(await readFile(result.file_path, 'utf8')).toBe('PNG fixture bytes\n');
       }
       expect(results[0]?.file_path).not.toBe(results[1]?.file_path);
-      expect((await readdir(env.downloads)).sort()).toEqual(results.map(({ file_path }) => file_path.slice(env.downloads.length + 1)).sort());
+      expect((await readdir(env.downloads)).sort()).toEqual(results.map(({ file_path }) => basename(file_path)).sort());
     } finally { await runtime.shutdown(); }
   });
 
