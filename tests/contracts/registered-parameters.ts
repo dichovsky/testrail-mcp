@@ -89,3 +89,14 @@ export function auditRegisteredParameters(registry: OperationRegistry, manifests
   }
   return errors;
 }
+
+/**
+ * The reverse of the audit above: a manifest with no production registration. The audit
+ * walks registrations, so an endpoint dropped from the catalog takes its fixtures out of
+ * the run with it, and the manifest left behind would otherwise go unread.
+ */
+export function unregisteredManifests(registry: OperationRegistry, manifests: readonly ParameterManifest[]): string[] {
+  return manifests
+    .filter(({ endpoint }) => registry.get(endpoint.tool) === undefined)
+    .map(({ endpoint }) => `${endpoint.tool}: manifest has no production registration`);
+}

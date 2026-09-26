@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_LIMITS } from '../src/config/limits.js';
 import { z } from 'zod';
 import { createListInput, payloadInput, positiveIdSchema, strictObject } from '../src/contracts/inputs.js';
+import { operationRegistry } from '../src/operations/catalog.js';
 import { driverCall } from '../src/operations/driver-call.js';
 import { assertRegistryParity, compareRegistry, parseInventory, renderRegistryReference } from '../src/operations/parity.js';
 import { createRegistry, defineOperation, type Operation, type OperationDefinition } from '../src/operations/registry.js';
@@ -192,6 +193,12 @@ describe('independent inventory parity', () => {
     expect(reference).toContain('"project_id"');
     expect(reference).toContain('| `testrail_get_case` | `GET get_case/{case_id}` | `cases.getCase` | T02 |');
     expect(reference).not.toContain('## testrail_get_case');
+  });
+
+  it('drops the pending table once every endpoint is registered', () => {
+    const reference = renderRegistryReference(operationRegistry, inventory);
+    expect(reference).toContain('Registered endpoints: **133/133**, the complete inventory.');
+    expect(reference).not.toContain('Pending endpoint registrations');
   });
 });
 
