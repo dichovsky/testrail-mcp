@@ -1,5 +1,6 @@
 import type { Page, TestRailClient } from '@dichovsky/testrail-api-client';
 import type { Configuration } from '../config/environment.js';
+import type { Limits } from '../config/limits.js';
 import { advisoryWarnings } from '../contracts/drift.js';
 import { AdapterError, classifyError } from '../contracts/errors.js';
 import { aggregateMetadata, pageMetadata } from '../contracts/pagination.js';
@@ -26,6 +27,34 @@ type Mode = 'single' | 'page' | 'all';
 interface AdapterControls {
   readonly pagination?: 'page' | 'all';
   readonly start_offset?: number;
+  readonly max_items?: number;
+  readonly max_pages?: number;
+  readonly max_bytes?: number;
+  readonly max_duration_ms?: number;
+}
+
+/** Each aggregate bound a caller may state, and the configured limit it may not exceed. */
+const aggregateBounds = [
+  ['max_items', 'max_all_items'],
+  ['max_pages', 'max_all_pages'],
+  ['max_bytes', 'max_all_bytes'],
+  ['max_duration_ms', 'max_all_duration_ms'],
+] as const satisfies readonly (readonly [keyof AdapterControls, keyof Limits])[];
+
+/**
+ * The operator's configured limit is the bound a caller may lower but never raise.
+ *
+ * The input schema is built when the module loads, before the configuration is read, so
+ * the ceiling it enforces is the built-in default. A stated bound between the configured
+ * limit and that default would otherwise pass validation and reach the driver verbatim.
+ * It is refused rather than clamped, so the aggregate never quietly does less than the
+ * caller asked.
+ */
+function refuseBoundsAboveLimits(stated: AdapterControls, limits: Limits): void {
+  for (const [bound, limit] of aggregateBounds) {
+    const value = stated[bound];
+    if (value !== undefined && value > limits[limit]) throw new AdapterError('INVALID_ARGUMENT');
+  }
 }
 
 function controls(input: unknown): AdapterControls {
@@ -111,6 +140,7 @@ export async function executeToolCall(
     if (!operation.inputSchema.safeParse(input).success) throw new AdapterError('INVALID_ARGUMENT');
 
     const mode = selectMode(operation, input);
+    if (mode === 'all') refuseBoundsAboveLimits(controls(input), limits);
     const call = selectCall(operation, mode);
     let upload: CallContext['upload'];
 
