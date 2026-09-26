@@ -81,7 +81,7 @@ async function environment(limits?: Record<string, number>) {
   return { directory, roots, outside, downloads, source, configuration, staging };
 }
 
-type DriverOverrides = { maxRetries?: number; timeout?: number };
+type DriverOverrides = { maxRetries?: number; timeout?: number; bodyTimeout?: number };
 
 /*
  * The driver is built from this server's own production options, with only fetch and DNS
@@ -142,7 +142,7 @@ describe('T12 get_attachment writes a new local file on every call', () => {
     expect(description).toContain('Creates a unique persistent local file in the configured download directory on each call');
     expect(description).toContain('the result carries no original filename or media type');
     expect(description).toContain('Only one download is received at a time: a call made while another download\'s request or reply is still in flight is refused as BUSY before anything is sent, though writing a received file can overlap the next download');
-    expect(description).toContain('An attachment larger than this server\'s configured file limit, at most 100 MiB, is refused while it is read, as INVALID_RESPONSE, and nothing is written');
+    expect(description).toContain('An attachment larger than this server\'s configured file limit, at most 100 MiB, is refused while it is read, as INVALID_RESPONSE, and nothing is written; so is a reply whose body does not arrive within this server\'s 15-second body timeout, after headers that must arrive within its 15-second request timeout');
     expect(operation('testrail_get_attachment').retry).toBe('ordinary-read');
   });
 
@@ -288,6 +288,26 @@ describe('T12 get_attachment writes a new local file on every call', () => {
     }
   });
 
+  // The summaries quote these two timeouts; they are the production driver options.
+  it('runs file transfers under the 15-second request and body timeouts the summaries quote', async () => {
+    const env = await environment();
+    expect(driverOptions(env.configuration)).toMatchObject({ timeout: 15_000, bodyTimeout: 15_000 });
+  });
+
+  it('refuses a download whose body does not arrive in time and writes nothing', async () => {
+    const env = await environment();
+    const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new TextEncoder().encode('partial')); },
+    }), { headers: { 'content-type': 'application/octet-stream' } })));
+    const runtime = createRuntime({ client: driverFor(env.configuration, fetch, { bodyTimeout: 100 }), limits: env.configuration.limits });
+    try {
+      const result = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      expect(errorOf(result).code).toBe('INVALID_RESPONSE');
+      expect(errorOf(result).write_outcome).toBeUndefined();
+      expect(await readdir(env.downloads)).toEqual([]);
+    } finally { await runtime.shutdown(); }
+  });
+
   it('refuses a caller-chosen destination before any request', async () => {
     const env = await environment();
     const fetch = replying(() => bytes('never\n'));
@@ -320,13 +340,20 @@ describe('T12 attachment lists', () => {
     } finally { await runtime.shutdown(); }
   });
 
-  it('reports a drifted entity as a warning and returns it as sent', async () => {
+  // Drift is advisory on every list: a drifted entity is returned as sent, never refused.
+  it.each([
+    ['testrail_get_attachments_for_case', { case_id: 42 }],
+    ['testrail_get_attachments_for_plan', { plan_id: 7 }],
+    ['testrail_get_attachments_for_run', { run_id: 81 }],
+    ['testrail_get_attachments_for_test', { test_id: 21 }],
+    ['testrail_get_attachments_for_plan_entry', { plan_id: 7, entry_id: UUID }],
+  ] as const)('%s reports a drifted entity as a warning and returns it as sent', async (tool, input) => {
     const env = await environment();
     const drifted = { ...PLAN_ENTITY, size: 'large' };
     const fetch = replying(() => json([drifted]));
     const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
     try {
-      const result = await executeToolCall(operation('testrail_get_attachments_for_plan'), { plan_id: 7 }, { runtime, configuration: env.configuration });
+      const result = await executeToolCall(operation(tool), input, { runtime, configuration: env.configuration });
       expect(data(result)).toEqual([drifted]);
       expect(warnings(result)).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
     } finally { await runtime.shutdown(); }
@@ -345,7 +372,8 @@ describe('T12 attachment lists', () => {
     const full = (count: number) => Array.from({ length: count }, (_value, index) => ({ ...PLAN_ENTITY, id: index + 1 }));
     const fetch = vi.fn()
       .mockImplementationOnce(() => Promise.resolve(json(full(50))))
-      .mockImplementationOnce(() => Promise.resolve(json(full(20))));
+      .mockImplementationOnce(() => Promise.resolve(json(full(20))))
+      .mockImplementationOnce(() => Promise.resolve(json(full(10))));
     const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
     try {
       const page = await executeToolCall(operation(tool), input, { runtime, configuration: env.configuration });
@@ -353,8 +381,12 @@ describe('T12 attachment lists', () => {
       expect((page.structuredContent as { pagination: unknown }).pagination).toMatchObject({ has_more: false });
       const all = await executeToolCall(operation(tool), { ...input, _mcp: { pagination: 'all', page_size: 20 } }, { runtime, configuration: env.configuration });
       expect(data(all)).toHaveLength(20);
+      expect((all.structuredContent as { pagination: unknown }).pagination).toMatchObject({ complete: true });
       expect(fetch).toHaveBeenCalledTimes(2);
-      expect(operation(tool).description).toContain('TestRail documents the reply as a bare array, which carries no continuation: when a page comes back full, this server cannot tell whether more attachments exist, and all mode stops there too.');
+      // The way on that the summary names: the next offset, in page mode.
+      await executeToolCall(operation(tool), { ...input, query: { offset: 50 } }, { runtime, configuration: env.configuration });
+      expect(requested(fetch, 2)).toMatch(/&limit=50&offset=50$/u);
+      expect(operation(tool).description).toContain('TestRail documents the reply as a bare array, which carries no continuation: a page that comes back full may not be the whole list although its pagination reports has_more false, and all mode stops after its first reply while reporting complete. To read further, request the next offset in page mode.');
     } finally { await runtime.shutdown(); }
   });
 
@@ -468,8 +500,8 @@ describe('T12 attachment lists', () => {
 
   /*
    * TestRail gives ten of these endpoints a 403 for "No access to the project or insufficient
-   * permissions", and the two oldest uploads a 403 for "No access to the project" alone. Each
-   * summary names what its own endpoint documents.
+   * permissions", and add_attachment_to_case and add_attachment_to_plan a 403 for "No access
+   * to the project" alone. Each summary names what its own endpoint documents.
    */
   const narrow403 = new Set(['testrail_add_attachment_to_case', 'testrail_add_attachment_to_plan']);
   it.each(operationRegistry.entries.filter(({ family }) => family === 'T12').map(({ tool }) => [tool] as const))(
@@ -549,7 +581,7 @@ describe('T12 uploads', () => {
         reject(reason instanceof Error ? reason : new DOMException('aborted', 'AbortError'));
       });
     })],
-    ...[400, 403, 404, 408, 429, 500, 502, 503, 504].map((status) =>
+    ...[400, 403, 404, 408, 429, 500, 501, 502, 503, 504].map((status) =>
       [tool, `a ${status}`, ids, method, () => Promise.resolve(json({ error: 'upstream' }, status, { 'retry-after': '0' }))] as const),
   ] as const))('%s is not retried after %s, and its outcome stays unknown', async (tool, _label, ids, method, respond) => {
     const env = await environment();
@@ -641,6 +673,55 @@ describe('T12 uploads', () => {
     } finally { await runtime.shutdown(); await env.staging.dispose(); }
   });
 
+  /*
+   * A success reply the driver cannot parse, or one over its JSON limit, is refused by the
+   * driver itself, so this server cannot tell whether TestRail stored the file.
+   */
+  it.each(UPLOADS.flatMap(([tool, ids]) => [
+    [tool, 'is not JSON', ids, {}, () => new Response('<html>Attachment stored</html>', { status: 200 })],
+    [tool, 'is over the JSON limit', ids, { max_json_response_bytes: 1024 }, () => json({ attachment_id: 443, note: 'x'.repeat(2048) })],
+  ] as const))('%s reports a success reply that %s as unknown', async (tool, _label, ids, limits, respond) => {
+    const env = await environment(limits);
+    const fetch = replying(respond);
+    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    try {
+      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
+        { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
+      expect(errorOf(result)).toEqual(expect.objectContaining({ code: 'INVALID_RESPONSE', write_outcome: 'unknown' }));
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally { await runtime.shutdown(); await env.staging.dispose(); }
+  });
+
+  it.each(UPLOADS)('%s returns an empty success reply as {} with a drift warning', async (tool, ids) => {
+    const env = await environment();
+    const fetch = replying(() => new Response('', { status: 200 }));
+    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    try {
+      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
+        { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
+      expect(data(result)).toEqual({});
+      expect(warnings(result)).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
+    } finally { await runtime.shutdown(); await env.staging.dispose(); }
+  });
+
+  // The driver's own timeout covers sending the file; an upload it cuts off stays unknown.
+  it.each(UPLOADS)('%s reports an upload TestRail does not answer in time as a 408 of unknown outcome', async (tool, ids) => {
+    const env = await environment();
+    const fetch = vi.fn().mockImplementation((_url: unknown, init?: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        const reason: unknown = init.signal?.reason;
+        reject(reason instanceof Error ? reason : new DOMException('aborted', 'AbortError'));
+      });
+    }));
+    const runtime = createRuntime({ client: driverFor(env.configuration, fetch, { timeout: 100 }), limits: env.configuration.limits });
+    try {
+      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
+        { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
+      expect(errorOf(result)).toEqual(expect.objectContaining({ code: 'UPSTREAM_ERROR', http_status: 408, write_outcome: 'unknown' }));
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally { await runtime.shutdown(); await env.staging.dispose(); }
+  });
+
   // TestRail stored the file and answered; only its reply is unusable here, so the outcome is acknowledged.
   it.each(UPLOADS)('%s reports a success reply it cannot use as acknowledged', async (tool, ids) => {
     const env = await environment();
@@ -661,10 +742,11 @@ describe('T12 uploads', () => {
     expect(description).toContain('Each call adds another attachment, even for the same file');
     expect(description).toContain('TestRail accepts files up to 256 MB, but this server refuses a file above its configured file limit, at most 100 MiB, before anything is sent');
     expect(description).toContain('Neither this server nor its driver retries an upload, not even after a 429.');
-    expect(description).toContain('If it fails after the request was sent, write_outcome is unknown when this server cannot tell whether TestRail stored the file, and acknowledged when TestRail answered with a success reply this server could not use; either way, uploading again may add a second attachment.');
+    expect(description).toContain('If it fails after the request was sent, write_outcome is acknowledged when TestRail\'s success reply was JSON this server could not use, and unknown otherwise, including a timeout and a success reply that is not JSON, because this server cannot then tell whether TestRail stored the file; either way, uploading again may add a second attachment.');
+    expect(description).toContain('TestRail must answer, file sent, within this server\'s 15-second request timeout');
     expect(description).toContain('filename is sent as the multipart part\'s filename, which the driver\'s documentation describes as the name TestRail stores and shows for the attachment; TestRail\'s own reference does not say');
     expect(description).toContain('content_type, when given, is sent lowercased as the part\'s media type');
-    expect(description).toContain('a reply without a numeric attachment_id is returned as sent with a drift warning');
+    expect(description).toContain('a JSON object reply without a numeric attachment_id is returned with a drift warning, and an empty one comes back as {}');
     // The .feature rule belongs to the BDD uploads, not to attachments.
     expect(description).not.toContain('.feature');
     expect(description).not.toMatch(/safe to (call|run|retry|repeat)/iu);
@@ -737,7 +819,7 @@ describe('T12 delete_attachment', () => {
 
   it.each([
     ['a network error', () => Promise.reject(new TypeError('fetch failed'))],
-    ...[500, 502, 503, 504].map((status) =>
+    ...[500, 501, 502, 503, 504].map((status) =>
       [`a ${status}`, () => Promise.resolve(json({ error: 'upstream' }, status, { 'retry-after': '0' }))] as const),
     ['a success reply that is not JSON', () => Promise.resolve(new Response('<html>ok</html>', { status: 200 }))],
   ] as const)('is not re-sent after %s, and its outcome stays unknown', async (_label, respond) => {

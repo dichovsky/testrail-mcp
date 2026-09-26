@@ -28,7 +28,7 @@
     {
       "id": "driver-client",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/client-core.ts",
-      "supports": "The multipart pipeline appends the file to a FormData under the field name attachment with the caller's filename, and opens the staged path as a blob whose media type is the one supplied, which the Blob type lowercases, or empty when none was. That form data is the request body, sent without a JSON content type. The upload methods name the none retry policy, which re-sends nothing, not even a 429; retry-policy.ts gives the reason as an upload not being idempotent and TestRail documenting no retry semantics for creating an attachment."
+      "supports": "The multipart pipeline appends the file to a FormData under the field name attachment with the caller's filename, and opens the staged path as a blob whose media type is the one supplied, as given, or empty when none was; FormData lowercases it when it wraps the blob as a File. That form data is the request body, sent without a JSON content type. The upload methods name the none retry policy, which re-sends nothing, not even a 429; retry-policy.ts gives the reason as an upload not being idempotent and TestRail documenting no retry semantics for creating an attachment."
     },
     {
       "id": "driver-constants",
@@ -254,7 +254,7 @@
         "type": "string",
         "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+/[!#$%&'*+.^_`|~0-9A-Za-z-]+(?: *; *[!#$%&'*+.^_`|~0-9A-Za-z-]+ *= *(?:[!#$%&'*+.^_`|~0-9A-Za-z-]+|\"(?:[\\x20-\\x21\\x23-\\x5b\\x5d-\\x7e]|\\\\[\\x20-\\x7e])*\"))*(?![\\s\\S])"
       },
-      "semantics": "The media type recorded for the part, as a type and subtype with optional parameters whose quoted values are printable ASCII. Omitting it leaves the part's type undeclared, which the encoder writes as application/octet-stream; a supplied value becomes the staged copy's type, which the Blob type lowercases.",
+      "semantics": "The media type recorded for the part, as a type and subtype with optional parameters whose quoted values are printable ASCII. Omitting it leaves the part's type undeclared, which the encoder writes as application/octet-stream; a supplied value becomes the staged copy's type, which FormData lowercases when it wraps the blob as a File.",
       "wire": {
         "location": "multipart",
         "names": [

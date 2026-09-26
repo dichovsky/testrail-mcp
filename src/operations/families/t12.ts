@@ -30,11 +30,13 @@ import { aggregateControlMappings, allControls, control, pageResponse, recordRes
 const arrayResponse = z.array(z.unknown());
 
 /*
- * TestRail documents the plan and run lists' reply as a bare array and their limit as the
- * number of attachments the response returns, 250 by default. A bare array carries no
- * continuation, so a full page cannot be told from the end of the list.
+ * TestRail documents the plan and run lists' reply as a bare array, and their limit as the
+ * number of attachments the response returns, 250 by default; it does not say how a caller
+ * reaches attachments past that. A bare array carries no continuation, and this server's
+ * pagination metadata reads one as the end of the list, so the summaries say what that
+ * metadata can and cannot mean here.
  */
-const BARE_ARRAY = 'TestRail documents the reply as a bare array, which carries no continuation: when a page comes back full, this server cannot tell whether more attachments exist, and all mode stops there too.';
+const BARE_ARRAY = 'TestRail documents the reply as a bare array, which carries no continuation: a page that comes back full may not be the whole list although its pagination reports has_more false, and all mode stops after its first reply while reporting complete. To read further, request the next offset in page mode.';
 
 // ------------------------------------------------------------------ download
 
@@ -46,7 +48,7 @@ export const getAttachment = defineOperation({
   route: 'get_attachment/{attachment_id}',
   family: 'T12',
   driverBinding: 'attachments.getAttachment',
-  summary: 'Download one TestRail attachment by its ID: a positive integer, or a UUID, the format TestRail introduced with release 7.1 (cloud). The testrail_get_attachments_for_* tools list the IDs with their names. The driver returns only the file\'s bytes, so the result carries no original filename or media type. Each call downloads the attachment again and writes another file, even for the same ID. Only one download is received at a time: a call made while another download\'s request or reply is still in flight is refused as BUSY before anything is sent, though writing a received file can overlap the next download. An attachment larger than this server\'s configured file limit, at most 100 MiB, is refused while it is read, as INVALID_RESPONSE, and nothing is written. TestRail answers 400 for an invalid attachment ID and 403 when the configured user has no access to the project or lacks permission.',
+  summary: 'Download one TestRail attachment by its ID: a positive integer, or a UUID, the format TestRail introduced with release 7.1 (cloud). The testrail_get_attachments_for_* tools list the IDs with their names. The driver returns only the file\'s bytes, so the result carries no original filename or media type. Each call downloads the attachment again and writes another file, even for the same ID. Only one download is received at a time: a call made while another download\'s request or reply is still in flight is refused as BUSY before anything is sent, though writing a received file can overlap the next download. An attachment larger than this server\'s configured file limit, at most 100 MiB, is refused while it is read, as INVALID_RESPONSE, and nothing is written; so is a reply whose body does not arrive within this server\'s 15-second body timeout, after headers that must arrive within its 15-second request timeout. TestRail answers 400 for an invalid attachment ID and 403 when the configured user has no access to the project or lacks permission.',
   inputSchema: getAttachmentInput,
   argumentMap: [{ input: 'attachment_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'binary', outerSchema: z.instanceof(ArrayBuffer), entitySchema: null },
@@ -212,7 +214,7 @@ export const getAttachmentsForTest = defineOperation({
 
 // ------------------------------------------------------------------- uploads
 
-/** Every upload takes the caller's path, the name TestRail records and an optional media type. */
+/** Every upload takes the caller's path, the multipart filename and an optional media type. */
 const uploadFields = {
   file_path: filePathSchema,
   filename: filenameSchema,
@@ -223,7 +225,7 @@ const uploadFields = {
  * The same sentences appear in every upload summary, because the same driver pipeline and
  * the same staging carry each of them.
  */
-const uploadContract = 'filename is sent as the multipart part\'s filename, which the driver\'s documentation describes as the name TestRail stores and shows for the attachment; TestRail\'s own reference does not say. content_type, when given, is sent lowercased as the part\'s media type. Each call adds another attachment, even for the same file, and TestRail documents its reply as the new attachment_id; a reply without a numeric attachment_id is returned as sent with a drift warning. TestRail accepts files up to 256 MB, but this server refuses a file above its configured file limit, at most 100 MiB, before anything is sent. Neither this server nor its driver retries an upload, not even after a 429. If it fails after the request was sent, write_outcome is unknown when this server cannot tell whether TestRail stored the file, and acknowledged when TestRail answered with a success reply this server could not use; either way, uploading again may add a second attachment.';
+const uploadContract = 'filename is sent as the multipart part\'s filename, which the driver\'s documentation describes as the name TestRail stores and shows for the attachment; TestRail\'s own reference does not say. content_type, when given, is sent lowercased as the part\'s media type. Each call adds another attachment, even for the same file, and TestRail documents its reply as the new attachment_id; a JSON object reply without a numeric attachment_id is returned with a drift warning, and an empty one comes back as {}. TestRail accepts files up to 256 MB, but this server refuses a file above its configured file limit, at most 100 MiB, before anything is sent, and TestRail must answer, file sent, within this server\'s 15-second request timeout. Neither this server nor its driver retries an upload, not even after a 429. If it fails after the request was sent, write_outcome is acknowledged when TestRail\'s success reply was JSON this server could not use, and unknown otherwise, including a timeout and a success reply that is not JSON, because this server cannot then tell whether TestRail stored the file; either way, uploading again may add a second attachment.';
 
 /*
  * TestRail documents attachment_id as always present in an upload's reply. The driver's

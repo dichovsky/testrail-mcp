@@ -329,6 +329,20 @@ describe('independent parameter manifest format', () => {
       .toEqual(inventory.map(({ tool }) => tool).sort());
   });
 
+  // The guide's coverage table is prose a reader trusts; nothing else holds it to the files.
+  it('keeps the guide\'s coverage table in step with the authored manifests', async () => {
+    const guide = await readFile(new URL('../docs/parameter-manifest.md', import.meta.url), 'utf8');
+    const rows = [...guide.matchAll(/^\| `([a-z_]+)` \| (\d+) \| (\d+) \| Complete input manifest \|$/gmu)]
+      .map((match) => ({ name: match[1] ?? '', parameters: Number(match[2]), cases: Number(match[3]) }));
+    const shape = z.object({ parameters: z.array(z.unknown()), cases: z.array(z.unknown()) });
+    const authored = await Promise.all(rows.map(async ({ name }) => {
+      const raw = shape.parse(JSON.parse(await readFile(new URL(`./fixtures/parameters/${name}.json`, import.meta.url), 'utf8')));
+      return { name, parameters: raw.parameters.length, cases: raw.cases.length };
+    }));
+    expect(rows).toEqual(authored);
+    expect(rows.map(({ name }) => `testrail_${name}`).sort()).toEqual(inventory.map(({ tool }) => tool).sort());
+  });
+
   it('derives a control\'s rejections from the baseline of its own call mode', () => {
     const suites = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_get_suites');
     if (!suites) throw new Error('Required get_suites manifest is missing');
