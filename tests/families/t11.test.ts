@@ -92,9 +92,31 @@ const CROSS_PROJECT_URLS = {
 };
 
 const GENERATORS = [
-  ['testrail_run_report', 'run_report', REPORT_URLS],
-  ['testrail_run_cross_project_report', 'run_cross_project_report', CROSS_PROJECT_URLS],
+  ['testrail_run_report', 'run_report', REPORT_URLS, 'runReport'],
+  ['testrail_run_cross_project_report', 'run_cross_project_report', CROSS_PROJECT_URLS, 'runCrossProjectReport'],
 ] as const;
+
+/**
+ * A client connected to a server over the full registry, so a call takes the same path a
+ * host's call does: through the MCP tool handler, not straight into executeToolCall.
+ */
+async function connect(fetch: ReturnType<typeof vi.fn>) {
+  const runtime = runtimeFor(fetch);
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const handle = serveStdio(() => buildServer({
+    configuration, runtime, registry: operationRegistry, stagingDirectory: () => Promise.resolve(base),
+  }), { transport: serverTransport });
+  const client = new Client({ name: 't11', version: '1.0.0' });
+  await client.connect(clientTransport);
+  return {
+    client,
+    close: async () => {
+      await client.close().catch(() => undefined);
+      await handle.close().catch(() => undefined);
+      await runtime.shutdown();
+    },
+  };
+}
 
 /*
  * Running a template is a GET that generates a report and may email it. A cache, a
@@ -135,19 +157,42 @@ describe('T11 every report run reaches TestRail exactly once', () => {
    * ordinary reads three times; a run must still reach TestRail once, and its error must
    * not claim that nothing happened.
    */
-  it.each(GENERATORS.flatMap(([tool]) => [
-    [tool, 'a network error', () => Promise.reject(new TypeError('fetch failed'))],
-    [tool, 'a 500', () => Promise.resolve(json({ error: 'upstream' }, 500))],
-    [tool, 'a 503', () => Promise.resolve(json({ error: 'upstream' }, 503))],
-  ] as const))('%s is not retried after %s, and its outcome stays unknown', async (tool, _label, respond) => {
+  it.each(GENERATORS.flatMap(([tool, , , method]) => [
+    [tool, 'a network error', method, () => Promise.reject(new TypeError('fetch failed'))],
+    ...[408, 500, 502, 503, 504].map((status) =>
+      [tool, `a ${status}`, method, () => Promise.resolve(json({ error: 'upstream' }, status))] as const),
+  ] as const))('%s is not retried after %s, and its outcome stays unknown', async (tool, _label, method, respond) => {
     const fetch = vi.fn().mockImplementation(respond);
-    const runtime = runtimeFor(fetch);
+    const driver = driverFor(fetch);
+    // Counted at the driver method too, so a re-invocation above the wire cannot hide.
+    const invoked = vi.spyOn(driver.reports, method);
+    const runtime = createRuntime({ client: driver, limits: configuration.limits });
     try {
       const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
       expect(fetch).toHaveBeenCalledTimes(1);
+      expect(invoked).toHaveBeenCalledTimes(1);
       expect(result.isError).toBe(true);
       expect(errorOf(result).write_outcome).toBe('unknown');
     } finally { await runtime.shutdown(); }
+  });
+
+  /*
+   * The counts above call the transport's entry point directly. A host's call arrives
+   * through the MCP tool handler instead, which could share one in-flight run between
+   * identical callers, so the same counts are taken through a connected client.
+   */
+  it.each(GENERATORS)('%s reaches TestRail once per call through a connected client', async (tool, _endpoint, urls) => {
+    const fetch = replying(urls);
+    const session = await connect(fetch);
+    try {
+      await session.client.callTool({ name: tool, arguments: { report_template_id: 383 } });
+      await session.client.callTool({ name: tool, arguments: { report_template_id: 383 } });
+      expect(fetch).toHaveBeenCalledTimes(2);
+      const concurrent = await Promise.all([1, 2, 3].map(() =>
+        session.client.callTool({ name: tool, arguments: { report_template_id: 383 } })));
+      expect(concurrent.map(({ isError }) => Boolean(isError))).toEqual([false, false, false]);
+      expect(fetch).toHaveBeenCalledTimes(5);
+    } finally { await session.close(); }
   });
 
   // The contrast that shows the single request above is the report's own policy, not a cap.
@@ -186,22 +231,34 @@ describe('T11 what a run returns', () => {
   it.each(GENERATORS)('%s returns its documented URLs as sent and fetches none of them', async (tool, _endpoint, urls) => {
     const fetch = replying(urls);
     const runtime = runtimeFor(fetch);
+    // The URLs are not API endpoints, so the driver could not fetch them; anything else would
+    // have to use the global fetch, which is watched here as well.
+    const globalFetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('no request expected'));
     try {
       const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
       expect(data(result)).toEqual(urls);
       expect(warnings(result)).toEqual([]);
       expect(fetch).toHaveBeenCalledTimes(1);
-    } finally { await runtime.shutdown(); }
+      expect(globalFetch).not.toHaveBeenCalled();
+    } finally {
+      globalFetch.mockRestore();
+      await runtime.shutdown();
+    }
   });
 
-  // A reply without a URL is still the reply to a generation that happened.
-  it.each(GENERATORS)('%s returns a reply without report_url as sent, with a warning', async (tool) => {
-    const fetch = replying({ report_html: REPORT_URLS.report_html });
+  // A reply without a usable URL is still TestRail's answer to the run, whatever its shape.
+  it.each(GENERATORS.flatMap(([tool]) => [
+    [tool, 'an empty object', {}],
+    [tool, 'report_html alone', { report_html: REPORT_URLS.report_html }],
+    [tool, 'the legacy user_report_url alone', { user_report_url: 'https://docs.testrail.com/index.php?/reports/view/383' }],
+    [tool, 'a null report_url', { report_url: null }],
+  ] as const))('%s returns %s as sent, with a warning, and does not run again', async (tool, _label, reply) => {
+    const fetch = replying(reply);
     const runtime = runtimeFor(fetch);
     try {
       const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
       expect(result.isError).toBeUndefined();
-      expect(data(result)).toEqual({ report_html: REPORT_URLS.report_html });
+      expect(data(result)).toEqual(reply);
       expect(warnings(result)).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
       expect(fetch).toHaveBeenCalledTimes(1);
     } finally { await runtime.shutdown(); }
@@ -250,6 +307,10 @@ describe('T11 what a run returns', () => {
     // A failed run's outcome is read from write_outcome, which can be either of these.
     expect(description).toContain('unknown means TestRail may have generated and emailed the report');
     expect(description).toContain('acknowledged means TestRail answered the run');
+    // The retry contract is this family's own text, not the registry's appended sentence.
+    expect(description).toContain('Neither this server nor its driver retries a run after a network error or a 5xx');
+    expect(description).toContain('the driver re-sends only a rate-limited (429) request, which TestRail rejects before handling');
+    expect(description).not.toMatch(/safe to (call|run|retry|repeat)/iu);
   });
 
   it.each([['testrail_get_cross_project_reports'], ['testrail_run_cross_project_report']] as const)(
@@ -291,28 +352,17 @@ describe('T11 an instance or user without cross-project reports', () => {
   });
 
   it('keeps both cross-project tools in the catalog after a licence refusal', async () => {
-    const fetch = replying({ error: 'Not an Enterprise license/subscription.' }, 403);
-    const runtime = runtimeFor(fetch);
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const handle = serveStdio(() => buildServer({
-      configuration, runtime, registry: operationRegistry, stagingDirectory: () => Promise.resolve(base),
-    }), { transport: serverTransport });
-    const client = new Client({ name: 't11-licence', version: '1.0.0' });
-    await client.connect(clientTransport);
+    const session = await connect(replying({ error: 'Not an Enterprise license/subscription.' }, 403));
     try {
-      const before = (await client.listTools()).tools;
-      const refused = await client.callTool({ name: 'testrail_get_cross_project_reports', arguments: {} });
+      const before = (await session.client.listTools()).tools;
+      const refused = await session.client.callTool({ name: 'testrail_get_cross_project_reports', arguments: {} });
       expect(refused.isError).toBe(true);
-      const after = (await client.listTools()).tools;
+      const after = (await session.client.listTools()).tools;
       expect(after).toEqual(before);
       expect(after.map(({ name }) => name)).toEqual(expect.arrayContaining([
         'testrail_get_cross_project_reports', 'testrail_run_cross_project_report',
       ]));
-    } finally {
-      await client.close().catch(() => undefined);
-      await handle.close().catch(() => undefined);
-      await runtime.shutdown();
-    }
+    } finally { await session.close(); }
   });
 });
 
@@ -337,6 +387,25 @@ describe('T11 the template lists', () => {
       expect(requested(fetch)).toMatch(/\/api\/v2\/get_reports\/7$/);
       expect(data(result)).toEqual([template]);
       expect(warnings(result)).toEqual([]);
+    } finally { await runtime.shutdown(); }
+  });
+
+  /*
+   * A list checked against no schema would also report no drift, so each list is shown to
+   * report it too: a template missing a field its driver schema requires.
+   */
+  it.each([
+    ['testrail_get_reports', { project_id: 7 }, { id: 1, description: null }],
+    ['testrail_get_cross_project_reports', {}, {
+      id: 1, name: 'Summary', include_open_runs_and_plans: true, include_completed_runs_and_plans: true, report_timeframe: '90 days',
+    }],
+  ] as const)('%s reports a template missing a required field as drift', async (tool, input, template) => {
+    const fetch = replying([template]);
+    const runtime = runtimeFor(fetch);
+    try {
+      const result = await executeToolCall(operation(tool), input, { runtime, configuration });
+      expect(data(result)).toEqual([template]);
+      expect(warnings(result)).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
     } finally { await runtime.shutdown(); }
   });
 
