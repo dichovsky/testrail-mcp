@@ -253,6 +253,15 @@ describe('strict reuse of public driver payload schemas', () => {
     const named = strictObject({ body: payloadInput(z.record(z.string().regex(/^custom_/u), z.string())) });
     agree(named, '{"body":{"__proto__":"x"}}', false);
     agree(named, '{"body":{"custom_a":"x"}}', true);
+    // It follows Zod's own rule for every other key. A loose record lets a key its schema
+    // refuses through unchecked, and the advertised JSON Schema accepts it as well.
+    const loose = strictObject({ body: payloadInput(z.looseRecord(z.string().regex(/^custom_/u), z.string())) });
+    agree(loose, '{"body":{"__proto__":5}}', true);
+    // A record whose keys are listed reports an undeclared one once, as unrecognized.
+    const listed = strictObject({ body: payloadInput(z.record(z.enum(['a']), z.string())) });
+    agree(listed, '{"body":{"a":"x","__proto__":"y"}}', false);
+    expect(listed.safeParse(JSON.parse('{"body":{"a":"x","__proto__":"y"}}')).error?.issues.map(({ code }) => code))
+      .toEqual(['unrecognized_keys']);
   });
 
   it('retains driver array bounds and uses independently composed item extensions', () => {

@@ -220,7 +220,9 @@ function adaptPayload(source: z.ZodType, options: PayloadOptions<InputShape> = {
  *
  * It wraps the parse rather than adding a refinement because a refinement receives the
  * parsed clone, which no longer has the key. The key stays out of the clone, as Zod
- * leaves it out: assigning it there would replace the clone's prototype.
+ * leaves it out: assigning it there would replace the clone's prototype. The wrapper
+ * belongs to this instance, so a copy made from it by describe, meta or refine does not
+ * carry it; adapted records are used as they are returned here.
  */
 function checkPrototypeKey(record: z.ZodRecord): z.ZodRecord {
   const internals = record._zod;
@@ -234,20 +236,26 @@ function checkPrototypeKey(record: z.ZodRecord): z.ZodRecord {
       : undefined;
     if (own?.enumerable !== true) return result;
     const key = record.keyType._zod.run({ value: '__proto__', issues: [] }, context);
-    const value = record.valueType._zod.run({ value: own.value as unknown, issues: [] }, context);
-    if (key instanceof Promise || value instanceof Promise) {
-      throw new Error('Payload records are validated synchronously');
-    }
+    if (key instanceof Promise) throw new Error('Payload records are validated synchronously');
     if (key.issues.length !== 0) {
-      result.issues.push({
-        code: 'invalid_key',
-        origin: 'record',
-        issues: key.issues.map((issue) => z.core.util.finalizeIssue(issue, context, z.core.config())),
-        input: '__proto__',
-        path: ['__proto__'],
-        inst: record,
-      });
+      // As for any other key: a loose record passes a key its schema refuses through
+      // unchecked, and a record whose keys are listed has already reported this one as
+      // unrecognized. Otherwise the key is invalid, and its value is not checked.
+      const listed = record.keyType._zod.values !== undefined && record._zod.def.partial !== true;
+      if (record._zod.def.mode !== 'loose' && !listed) {
+        result.issues.push({
+          code: 'invalid_key',
+          origin: 'record',
+          issues: key.issues.map((issue) => z.core.util.finalizeIssue(issue, context, z.core.config())),
+          input: '__proto__',
+          path: ['__proto__'],
+          inst: record,
+        });
+      }
+      return result;
     }
+    const value = record.valueType._zod.run({ value: own.value as unknown, issues: [] }, context);
+    if (value instanceof Promise) throw new Error('Payload records are validated synchronously');
     result.issues.push(...z.core.util.prefixIssues('__proto__', value.issues));
     return result;
   };
