@@ -163,7 +163,7 @@ describe('T10 the two status vocabularies and the two field lists', () => {
 /*
  * TestRail's reference documents get_case_statuses twice over: its example is a bare
  * array and its field table an envelope. The driver reads the bare array and an envelope
- * under _links; the field table spells the key links, and that envelope is refused. A
+ * under _links; an envelope keyed links literally, as the table labels it, is refused. A
  * caller must get the statuses from each shape the driver reads, and must not be told
  * there is more to fetch when the bare array is all there is.
  */
@@ -195,10 +195,10 @@ describe('T10 case statuses in the shapes the driver reads', () => {
   });
 
   /*
-   * The field table names the envelope's links key links, while TestRail's other list
-   * pages and the driver use _links. The driver refuses an envelope without _links as an
-   * invalid page, and the family documentation says so; this pins that it still does, so
-   * the documentation cannot silently fall out of date.
+   * The field table labels the envelope's links object links, the label TestRail's Shared
+   * Steps table uses beside an example keyed _links. The driver reads _links alone and
+   * refuses an envelope without it as an invalid page, and the family documentation says
+   * so; this pins that it still does, so the documentation cannot silently fall out of date.
    */
   it.each([{}, { _mcp: { pagination: 'all' } }] as const)(
     'reports an envelope keyed links, as the field table names it, as an invalid reply (%j)', async (input) => {

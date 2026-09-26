@@ -36,6 +36,11 @@
       "supports": "The aggregate bounds maxItems, maxPages, maxBytes and maxDurationMs stop the walk and are never serialized upstream. decodePage turns a bare array into a legacy-array page carrying items and size, and an envelope into an envelope page carrying the envelope's offset, limit, size and _links. An envelope is read only when _links is an object; one without it, such as an envelope keyed links, is an invalid page."
     },
     {
+      "id": "testrail-shared-steps",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077919815572-Shared-Steps",
+      "supports": "The get_shared_step_history example reply keys its links object _links, and the field table beneath it labels the same object links and describes offset as where to start counting the step history from. The get_case_statuses field table on the Statuses page repeats that table, step-history wording included, so its links row is the same label for _links."
+    },
+    {
       "id": "testrail-statuses",
       "url": "https://support.testrail.com/hc/en-us/articles/7077935129364-Statuses",
       "supports": "get_case_statuses requires TestRail Enterprise 7.3 or later and returns the available test case statuses, each with case_status_id, name, abbreviation, is_default (true for the default status for test cases) and is_approved (true for an approved status). The reference contradicts itself on the reply: its example is a bare array of Approved and Draft, both with a null abbreviation, while its field table documents offset, limit, size, links and a case_statuses array. It documents no request parameter and only a 200 response. get_statuses, on the same page, lists the test statuses such as Passed and Failed, a different vocabulary."
@@ -49,7 +54,7 @@
   "outer_result": {
     "driver": "page",
     "tool_data": "array",
-    "notes": "Page mode returns the server-selected page as the driver decoded it. The bare array of TestRail's example becomes a terminal page with no continuation, and an envelope whose links sit under _links, as TestRail's other list pages document them, keeps its offset, limit, size and links. An envelope keyed links, as this endpoint's field table literally names it, is refused as an invalid page, which the family suite pins. All mode returns the collected array, and an aggregate that stops at one of its bounds cannot be resumed from where it stopped. Entity-field drift is advisory."
+    "notes": "Page mode returns the server-selected page as the driver decoded it. The bare array of TestRail's example becomes a terminal page with no continuation, and an envelope whose links sit under _links, as TestRail's other list pages document them, keeps its offset, limit, size and links. The field table labels that object links, the label the Shared Steps table uses beside an example keyed _links, so it names _links rather than a second spelling; an envelope keyed links literally is refused as an invalid page, which the family suite pins. All mode returns the collected array, and an aggregate that stops at one of its bounds cannot be resumed from where it stopped. Entity-field drift is advisory."
   },
   "requirements": [
     {

@@ -188,9 +188,10 @@ export const getResultFields = defineOperation({
 /*
  * TestRail's reference contradicts itself on this reply: its example is a bare array,
  * while its field table documents an envelope carrying offset, limit, size, links and
- * case_statuses. The driver's executor reads the bare array, and an envelope whose links
- * sit under _links, as TestRail's other list pages document them; an envelope keyed links,
- * as this field table literally names it, would be refused as an invalid page. No request
+ * case_statuses. The driver's executor reads the bare array and the envelope under _links.
+ * The table's links is its label for that object: it is the Shared Steps history table
+ * copied down to its step-history wording, and there the same label sits beside an example
+ * keyed _links. An envelope keyed links literally would be refused as an invalid page. No request
  * control is declared because the reference documents none, so neither helper sends one
  * of its own. As with the other response-driven lists, the aggregate walks the envelope's
  * next link, a continuation carrying only the offset and limit TestRail put there, and a
