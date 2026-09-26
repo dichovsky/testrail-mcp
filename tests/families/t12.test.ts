@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import { TestRailClient } from '@dichovsky/testrail-api-client';
+import { AttachmentSchema, TestRailClient } from '@dichovsky/testrail-api-client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { LIMIT_CEILINGS } from '../../src/config/limits.js';
@@ -12,6 +12,23 @@ import { createRuntime } from '../../src/runtime/invocation.js';
 import { executeToolCall } from '../../src/transport/tool-call.js';
 import { describeBody } from '../contracts/uploads.js';
 
+/*
+ * The download writer, passed through unchanged unless a test holds it. Holding it is how
+ * the suite shows that the file is written after the download slot has been freed.
+ */
+const writes = vi.hoisted(() => ({ hold: undefined as Promise<void> | undefined, started: 0 }));
+vi.mock('../../src/files/download.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../src/files/download.js')>();
+  return {
+    ...original,
+    writeDownload: async (...args: Parameters<typeof original.writeDownload>) => {
+      writes.started += 1;
+      await writes.hold;
+      return original.writeDownload(...args);
+    },
+  };
+});
+
 let base: string;
 
 beforeAll(async () => { base = await mkdtemp(join(tmpdir(), 'testrail-mcp-t12-')); });
@@ -19,6 +36,8 @@ afterAll(async () => { await rm(base, { recursive: true, force: true }); });
 
 const UUID = '3933d74b-4282-44de-82ae-a6412808369d';
 const LOG = 'Build 412 console output\nAll 36 checks passed.\n';
+// The name an upload asks for, deliberately not the file's own, which is console.log.
+const REQUESTED = 'build-412.log';
 const MiB = 1_048_576;
 
 // TestRail's documented list entities, verbatim.
@@ -62,7 +81,7 @@ async function environment(limits?: Record<string, number>) {
   return { directory, roots, outside, downloads, source, configuration, staging };
 }
 
-type DriverOverrides = { maxRetries?: number };
+type DriverOverrides = { maxRetries?: number; timeout?: number };
 
 /*
  * The driver is built from this server's own production options, with only fetch and DNS
@@ -122,7 +141,8 @@ describe('T12 get_attachment writes a new local file on every call', () => {
     expect(description).toContain('Each call downloads the attachment again and writes another file, even for the same ID');
     expect(description).toContain('Creates a unique persistent local file in the configured download directory on each call');
     expect(description).toContain('the result carries no original filename or media type');
-    expect(description).toContain('One download runs at a time: a call made while another is in progress is refused as BUSY before anything is sent');
+    expect(description).toContain('Only one download is received at a time: a call made while another download\'s request or reply is still in flight is refused as BUSY before anything is sent, though writing a received file can overlap the next download');
+    expect(description).toContain('An attachment larger than this server\'s configured file limit, at most 100 MiB, is refused while it is read, as INVALID_RESPONSE, and nothing is written');
     expect(operation('testrail_get_attachment').retry).toBe('ordinary-read');
   });
 
@@ -217,6 +237,57 @@ describe('T12 get_attachment writes a new local file on every call', () => {
     } finally { await runtime.shutdown(); }
   });
 
+  it('refuses a second download while the first reply is still being read', async () => {
+    const env = await environment();
+    let finish: () => void = () => undefined;
+    const fetch = vi.fn()
+      .mockImplementationOnce(() => Promise.resolve(new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('first half, '));
+          finish = () => { controller.enqueue(new TextEncoder().encode('second half\n')); controller.close(); };
+        },
+      }), { headers: { 'content-type': 'application/octet-stream' } })))
+      .mockImplementation(() => Promise.resolve(bytes('second\n')));
+    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    try {
+      const first = executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      await vi.waitFor(() => { expect(fetch).toHaveBeenCalledTimes(1); });
+      const second = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 18 }, { runtime, configuration: env.configuration });
+      expect(errorOf(second).code).toBe('BUSY');
+      expect(fetch).toHaveBeenCalledTimes(1);
+      finish();
+      const done = await first;
+      expect(await readFile((data(done) as { file_path: string }).file_path, 'utf8')).toBe('first half, second half\n');
+    } finally { await runtime.shutdown(); }
+  });
+
+  /*
+   * The slot is freed when the driver settles, and the file is written after that, so the
+   * next download is admitted while the previous one is still writing. The summary says
+   * so; this pins it, and fails if the slot is ever held through the write.
+   */
+  it('admits the next download while the previous one is still writing its file', async () => {
+    const env = await environment();
+    let release: () => void = () => undefined;
+    writes.hold = new Promise<void>((resolve) => { release = resolve; });
+    writes.started = 0;
+    const fetch = replying(() => bytes('held\n'));
+    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    try {
+      const first = executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      await vi.waitFor(() => { expect(writes.started).toBe(1); });
+      const second = executeToolCall(operation('testrail_get_attachment'), { attachment_id: 18 }, { runtime, configuration: env.configuration });
+      await vi.waitFor(() => { expect(fetch).toHaveBeenCalledTimes(2); });
+      release();
+      const results = await Promise.all([first, second]);
+      expect(results.map(({ isError }) => Boolean(isError))).toEqual([false, false]);
+      expect(await readdir(env.downloads)).toHaveLength(2);
+    } finally {
+      writes.hold = undefined;
+      await runtime.shutdown();
+    }
+  });
+
   it('refuses a caller-chosen destination before any request', async () => {
     const env = await environment();
     const fetch = replying(() => bytes('never\n'));
@@ -258,6 +329,32 @@ describe('T12 attachment lists', () => {
       const result = await executeToolCall(operation('testrail_get_attachments_for_plan'), { plan_id: 7 }, { runtime, configuration: env.configuration });
       expect(data(result)).toEqual([drifted]);
       expect(warnings(result)).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
+    } finally { await runtime.shutdown(); }
+  });
+
+  /*
+   * A bare array carries no continuation, so a full page of one is indistinguishable from
+   * the end of the list, in page mode and in all mode alike. The plan and run summaries say
+   * so; this pins what that means for a caller.
+   */
+  it.each([
+    ['testrail_get_attachments_for_plan', { plan_id: 7 }],
+    ['testrail_get_attachments_for_run', { run_id: 81 }],
+  ] as const)('%s cannot tell a full bare-array page from the end of the list', async (tool, input) => {
+    const env = await environment();
+    const full = (count: number) => Array.from({ length: count }, (_value, index) => ({ ...PLAN_ENTITY, id: index + 1 }));
+    const fetch = vi.fn()
+      .mockImplementationOnce(() => Promise.resolve(json(full(50))))
+      .mockImplementationOnce(() => Promise.resolve(json(full(20))));
+    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    try {
+      const page = await executeToolCall(operation(tool), input, { runtime, configuration: env.configuration });
+      expect(data(page)).toHaveLength(50);
+      expect((page.structuredContent as { pagination: unknown }).pagination).toMatchObject({ has_more: false });
+      const all = await executeToolCall(operation(tool), { ...input, _mcp: { pagination: 'all', page_size: 20 } }, { runtime, configuration: env.configuration });
+      expect(data(all)).toHaveLength(20);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(operation(tool).description).toContain('TestRail documents the reply as a bare array, which carries no continuation: when a page comes back full, this server cannot tell whether more attachments exist, and all mode stops there too.');
     } finally { await runtime.shutdown(); }
   });
 
@@ -324,6 +421,24 @@ describe('T12 attachment lists', () => {
     } finally { await runtime.shutdown(); }
   });
 
+  it('returns only the first reply of a paged plan-entry list, with nothing that says more exist', async () => {
+    const env = await environment();
+    const fetch = replying(() => json({
+      offset: 0, limit: 250, size: 1,
+      _links: { next: `/api/v2/get_attachments_for_plan_entry/7/${UUID}&limit=250&offset=250`, prev: null },
+      attachments: [PLAN_ENTITY],
+    }));
+    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    try {
+      const result = await executeToolCall(operation('testrail_get_attachments_for_plan_entry'), { plan_id: 7, entry_id: UUID }, { runtime, configuration: env.configuration });
+      expect(data(result)).toEqual([PLAN_ENTITY]);
+      expect(result.structuredContent).not.toHaveProperty('pagination');
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(operation('testrail_get_attachments_for_plan_entry').description).toContain(
+        'if it sends a paged envelope instead, only the attachments in that one reply are returned, with no sign that more exist, because the driver method returns the list alone');
+    } finally { await runtime.shutdown(); }
+  });
+
   it('refuses a numeric plan entry before any request and sends a UUID as given', async () => {
     const env = await environment();
     const fetch = replying(() => json([PLAN_ENTITY]));
@@ -338,6 +453,34 @@ describe('T12 attachment lists', () => {
       expect(requested(fetch)).toBe(`https://people.testrail.io/index.php?/api/v2/get_attachments_for_plan_entry/7/${upper}`);
     } finally { await runtime.shutdown(); }
   });
+
+  it('does not say what the test list\'s entries all carry beyond the id', () => {
+    const { description } = operation('testrail_get_attachments_for_test');
+    expect(description).toContain('pre-7.1 entries name the result_id they belong to, while the 7.1 (cloud) format TestRail documents names entity_type and entity_id instead');
+  });
+
+  it('does not say whether the plan list includes its entries\' attachments', () => {
+    expect(operation('testrail_get_attachments_for_plan').description).toContain(
+      'TestRail\'s reference does not say whether attachments on the plan\'s entries are included');
+    expect(operation('testrail_get_attachments_for_plan').description).not.toContain('itself');
+    expect(operation('testrail_add_attachment_to_plan').description).not.toContain('itself');
+  });
+
+  /*
+   * TestRail gives ten of these endpoints a 403 for "No access to the project or insufficient
+   * permissions", and the two oldest uploads a 403 for "No access to the project" alone. Each
+   * summary names what its own endpoint documents.
+   */
+  const narrow403 = new Set(['testrail_add_attachment_to_case', 'testrail_add_attachment_to_plan']);
+  it.each(operationRegistry.entries.filter(({ family }) => family === 'T12').map(({ tool }) => [tool] as const))(
+    '%s gives the causes TestRail documents for its 403', (tool) => {
+      const { description } = operation(tool);
+      if (narrow403.has(tool)) {
+        expect(description).toContain('403 when the configured user has no access to the project.');
+      } else {
+        expect(description).toContain('403 when the configured user has no access to the project or lacks permission');
+      }
+    });
 
   it.each([
     ['testrail_get_attachments_for_plan_entry'], ['testrail_add_attachment_to_plan_entry'],
@@ -372,13 +515,15 @@ describe('T12 uploads', () => {
     const runtime = createRuntime({ client: driver, limits: env.configuration.limits });
     try {
       const result = await executeToolCall(operation(tool), {
-        ...ids, file_path: env.source, filename: 'console.log', content_type: 'text/plain',
+        ...ids, file_path: env.source, filename: REQUESTED, content_type: 'Text/Plain',
       }, { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
       expect(result.isError).toBeUndefined();
       expect(data(result)).toEqual({ attachment_id: 443 });
+      expect(warnings(result)).toEqual([]);
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(requested(fetch)).toBe(`https://people.testrail.io/index.php?/api/v2/${route}`);
-      expect(bodies).toEqual([[{ name: 'attachment', filename: 'console.log', content_type: 'text/plain', utf8: LOG }]]);
+      // The requested name, not the file's own, and the media type lowercased.
+      expect(bodies).toEqual([[{ name: 'attachment', filename: REQUESTED, content_type: 'text/plain', utf8: LOG }]]);
       // The driver was handed the staged copy, never the caller's own path.
       const file = invoked.mock.calls[0]?.find((argument): argument is { path: string } =>
         typeof argument === 'object' && argument !== null && 'path' in argument);
@@ -390,22 +535,30 @@ describe('T12 uploads', () => {
   });
 
   /*
-   * The multipart body is a consumed stream and an upload adds a new attachment each
-   * time, so neither this server nor its driver sends it twice. A 429 is included on
-   * purpose: the driver's JSON writes re-send one, but its uploads do not.
+   * An upload adds a new attachment each time and TestRail documents no retry semantics
+   * for creating one, so neither this server nor its driver sends it twice, whatever the
+   * failure. A 429 is included on purpose: the driver's JSON writes re-send one, but its
+   * uploads do not. The driver's own timeout is included because it is the classic
+   * ambiguous outcome for an upload.
    */
   it.each(UPLOADS.flatMap(([tool, ids, , method]) => [
     [tool, 'a network error', ids, method, () => Promise.reject(new TypeError('fetch failed'))],
-    ...[429, 500, 502, 503].map((status) =>
+    [tool, 'the driver\'s own timeout', ids, method, (_url: unknown, init?: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        const reason: unknown = init.signal?.reason;
+        reject(reason instanceof Error ? reason : new DOMException('aborted', 'AbortError'));
+      });
+    })],
+    ...[400, 403, 404, 408, 429, 500, 502, 503, 504].map((status) =>
       [tool, `a ${status}`, ids, method, () => Promise.resolve(json({ error: 'upstream' }, status, { 'retry-after': '0' }))] as const),
   ] as const))('%s is not retried after %s, and its outcome stays unknown', async (tool, _label, ids, method, respond) => {
     const env = await environment();
     const fetch = vi.fn().mockImplementation(respond);
-    const driver = driverFor(env.configuration, fetch);
+    const driver = driverFor(env.configuration, fetch, { timeout: 100 });
     const invoked = vi.spyOn(driver.attachments, method);
     const runtime = createRuntime({ client: driver, limits: env.configuration.limits });
     try {
-      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: 'console.log' },
+      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
         { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
       expect(result.isError).toBe(true);
       expect(errorOf(result).write_outcome).toBe('unknown');
@@ -421,7 +574,7 @@ describe('T12 uploads', () => {
     const fetch = replying(() => json({ attachment_id: 443 }));
     const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
     try {
-      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: 'console.log' },
+      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
         { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
       expect(errorOf(result)).toEqual(expect.objectContaining({ code: 'FILE_TOO_LARGE', write_outcome: 'not_started' }));
       expect(fetch).not.toHaveBeenCalled();
@@ -434,36 +587,70 @@ describe('T12 uploads', () => {
     const fetch = replying(() => json({ attachment_id: 443 }));
     const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
     try {
-      const result = await executeToolCall(operation(tool), { ...ids, file_path: join(env.directory, 'outside', 'console.log'), filename: 'console.log' },
+      const result = await executeToolCall(operation(tool), { ...ids, file_path: join(env.directory, 'outside', 'console.log'), filename: REQUESTED },
         { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
       expect(errorOf(result)).toEqual(expect.objectContaining({ code: 'FILE_ACCESS_DENIED', write_outcome: 'not_started' }));
       expect(fetch).not.toHaveBeenCalled();
     } finally { await runtime.shutdown(); await env.staging.dispose(); }
   });
 
-  it.each(UPLOADS)('%s sends the same file twice when called twice', async (tool, ids) => {
+  /*
+   * Both calls are held at TestRail until each has sent its own request, so a server that
+   * shared one in-flight upload between identical calls would be seen here: it would send
+   * one request and report the same attachment twice.
+   */
+  it.each(UPLOADS)('%s sends the same file twice when two calls overlap', async (tool, ids) => {
     const env = await environment();
-    const fetch = replying(() => json({ attachment_id: 443 }));
+    const releases: ((response: Response) => void)[] = [];
+    const fetch = vi.fn().mockImplementation(async (_url: unknown, init?: { body?: unknown }) => {
+      await describeBody(init?.body);
+      return new Promise<Response>((resolve) => { releases.push(resolve); });
+    });
     const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
     try {
-      const call = () => executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: 'console.log' },
+      const call = () => executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
         { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
-      const results = await Promise.all([call(), call()]);
-      expect(results.map(({ isError }) => Boolean(isError))).toEqual([false, false]);
+      const pending = [call(), call()];
+      await vi.waitFor(() => { expect(releases).toHaveLength(2); });
+      releases[0]?.(json({ attachment_id: 441 }));
+      releases[1]?.(json({ attachment_id: 442 }));
+      const results = await Promise.all(pending);
+      // Either request may reach TestRail first; what matters is that each call got its own attachment.
+      expect(results.map((result) => (data(result) as { attachment_id: number }).attachment_id).sort()).toEqual([441, 442]);
       expect(fetch).toHaveBeenCalledTimes(2);
     } finally { await runtime.shutdown(); await env.staging.dispose(); }
   });
 
-  // The driver's schema types an upload's attachment_id as a number; anything else is TestRail's answer, returned as sent.
-  it('returns a non-numeric attachment_id as sent, with a drift warning', async () => {
+  /*
+   * TestRail documents attachment_id as always present and numeric. A reply without one, or
+   * with another type, is still TestRail's answer, so it comes back as sent, with a warning.
+   */
+  it.each(UPLOADS.flatMap(([tool, ids]) => [
+    [tool, 'a UUID attachment_id', ids, { attachment_id: UUID }],
+    [tool, 'no attachment_id', ids, {}],
+    [tool, 'an error object', ids, { error: 'nope' }],
+  ] as const))('%s returns a reply with %s as sent, with a drift warning', async (tool, _label, ids, reply) => {
     const env = await environment();
-    const fetch = replying(() => json({ attachment_id: UUID }));
+    const fetch = replying(() => json(reply));
     const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
     try {
-      const result = await executeToolCall(operation('testrail_add_attachment_to_run'), { run_id: 81, file_path: env.source, filename: 'console.log' },
+      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
         { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
-      expect(data(result)).toEqual({ attachment_id: UUID });
+      expect(data(result)).toEqual(reply);
       expect(warnings(result)).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
+    } finally { await runtime.shutdown(); await env.staging.dispose(); }
+  });
+
+  // TestRail stored the file and answered; only its reply is unusable here, so the outcome is acknowledged.
+  it.each(UPLOADS)('%s reports a success reply it cannot use as acknowledged', async (tool, ids) => {
+    const env = await environment();
+    const fetch = replying(() => json([443]));
+    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    try {
+      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
+        { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
+      expect(errorOf(result)).toEqual(expect.objectContaining({ code: 'INVALID_RESPONSE', write_outcome: 'acknowledged' }));
+      expect(fetch).toHaveBeenCalledTimes(1);
     } finally { await runtime.shutdown(); await env.staging.dispose(); }
   });
 
@@ -473,8 +660,32 @@ describe('T12 uploads', () => {
     expect(retry).toBe('never');
     expect(description).toContain('Each call adds another attachment, even for the same file');
     expect(description).toContain('TestRail accepts files up to 256 MB, but this server refuses a file above its configured file limit, at most 100 MiB, before anything is sent');
-    expect(description).toContain('Neither this server nor its driver retries an upload, not even after a 429');
+    expect(description).toContain('Neither this server nor its driver retries an upload, not even after a 429.');
+    expect(description).toContain('If it fails after the request was sent, write_outcome is unknown when this server cannot tell whether TestRail stored the file, and acknowledged when TestRail answered with a success reply this server could not use; either way, uploading again may add a second attachment.');
+    expect(description).toContain('filename is sent as the multipart part\'s filename, which the driver\'s documentation describes as the name TestRail stores and shows for the attachment; TestRail\'s own reference does not say');
+    expect(description).toContain('content_type, when given, is sent lowercased as the part\'s media type');
+    expect(description).toContain('a reply without a numeric attachment_id is returned as sent with a drift warning');
+    // The .feature rule belongs to the BDD uploads, not to attachments.
+    expect(description).not.toContain('.feature');
     expect(description).not.toMatch(/safe to (call|run|retry|repeat)/iu);
+  });
+
+  /*
+   * Drift is advisory, so a registration that dropped its entity schema, or swapped in a
+   * stricter one, would change nothing but the warnings. Every entity-bearing registration
+   * is therefore held to the schema it is meant to check against.
+   */
+  it('checks every list against the driver\'s attachment schema and every upload against it with attachment_id required', () => {
+    const lists = ['get_attachments_for_case', 'get_attachments_for_plan', 'get_attachments_for_plan_entry',
+      'get_attachments_for_run', 'get_attachments_for_test'];
+    for (const token of lists) expect(operation(`testrail_${token}`).response.entitySchema, token).toBe(AttachmentSchema);
+    for (const [tool] of UPLOADS) {
+      const schema = operation(tool).response.entitySchema;
+      if (schema === null) throw new Error(`${tool}: no entity schema`);
+      expect(schema.safeParse({ attachment_id: 443, extra: true }).success, tool).toBe(true);
+      expect(schema.safeParse({}).success, tool).toBe(false);
+      expect(schema.safeParse({ attachment_id: UUID }).success, tool).toBe(false);
+    }
   });
 
   it('states the file limit ceiling the upload summaries quote', () => {
@@ -511,21 +722,33 @@ describe('T12 delete_attachment', () => {
   });
 
   // json-write: the driver re-sends a POST that TestRail rate-limited, and nothing else.
-  it('is re-sent after a 429 and not after a 500', async () => {
+  it('is re-sent after a 429', async () => {
     const env = await environment();
-    const limited = vi.fn()
+    const fetch = vi.fn()
       .mockImplementationOnce(() => Promise.resolve(json({ error: 'slow down' }, 429, { 'retry-after': '0' })))
       .mockImplementationOnce(() => Promise.resolve(new Response('', { status: 200 })));
-    const failing = replying(() => json({ error: 'upstream' }, 500, { 'retry-after': '0' }));
-    for (const [fetch, calls, outcome] of [[limited, 2, undefined], [failing, 1, 'unknown']] as const) {
-      const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
-      try {
-        const result = await executeToolCall(operation('testrail_delete_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
-        expect(fetch).toHaveBeenCalledTimes(calls);
-        if (outcome === undefined) expect(result.isError).toBeUndefined();
-        else expect(errorOf(result).write_outcome).toBe(outcome);
-      } finally { await runtime.shutdown(); }
-    }
+    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    try {
+      const result = await executeToolCall(operation('testrail_delete_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(result.isError).toBeUndefined();
+    } finally { await runtime.shutdown(); }
+  });
+
+  it.each([
+    ['a network error', () => Promise.reject(new TypeError('fetch failed'))],
+    ...[500, 502, 503, 504].map((status) =>
+      [`a ${status}`, () => Promise.resolve(json({ error: 'upstream' }, status, { 'retry-after': '0' }))] as const),
+    ['a success reply that is not JSON', () => Promise.resolve(new Response('<html>ok</html>', { status: 200 }))],
+  ] as const)('is not re-sent after %s, and its outcome stays unknown', async (_label, respond) => {
+    const env = await environment();
+    const fetch = vi.fn().mockImplementation(respond);
+    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    try {
+      const result = await executeToolCall(operation('testrail_delete_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(errorOf(result).write_outcome).toBe('unknown');
+    } finally { await runtime.shutdown(); }
   });
 
   it('reports a refusal with its status and an unknown outcome', async () => {

@@ -15,7 +15,8 @@ import { aggregateControlMappings, allControls, control, pageResponse, recordRes
  * registered as a persistent download: not read-only and not idempotent, while TestRail
  * itself is only read and the driver's binary GET retries stay as they are. An upload
  * adds a new attachment each time and is never retried, by this server or by its
- * driver, since the multipart body is a consumed stream.
+ * driver: the driver's reason is that an upload is not idempotent and TestRail documents
+ * no retry semantics for creating an attachment.
  *
  * TestRail's reference labels every attachment ID an integer, and also says TestRail
  * 7.1 (cloud) introduced a new format, which its list example shows as a UUID. The
@@ -28,6 +29,13 @@ import { aggregateControlMappings, allControls, control, pageResponse, recordRes
 
 const arrayResponse = z.array(z.unknown());
 
+/*
+ * TestRail documents the plan and run lists' reply as a bare array and their limit as the
+ * number of attachments the response returns, 250 by default. A bare array carries no
+ * continuation, so a full page cannot be told from the end of the list.
+ */
+const BARE_ARRAY = 'TestRail documents the reply as a bare array, which carries no continuation: when a page comes back full, this server cannot tell whether more attachments exist, and all mode stops there too.';
+
 // ------------------------------------------------------------------ download
 
 const getAttachmentInput = strictObject({ attachment_id: attachmentIdSchema });
@@ -38,7 +46,7 @@ export const getAttachment = defineOperation({
   route: 'get_attachment/{attachment_id}',
   family: 'T12',
   driverBinding: 'attachments.getAttachment',
-  summary: 'Download one TestRail attachment by its ID: a positive integer, or a UUID, the format TestRail introduced with release 7.1 (cloud). The testrail_get_attachments_for_* tools list the IDs with their names. The driver returns only the file\'s bytes, so the result carries no original filename or media type. Each call downloads the attachment again and writes another file, even for the same ID. One download runs at a time: a call made while another is in progress is refused as BUSY before anything is sent. TestRail answers 400 for an invalid attachment ID and 403 when the configured user has no access to the project.',
+  summary: 'Download one TestRail attachment by its ID: a positive integer, or a UUID, the format TestRail introduced with release 7.1 (cloud). The testrail_get_attachments_for_* tools list the IDs with their names. The driver returns only the file\'s bytes, so the result carries no original filename or media type. Each call downloads the attachment again and writes another file, even for the same ID. Only one download is received at a time: a call made while another download\'s request or reply is still in flight is refused as BUSY before anything is sent, though writing a received file can overlap the next download. An attachment larger than this server\'s configured file limit, at most 100 MiB, is refused while it is read, as INVALID_RESPONSE, and nothing is written. TestRail answers 400 for an invalid attachment ID and 403 when the configured user has no access to the project or lacks permission.',
   inputSchema: getAttachmentInput,
   argumentMap: [{ input: 'attachment_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'binary', outerSchema: z.instanceof(ArrayBuffer), entitySchema: null },
@@ -62,7 +70,7 @@ export const getAttachmentsForCase = defineOperation({
   route: 'get_attachments_for_case/{case_id}',
   family: 'T12',
   driverBinding: 'attachments.getAttachmentsForCase',
-  summary: 'List the attachments of a TestRail test case (TestRail 5.7 or later; limit and offset need 6.7 or later). Each entry carries the attachment\'s id, an integer or a UUID from release 7.1 (cloud) on, with its name, size and upload time; pass the id to testrail_get_attachment to download the file. TestRail answers 400 for an invalid case ID and 403 when the configured user has no access to the project.',
+  summary: 'List the attachments of a TestRail test case (TestRail 5.7 or later; limit and offset need 6.7 or later). Each entry carries the attachment\'s id, an integer or a UUID from release 7.1 (cloud) on, with its name, size and upload time; pass the id to testrail_get_attachment to download the file. TestRail answers 400 for an invalid case ID and 403 when the configured user has no access to the project or lacks permission.',
   inputSchema: getAttachmentsForCaseInput,
   argumentMap: [
     { input: 'case_id', call: 'page', argument: 0, serialization: 'path' },
@@ -96,7 +104,7 @@ export const getAttachmentsForPlan = defineOperation({
   route: 'get_attachments_for_plan/{plan_id}',
   family: 'T12',
   driverBinding: 'attachments.getAttachmentsForPlan',
-  summary: 'List the attachments added to a TestRail test plan itself (TestRail 6.3 or later; limit and offset need 6.7 or later). Each entry carries the attachment\'s id, with its name, size and upload time; pass the id to testrail_get_attachment to download the file. An entry of the plan has its own list, testrail_get_attachments_for_plan_entry. TestRail answers 400 for an invalid ID and 403 when the configured user has no access to the project.',
+  summary: 'List the attachments of a TestRail test plan (TestRail 6.3 or later; limit and offset need 6.7 or later). Each entry carries the attachment\'s id, with its name, size and upload time; pass the id to testrail_get_attachment to download the file. TestRail\'s reference does not say whether attachments on the plan\'s entries are included; testrail_get_attachments_for_plan_entry lists an entry\'s own. ' + BARE_ARRAY + ' TestRail answers 400 for an invalid ID and 403 when the configured user has no access to the project or lacks permission.',
   inputSchema: getAttachmentsForPlanInput,
   argumentMap: [
     { input: 'plan_id', call: 'page', argument: 0, serialization: 'path' },
@@ -130,7 +138,7 @@ export const getAttachmentsForPlanEntry = defineOperation({
   route: 'get_attachments_for_plan_entry/{plan_id}/{entry_id}',
   family: 'T12',
   driverBinding: 'attachments.getAttachmentsForPlanEntry',
-  summary: 'List the attachments of one entry of a TestRail test plan (TestRail 6.3 or later). entry_id is the entry\'s UUID, as testrail_get_plan returns it in entries[].id. TestRail\'s reference labels it an integer, but the driver accepts only a UUID and records that TestRail refuses a numeric one with 400. TestRail documents no limit or offset here. It answers 400 for an invalid ID and 403 when the configured user has no access to the project.',
+  summary: 'List the attachments of one entry of a TestRail test plan (TestRail 6.3 or later). entry_id is the entry\'s UUID, as testrail_get_plan returns it in entries[].id. TestRail\'s reference labels it an integer, but the driver accepts only a UUID and records that TestRail refuses a numeric one with 400. TestRail documents no limit or offset here and a bare array as the reply; if it sends a paged envelope instead, only the attachments in that one reply are returned, with no sign that more exist, because the driver method returns the list alone. TestRail answers 400 for an invalid ID and 403 when the configured user has no access to the project or lacks permission.',
   inputSchema: getAttachmentsForPlanEntryInput,
   argumentMap: [
     { input: 'plan_id', call: 'single', argument: 0, serialization: 'path' },
@@ -155,7 +163,7 @@ export const getAttachmentsForRun = defineOperation({
   route: 'get_attachments_for_run/{run_id}',
   family: 'T12',
   driverBinding: 'attachments.getAttachmentsForRun',
-  summary: 'List the attachments added to a TestRail test run (TestRail 6.3 or later; limit and offset need 6.7 or later). Each entry carries the attachment\'s id, with its name, size and upload time; pass the id to testrail_get_attachment to download the file. TestRail answers 400 for an invalid ID and 403 when the configured user has no access to the project.',
+  summary: 'List the attachments of a TestRail test run (TestRail 6.3 or later; limit and offset need 6.7 or later). Each entry carries the attachment\'s id, with its name, size and upload time; pass the id to testrail_get_attachment to download the file. ' + BARE_ARRAY + ' TestRail answers 400 for an invalid ID and 403 when the configured user has no access to the project or lacks permission.',
   inputSchema: getAttachmentsForRunInput,
   argumentMap: [
     { input: 'run_id', call: 'page', argument: 0, serialization: 'path' },
@@ -189,7 +197,7 @@ export const getAttachmentsForTest = defineOperation({
   route: 'get_attachments_for_test/{test_id}',
   family: 'T12',
   driverBinding: 'attachments.getAttachmentsForTest',
-  summary: 'List the attachments of a TestRail test\'s results (TestRail 5.7 or later). Each entry carries the attachment\'s id and the result_id it belongs to; pass the id to testrail_get_attachment to download the file. TestRail documents no limit or offset for this endpoint, yet gives its reply the format of get_attachments_for_case, which is paged. If TestRail pages it, only the attachments in that one reply are returned, with no sign that more exist, because the driver method returns the list alone. TestRail answers 400 for an invalid test ID and 403 when the configured user has no access to the project.',
+  summary: 'List the attachments of a TestRail test\'s results (TestRail 5.7 or later). Each entry carries the attachment\'s id; pre-7.1 entries name the result_id they belong to, while the 7.1 (cloud) format TestRail documents names entity_type and entity_id instead. Pass the id to testrail_get_attachment to download the file. TestRail documents no limit or offset for this endpoint, yet gives its reply the format of get_attachments_for_case, which is paged. If TestRail pages it, only the attachments in that one reply are returned, with no sign that more exist, because the driver method returns the list alone. TestRail answers 400 for an invalid test ID and 403 when the configured user has no access to the project or lacks permission.',
   inputSchema: getAttachmentsForTestInput,
   argumentMap: [{ input: 'test_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'array', outerSchema: arrayResponse, entitySchema: AttachmentSchema },
@@ -212,10 +220,17 @@ const uploadFields = {
 };
 
 /*
- * The same sentences close every upload summary, because the same driver pipeline and
+ * The same sentences appear in every upload summary, because the same driver pipeline and
  * the same staging carry each of them.
  */
-const uploadContract = 'filename is the name TestRail records, and content_type, when given, is sent as the part\'s media type. Each call adds another attachment, even for the same file, and TestRail answers with the new attachment_id. TestRail accepts files up to 256 MB, but this server refuses a file above its configured file limit, at most 100 MiB, before anything is sent. Neither this server nor its driver retries an upload, not even after a 429: if it fails after the request was sent, write_outcome is unknown, and uploading again may add a second attachment.';
+const uploadContract = 'filename is sent as the multipart part\'s filename, which the driver\'s documentation describes as the name TestRail stores and shows for the attachment; TestRail\'s own reference does not say. content_type, when given, is sent lowercased as the part\'s media type. Each call adds another attachment, even for the same file, and TestRail documents its reply as the new attachment_id; a reply without a numeric attachment_id is returned as sent with a drift warning. TestRail accepts files up to 256 MB, but this server refuses a file above its configured file limit, at most 100 MiB, before anything is sent. Neither this server nor its driver retries an upload, not even after a 429. If it fails after the request was sent, write_outcome is unknown when this server cannot tell whether TestRail stored the file, and acknowledged when TestRail answered with a success reply this server could not use; either way, uploading again may add a second attachment.';
+
+/*
+ * TestRail documents attachment_id as always present in an upload's reply. The driver's
+ * AttachmentSchema covers every attachment shape and so makes it optional; requiring it
+ * here lets a reply without one surface as drift instead of passing unremarked.
+ */
+const uploadReplySchema = AttachmentSchema.extend({ attachment_id: z.number() });
 
 const addAttachmentToCaseInput = strictObject({ case_id: positiveIdSchema, ...uploadFields });
 
@@ -233,7 +248,7 @@ export const addAttachmentToCase = defineOperation({
     { input: 'content_type', call: 'single', argument: 1, property: 'type', serialization: 'multipart' },
     { input: 'filename', call: 'single', argument: 2, serialization: 'multipart' },
   ],
-  response: { shape: 'record', outerSchema: recordResponse, entitySchema: AttachmentSchema },
+  response: { shape: 'record', outerSchema: recordResponse, entitySchema: uploadReplySchema },
   pagination: {
     kind: 'none',
     single: driverCall(addAttachmentToCaseInput, 'attachments.addAttachmentToCase',
@@ -252,7 +267,7 @@ export const addAttachmentToPlan = defineOperation({
   route: 'add_attachment_to_plan/{plan_id}',
   family: 'T12',
   driverBinding: 'attachments.addAttachmentToPlan',
-  summary: `Upload a local file as a new attachment on a TestRail test plan itself (TestRail 6.3 or later); testrail_add_attachment_to_plan_entry attaches to one of its entries. ${uploadContract} TestRail answers 400 for an invalid or unknown test plan and 403 when the configured user has no access to the project.`,
+  summary: `Upload a local file as a new attachment on a TestRail test plan (TestRail 6.3 or later); testrail_add_attachment_to_plan_entry attaches to one of its entries. ${uploadContract} TestRail answers 400 for an invalid or unknown test plan and 403 when the configured user has no access to the project.`,
   inputSchema: addAttachmentToPlanInput,
   argumentMap: [
     { input: 'plan_id', call: 'single', argument: 0, serialization: 'path' },
@@ -260,7 +275,7 @@ export const addAttachmentToPlan = defineOperation({
     { input: 'content_type', call: 'single', argument: 1, property: 'type', serialization: 'multipart' },
     { input: 'filename', call: 'single', argument: 2, serialization: 'multipart' },
   ],
-  response: { shape: 'record', outerSchema: recordResponse, entitySchema: AttachmentSchema },
+  response: { shape: 'record', outerSchema: recordResponse, entitySchema: uploadReplySchema },
   pagination: {
     kind: 'none',
     single: driverCall(addAttachmentToPlanInput, 'attachments.addAttachmentToPlan',
@@ -288,7 +303,7 @@ export const addAttachmentToPlanEntry = defineOperation({
     { input: 'content_type', call: 'single', argument: 2, property: 'type', serialization: 'multipart' },
     { input: 'filename', call: 'single', argument: 3, serialization: 'multipart' },
   ],
-  response: { shape: 'record', outerSchema: recordResponse, entitySchema: AttachmentSchema },
+  response: { shape: 'record', outerSchema: recordResponse, entitySchema: uploadReplySchema },
   pagination: {
     kind: 'none',
     single: driverCall(addAttachmentToPlanEntryInput, 'attachments.addAttachmentToPlanEntry',
@@ -315,7 +330,7 @@ export const addAttachmentToResult = defineOperation({
     { input: 'content_type', call: 'single', argument: 1, property: 'type', serialization: 'multipart' },
     { input: 'filename', call: 'single', argument: 2, serialization: 'multipart' },
   ],
-  response: { shape: 'record', outerSchema: recordResponse, entitySchema: AttachmentSchema },
+  response: { shape: 'record', outerSchema: recordResponse, entitySchema: uploadReplySchema },
   pagination: {
     kind: 'none',
     single: driverCall(addAttachmentToResultInput, 'attachments.addAttachmentToResult',
@@ -342,7 +357,7 @@ export const addAttachmentToRun = defineOperation({
     { input: 'content_type', call: 'single', argument: 1, property: 'type', serialization: 'multipart' },
     { input: 'filename', call: 'single', argument: 2, serialization: 'multipart' },
   ],
-  response: { shape: 'record', outerSchema: recordResponse, entitySchema: AttachmentSchema },
+  response: { shape: 'record', outerSchema: recordResponse, entitySchema: uploadReplySchema },
   pagination: {
     kind: 'none',
     single: driverCall(addAttachmentToRunInput, 'attachments.addAttachmentToRun',

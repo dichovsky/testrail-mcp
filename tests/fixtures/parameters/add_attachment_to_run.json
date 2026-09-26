@@ -23,17 +23,32 @@
     {
       "id": "driver-validation",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/validation.ts",
-      "supports": "validateId accepts a positive safe integer; validateEntryId and validateAttachmentId test strings against one case-insensitive UUID expression anchored at both ends, so a traversal sequence, a surrounding space or a trailing line terminator is refused; validateAttachmentId otherwise accepts only a positive integer."
+      "supports": "validateId accepts any positive integer: it tests Number.isInteger and has no safe-integer bound, so the largest-safe-integer ceiling on these identifiers is this server's own. validateEntryId and validateAttachmentId test strings against one case-insensitive UUID expression anchored at both ends, so a traversal sequence, a surrounding space or a trailing line terminator is refused; validateAttachmentId otherwise accepts any positive integer, with the same missing bound."
     },
     {
       "id": "driver-client",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/client-core.ts",
-      "supports": "The multipart pipeline appends the file to a FormData under the field name attachment with the caller's filename, and opens the staged path as a blob whose media type is the one supplied or empty when none was. That form data is the request body, sent without a JSON content type, and the none retry policy the upload methods name re-sends nothing, not even a 429, because the body is a consumed stream."
+      "supports": "The multipart pipeline appends the file to a FormData under the field name attachment with the caller's filename, and opens the staged path as a blob whose media type is the one supplied, which the Blob type lowercases, or empty when none was. That form data is the request body, sent without a JSON content type. The upload methods name the none retry policy, which re-sends nothing, not even a 429; retry-policy.ts gives the reason as an upload not being idempotent and TestRail documenting no retry semantics for creating an attachment."
     },
     {
       "id": "driver-constants",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/constants.ts",
       "supports": "MULTIPART_FIELD_NAME is attachment."
+    },
+    {
+      "id": "driver-retry",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/retry-policy.ts",
+      "supports": "NO_RETRY_POLICY, the none policy, retries no status and no network error. It is used by multipart uploads, which are not idempotent and for which TestRail documents no retry semantics, so zero retries is the safe default."
+    },
+    {
+      "id": "driver-cli",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/cli/file-input.ts",
+      "supports": "The filename flag overrides the basename-derived filename when a caller wants to rename on upload, and callers reading from stdin are encouraged to pass one so TestRail stores a sensible value."
+    },
+    {
+      "id": "driver-skill",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/skill/SKILL.md",
+      "supports": "The --filename option overrides the path basename so the attachment shows up with a meaningful name in the TestRail UI."
     },
     {
       "id": "testrail-attachments",
@@ -49,12 +64,12 @@
   "input_policy": {
     "ordinary_fields": "reject",
     "custom_fields": "reject",
-    "notes": "Strictness is an MCP boundary requirement. The transport stages an owned copy of the caller's file inside the configured upload roots before dispatch and hands the driver that copy, so the bytes sent are the bytes approved; the staging, its containment, its size limit and its disposal belong to the transport rather than to this endpoint."
+    "notes": "Strictness is an MCP boundary requirement. The transport requires the caller's file to lie within the configured upload roots, stages an owned copy of it in its own staging directory before dispatch and hands the driver that copy, so the bytes sent are the bytes approved; the containment, the staging, its size limit and its disposal belong to the transport rather than to this endpoint."
   },
   "outer_result": {
     "driver": "record",
     "tool_data": "record",
-    "notes": "TestRail answers with the new attachment_id, returned as the driver received it: the upload methods parse no schema. Entity drift against the driver's attachment schema is advisory."
+    "notes": "TestRail answers with the new attachment_id, returned as the driver received it: the upload methods parse no schema. Drift is checked, advisorily, against the driver's attachment schema with attachment_id required as a number, since the reference documents it as always included."
   },
   "requirements": [
     {
@@ -115,7 +130,7 @@
         "minLength": 1,
         "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+(?![\\s\\S])"
       },
-      "semantics": "The caller's path to the file. The transport stages an owned copy within the configured upload roots and the driver receives that copy's path, so this value never reaches TestRail; the file's contents do.",
+      "semantics": "The caller's path to the file. The transport requires it to lie within the configured upload roots, stages an owned copy in its own staging directory, and the driver receives that copy's path, so this value never reaches TestRail; the file's contents do.",
       "wire": {
         "location": "multipart",
         "names": [
@@ -167,7 +182,7 @@
         "type": "string",
         "pattern": "^(?!\\.{1,2}$)(?![A-Za-z]:)[^/\\\\\"\\u0000-\\u001f\\u007f-\\u009f]+(?![\\s\\S])"
       },
-      "semantics": "The name TestRail records for the attachment. A path separator, a drive prefix, a lone . or .., a control byte and a double quote are refused: the name is not a path, and the encoder percent-escapes a quote, so TestRail would record a name the caller never asked for.",
+      "semantics": "The name sent as the attachment part's filename, independent of the file's own name. The driver's CLI source and skill document describe it as the name TestRail stores and shows for the attachment; TestRail's reference does not say how it uses it. A path separator, a drive prefix, a lone . or .., a control byte and a double quote are refused: the name is not a path, and the encoder percent-escapes a quote, so the part would carry a name the caller never asked for.",
       "wire": {
         "location": "multipart",
         "names": [
@@ -177,7 +192,9 @@
       },
       "sources": [
         "driver-module",
-        "driver-client"
+        "driver-client",
+        "driver-cli",
+        "driver-skill"
       ],
       "requirements": [
         {
@@ -188,7 +205,7 @@
         {
           "id": "valid",
           "kind": "valid",
-          "description": "Accept a plain file name."
+          "description": "Accept a plain file name and send it even though the file itself is named differently."
         },
         {
           "id": "invalid",
@@ -235,15 +252,15 @@
       "requiredness": "optional",
       "domain": {
         "type": "string",
-        "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+/[!#$%&'*+.^_`|~0-9A-Za-z-]+(?: *; *[!#$%&'*+.^_`|~0-9A-Za-z-]+ *= *(?:[!#$%&'*+.^_`|~0-9A-Za-z-]+|\"[^\"]*\"))*(?![\\s\\S])"
+        "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+/[!#$%&'*+.^_`|~0-9A-Za-z-]+(?: *; *[!#$%&'*+.^_`|~0-9A-Za-z-]+ *= *(?:[!#$%&'*+.^_`|~0-9A-Za-z-]+|\"(?:[\\x20-\\x21\\x23-\\x5b\\x5d-\\x7e]|\\\\[\\x20-\\x7e])*\"))*(?![\\s\\S])"
       },
-      "semantics": "The media type recorded for the part, as a type and subtype with optional parameters. Omitting it leaves the part's type undeclared, which the encoder writes as application/octet-stream; a supplied value becomes the staged copy's type.",
+      "semantics": "The media type recorded for the part, as a type and subtype with optional parameters whose quoted values are printable ASCII. Omitting it leaves the part's type undeclared, which the encoder writes as application/octet-stream; a supplied value becomes the staged copy's type, which the Blob type lowercases.",
       "wire": {
         "location": "multipart",
         "names": [
           "attachment"
         ],
-        "encoding": "Sent as the attachment part's content type. With none supplied the part carries application/octet-stream, which is what the encoder writes for a blob with no declared type."
+        "encoding": "Sent lowercased as the attachment part's content type. With none supplied the part carries application/octet-stream, which is what the encoder writes for a blob with no declared type."
       },
       "sources": [
         "driver-client"
@@ -265,9 +282,14 @@
           "description": "Accept a media type with a parameter and send it on the part."
         },
         {
+          "id": "case",
+          "kind": "valid",
+          "description": "Accept an upper-case media type, which the part carries lowercased."
+        },
+        {
           "id": "invalid",
           "kind": "invalid",
-          "description": "Reject a value that is not a media type before driver invocation."
+          "description": "Reject a value that is not a media type before driver invocation, including a quoted parameter value outside printable ASCII."
         },
         {
           "id": "omitted",
@@ -289,7 +311,7 @@
       "input": {
         "run_id": 81,
         "file_path": "{{console-log}}",
-        "filename": "console.log",
+        "filename": "build-412.log",
         "content_type": "text/plain"
       },
       "covers": [
@@ -338,7 +360,7 @@
               "path": "{{console-log}}",
               "type": "text/plain"
             },
-            "console.log"
+            "build-412.log"
           ]
         },
         "wire": {
@@ -347,7 +369,7 @@
           "multipart": [
             {
               "name": "attachment",
-              "filename": "console.log",
+              "filename": "build-412.log",
               "content_type": "text/plain",
               "utf8": "Build 412 console output\nAll 36 checks passed.\n"
             }
@@ -372,7 +394,7 @@
       "input": {
         "run_id": 81,
         "file_path": "{{console-log}}",
-        "filename": "console.log"
+        "filename": "build-412.log"
       },
       "covers": [
         {
@@ -391,7 +413,7 @@
             {
               "path": "{{console-log}}"
             },
-            "console.log"
+            "build-412.log"
           ]
         },
         "wire": {
@@ -400,7 +422,7 @@
           "multipart": [
             {
               "name": "attachment",
-              "filename": "console.log",
+              "filename": "build-412.log",
               "content_type": "application/octet-stream",
               "utf8": "Build 412 console output\nAll 36 checks passed.\n"
             }
@@ -425,7 +447,7 @@
       "input": {
         "run_id": 81,
         "file_path": "{{console-log}}",
-        "filename": "console.log",
+        "filename": "build-412.log",
         "content_type": "text/plain;charset=utf-8"
       },
       "covers": [
@@ -446,7 +468,7 @@
               "path": "{{console-log}}",
               "type": "text/plain;charset=utf-8"
             },
-            "console.log"
+            "build-412.log"
           ]
         },
         "wire": {
@@ -455,8 +477,63 @@
           "multipart": [
             {
               "name": "attachment",
-              "filename": "console.log",
+              "filename": "build-412.log",
               "content_type": "text/plain;charset=utf-8",
+              "utf8": "Build 412 console output\nAll 36 checks passed.\n"
+            }
+          ]
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "attachment_id": 443
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "attachment_id": 443
+          }
+        }
+      }
+    },
+    {
+      "id": "upper-case-media-type",
+      "input": {
+        "run_id": 81,
+        "file_path": "{{console-log}}",
+        "filename": "build-412.log",
+        "content_type": "Text/Plain"
+      },
+      "covers": [
+        {
+          "parameter": "content_type",
+          "requirements": [
+            "case"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.addAttachmentToRun",
+          "arguments": [
+            81,
+            {
+              "path": "{{console-log}}",
+              "type": "Text/Plain"
+            },
+            "build-412.log"
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_attachment_to_run/81",
+          "multipart": [
+            {
+              "name": "attachment",
+              "filename": "build-412.log",
+              "content_type": "text/plain",
               "utf8": "Build 412 console output\nAll 36 checks passed.\n"
             }
           ]
@@ -480,7 +557,7 @@
       "input": {
         "run_id": 9007199254740991,
         "file_path": "{{console-log}}",
-        "filename": "console.log",
+        "filename": "build-412.log",
         "content_type": "text/plain"
       },
       "covers": [
@@ -501,7 +578,7 @@
               "path": "{{console-log}}",
               "type": "text/plain"
             },
-            "console.log"
+            "build-412.log"
           ]
         },
         "wire": {
@@ -510,7 +587,7 @@
           "multipart": [
             {
               "name": "attachment",
-              "filename": "console.log",
+              "filename": "build-412.log",
               "content_type": "text/plain",
               "utf8": "Build 412 console output\nAll 36 checks passed.\n"
             }
@@ -534,7 +611,7 @@
       "id": "missing-file-path",
       "input": {
         "run_id": 81,
-        "filename": "console.log",
+        "filename": "build-412.log",
         "content_type": "text/plain"
       },
       "covers": [
@@ -555,7 +632,7 @@
       "input": {
         "run_id": 81,
         "file_path": "logs/console\t.log",
-        "filename": "console.log",
+        "filename": "build-412.log",
         "content_type": "text/plain"
       },
       "covers": [
@@ -722,8 +799,29 @@
       "input": {
         "run_id": 81,
         "file_path": "{{console-log}}",
-        "filename": "console.log",
+        "filename": "build-412.log",
         "content_type": "text plain"
+      },
+      "covers": [
+        {
+          "parameter": "content_type",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "non-ascii-parameter",
+      "input": {
+        "run_id": 81,
+        "file_path": "{{console-log}}",
+        "filename": "build-412.log",
+        "content_type": "text/plain; name=\"café\""
       },
       "covers": [
         {
@@ -743,7 +841,7 @@
       "input": {
         "run_id": 81,
         "file_path": "{{console-log}}",
-        "filename": "console.log",
+        "filename": "build-412.log",
         "content_type": "text/plain",
         "description": "nightly log"
       },

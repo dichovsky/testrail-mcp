@@ -23,7 +23,7 @@
     {
       "id": "driver-validation",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/validation.ts",
-      "supports": "validateId accepts a positive safe integer; validateEntryId and validateAttachmentId test strings against one case-insensitive UUID expression anchored at both ends, so a traversal sequence, a surrounding space or a trailing line terminator is refused; validateAttachmentId otherwise accepts only a positive integer."
+      "supports": "validateId accepts any positive integer: it tests Number.isInteger and has no safe-integer bound, so the largest-safe-integer ceiling on these identifiers is this server's own. validateEntryId and validateAttachmentId test strings against one case-insensitive UUID expression anchored at both ends, so a traversal sequence, a surrounding space or a trailing line terminator is refused; validateAttachmentId otherwise accepts any positive integer, with the same missing bound."
     },
     {
       "id": "driver-retry",
@@ -131,7 +131,7 @@
         {
           "id": "above-upper-bound",
           "kind": "invalid",
-          "description": "Reject an integer above the largest safe integer."
+          "description": "Reject an integer above the largest safe integer, a bound this server adds: the driver's own check has none."
         },
         {
           "id": "path-safety",
