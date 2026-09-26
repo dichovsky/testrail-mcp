@@ -38,7 +38,7 @@
     {
       "id": "adapter-limits",
       "url": "https://github.com/dichovsky/testrail-mcp/blob/main/src/contracts/inputs.ts",
-      "supports": "aggregateLimitDefaults caps each _mcp bound a caller may request at 1,000 items, 20 pages, 1 MiB and 45,000 ms, and DEFAULT_LIMITS in src/config/limits.ts forwards the same values when the caller sets none."
+      "supports": "aggregateLimitDefaults caps each _mcp bound a caller may request at 1,000 items, 20 pages, 1 MiB and 45,000 ms, and DEFAULT_LIMITS in src/config/limits.ts forwards the same values when the caller sets none. Because the schema is built before the configuration is read, executeToolCall in src/transport/tool-call.ts refuses a stated bound above the configured limit with INVALID_ARGUMENT before dispatch."
     },
     {
       "id": "testrail-projects",
@@ -174,7 +174,7 @@
       "requiredness": "optional",
       "domain_ref": "aggregate_max_items",
       "baseline": "all-defaults",
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "semantics": "All mode only. Forwarded verbatim when supplied at or below the configured limit and refused with INVALID_ARGUMENT before dispatch above it; the configured limit is forwarded when omitted.",
       "driver": { "argument": 0, "path": ["maxItems"] },
       "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the collection inside the driver." },
       "sources": ["driver-pagination", "adapter-limits"]
@@ -186,7 +186,7 @@
       "requiredness": "optional",
       "domain_ref": "aggregate_max_pages",
       "baseline": "all-defaults",
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "semantics": "All mode only. Forwarded verbatim when supplied at or below the configured limit and refused with INVALID_ARGUMENT before dispatch above it; the configured limit is forwarded when omitted.",
       "driver": { "argument": 0, "path": ["maxPages"] },
       "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the collection inside the driver." },
       "sources": ["driver-pagination", "adapter-limits"]
@@ -198,7 +198,7 @@
       "requiredness": "optional",
       "domain_ref": "aggregate_max_bytes",
       "baseline": "all-defaults",
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "semantics": "All mode only. Forwarded verbatim when supplied at or below the configured limit and refused with INVALID_ARGUMENT before dispatch above it; the configured limit is forwarded when omitted.",
       "driver": { "argument": 0, "path": ["maxBytes"] },
       "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the serialized item bytes inside the driver." },
       "sources": ["driver-pagination", "adapter-limits"]
@@ -210,7 +210,7 @@
       "requiredness": "optional",
       "domain_ref": "aggregate_max_duration_ms",
       "baseline": "all-defaults",
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "semantics": "All mode only. Forwarded verbatim when supplied at or below the configured limit and refused with INVALID_ARGUMENT before dispatch above it; the configured limit is forwarded when omitted.",
       "driver": { "argument": 0, "path": ["maxDurationMs"] },
       "wire": { "location": "adapter_only", "names": [], "encoding": "Never serialized; bounds the aggregate's wall-clock time inside the driver." },
       "sources": ["driver-pagination", "adapter-limits"]

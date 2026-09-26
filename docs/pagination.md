@@ -4,7 +4,7 @@
 
 ## One page by default
 
-A list returns one page of 50 unless the caller says otherwise, up to a supported maximum of 250. Explicit aggregation is opt-in through `_mcp.pagination: "all"`, which maps to the public helper's `pageSize`, `startOffset`, `maxItems`, `maxPages`, `maxBytes` and `maxDurationMs`. Absent controls default to the configured server maxima.
+A list returns one page of 50 unless the caller says otherwise, up to a supported maximum of 250. Explicit aggregation is opt-in through `_mcp.pagination: "all"`, which maps to the public helper's `pageSize`, `startOffset`, `maxItems`, `maxPages`, `maxBytes` and `maxDurationMs`. Absent controls default to the configured server maxima. A stated bound may lower a configured maximum but never raise it: `max_items`, `max_pages`, `max_bytes` or `max_duration_ms` above `max_all_items`, `max_all_pages`, `max_all_bytes` or `max_all_duration_ms` is refused with `INVALID_ARGUMENT` before anything is dispatched. The transport enforces this rather than the input schema, because the schemas are built when the catalog loads, before `TESTRAIL_MCP_LIMITS` is read, so the ceiling they advertise and enforce is the built-in default. A bound is refused rather than clamped so the aggregate never quietly does less than the caller asked. One consequence remains: a configured limit above the built-in default applies when the caller states no bound, but a caller cannot state a value above the default.
 
 "All" means every remaining match from the effective `start_offset`. It is not a transactional snapshot, and the reported `start_offset` is the one actually used rather than always zero.
 

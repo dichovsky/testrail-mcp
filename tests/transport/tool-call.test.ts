@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { attachmentIdSchema, filePathSchema, strictObject } from '../../src/contracts/inputs.js';
 import { createStagingArea } from '../../src/files/staging.js';
+import { operationRegistry } from '../../src/operations/catalog.js';
 import { driverCall } from '../../src/operations/driver-call.js';
 import { defineOperation, type Operation, type OperationDefinition } from '../../src/operations/registry.js';
 import { createRuntime, type Runtime } from '../../src/runtime/invocation.js';
@@ -102,6 +103,61 @@ const getProject = defineOperation({
 function binary(bytes: Uint8Array): Response {
   return new Response(bytes, { status: 200, headers: { 'content-type': 'application/octet-stream' } });
 }
+
+describe('aggregate bounds above the configured limit', () => {
+  /*
+   * The list schemas cap each bound at the built-in default, because they are built
+   * before the configuration is read. Each configured limit here sits below that default,
+   * so a value between the two passes the schema and only the transport can refuse it.
+   */
+  const configured = { max_all_items: 200, max_all_pages: 5, max_all_bytes: 4096, max_all_duration_ms: 9000 };
+  const cases = [
+    ['max_items', 'max_all_items', 'maxItems'],
+    ['max_pages', 'max_all_pages', 'maxPages'],
+    ['max_bytes', 'max_all_bytes', 'maxBytes'],
+    ['max_duration_ms', 'max_all_duration_ms', 'maxDurationMs'],
+  ] as const;
+  const getProjects = operationRegistry.entries.find(({ tool }) => tool === 'testrail_get_projects');
+
+  async function call(bound: string, value: number) {
+    if (getProjects === undefined) throw new Error('testrail_get_projects is not registered');
+    const limited = await loadConfiguration({
+      TESTRAIL_BASE_URL: 'https://toolcall.testrail.io',
+      TESTRAIL_EMAIL: 'user@example.com',
+      TESTRAIL_API_KEY: 'synthetic',
+      TESTRAIL_MCP_UPLOAD_ROOTS: JSON.stringify([roots]),
+      TESTRAIL_MCP_DOWNLOAD_DIR: base,
+      TESTRAIL_MCP_LIMITS: JSON.stringify(configured),
+    });
+    const requests = vi.fn(() => Promise.resolve(new Response(JSON.stringify({
+      offset: 0, limit: 250, size: 0, _links: { next: null, prev: null }, projects: [],
+    }), { headers: { 'content-type': 'application/json' } })));
+    const client = driver(requests);
+    const aggregate = vi.spyOn(client.projects, 'getAllProjects');
+    const runtime = createRuntime({ client, limits: limited.limits });
+    try {
+      const result = await executeToolCall(getProjects, { _mcp: { pagination: 'all', [bound]: value } }, {
+        runtime, configuration: limited,
+      });
+      return { result, requests, aggregate };
+    } finally { await runtime.shutdown(); }
+  }
+
+  it.each(cases)('refuses %s above the configured %s before dispatch', async (bound, limit) => {
+    const { result, requests, aggregate } = await call(bound, configured[limit] + 1);
+    expect(result.isError).toBe(true);
+    expect((result.structuredContent as { error: { code: string } }).error.code).toBe('INVALID_ARGUMENT');
+    expect(aggregate).not.toHaveBeenCalled();
+    expect(requests).not.toHaveBeenCalled();
+  });
+
+  it.each(cases)('forwards %s equal to the configured %s unchanged', async (bound, limit, option) => {
+    const { result, aggregate } = await call(bound, configured[limit]);
+    expect(result.isError).toBeUndefined();
+    expect(aggregate).toHaveBeenCalledTimes(1);
+    expect(aggregate.mock.calls[0]?.[0]).toMatchObject({ [option]: configured[limit] });
+  });
+});
 
 describe('download identifiers', () => {
   it.each([

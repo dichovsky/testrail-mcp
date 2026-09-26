@@ -255,7 +255,7 @@
         "note": "The public aggregate helper carries every bound. A value above the adapter ceiling is accepted by the driver, which is why that rejection is recorded as the adapter's."
       },
       "domain": { "type": "integer", "minimum": 1, "maximum": 1000 },
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (1,000 by default) is forwarded when omitted, so an aggregate never runs under the driver's own default. The ceiling the schema enforces is the built-in default, not the operator's configured value.",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (1,000 by default) is forwarded when omitted, so an aggregate never runs under the driver's own default. The ceiling the schema enforces is the built-in default, because the schema is built before the configuration is read, so a stated value above a lower configured limit passes it and is refused with INVALID_ARGUMENT by the transport before dispatch. A configured limit above the default is not reachable by a caller.",
       "requirements": [
         { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxItems option of the aggregate helper." },
         { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
@@ -286,7 +286,7 @@
         "note": "The public aggregate helper carries every bound. A value above the adapter ceiling is accepted by the driver."
       },
       "domain": { "type": "integer", "minimum": 1, "maximum": 20 },
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (20 by default) is forwarded when omitted, so an aggregate never runs under the driver's own default.",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (20 by default) is forwarded when omitted, so an aggregate never runs under the driver's own default. A stated value above the operator's configured limit is refused with INVALID_ARGUMENT before dispatch.",
       "requirements": [
         { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxPages option of the aggregate helper." },
         { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
@@ -316,7 +316,7 @@
         "note": "The public aggregate helper carries every bound. A value above the adapter ceiling is accepted by the driver."
       },
       "domain": { "type": "integer", "minimum": 1, "maximum": 1048576 },
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (1 MiB by default) is forwarded when omitted, so an aggregate never runs under the driver's own default. Bounds the UTF-8 bytes of the serialized items.",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (1 MiB by default) is forwarded when omitted, so an aggregate never runs under the driver's own default. Bounds the UTF-8 bytes of the serialized items. A stated value above the operator's configured limit is refused with INVALID_ARGUMENT before dispatch.",
       "requirements": [
         { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxBytes option of the aggregate helper." },
         { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
@@ -346,7 +346,7 @@
         "note": "The public aggregate helper carries every bound. A value above the adapter ceiling is accepted by the driver."
       },
       "domain": { "type": "integer", "minimum": 1, "maximum": 45000 },
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (45,000 ms by default) is forwarded when omitted, so an aggregate never runs under the driver's own default. Bounds the aggregate's wall-clock time.",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (45,000 ms by default) is forwarded when omitted, so an aggregate never runs under the driver's own default. Bounds the aggregate's wall-clock time. A stated value above the operator's configured limit is refused with INVALID_ARGUMENT before dispatch.",
       "requirements": [
         { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxDurationMs option of the aggregate helper." },
         { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
