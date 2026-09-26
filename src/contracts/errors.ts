@@ -75,6 +75,17 @@ export interface ErrorContext {
 /** Driver aggregation stops that are a safety bound rather than a broken response. */
 const BOUND_REASONS = new Set(['max_pages', 'max_items', 'max_bytes', 'max_duration']);
 
+/*
+ * The driver bounds each request inside an aggregate with a timer set to the budget that
+ * remains. That timer can fire a moment before the wall clock reaches the deadline, and
+ * the aggregate then rethrows the request's own 408 rather than its duration stop. No
+ * response arrived, so it is the same bound, not an upstream error, and carries no status.
+ */
+function isAggregateDeadline(error: unknown): boolean {
+  return error instanceof TestRailApiError
+    && error.status === 408 && error.statusText === 'Aggregate request deadline exceeded';
+}
+
 function classifyApi(error: TestRailApiError): ErrorCode {
   // A usable-looking status with an unusable body is a response problem, not an
   // upstream failure; status zero can equally come from malformed success JSON.
@@ -89,6 +100,7 @@ function classifyApi(error: TestRailApiError): ErrorCode {
 function codeFor(error: unknown): ErrorCode {
   if (error instanceof AdapterError) return error.code;
   if (error instanceof RuntimeError) return error.code;
+  if (isAggregateDeadline(error)) return 'PAGINATION_LIMIT';
   // Subclass precedence is required: a license restriction is also an API error,
   // and a pagination stop is also a validation error.
   if (error instanceof TestRailLicenseError) return 'LICENSE_REQUIRED';
@@ -119,7 +131,8 @@ export function classifyError(error: unknown, context: ErrorContext): SafeError 
     -readonly [K in keyof SafeError]: SafeError[K];
   } = { code, message: MESSAGES[code] };
 
-  if (error instanceof TestRailApiError && error.status > 0) safe.http_status = error.status;
+  if (isAggregateDeadline(error)) safe.reason = 'max_duration';
+  else if (error instanceof TestRailApiError && error.status > 0) safe.http_status = error.status;
   if (error instanceof TestRailPaginationError) {
     safe.reason = error.reason;
     if (Number.isSafeInteger(error.pagesFetched)) safe.pages_fetched = error.pagesFetched;
