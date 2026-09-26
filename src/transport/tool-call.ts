@@ -144,7 +144,9 @@ export async function executeToolCall(
         /*
          * The file is written inside the tracked operation, not after it: the runtime holds
          * the download slot until the operation settles, so the next download is refused
-         * until this file is written or its write has failed.
+         * until this file is written or its write has failed. A reply that arrives after
+         * this call has answered with an error writes nothing; a write already under way
+         * finishes, and the committed file is kept, as `writeDownload` explains.
          */
         return reply.then((bytes) => abandoned
           ? undefined
@@ -203,13 +205,13 @@ export async function executeToolCall(
   } catch (error) {
     abandoned = true;
     /*
-     * Dispose the staged copy here as well. The runtime rejects BUSY and
-     * pre-dispatch cancellation before it creates the slot that would run cleanup,
-     * so a call refused at admission would otherwise leave its copy in the staging
-     * directory until the process exits. Disposal is idempotent, so the settled path
-     * running it too is harmless.
+     * Dispose the staged copy here only if the driver was never entered. The runtime
+     * rejects BUSY and pre-dispatch cancellation before it creates the slot that would
+     * run cleanup, so a call refused at admission would otherwise leave its copy in the
+     * staging directory until the process exits. Once dispatched, that slot disposes it
+     * after the request settles: a cancelled or timed-out upload may still be reading it.
      */
-    if (staged !== undefined) await staged.dispose().catch(() => undefined);
+    if (staged !== undefined && !dispatched) await staged.dispose().catch(() => undefined);
     const safe = classifyError(error, { mutates, dispatched, acknowledged });
     logEvent('tool_call', {
       correlation, tool: operation.tool, outcome: 'error',

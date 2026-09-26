@@ -344,6 +344,54 @@ describe('T12 get_attachment writes a new local file on every call', () => {
     }
   });
 
+  /*
+   * A result too large for the configured limit fails after the write. The implementation
+   * contract keeps a committed file even when its delivery fails, so the complete file stays.
+   */
+  it('keeps the committed file when its result is too large to return', async () => {
+    const env = await environment({ max_data_bytes: 16, max_all_bytes: 16 });
+    const fetch = replying(() => bytes('kept only if reported\n'));
+    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    try {
+      writes.started = 0;
+      const result = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      expect(errorOf(result).code).toBe('RESPONSE_TOO_LARGE');
+      expect(writes.started).toBe(1);
+      const kept = await readdir(env.downloads);
+      expect(kept).toHaveLength(1);
+      expect(await readFile(join(env.downloads, kept[0] ?? ''), 'utf8')).toBe('kept only if reported\n');
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  // So is a file whose write was under way when the caller cancelled: the write completes
+  // before the slot is freed, and the complete file is kept.
+  it('keeps a file whose write was under way when the caller cancelled', async () => {
+    const env = await environment();
+    let release: () => void = () => undefined;
+    writes.hold = new Promise<void>((resolve) => { release = resolve; });
+    writes.started = 0;
+    const fetch = replying(() => bytes('written late\n'));
+    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const cancel = new AbortController();
+    try {
+      const call = executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration, signal: cancel.signal });
+      await vi.waitFor(() => { expect(writes.started).toBe(1); });
+      cancel.abort();
+      expect(errorOf(await call).code).toBe('CANCELLED');
+      expect(runtime.stats().binary).toBe(1);
+      release();
+      await vi.waitFor(() => { expect(runtime.stats().binary).toBe(0); });
+      const kept = await readdir(env.downloads);
+      expect(kept).toHaveLength(1);
+      expect(await readFile(join(env.downloads, kept[0] ?? ''), 'utf8')).toBe('written late\n');
+    } finally {
+      writes.hold = undefined;
+      await runtime.shutdown();
+    }
+  });
+
   // The summaries quote these two timeouts; they are the production driver options.
   it('runs file transfers under the 15-second request and body timeouts the summaries quote', async () => {
     const env = await environment();
