@@ -20,7 +20,9 @@ The adapter validates instead, and a rejected argument is an `INVALID_ARGUMENT` 
 
 ## One call, end to end
 
-Input validation → page/all mode selection → upload staging when the operation takes a file → `runtime.invoke` → result assembly (`validateOuter`, page or aggregate metadata, `advisoryWarnings`) → `successResult`. A failure anywhere becomes `errorResult(classifyError(...))`; the pipeline never throws, because a failed operation is a tool error while the protocol itself is healthy.
+Input validation → page/all mode selection → upload staging when the operation takes a file → `runtime.invoke`, which for a download also writes the file → result assembly (`validateOuter`, page or aggregate metadata, `advisoryWarnings`) → `successResult`. A failure anywhere becomes `errorResult(classifyError(...))`; the pipeline never throws, because a failed operation is a tool error while the protocol itself is healthy.
+
+A download's file is written inside the driver callback the runtime tracks, not after `runtime.invoke` returns. The runtime holds the download slot until that callback settles, so the next download is refused as `BUSY` until the file is written or its write has failed. A reply that arrives after the call has already returned an error writes nothing: no caller would learn the file's path.
 
 `dispatched` and `acknowledged` are recorded as they happen rather than inferred afterwards, since they decide what a caller is told about a write. `dispatched` is set on entering the driver callback rather than once bytes reach the network, which errs toward `unknown` and never toward a false `not_started`. Whether an operation mutates comes from `effects.testRail`, never from `readOnlyHint` — an attachment download has local effects but does not change TestRail, so it carries no write outcome.
 

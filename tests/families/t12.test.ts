@@ -13,10 +13,11 @@ import { executeToolCall } from '../../src/transport/tool-call.js';
 import { describeBody } from '../contracts/uploads.js';
 
 /*
- * The download writer, passed through unchanged unless a test holds it. Holding it is how
- * the suite shows that the file is written after the download slot has been freed.
+ * The download writer, passed through unchanged unless a test holds it or makes it fail.
+ * That is how the suite shows the download slot is held through the write and released
+ * after it, whichever way the write ends.
  */
-const writes = vi.hoisted(() => ({ hold: undefined as Promise<void> | undefined, started: 0 }));
+const writes = vi.hoisted(() => ({ hold: undefined as Promise<void> | undefined, started: 0, fail: false }));
 vi.mock('../../src/files/download.js', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../src/files/download.js')>();
   return {
@@ -24,6 +25,7 @@ vi.mock('../../src/files/download.js', async (importOriginal) => {
     writeDownload: async (...args: Parameters<typeof original.writeDownload>) => {
       writes.started += 1;
       await writes.hold;
+      if (writes.fail) throw new Error('disk full');
       return original.writeDownload(...args);
     },
   };
@@ -141,7 +143,7 @@ describe('T12 get_attachment writes a new local file on every call', () => {
     expect(description).toContain('Each call downloads the attachment again and writes another file, even for the same ID');
     expect(description).toContain('Creates a unique persistent local file in the configured download directory on each call');
     expect(description).toContain('the result carries no original filename or media type');
-    expect(description).toContain('Only one download is received at a time: a call made while another download\'s request or reply is still in flight is refused as BUSY before anything is sent, though writing a received file can overlap the next download');
+    expect(description).toContain('Only one download runs at a time, from its request until its file is written: a call made while another is in progress is refused as BUSY before anything is sent');
     expect(description).toContain('An attachment larger than this server\'s configured file limit, at most 100 MiB, is refused while it is read, as INVALID_RESPONSE, and nothing is written; so is a reply whose body does not arrive within this server\'s 15-second body timeout, after headers that must arrive within its 15-second request timeout');
     expect(operation('testrail_get_attachment').retry).toBe('ordinary-read');
   });
@@ -262,11 +264,11 @@ describe('T12 get_attachment writes a new local file on every call', () => {
   });
 
   /*
-   * The slot is freed when the driver settles, and the file is written after that, so the
-   * next download is admitted while the previous one is still writing. The summary says
-   * so; this pins it, and fails if the slot is ever held through the write.
+   * The implementation contract holds a slot until adapter-owned file work finishes, so a
+   * download still writing its file keeps the slot: the next one is refused, before any
+   * request, until the write is done.
    */
-  it('admits the next download while the previous one is still writing its file', async () => {
+  it('refuses a second download while the first is still writing its file', async () => {
     const env = await environment();
     let release: () => void = () => undefined;
     writes.hold = new Promise<void>((resolve) => { release = resolve; });
@@ -276,14 +278,68 @@ describe('T12 get_attachment writes a new local file on every call', () => {
     try {
       const first = executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
       await vi.waitFor(() => { expect(writes.started).toBe(1); });
-      const second = executeToolCall(operation('testrail_get_attachment'), { attachment_id: 18 }, { runtime, configuration: env.configuration });
-      await vi.waitFor(() => { expect(fetch).toHaveBeenCalledTimes(2); });
+      const refused = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 18 }, { runtime, configuration: env.configuration });
+      expect(errorOf(refused).code).toBe('BUSY');
+      expect(fetch).toHaveBeenCalledTimes(1);
       release();
-      const results = await Promise.all([first, second]);
-      expect(results.map(({ isError }) => Boolean(isError))).toEqual([false, false]);
+      expect((await first).isError).toBeUndefined();
+      // Once the write is done the slot is free again.
+      writes.hold = undefined;
+      const next = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 18 }, { runtime, configuration: env.configuration });
+      expect(next.isError).toBeUndefined();
       expect(await readdir(env.downloads)).toHaveLength(2);
     } finally {
       writes.hold = undefined;
+      await runtime.shutdown();
+    }
+  });
+
+  // A write that fails still releases the slot, so one bad download cannot block the rest.
+  it('releases the download slot when writing the file fails', async () => {
+    const env = await environment();
+    const fetch = replying(() => bytes('bytes\n'));
+    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    try {
+      writes.fail = true;
+      const failed = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      expect(failed.isError).toBe(true);
+      expect(errorOf(failed).write_outcome).toBeUndefined();
+      writes.fail = false;
+      const next = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 18 }, { runtime, configuration: env.configuration });
+      expect(next.isError).toBeUndefined();
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      writes.fail = false;
+      await runtime.shutdown();
+    }
+  });
+
+  /*
+   * The runtime stops waiting on cancellation but the request runs on, so the slot is kept
+   * until its reply settles. That reply writes nothing: the caller was already told
+   * CANCELLED and would never learn the file's path.
+   */
+  it('writes nothing for a reply that arrives after the caller cancelled', async () => {
+    const env = await environment();
+    let reply: () => void = () => undefined;
+    const fetch = vi.fn().mockImplementation(async () => {
+      await new Promise<void>((resolve) => { reply = resolve; });
+      return bytes('late bytes\n');
+    });
+    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const cancel = new AbortController();
+    writes.started = 0;
+    try {
+      const call = executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration, signal: cancel.signal });
+      await vi.waitFor(() => { expect(fetch).toHaveBeenCalledTimes(1); });
+      cancel.abort();
+      expect(errorOf(await call).code).toBe('CANCELLED');
+      expect(runtime.stats().binary).toBe(1);
+      reply();
+      await vi.waitFor(() => { expect(runtime.stats().binary).toBe(0); });
+      expect(writes.started).toBe(0);
+      expect(await readdir(env.downloads)).toEqual([]);
+    } finally {
       await runtime.shutdown();
     }
   });
