@@ -78,16 +78,22 @@ function errorOf(result: { structuredContent?: unknown }): { code: string; http_
   return (result.structuredContent as { error: { code: string; http_status?: number; write_outcome?: string } }).error;
 }
 
-// TestRail's documented replies, verbatim.
+// TestRail's documented reply for each run endpoint, verbatim.
 const REPORT_URLS = {
   report_url: 'https://docs.testrail.com/index.php?/reports/view/383',
   report_html: 'https://docs.testrail.com/index.php?/reports/get_html/383',
   report_pdf: 'https://docs.testrail.com/index.php?/reports/get_pdf/383',
 };
 
+const CROSS_PROJECT_URLS = {
+  report_url: 'https://docs.testrail.com/index.php?/cross_project_reports/view/383',
+  report_html: 'https://docs.testrail.com/index.php?/cross_project_reports/get_html/383',
+  report_pdf: 'https://docs.testrail.com/index.php?/cross_project_reports/get_pdf/383',
+};
+
 const GENERATORS = [
-  ['testrail_run_report', 'run_report'],
-  ['testrail_run_cross_project_report', 'run_cross_project_report'],
+  ['testrail_run_report', 'run_report', REPORT_URLS],
+  ['testrail_run_cross_project_report', 'run_cross_project_report', CROSS_PROJECT_URLS],
 ] as const;
 
 /*
@@ -177,12 +183,12 @@ describe('T11 every report run reaches TestRail exactly once', () => {
  * again to see whether it finished, would be a second request the caller never made.
  */
 describe('T11 what a run returns', () => {
-  it.each(GENERATORS)('%s returns the documented URLs as sent and fetches none of them', async (tool) => {
-    const fetch = replying(REPORT_URLS);
+  it.each(GENERATORS)('%s returns its documented URLs as sent and fetches none of them', async (tool, _endpoint, urls) => {
+    const fetch = replying(urls);
     const runtime = runtimeFor(fetch);
     try {
       const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
-      expect(data(result)).toEqual(REPORT_URLS);
+      expect(data(result)).toEqual(urls);
       expect(warnings(result)).toEqual([]);
       expect(fetch).toHaveBeenCalledTimes(1);
     } finally { await runtime.shutdown(); }
@@ -201,14 +207,27 @@ describe('T11 what a run returns', () => {
     } finally { await runtime.shutdown(); }
   });
 
-  // An unusable success is still a success upstream: the report exists even if the reply is useless.
-  it.each(GENERATORS)('%s reports an unusable reply as a generation that was acknowledged', async (tool) => {
+  // TestRail answered the run even though this server cannot use the reply, so it is not "not started".
+  it.each(GENERATORS)('%s reports an unusable JSON reply as a run TestRail answered', async (tool) => {
     const fetch = replying([REPORT_URLS]);
     const runtime = runtimeFor(fetch);
     try {
       const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
       expect(result.isError).toBe(true);
       expect(errorOf(result)).toMatchObject({ code: 'INVALID_RESPONSE', write_outcome: 'acknowledged' });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally { await runtime.shutdown(); }
+  });
+
+  // A reply the driver cannot parse at all tells this server nothing about the run, so it stays unknown.
+  it.each(GENERATORS)('%s reports a reply the driver cannot parse as an unknown outcome', async (tool) => {
+    const fetch = vi.fn().mockImplementation(() => Promise.resolve(
+      new Response('<html>ok</html>', { status: 200, headers: { 'content-type': 'application/json' } })));
+    const runtime = runtimeFor(fetch);
+    try {
+      const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      expect(result.isError).toBe(true);
+      expect(errorOf(result)).toMatchObject({ code: 'INVALID_RESPONSE', write_outcome: 'unknown' });
       expect(fetch).toHaveBeenCalledTimes(1);
     } finally { await runtime.shutdown(); }
   });
@@ -228,7 +247,16 @@ describe('T11 what a run returns', () => {
     expect(annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false, idempotentHint: false });
     expect(description).toContain('template-configured email');
     expect(description).toContain('do not generate the report again to poll');
+    // A failed run's outcome is read from write_outcome, which can be either of these.
+    expect(description).toContain('unknown means TestRail may have generated and emailed the report');
+    expect(description).toContain('acknowledged means TestRail answered the run');
   });
+
+  it.each([['testrail_get_cross_project_reports'], ['testrail_run_cross_project_report']] as const)(
+    '%s says a permission denial may still mean the instance lacks Enterprise', (tool) => {
+      expect(operation(tool).description).toContain(
+        'every other 403, including other Enterprise wordings, arrives as PERMISSION_DENIED, which here may still mean the instance lacks Enterprise');
+    });
 
   it.each([['testrail_get_reports'], ['testrail_get_cross_project_reports']] as const)(
     '%s stays an ordinary read', (tool) => {
@@ -239,7 +267,7 @@ describe('T11 what a run returns', () => {
 /*
  * The cross-project endpoints are Enterprise only. The driver calls a 403 a licence
  * restriction only when the message says so in the words it recognises, and TestRail's own
- * reference words the refusal differently. The summary says both codes are possible; these
+ * reference words the refusal differently. Both cross-project summaries say either code is possible; these
  * pin that, and that no refusal takes a tool out of the catalog.
  */
 describe('T11 an instance or user without cross-project reports', () => {
@@ -289,9 +317,9 @@ describe('T11 an instance or user without cross-project reports', () => {
 });
 
 /*
- * The template lists are ordinary one-response reads. Their documented examples must come
- * back unchanged, including the per-report settings beside the documented fields, and
- * without drift.
+ * The template lists are ordinary one-response reads. Replies abridged from their
+ * documented examples must come back unchanged, including per-report settings beside the
+ * documented fields, and without drift. The manifests carry the full examples.
  */
 describe('T11 the template lists', () => {
   it('returns a single-project template with its undocumented settings intact', async () => {
