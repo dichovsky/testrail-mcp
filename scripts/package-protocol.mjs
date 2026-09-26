@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { Client } from '@modelcontextprotocol/client';
+import { Client, ProtocolError, ProtocolErrorCode } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
 /*
@@ -9,15 +9,21 @@ import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
  *
  * The in-memory protocol tests exercise the server module; these exercise what npm
  * actually installs, over real pipes, with a real TestRail stand-in on the loopback
- * interface. A transport of our own records every stdout line, so any line that is not
- * a protocol message fails the check rather than being skipped by a lenient parser.
+ * interface. A transport of our own records every byte the server writes to stdout, so
+ * anything that is not a protocol message fails the check rather than being skipped by
+ * a lenient parser.
  */
 
 const API_KEY = 'synthetic-package-protocol-key-must-not-appear';
 const EMAIL = 'package-protocol@example.test';
+const CREDENTIAL = Buffer.from(`${EMAIL}:${API_KEY}`).toString('base64');
+/** The configured identity in every form a leak could take, the request header's included. */
+const SECRETS = [API_KEY, CREDENTIAL, EMAIL];
 const PROJECT = { id: 7, name: 'Packaged project' };
+/** How long a host waits for the server to leave on its own once stdin closes. */
+const STDIN_EXIT_MS = 10_000;
 
-/** A stdio client transport that keeps every raw stdout line and all of stderr. */
+/** A stdio client transport that keeps everything the server writes to stdout and stderr. */
 class RecordingStdioTransport {
   constructor(command, args, env) {
     this.command = command;
@@ -25,12 +31,15 @@ class RecordingStdioTransport {
     this.env = env;
     this.lines = [];
     this.stderr = '';
+    /** Set when the server had to be killed because it did not exit after stdin closed. */
+    this.forced = false;
   }
 
   start() {
     this.child = spawn(this.command, this.args, { env: this.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
-    this.exited = new Promise((resolve) => {
-      this.child.on('exit', (code, signal) => { resolve({ code, signal }); });
+    // 'close' follows the end of every stdio stream, so all output has been recorded by then.
+    this.closed = new Promise((resolve) => {
+      this.child.on('close', (code, signal) => { resolve({ code, signal }); });
     });
     let buffer = '';
     this.child.stdout.setEncoding('utf8');
@@ -50,8 +59,16 @@ class RecordingStdioTransport {
         this.onmessage?.(message);
       }
     });
+    // Output that ends without a newline still reaches the host's stream.
+    this.child.stdout.on('end', () => {
+      if (buffer === '') return;
+      this.lines.push(buffer);
+      buffer = '';
+    });
     this.child.stderr.setEncoding('utf8');
     this.child.stderr.on('data', (chunk) => { this.stderr += chunk; });
+    // A server that has already exited makes writes fail; the checks report why.
+    this.child.stdin.on('error', () => undefined);
     this.child.on('error', (error) => { this.onerror?.(error); });
     this.child.on('close', () => { this.onclose?.(); });
     return Promise.resolve();
@@ -63,12 +80,22 @@ class RecordingStdioTransport {
     });
   }
 
-  /** Close stdin, as a host does, and wait for the server to exit on its own. */
+  /**
+   * Close stdin, as a host does, and wait for the server to exit on its own. A server
+   * still running after the wait is killed outright, so the check neither hangs nor
+   * mistakes a signal-driven shutdown for the exit it requires.
+   */
   async close() {
-    if (this.child === undefined || this.child.exitCode !== null) return;
-    this.child.stdin.end();
-    const timer = setTimeout(() => { this.child.kill(); }, 10_000);
-    await this.exited;
+    if (this.child === undefined) return;
+    if (!this.stdinClosed) {
+      this.stdinClosed = true;
+      this.child.stdin.end();
+    }
+    const timer = setTimeout(() => {
+      this.forced = true;
+      this.child.kill('SIGKILL');
+    }, STDIN_EXIT_MS);
+    this.exit = await this.closed;
     clearTimeout(timer);
   }
 }
@@ -87,7 +114,29 @@ async function startTestRail() {
   return {
     baseUrl: `http://127.0.0.1:${port}`,
     requests,
-    close: () => new Promise((resolve) => { server.close(() => { resolve(); }); }),
+    close: () => new Promise((resolve) => {
+      server.closeAllConnections();
+      server.close(() => { resolve(); });
+    }),
+  };
+}
+
+/**
+ * The server's environment. NODE_OPTIONS is left out so Node's own warnings keep their
+ * default one-line form, which the stderr check recognises.
+ */
+function serverEnvironment(env, baseUrl, downloadDirectory) {
+  const inherited = { ...env };
+  delete inherited.NODE_OPTIONS;
+  return {
+    ...inherited,
+    TESTRAIL_BASE_URL: baseUrl,
+    TESTRAIL_ALLOW_INSECURE: 'true',
+    TESTRAIL_ALLOW_PRIVATE_HOSTS: 'true',
+    TESTRAIL_EMAIL: EMAIL,
+    TESTRAIL_API_KEY: API_KEY,
+    TESTRAIL_MCP_UPLOAD_ROOTS: '[]',
+    TESTRAIL_MCP_DOWNLOAD_DIR: downloadDirectory,
   };
 }
 
@@ -111,15 +160,43 @@ function structured(result) {
 }
 
 /**
- * One session: discovery, a successful call, a refused argument and an unknown tool,
- * then stdin closure. Returns what the checks need from it.
+ * Diagnostics stay on stderr as one JSON event object per line. Node's own process
+ * warnings share the stream: the driver warns that plain HTTP, which this loopback
+ * stand-in needs, is enabled. Those lines are the runtime's, with or without a code.
  */
-async function session({ label, negotiation, transport, testRail, tools }) {
+function checkStderr(label, stderr) {
+  const nodeWarning = /^\(node:\d+\) (?:\[[A-Z]+\d+\] )?\w*Warning: |^\(Use `node --trace-warnings/u;
+  for (const line of stderr.split(/\r?\n/u).filter((candidate) => candidate !== '' && !nodeWarning.test(candidate))) {
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      assert.fail(`${label}: stderr line is not JSON: ${line.slice(0, 200)}`);
+    }
+    assert.ok(typeof event === 'object' && event !== null && !Array.isArray(event) && typeof event.event === 'string',
+      `${label}: stderr line is not a diagnostic event: ${line.slice(0, 200)}`);
+  }
+}
+
+function checkNoSecrets(label, streams) {
+  for (const [name, text] of Object.entries(streams)) {
+    for (const secret of SECRETS) assert.ok(!text.includes(secret), `${label}: ${name} carried the configured credential or email.`);
+  }
+}
+
+/**
+ * One session: discovery, a successful call, a refused argument and an unknown tool,
+ * then the connection's close. `progress.step` names the step under way, for a failure.
+ */
+async function session({ label, negotiation, transport, testRail, tools, progress }) {
   const client = new Client({ name: `package-protocol-${label}`, version: '1.0.0' }, { versionNegotiation: { mode: negotiation } });
   const errors = [];
   client.onerror = (error) => { errors.push(error); };
+  progress.step = 'connect';
   await client.connect(transport);
   const era = client.getProtocolEra();
+
+  progress.step = 'discovery';
   const first = await listAll(client);
   const second = await listAll(client);
   assert.equal(testRail.requests.length, 0, `${label}: discovery contacted TestRail.`);
@@ -128,6 +205,7 @@ async function session({ label, negotiation, transport, testRail, tools }) {
   assert.deepEqual([...names].sort(), [...tools].sort(), `${label}: listed tools differ from the inventory.`);
   assert.equal(JSON.stringify(second), JSON.stringify(first), `${label}: repeated discovery differs.`);
 
+  progress.step = 'testrail_get_project';
   const success = await client.callTool({ name: 'testrail_get_project', arguments: { project_id: 7 } });
   assert.notEqual(success.isError, true, `${label}: get_project failed: ${JSON.stringify(success.structuredContent)}`);
   assert.deepEqual(structured(success).data, PROJECT, `${label}: get_project returned other data.`);
@@ -135,18 +213,35 @@ async function session({ label, negotiation, transport, testRail, tools }) {
   const [request] = testRail.requests;
   assert.equal(request.method, 'GET');
   assert.equal(request.url, '/index.php?/api/v2/get_project/7');
-  assert.equal(request.authorization, `Basic ${Buffer.from(`${EMAIL}:${API_KEY}`).toString('base64')}`);
+  assert.equal(request.authorization, `Basic ${CREDENTIAL}`);
 
+  progress.step = 'refused argument';
   const refused = await client.callTool({ name: 'testrail_get_project', arguments: { project_id: '7' } });
   assert.equal(refused.isError, true, `${label}: a string ID was accepted.`);
   assert.equal(structured(refused).error.code, 'INVALID_ARGUMENT');
   assert.equal(testRail.requests.length, 1, `${label}: a refused argument reached TestRail.`);
 
-  await assert.rejects(client.callTool({ name: 'testrail_not_a_tool', arguments: {} }), `${label}: an unknown tool did not fail as a protocol error.`);
+  // The protocol's own answer to an unknown tool, not a timeout or a dropped connection.
+  progress.step = 'unknown tool';
+  await assert.rejects(client.callTool({ name: 'testrail_not_a_tool', arguments: {} }, { timeout: 15_000 }), (error) => {
+    assert.ok(ProtocolError.isInstance(error) && error.code === ProtocolErrorCode.InvalidParams,
+      `${label}: an unknown tool failed with ${error?.name}: ${error?.message}, not the protocol's invalid-params error.`);
+    return true;
+  });
+  // And the server is still serving afterwards.
+  assert.equal((await listAll(client)).length, tools.length, `${label}: the server stopped serving after an unknown tool.`);
 
+  progress.step = 'close';
   await client.close();
   assert.deepEqual(errors, [], `${label}: the client reported errors: ${errors.map(String).join('; ')}`);
   return { era, tools: names.length };
+}
+
+/** Name the session, step and exit, and keep the server's last words, when a session fails. */
+function failure(label, progress, error, exit, stderr) {
+  const status = exit === undefined ? '' : `; the server exited with ${exit.code ?? exit.signal}`;
+  const tail = stderr.trim() === '' ? '' : `; its stderr ended: ${stderr.trim().slice(-800)}`;
+  return new Error(`${label} session failed at ${progress.step}: ${(error instanceof Error ? error.message : String(error)).trim()}${status}${tail}`, { cause: error });
 }
 
 /**
@@ -154,67 +249,64 @@ async function session({ label, negotiation, transport, testRail, tools }) {
  */
 export async function verifyProtocol({ command, args, env, downloadDirectory, tools }) {
   const verdicts = [];
+
+  // Two sessions over the recording transport: every stdout byte and the exit are checked.
   for (const [label, negotiation, expectedEra] of [
     ['legacy', 'legacy', 'legacy'],
     ['2026-07-28', { pin: '2026-07-28' }, 'modern'],
   ]) {
     const testRail = await startTestRail();
-    const serverEnv = {
-      ...env,
-      TESTRAIL_BASE_URL: testRail.baseUrl,
-      TESTRAIL_ALLOW_INSECURE: 'true',
-      TESTRAIL_ALLOW_PRIVATE_HOSTS: 'true',
-      TESTRAIL_EMAIL: EMAIL,
-      TESTRAIL_API_KEY: API_KEY,
-      TESTRAIL_MCP_UPLOAD_ROOTS: '[]',
-      TESTRAIL_MCP_DOWNLOAD_DIR: downloadDirectory,
-    };
-    const transport = new RecordingStdioTransport(command, args, serverEnv);
+    const transport = new RecordingStdioTransport(command, args, serverEnvironment(env, testRail.baseUrl, downloadDirectory));
+    const progress = { step: 'start' };
     try {
-      const verdict = await session({ label, negotiation, transport, testRail, tools });
+      const verdict = await session({ label, negotiation, transport, testRail, tools, progress });
       assert.equal(verdict.era, expectedEra, `${label}: negotiated the ${verdict.era} era.`);
-      const { code, signal } = await transport.exited;
-      assert.equal(code, 0, `${label}: the server exited with ${code ?? signal} after stdin closed.`);
-      // Every stdout line is a JSON-RPC message; nothing else ever reaches the host's stream.
-      assert.ok(transport.lines.length > 0, `${label}: no protocol output.`);
-      for (const line of transport.lines) assert.equal(JSON.parse(line).jsonrpc, '2.0', `${label}: stdout line is not JSON-RPC.`);
-      // Diagnostics stay on stderr, one JSON object per line, and never carry the credential.
-      // Node's own process warnings share the stream: the driver warns that plain HTTP,
-      // which this loopback stand-in needs, is enabled. Those lines are the runtime's.
-      const nodeWarning = /^\(node:\d+\) \w*Warning: |^\(Use `node --trace-warnings/u;
-      for (const line of transport.stderr.split(/\r?\n/u).filter((candidate) => candidate !== '' && !nodeWarning.test(candidate))) {
-        assert.doesNotThrow(() => JSON.parse(line), `${label}: stderr line is not a JSON diagnostic: ${line.slice(0, 200)}`);
-      }
-      assert.ok(!transport.stderr.includes(API_KEY) && !transport.lines.some((line) => line.includes(API_KEY)), `${label}: the API key was echoed.`);
-      verdicts.push(`${label}: ${verdict.tools} tools`);
-    } finally {
+      progress.step = 'exit';
       await transport.close();
+      assert.equal(transport.forced, false, `${label}: the server was still running ${STDIN_EXIT_MS / 1000} s after stdin closed.`);
+      assert.deepEqual(transport.exit, { code: 0, signal: null }, `${label}: the server exited with ${JSON.stringify(transport.exit)} after stdin closed.`);
+      // Every stdout line, the last one included, is a JSON-RPC message.
+      progress.step = 'output';
+      assert.ok(transport.lines.length > 0, `${label}: no protocol output.`);
+      for (const line of transport.lines) {
+        let message;
+        try { message = JSON.parse(line); } catch { assert.fail(`${label}: stdout carried a line that is not JSON: ${line.slice(0, 200)}`); }
+        assert.equal(message?.jsonrpc, '2.0', `${label}: stdout line is not JSON-RPC: ${line.slice(0, 200)}`);
+      }
+      checkStderr(label, transport.stderr);
+      checkNoSecrets(label, { stdout: transport.lines.join('\n'), stderr: transport.stderr });
+      verdicts.push(`${label}: ${verdict.tools} tools`);
+    } catch (error) {
+      await transport.close().catch(() => undefined);
+      throw failure(label, progress, error, transport.exit, transport.stderr);
+    } finally {
+      await transport.close().catch(() => undefined);
       await testRail.close();
     }
   }
 
   /*
    * A host that negotiates automatically, through the SDK's own stdio transport, which
-   * probes a short-lived sibling process before starting the session. It must settle on
-   * the modern era and see the same catalog.
+   * probes a short-lived sibling process before starting the session. It runs the same
+   * calls and must settle on the modern era. The SDK owns this session's pipes and ends
+   * the process itself, so its raw stdout and exit are the recorded sessions' to check;
+   * its stderr is checked here.
    */
   const testRail = await startTestRail();
-  const client = new Client({ name: 'package-protocol-auto', version: '1.0.0' }, { versionNegotiation: { mode: 'auto' } });
+  const transport = new StdioClientTransport({ command, args, stderr: 'pipe', env: serverEnvironment(env, testRail.baseUrl, downloadDirectory) });
+  let stderr = '';
+  transport.stderr?.on('data', (chunk) => { stderr += chunk.toString('utf8'); });
+  const progress = { step: 'start' };
   try {
-    await client.connect(new StdioClientTransport({
-      command, args, stderr: 'ignore',
-      env: {
-        ...env,
-        TESTRAIL_BASE_URL: testRail.baseUrl, TESTRAIL_ALLOW_INSECURE: 'true', TESTRAIL_ALLOW_PRIVATE_HOSTS: 'true',
-        TESTRAIL_EMAIL: EMAIL, TESTRAIL_API_KEY: API_KEY, TESTRAIL_MCP_UPLOAD_ROOTS: '[]', TESTRAIL_MCP_DOWNLOAD_DIR: downloadDirectory,
-      },
-    }));
-    assert.equal(client.getProtocolEra(), 'modern', 'auto: did not settle on the modern era.');
-    assert.equal((await listAll(client)).length, tools.length, 'auto: listed a different number of tools.');
-    assert.equal(testRail.requests.length, 0, 'auto: discovery contacted TestRail.');
-    verdicts.push(`auto: ${tools.length} tools`);
+    const verdict = await session({ label: 'auto', negotiation: 'auto', transport, testRail, tools, progress });
+    assert.equal(verdict.era, 'modern', `auto: negotiated the ${verdict.era} era.`);
+    checkStderr('auto', stderr);
+    checkNoSecrets('auto', { stderr });
+    verdicts.push(`auto: ${verdict.tools} tools`);
+  } catch (error) {
+    throw failure('auto', progress, error, undefined, stderr);
   } finally {
-    await client.close().catch(() => undefined);
+    await transport.close().catch(() => undefined);
     await testRail.close();
   }
   return verdicts;
