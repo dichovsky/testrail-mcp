@@ -264,6 +264,28 @@ describe('strict reuse of public driver payload schemas', () => {
       .toEqual(['unrecognized_keys']);
   });
 
+  it('checks an own __proto__ key against an object\'s extension policy', () => {
+    // Zod's object parser skips this key in its catch-all, and the custom_* name check
+    // only sees the parsed clone, so neither applied to it. The original object is
+    // what reaches the driver, so the key must meet the same policy as any other.
+    const agree = (schema: z.ZodType<object>, text: string, valid: boolean): void => {
+      const value: unknown = JSON.parse(text);
+      const validateJson = validator.getValidator(inputJsonSchema(schema) as unknown as JsonSchemaType);
+      expect(schema.safeParse(value).success, text).toBe(valid);
+      expect(validateJson(value).valid, text).toBe(valid);
+    };
+    // Neither a declared field nor custom_*, so refused like any other unknown name.
+    const custom = strictObject({ body: payloadInput(AddCasePayloadSchema, { extensions: 'custom' }) });
+    agree(custom, '{"body":{"title":"x","__proto__":5}}', false);
+    agree(custom, '{"body":{"title":"x","custom_a":5}}', true);
+    // An open JSON object accepts the name, and its value must still be JSON.
+    const open = strictObject({ body: payloadInput(DynamicFiltersPayloadSchema, { extensions: 'json' }) });
+    agree(open, '{"body":{"mode":"and","filters":{},"__proto__":{"a":[1]}}}', true);
+    const body = { mode: 'and', filters: {} };
+    Object.defineProperty(body, '__proto__', { value: () => 1, enumerable: true });
+    expect(open.safeParse({ body }).success).toBe(false);
+  });
+
   it('retains driver array bounds and uses independently composed item extensions', () => {
     const schema = strictObject({
       body: payloadArray(AddCasesBulkPayloadSchema, payloadInput(AddCasePayloadSchema, { extensions: 'custom' })),

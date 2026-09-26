@@ -12,7 +12,7 @@
   "outer_result": { "driver": "record", "tool_data": "record", "notes": "The created case is returned as the driver received it, flat custom_* properties included; entity-field drift is advisory." },
   "requirements": [
     { "id": "unknown-top-level", "kind": "invalid", "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them." },
-    { "id": "unknown-body", "kind": "invalid", "description": "Reject an unknown ordinary body field rather than forwarding it; only custom_* names extend the payload." },
+    { "id": "unknown-body", "kind": "invalid", "description": "Reject an unknown ordinary body field, __proto__ included, rather than forwarding it; only custom_* names extend the payload." },
     { "id": "legacy-custom-container", "kind": "invalid", "description": "Reject the driver's nested custom_fields object. TestRail reads custom values only as flat custom_* properties, so forwarding the container would drop them silently." }
   ],
   "baseline": "full-body",
@@ -115,6 +115,7 @@
     { "id": "invalid-is-legacy", "input": { "section_id": 5, "body": {  "title": "Smoke",  "is_legacy": 1 } }, "covers": [{ "parameter": "body.is_legacy", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
     { "id": "unknown-body", "input": { "section_id": 5, "body": {  "title": "Smoke",  "unexpected": true } }, "covers": [{ "parameter": "$input", "requirements": ["unknown-body"] }, { "parameter": "body.custom_*", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
     { "id": "legacy-custom-container", "input": { "section_id": 5, "body": {  "title": "Smoke",  "custom_fields": { "custom_preconds": "Signed in" } } }, "covers": [{ "parameter": "$input", "requirements": ["legacy-custom-container"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "unknown-top-level", "input": { "section_id": 5, "body": { "title": "Smoke" }, "title": "Smoke" }, "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } }
+    { "id": "unknown-top-level", "input": { "section_id": 5, "body": { "title": "Smoke" }, "title": "Smoke" }, "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "unknown-body-under-proto", "input": { "section_id": 5, "body": { "title": "Smoke", "__proto__": true } }, "covers": [{ "parameter": "$input", "requirements": ["unknown-body"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } }
   ]
 }

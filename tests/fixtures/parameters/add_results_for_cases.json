@@ -55,7 +55,7 @@
     {
       "id": "unknown-body",
       "kind": "invalid",
-      "description": "Reject an unknown ordinary field in the body or in any entry; only custom_ names extend an entry."
+      "description": "Reject an unknown ordinary field, __proto__ included, in the body or in any entry; only custom_ names extend an entry."
     },
     {
       "id": "custom-fields-container",
@@ -1404,6 +1404,33 @@
           "parameter": "$input",
           "requirements": [
             "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-entry-field-under-proto",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            {
+              "case_id": 101,
+              "status_id": 1,
+              "__proto__": true
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-body"
           ]
         }
       ],
