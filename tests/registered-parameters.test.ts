@@ -19,7 +19,9 @@ const manifests = await loadParameterManifests();
 const attachment = manifests.find((manifest) => manifest.endpoint.tool === 'testrail_get_attachment');
 if (!attachment) throw new Error('Missing independent attachment parameter fixtures');
 
-// Test-only binding. T12/F07 still own the production tool and persistent file.
+// A test-only copy of the download registration, so the audit's own checks can run against a
+// registry that holds it alone. The production registration lives in families/t12.ts and is
+// driven with every fixture by the gate below.
 const input = strictObject({ attachment_id: attachmentIdSchema });
 const call = driverCall(input, 'attachments.getAttachment', (method, value) => method(value.attachment_id));
 const operation = defineOperation({
@@ -250,7 +252,13 @@ describe('production registrations send what their fixtures promise', () => {
             method: expected.wire.method,
             body: expected.wire.multipart ?? expected.wire.json,
           }]);
-          expect(result).toEqual(expected.driver_result.kind === 'json' ? expected.driver_result.value : undefined);
+          // A download resolves with bytes, which are compared as bytes; void resolves with nothing.
+          if (expected.driver_result.kind === 'binary') {
+            expect(result).toBeInstanceOf(ArrayBuffer);
+            expect(Buffer.from(result as ArrayBuffer)).toEqual(Buffer.from(expected.driver_result.utf8));
+          } else {
+            expect(result).toEqual(expected.driver_result.kind === 'json' ? expected.driver_result.value : undefined);
+          }
           // What the driver returned must also satisfy the contract the registration
           // declares, or every real call fails in validateOuter while the arguments,
           // the wire and the result all still match the fixture.

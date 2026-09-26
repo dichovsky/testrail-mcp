@@ -102,6 +102,8 @@ export async function executeToolCall(
   let dispatched = false;
   let acknowledged = false;
   let staged: StagedUpload | undefined;
+  // Set once this call has answered with an error, so a download reply arriving after it writes nothing.
+  let abandoned = false;
 
   try {
     // Validate before anything is staged or dispatched. The original value is kept:
@@ -128,13 +130,34 @@ export async function executeToolCall(
     }
     const context: CallContext = upload === undefined ? { limits } : { upload, limits };
 
+    const download = operation.files.kind === 'download';
+    const identifier = download ? attachmentId(input) : undefined;
+    // A download operation whose input carries no identifier cannot honour the
+    // result contract. That is an adapter registration fault, not a caller error.
+    if (download && identifier === undefined) throw new AdapterError('INTERNAL_ERROR');
+
     const value = await runtime.invoke(
       (client: TestRailClient) => {
         dispatched = true;
-        return call.invoke(client, input, context);
+        const reply = call.invoke(client, input, context);
+        if (identifier === undefined) return reply;
+        /*
+         * The file is written inside the tracked operation, not after it: the runtime holds
+         * the download slot until the operation settles, so the next download is refused
+         * until this file is written or its write has failed. A reply that arrives after
+         * this call has answered with an error writes nothing; a write already under way
+         * finishes, and the committed file is kept, as `writeDownload` explains.
+         */
+        return reply.then((bytes) => abandoned
+          ? undefined
+          : writeDownload(bytes as ArrayBuffer, {
+            directory: configuration.downloadDirectory,
+            maxBytes: limits.max_file_bytes,
+            attachmentId: identifier,
+          }));
       },
       {
-        binary: operation.files.kind === 'download',
+        binary: download,
         ...(dependencies.signal === undefined ? {} : { signal: dependencies.signal }),
         // Staging is retained until settlement, not until the result resolves.
         ...(staged === undefined ? {} : { cleanup: staged.dispose }),
@@ -145,16 +168,8 @@ export async function executeToolCall(
     let data: unknown = value;
     let pagination: object | undefined;
 
-    if (operation.files.kind === 'download') {
-      const identifier = attachmentId(input);
-      // A download operation whose input carries no identifier cannot honour the
-      // result contract. That is an adapter registration fault, not a caller error.
-      if (identifier === undefined) throw new AdapterError('INTERNAL_ERROR');
-      data = await writeDownload(value as ArrayBuffer, {
-        directory: configuration.downloadDirectory,
-        maxBytes: limits.max_file_bytes,
-        attachmentId: identifier,
-      });
+    if (download) {
+      // The value is already the written file's identifier, path and size: bytes have no envelope to check.
     } else if (mode === 'page') {
       validateOuter(operation.response.outerSchema, value);
       if (!isPage(value)) throw new AdapterError('INVALID_RESPONSE');
@@ -172,7 +187,7 @@ export async function executeToolCall(
       validateOuter(operation.response.outerSchema, value);
     }
 
-    const warnings = operation.files.kind === 'download'
+    const warnings = download
       ? []
       : advisoryWarnings(operation.response.entitySchema, operation.response.shape, data);
 
@@ -188,14 +203,15 @@ export async function executeToolCall(
     });
     return result;
   } catch (error) {
+    abandoned = true;
     /*
-     * Dispose the staged copy here as well. The runtime rejects BUSY and
-     * pre-dispatch cancellation before it creates the slot that would run cleanup,
-     * so a call refused at admission would otherwise leave its copy in the staging
-     * directory until the process exits. Disposal is idempotent, so the settled path
-     * running it too is harmless.
+     * Dispose the staged copy here only if the driver was never entered. The runtime
+     * rejects BUSY and pre-dispatch cancellation before it creates the slot that would
+     * run cleanup, so a call refused at admission would otherwise leave its copy in the
+     * staging directory until the process exits. Once dispatched, that slot disposes it
+     * after the request settles: a cancelled or timed-out upload may still be reading it.
      */
-    if (staged !== undefined) await staged.dispose().catch(() => undefined);
+    if (staged !== undefined && !dispatched) await staged.dispose().catch(() => undefined);
     const safe = classifyError(error, { mutates, dispatched, acknowledged });
     logEvent('tool_call', {
       correlation, tool: operation.tool, outcome: 'error',

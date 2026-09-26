@@ -51,6 +51,7 @@ const operations = operationRegistry.entries.map((operation) => ({
   tool: operation.tool,
   token: operation.tool.replace('testrail_', ''),
   effects: operation.effects,
+  files: operation.files,
   annotations: operation.annotations,
   /** The pair that defines which cases a run covers. Narrowing it deletes tests. */
   selectsCoverage: admits(operation.inputSchema, 'include_all') && admits(operation.inputSchema, 'case_ids'),
@@ -60,7 +61,8 @@ describe('published effect annotations', () => {
   it('registers every tool with an annotation that matches its declared effects', () => {
     for (const operation of operations) {
       expect(operation.annotations, operation.tool).toEqual({
-        readOnlyHint: operation.effects.testRail === 'read',
+        // A download only reads TestRail but writes a new local file, so it is not read-only.
+        readOnlyHint: operation.effects.testRail === 'read' && operation.files.kind === 'none',
         destructiveHint: operation.effects.destructive,
         idempotentHint: operation.effects.idempotent,
         openWorldHint: true,

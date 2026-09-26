@@ -1,0 +1,1216 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-26"
+  },
+  "endpoint": {
+    "family_id": "T12",
+    "http_method": "GET",
+    "route": "get_attachments_for_run/{run_id}",
+    "tool": "testrail_get_attachments_for_run",
+    "driver_method": "attachments.getAttachmentsForRun"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/attachments.ts",
+      "supports": "getAttachmentsForRunPage and getAllAttachmentsForRun validate the run ID and place it as the only path segment of get_attachments_for_run; the executor is declared with the attachments collection key and an envelope response, with request controls."
+    },
+    {
+      "id": "driver-paginated-list",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/paginated-list.ts",
+      "supports": "The executor validates limit and offset before dispatch and appends them after the path. The page helper decodes with the strict page schema; the all helper copies only pageSize, startOffset, maxPages, maxItems, maxDurationMs and maxBytes from its options and runs collectAllPages with request controls."
+    },
+    {
+      "id": "driver-pagination",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
+      "supports": "decodePage returns a bare array as a legacy-array page and an envelope with its offset, limit, size and _links. collectAllPages defaults pageSize to 250 and startOffset to 0, requires an envelope's offset to equal the offset it asked for, and ends at a legacy array or a null next link."
+    },
+    {
+      "id": "driver-url",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/url.ts",
+      "supports": "buildEndpoint appends controls path-style after an ampersand, skips undefined values and percent-encodes each key and value."
+    },
+    {
+      "id": "driver-validation",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/validation.ts",
+      "supports": "validateId accepts any positive integer: it tests Number.isInteger and has no safe-integer bound, so the largest-safe-integer ceiling on these identifiers is this server's own. validateEntryId accepts only a UUID, case-insensitively, with nothing before or after it; validatePaginationParams holds limit to 1..250 and offset to a non-negative integer."
+    },
+    {
+      "id": "driver-schema",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/attachments.ts",
+      "supports": "AttachmentSchema is one passthrough object for every attachment shape TestRail documents: the upload reply, the legacy case and test entries, the plan, plan-entry and run entries with entity_attachments_id and icon_name, and the 7.1 cloud entries whose id is a UUID string. Every field is nullish and id and entity_id admit a number or a string, so each documented entity parses unchanged."
+    },
+    {
+      "id": "testrail-attachments",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077196481428-Attachments",
+      "supports": "get_attachments_for_run/{run_id} requires TestRail 6.3 or later, takes limit (250 by default) and offset on 6.7 or later, and returns the same response format as get_attachments_for_plan, whose example is a bare array. It answers 400 (described there as an invalid test ID) and 403 for no access or insufficient permissions."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement at every depth: the top level, query and _mcp are each closed. There are no filters; query carries only the paging controls."
+  },
+  "outer_result": {
+    "driver": "page",
+    "tool_data": "array",
+    "notes": "Page mode returns the driver's decoded page, here a legacy-array page because the reference documents a bare array: the wrapper carries its entries as data and reports that no continuation is known. All mode returns the collected array, which a bare array ends. The reference also documents limit as the number of attachments the reply returns, so a bare array of exactly that size cannot be told from the end of the list. The driver decodes an envelope as well."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-query",
+      "kind": "invalid",
+      "description": "Reject an unsupported query key rather than discarding it; the endpoint documents no filters."
+    },
+    {
+      "id": "unknown-control",
+      "kind": "invalid",
+      "description": "Reject an unknown _mcp control rather than discarding it."
+    },
+    {
+      "id": "page-controls-in-all",
+      "kind": "invalid",
+      "description": "Reject query.limit or query.offset together with pagination all; page_size and start_offset are the only paging controls of an aggregate."
+    },
+    {
+      "id": "all-controls-in-page",
+      "kind": "invalid",
+      "description": "Reject an aggregate bound in page mode, where nothing would apply it."
+    }
+  ],
+  "baseline": "page-controls",
+  "parameters": [
+    {
+      "id": "run_id",
+      "input_path": [
+        "run_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "No coercion. The validated number is passed positionally to either helper and appears verbatim as the only path segment of every request.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "run_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "driver-validation",
+        "testrail-attachments"
+      ]
+    },
+    {
+      "id": "query.limit",
+      "input_path": [
+        "query",
+        "limit"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain_ref": "pagination_limit",
+      "semantics": "Page mode only. Sent explicitly on every page request: the caller's value, or 50 when omitted. TestRail documents 250 as its own default and requires 6.7 or later for the control.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "limit"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "limit"
+        ],
+        "encoding": "Decimal integer appended path-style after the identifier segment."
+      },
+      "sources": [
+        "driver-paginated-list",
+        "driver-url",
+        "testrail-attachments"
+      ]
+    },
+    {
+      "id": "query.offset",
+      "input_path": [
+        "query",
+        "offset"
+      ],
+      "scope": "query",
+      "requiredness": "optional",
+      "domain_ref": "pagination_offset",
+      "semantics": "Page mode only. Sent explicitly on every page request: the caller's value, or 0 when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "offset"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "offset"
+        ],
+        "encoding": "Decimal integer appended path-style after limit."
+      },
+      "sources": [
+        "driver-paginated-list",
+        "driver-url",
+        "testrail-attachments"
+      ]
+    },
+    {
+      "id": "_mcp.pagination",
+      "input_path": [
+        "_mcp",
+        "pagination"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain": {
+        "enum": [
+          "page",
+          "all"
+        ]
+      },
+      "semantics": "Selects the public page helper or the bounded all helper. Never passed to the driver.",
+      "driver": null,
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized upstream."
+      },
+      "sources": [
+        "driver-module"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Select the page helper for page and the all helper for all."
+        },
+        {
+          "id": "page",
+          "kind": "valid",
+          "description": "Accept an explicit page mode."
+        },
+        {
+          "id": "all",
+          "kind": "valid",
+          "description": "Accept all mode."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject an unknown mode before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Use page mode when omitted."
+        }
+      ]
+    },
+    {
+      "id": "_mcp.page_size",
+      "input_path": [
+        "_mcp",
+        "page_size"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_page_size",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded as the driver's pageSize when supplied; the driver's own default of 250 applies when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "pageSize"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "limit"
+        ],
+        "encoding": "Sent as the limit control of every request the aggregate issues."
+      },
+      "sources": [
+        "driver-paginated-list",
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.start_offset",
+      "input_path": [
+        "_mcp",
+        "start_offset"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_start_offset",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded as the driver's startOffset when supplied; the aggregate starts at 0 when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "startOffset"
+        ]
+      },
+      "wire": {
+        "location": "query",
+        "names": [
+          "offset"
+        ],
+        "encoding": "Sent as the offset of the first request; later offsets follow the continuation links."
+      },
+      "sources": [
+        "driver-paginated-list",
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.max_items",
+      "input_path": [
+        "_mcp",
+        "max_items"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_items",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "maxItems"
+        ]
+      },
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized; bounds the collection inside the driver."
+      },
+      "sources": [
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.max_pages",
+      "input_path": [
+        "_mcp",
+        "max_pages"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_pages",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "maxPages"
+        ]
+      },
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized; bounds the collection inside the driver."
+      },
+      "sources": [
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.max_bytes",
+      "input_path": [
+        "_mcp",
+        "max_bytes"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_bytes",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "maxBytes"
+        ]
+      },
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized; bounds the serialized item bytes inside the driver."
+      },
+      "sources": [
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.max_duration_ms",
+      "input_path": [
+        "_mcp",
+        "max_duration_ms"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_duration_ms",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": {
+        "argument": 1,
+        "path": [
+          "maxDurationMs"
+        ]
+      },
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized; bounds the aggregate's wall-clock time inside the driver."
+      },
+      "sources": [
+        "driver-pagination"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "defaults",
+      "input": {
+        "run_id": 42
+      },
+      "covers": [
+        {
+          "parameter": "query.limit",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "query.offset",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.pagination",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.getAttachmentsForRunPage",
+          "arguments": [
+            42,
+            {
+              "limit": 50,
+              "offset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_attachments_for_run/42&limit=50&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": [
+            {
+              "id": 1900,
+              "name": "TR-2104.gif",
+              "size": 3838070,
+              "created_on": 1602178189,
+              "project_id": 15,
+              "case_id": null,
+              "user_id": 1,
+              "entity_attachments_id": 360,
+              "icon_name": "Gif Image",
+              "result_id": null
+            }
+          ]
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "legacy-array",
+            "items": [
+              {
+                "id": 1900,
+                "name": "TR-2104.gif",
+                "size": 3838070,
+                "created_on": 1602178189,
+                "project_id": 15,
+                "case_id": null,
+                "user_id": 1,
+                "entity_attachments_id": 360,
+                "icon_name": "Gif Image",
+                "result_id": null
+              }
+            ],
+            "size": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "page-controls",
+      "input": {
+        "run_id": 42,
+        "query": {
+          "limit": 50,
+          "offset": 50
+        }
+      },
+      "covers": [
+        {
+          "parameter": "run_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "query.limit",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "query.offset",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.getAttachmentsForRunPage",
+          "arguments": [
+            42,
+            {
+              "limit": 50,
+              "offset": 50
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_attachments_for_run/42&limit=50&offset=50"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": [
+            {
+              "id": 1900,
+              "name": "TR-2104.gif",
+              "size": 3838070,
+              "created_on": 1602178189,
+              "project_id": 15,
+              "case_id": null,
+              "user_id": 1,
+              "entity_attachments_id": 360,
+              "icon_name": "Gif Image",
+              "result_id": null
+            }
+          ]
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "legacy-array",
+            "items": [
+              {
+                "id": 1900,
+                "name": "TR-2104.gif",
+                "size": 3838070,
+                "created_on": 1602178189,
+                "project_id": 15,
+                "case_id": null,
+                "user_id": 1,
+                "entity_attachments_id": 360,
+                "icon_name": "Gif Image",
+                "result_id": null
+              }
+            ],
+            "size": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-page",
+      "input": {
+        "run_id": 42,
+        "query": {
+          "limit": 250
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.limit",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.getAttachmentsForRunPage",
+          "arguments": [
+            42,
+            {
+              "limit": 250,
+              "offset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_attachments_for_run/42&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": []
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "legacy-array",
+            "items": [],
+            "size": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "first-page-by-name",
+      "input": {
+        "run_id": 42,
+        "query": {
+          "offset": 0
+        },
+        "_mcp": {
+          "pagination": "page"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "query.offset",
+          "requirements": [
+            "zero"
+          ]
+        },
+        {
+          "parameter": "_mcp.pagination",
+          "requirements": [
+            "mapping",
+            "page"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.getAttachmentsForRunPage",
+          "arguments": [
+            42,
+            {
+              "limit": 50,
+              "offset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_attachments_for_run/42&limit=50&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": []
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "legacy-array",
+            "items": [],
+            "size": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-run",
+      "input": {
+        "run_id": 9007199254740991
+      },
+      "covers": [
+        {
+          "parameter": "run_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.getAttachmentsForRunPage",
+          "arguments": [
+            9007199254740991,
+            {
+              "limit": 50,
+              "offset": 0
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_attachments_for_run/9007199254740991&limit=50&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": []
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "legacy-array",
+            "items": [],
+            "size": 0
+          }
+        }
+      }
+    },
+    {
+      "id": "all-defaults",
+      "input": {
+        "run_id": 42,
+        "_mcp": {
+          "pagination": "all"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.pagination",
+          "requirements": [
+            "mapping",
+            "all"
+          ]
+        },
+        {
+          "parameter": "_mcp.page_size",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.start_offset",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_items",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_pages",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_bytes",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_duration_ms",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.getAllAttachmentsForRun",
+          "arguments": [
+            42,
+            {
+              "maxItems": 1000,
+              "maxPages": 20,
+              "maxBytes": 1048576,
+              "maxDurationMs": 45000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_attachments_for_run/42&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": [
+            {
+              "id": 1900,
+              "name": "TR-2104.gif",
+              "size": 3838070,
+              "created_on": 1602178189,
+              "project_id": 15,
+              "case_id": null,
+              "user_id": 1,
+              "entity_attachments_id": 360,
+              "icon_name": "Gif Image",
+              "result_id": null
+            }
+          ]
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 1900,
+              "name": "TR-2104.gif",
+              "size": 3838070,
+              "created_on": 1602178189,
+              "project_id": 15,
+              "case_id": null,
+              "user_id": 1,
+              "entity_attachments_id": 360,
+              "icon_name": "Gif Image",
+              "result_id": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "all-controls",
+      "input": {
+        "run_id": 42,
+        "_mcp": {
+          "pagination": "all",
+          "page_size": 25,
+          "start_offset": 100,
+          "max_items": 10,
+          "max_pages": 2,
+          "max_bytes": 4096,
+          "max_duration_ms": 5000
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.page_size",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "_mcp.start_offset",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_items",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_pages",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_bytes",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_duration_ms",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.getAllAttachmentsForRun",
+          "arguments": [
+            42,
+            {
+              "pageSize": 25,
+              "startOffset": 100,
+              "maxItems": 10,
+              "maxPages": 2,
+              "maxBytes": 4096,
+              "maxDurationMs": 5000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_attachments_for_run/42&limit=25&offset=100"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": [
+            {
+              "id": 1900,
+              "name": "TR-2104.gif",
+              "size": 3838070,
+              "created_on": 1602178189,
+              "project_id": 15,
+              "case_id": null,
+              "user_id": 1,
+              "entity_attachments_id": 360,
+              "icon_name": "Gif Image",
+              "result_id": null
+            }
+          ]
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 1900,
+              "name": "TR-2104.gif",
+              "size": 3838070,
+              "created_on": 1602178189,
+              "project_id": 15,
+              "case_id": null,
+              "user_id": 1,
+              "entity_attachments_id": 360,
+              "icon_name": "Gif Image",
+              "result_id": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "all-ceilings",
+      "input": {
+        "run_id": 42,
+        "_mcp": {
+          "pagination": "all",
+          "max_items": 1000,
+          "max_pages": 20,
+          "max_bytes": 1048576,
+          "max_duration_ms": 45000
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.max_items",
+          "requirements": [
+            "ceiling"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_pages",
+          "requirements": [
+            "ceiling"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_bytes",
+          "requirements": [
+            "ceiling"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_duration_ms",
+          "requirements": [
+            "ceiling"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.getAllAttachmentsForRun",
+          "arguments": [
+            42,
+            {
+              "maxItems": 1000,
+              "maxPages": 20,
+              "maxBytes": 1048576,
+              "maxDurationMs": 45000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_attachments_for_run/42&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": []
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": []
+        }
+      }
+    },
+    {
+      "id": "largest-aggregate-page",
+      "input": {
+        "run_id": 42,
+        "_mcp": {
+          "pagination": "all",
+          "page_size": 250
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.page_size",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.getAllAttachmentsForRun",
+          "arguments": [
+            42,
+            {
+              "pageSize": 250,
+              "maxItems": 1000,
+              "maxPages": 20,
+              "maxBytes": 1048576,
+              "maxDurationMs": 45000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_attachments_for_run/42&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": []
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": []
+        }
+      }
+    },
+    {
+      "id": "aggregate-from-start",
+      "input": {
+        "run_id": 42,
+        "_mcp": {
+          "pagination": "all",
+          "start_offset": 0
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.start_offset",
+          "requirements": [
+            "zero"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.getAllAttachmentsForRun",
+          "arguments": [
+            42,
+            {
+              "startOffset": 0,
+              "maxItems": 1000,
+              "maxPages": 20,
+              "maxBytes": 1048576,
+              "maxDurationMs": 45000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_attachments_for_run/42&limit=250&offset=0"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": []
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": []
+        }
+      }
+    },
+    {
+      "id": "pagination-unknown-mode",
+      "input": {
+        "run_id": 42,
+        "_mcp": {
+          "pagination": "stream"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.pagination",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "run_id": 42,
+        "project_id": 7
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-query",
+      "input": {
+        "run_id": 42,
+        "query": {
+          "is_image": true
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-query"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-control",
+      "input": {
+        "run_id": 42,
+        "_mcp": {
+          "pagination": "all",
+          "unexpected": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-control"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "page-controls-in-all",
+      "input": {
+        "run_id": 42,
+        "query": {
+          "limit": 50
+        },
+        "_mcp": {
+          "pagination": "all"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "page-controls-in-all"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "all-controls-in-page",
+      "input": {
+        "run_id": 42,
+        "_mcp": {
+          "pagination": "page",
+          "max_items": 5
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "all-controls-in-page"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

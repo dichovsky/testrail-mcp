@@ -20,7 +20,9 @@ The adapter validates instead, and a rejected argument is an `INVALID_ARGUMENT` 
 
 ## One call, end to end
 
-Input validation → page/all mode selection → upload staging when the operation takes a file → `runtime.invoke` → result assembly (`validateOuter`, page or aggregate metadata, `advisoryWarnings`) → `successResult`. A failure anywhere becomes `errorResult(classifyError(...))`; the pipeline never throws, because a failed operation is a tool error while the protocol itself is healthy.
+Input validation → page/all mode selection → upload staging when the operation takes a file → `runtime.invoke`, which for a download also writes the file → result assembly (`validateOuter`, page or aggregate metadata, `advisoryWarnings`) → `successResult`. A failure anywhere becomes `errorResult(classifyError(...))`; the pipeline never throws, because a failed operation is a tool error while the protocol itself is healthy.
+
+A download's file is written inside the driver callback the runtime tracks, not after `runtime.invoke` returns. The runtime holds the download slot until that callback settles, so the next download is refused as `BUSY` until the file is written or its write has failed. A reply that arrives after the call has already returned an error writes nothing, since no caller would learn the file's path. A write already under way when the call ends finishes before the slot is freed, and the committed file is kept, as the implementation contract requires of a download whose delivery fails.
 
 `dispatched` and `acknowledged` are recorded as they happen rather than inferred afterwards, since they decide what a caller is told about a write. `dispatched` is set on entering the driver callback rather than once bytes reach the network, which errs toward `unknown` and never toward a false `not_started`. Whether an operation mutates comes from `effects.testRail`, never from `readOnlyHint` — an attachment download has local effects but does not change TestRail, so it carries no write outcome.
 
@@ -42,9 +44,9 @@ Configuration is loaded before any transport exists, so a misconfigured server n
 
 `tests/transport/lifecycle.test.ts` drives the **packaged executable**: stdout is parsed line by line and every line must be a protocol message, diagnostics appear on stderr with no configured value, stdin closure exits zero, an unknown method returns `-32601`, and a malformed line is skipped without ending the session.
 
-`tests/transport/tool-call.test.ts` covers the pipeline directly with synthetic download and upload operations: a caller's identifier survives unchanged whether it is a number or a UUID, and a staged copy is gone after a call refused at admission.
+`tests/transport/tool-call.test.ts` covers the pipeline directly with synthetic download and upload operations: a caller's identifier survives unchanged whether it is a number or a UUID, a staged copy is gone after a call refused at admission, and a cancelled upload keeps its copy until its request settles.
 
-Mutation-checked: routing diagnostics to stdout fails the lifecycle test; advertising the Zod schema instead of the reviewed document fails both the discovery and argument-rejection tests; coercing a non-numeric attachment id, dropping the staged disposal, and reading a nested `file` object instead of the reserved flat inputs each fail a tool-call test.
+Mutation-checked: routing diagnostics to stdout fails the lifecycle test; advertising the Zod schema instead of the reviewed document fails both the discovery and argument-rejection tests; coercing a non-numeric attachment id, dropping the staged disposal, disposing it while a cancelled upload still reads it, and reading a nested `file` object instead of the reserved flat inputs each fail a tool-call test.
 
 ## Two corrections review found here
 
@@ -52,7 +54,7 @@ Both were real and neither would have surfaced until an endpoint family landed.
 
 **Identifiers were coerced.** TestRail accepts a positive integer **or a UUID** for an attachment id — the driver's own signature is `getAttachment(attachmentId: number | string)`. The download branch collapsed anything non-numeric to `0`, which would have labelled every UUID download with a placeholder and broken any caller matching a batch of downloads back to what it requested. The validated value now passes through untouched, and an operation registered without an identifier raises an internal error rather than inventing one.
 
-**Staged uploads leaked on refusal.** The runtime rejects `BUSY` and pre-dispatch cancellation *before* it creates the slot that runs cleanup, so a call refused at admission left its staged copy in the staging directory for the life of the process. The catch now disposes it; disposal is idempotent, so the settled path running it too is harmless.
+**Staged uploads leaked on refusal.** The runtime rejects `BUSY` and pre-dispatch cancellation *before* it creates the slot that runs cleanup, so a call refused at admission left its staged copy in the staging directory for the life of the process. The catch now disposes it, but only for a call that never entered the driver. Once dispatched, the runtime's settlement cleanup disposes it instead, because a cancelled or timed-out upload may still be reading the copy into its request; disposing it from the catch would fail that request part-way.
 
 A third fault surfaced while writing the test for the second: the reserved upload inputs are **flat** — `file_path`, `filename`, `content_type` — and the pipeline was reading a nested `file` object it had invented. It would never have matched a real registered upload, so staging would silently never have happened. The registry's own layout check caught it.
 

@@ -9,16 +9,16 @@
   },
   "endpoint": {
     "family_id": "T12",
-    "http_method": "GET",
-    "route": "get_attachment/{attachment_id}",
-    "tool": "testrail_get_attachment",
-    "driver_method": "attachments.getAttachment"
+    "http_method": "POST",
+    "route": "delete_attachment/{attachment_id}",
+    "tool": "testrail_delete_attachment",
+    "driver_method": "attachments.deleteAttachment"
   },
   "sources": [
     {
       "id": "driver-module",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/attachments.ts",
-      "supports": "getAttachment validates the number/UUID union, places it as the only path segment of get_attachment and requests the reply as binary under the binaryGet retry policy, resolving with the body as an ArrayBuffer and nothing else."
+      "supports": "deleteAttachment validates the number/UUID union, posts to delete_attachment with the value as the only path segment and no body, under the default retry policy, and discards the parsed reply: it resolves with no value for a successful reply whose body is empty or JSON, and rejects on an error status or a body that is not JSON."
     },
     {
       "id": "driver-validation",
@@ -28,12 +28,12 @@
     {
       "id": "driver-retry",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/retry-policy.ts",
-      "supports": "The binaryGet policy re-sends a download after a 429, any 5xx or a network error, the same failures the default policy retries for a GET."
+      "supports": "The default full policy re-sends any request after a 429, and a 5xx or network error only for a GET, so this POST is re-sent after a 429 alone."
     },
     {
       "id": "testrail-attachments",
       "url": "https://support.testrail.com/hc/en-us/articles/7077196481428-Attachments",
-      "supports": "get_attachment/{attachment_id} requires TestRail 5.7 or later, labels attachment_id an integer, returns the requested file in the body of the response, and answers 400 for an invalid attachment ID and 403 for no access or insufficient permissions. The page also states that TestRail 7.1 (cloud) introduced a new attachment ID format."
+      "supports": "delete_attachment/{attachment_id} requires TestRail 5.7 or later, labels attachment_id an integer, answers a successful delete with an empty body and a 200, and answers 400 for an invalid attachment ID and 403 for no access or insufficient permissions."
     },
     {
       "id": "testrail-introduction",
@@ -44,18 +44,18 @@
   "input_policy": {
     "ordinary_fields": "reject",
     "custom_fields": "reject",
-    "notes": "Strictness is an MCP boundary requirement. The destination is never the caller's: the transport writes each download to a new generated name under the configured download directory, so an input naming a path is refused with every other unknown field."
+    "notes": "Strictness is an MCP boundary requirement. The endpoint takes the identifier alone and no body."
   },
   "outer_result": {
-    "driver": "binary",
-    "tool_data": "download_metadata",
-    "notes": "The driver resolves with the reply's bytes. The transport writes them to a new file under the configured download directory and returns attachment_id as the caller gave it, file_path and the byte count. These fixtures prove the request and the bytes the driver returns; the file handling is proved by the family suite."
+    "driver": "void",
+    "tool_data": "null",
+    "notes": "The method resolves with no value and the wrapper reports data: null. These fixtures send the documented empty body."
   },
   "requirements": [
     {
       "id": "unknown-top-level",
       "kind": "invalid",
-      "description": "Reject unknown top-level fields, a caller-chosen download path among them, before driver invocation."
+      "description": "Reject unknown top-level fields, a body among them, before driver invocation."
     }
   ],
   "parameters": [
@@ -79,7 +79,7 @@
           }
         ]
       },
-      "semantics": "The attachment to download: a positive integer, or a UUID, the format TestRail introduced with release 7.1 (cloud). No coercion: the validated number or string is passed unchanged, and a numeric string is refused rather than read as a number.",
+      "semantics": "The attachment to delete: a positive integer, or a UUID, the format TestRail introduced with release 7.1 (cloud). No coercion: the validated number or string is passed unchanged, and a numeric string is refused rather than read as a number.",
       "driver": {
         "argument": 0,
         "path": []
@@ -169,22 +169,21 @@
       "expect": {
         "kind": "accepted",
         "driver": {
-          "binding": "attachments.getAttachment",
+          "binding": "attachments.deleteAttachment",
           "arguments": [
             17
           ]
         },
         "wire": {
-          "method": "GET",
-          "endpoint": "get_attachment/17"
+          "method": "POST",
+          "endpoint": "delete_attachment/17"
         },
         "upstream_response": {
-          "kind": "binary",
-          "utf8": "attachment fixture\n"
+          "kind": "text",
+          "text": ""
         },
         "driver_result": {
-          "kind": "binary",
-          "utf8": "attachment fixture\n"
+          "kind": "void"
         }
       }
     },
@@ -204,22 +203,21 @@
       "expect": {
         "kind": "accepted",
         "driver": {
-          "binding": "attachments.getAttachment",
+          "binding": "attachments.deleteAttachment",
           "arguments": [
             "3933d74b-4282-44de-82ae-a6412808369d"
           ]
         },
         "wire": {
-          "method": "GET",
-          "endpoint": "get_attachment/3933d74b-4282-44de-82ae-a6412808369d"
+          "method": "POST",
+          "endpoint": "delete_attachment/3933d74b-4282-44de-82ae-a6412808369d"
         },
         "upstream_response": {
-          "kind": "binary",
-          "utf8": "uuid fixture\n"
+          "kind": "text",
+          "text": ""
         },
         "driver_result": {
-          "kind": "binary",
-          "utf8": "uuid fixture\n"
+          "kind": "void"
         }
       }
     },
@@ -239,22 +237,21 @@
       "expect": {
         "kind": "accepted",
         "driver": {
-          "binding": "attachments.getAttachment",
+          "binding": "attachments.deleteAttachment",
           "arguments": [
             "3933D74B-4282-44DE-82AE-A6412808369D"
           ]
         },
         "wire": {
-          "method": "GET",
-          "endpoint": "get_attachment/3933D74B-4282-44DE-82AE-A6412808369D"
+          "method": "POST",
+          "endpoint": "delete_attachment/3933D74B-4282-44DE-82AE-A6412808369D"
         },
         "upstream_response": {
-          "kind": "binary",
-          "utf8": "upper-case uuid fixture\n"
+          "kind": "text",
+          "text": ""
         },
         "driver_result": {
-          "kind": "binary",
-          "utf8": "upper-case uuid fixture\n"
+          "kind": "void"
         }
       }
     },
@@ -274,22 +271,21 @@
       "expect": {
         "kind": "accepted",
         "driver": {
-          "binding": "attachments.getAttachment",
+          "binding": "attachments.deleteAttachment",
           "arguments": [
             9007199254740991
           ]
         },
         "wire": {
-          "method": "GET",
-          "endpoint": "get_attachment/9007199254740991"
+          "method": "POST",
+          "endpoint": "delete_attachment/9007199254740991"
         },
         "upstream_response": {
-          "kind": "binary",
-          "utf8": ""
+          "kind": "text",
+          "text": ""
         },
         "driver_result": {
-          "kind": "binary",
-          "utf8": ""
+          "kind": "void"
         }
       }
     },
@@ -475,7 +471,7 @@
       "id": "unknown-top-level",
       "input": {
         "attachment_id": 17,
-        "download_path": "/tmp/not-authorized"
+        "body": {}
       },
       "covers": [
         {

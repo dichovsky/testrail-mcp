@@ -1,5 +1,8 @@
+import type { UploadFilePathInput } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
+import { AdapterError } from '../../contracts/errors.js';
 import type { AllControls } from '../../contracts/pagination.js';
+import type { CallContext } from '../driver-call.js';
 import type { ArgumentMapping } from '../registry.js';
 
 /** A usable JSON object response; entity fields are checked advisorily, not here. */
@@ -63,4 +66,16 @@ export function aggregateControlMappings(argument: number): readonly ArgumentMap
     { input: '_mcp.start_offset', call: 'all', argument, property: 'startOffset', serialization: 'aggregate-control' },
     ...safetyControlMappings(argument),
   ];
+}
+
+/**
+ * The staged copy of the caller's file.
+ *
+ * The adapter stages an owned copy before the call and passes it here. Its absence
+ * would mean the transport dispatched an upload it never staged, which is a fault in
+ * this adapter rather than anything the caller did.
+ */
+export function staged(context: CallContext): UploadFilePathInput {
+  if (context.upload === undefined) throw new AdapterError('INTERNAL_ERROR');
+  return context.upload;
 }

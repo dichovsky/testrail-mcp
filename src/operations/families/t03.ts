@@ -1,19 +1,18 @@
 import {
   AddSharedStepPayloadSchema, BddSchema, CaseSchema, SharedStepSchema, StepHistoryEntrySchema,
   UpdateSharedStepPayloadSchema,
-  type GetBddsOptions, type GetSharedStepsOptions, type UploadFilePathInput,
+  type GetBddsOptions, type GetSharedStepsOptions,
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
-import { AdapterError } from '../../contracts/errors.js';
 import {
   bddFilenameSchema, contentTypeSchema, createListInput, filePathSchema, idFilterSchema,
   nonnegativeIntegerSchema, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
 import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
-import { driverCall, type CallContext } from '../driver-call.js';
+import { driverCall } from '../driver-call.js';
 import { defineOperation, type OperationDefinition } from '../registry.js';
 import {
-  aggregateControlMappings, allControls, control, flag, pageResponse, recordResponse, safetyControlMappings,
+  aggregateControlMappings, allControls, control, flag, pageResponse, recordResponse, safetyControlMappings, staged,
 } from './common.js';
 
 const getBddInput = strictObject({ case_id: positiveIdSchema });
@@ -115,18 +114,6 @@ export const getBdds = defineOperation({
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
 } as const satisfies OperationDefinition);
-
-/**
- * The staged copy of the caller's file.
- *
- * The adapter stages an owned copy before the call and passes it here. Its absence
- * would mean the transport dispatched an upload it never staged, which is a fault in
- * this adapter rather than anything the caller did.
- */
-function staged(context: CallContext): UploadFilePathInput {
-  if (context.upload === undefined) throw new AdapterError('INTERNAL_ERROR');
-  return context.upload;
-}
 
 /** Every upload takes the caller's path, the multipart filename and an optional media type. */
 const uploadFields = {

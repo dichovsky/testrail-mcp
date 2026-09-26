@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TestRailClient } from '@dichovsky/testrail-api-client';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { attachmentIdSchema, filePathSchema, strictObject } from '../../src/contracts/inputs.js';
@@ -177,4 +177,59 @@ describe('staged uploads', () => {
       await area.dispose();
     }
   }, 20_000);
+
+  /*
+   * Cancellation stops the wait, not the request: the driver may still be reading the
+   * staged copy into the multipart body. The copy must outlive the call until the request
+   * settles, or the upload fails part-way against a file that has gone.
+   */
+  it('keeps the staged copy until a cancelled upload settles', async () => {
+    const source = join(roots, 'cancelled.txt');
+    await writeFile(source, 'streamed after cancel');
+    const area = await createStagingArea(base);
+
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let sent: string | undefined;
+    const fetch = vi.fn().mockImplementation(async (_url: unknown, init?: { body?: ConstructorParameters<typeof Response>[0] }) => {
+      await gate;
+      // Read the body only now, as a slow connection would.
+      sent = await new Response(init?.body).text();
+      return new Response('{"attachment_id":1}', { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    const runtime = createRuntime({
+      client: new TestRailClient({
+        baseUrl: configuration.baseUrl, email: configuration.email, apiKey: configuration.apiKey,
+        registerProcessHandlers: false, maxRetries: 0,
+        dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
+        fetch,
+      }),
+      limits: configuration.limits,
+    });
+    const cancel = new AbortController();
+
+    try {
+      const call = executeToolCall(
+        addAttachment,
+        { case_id: 1, file_path: source, filename: 'cancelled.txt' },
+        { runtime, configuration, signal: cancel.signal, stagingDirectory: () => Promise.resolve(area.directory) },
+      );
+      await vi.waitFor(() => { expect(fetch).toHaveBeenCalledTimes(1); });
+      cancel.abort();
+      const cancelled = await call;
+      expect((cancelled.structuredContent as { error: { code: string } }).error.code).toBe('CANCELLED');
+      // The request is still running, so its staged copy is still there.
+      expect(await readdir(area.directory)).toHaveLength(2);
+
+      release();
+      await vi.waitFor(() => { expect(runtime.stats().active).toBe(0); });
+      expect(sent).toContain('streamed after cancel');
+      // Settlement disposes it: only the ownership marker remains.
+      expect(await readdir(area.directory)).toEqual(['owner.json']);
+    } finally {
+      release();
+      await runtime.shutdown();
+      await area.dispose();
+    }
+  });
 });
