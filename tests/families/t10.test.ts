@@ -263,6 +263,7 @@ describe('T10 field definitions arrive as TestRail sent them', () => {
     configs: [
       { id: 'a', context: { is_global: true, project_ids: null }, options: { is_required: false, items: '1, Chrome\n2, Firefox' } },
       { id: 'b', context: { is_global: true, project_ids: '' }, options: { is_required: false, default_value: '1' } },
+      { id: 'd', context: { is_global: true, project_ids: [] }, options: { is_required: false } },
       { id: 'c', context: { is_global: false, project_ids: [5, 10] }, options: { is_required: true, has_expected: true } },
     ],
     custom_future_flag: { nested: [1, 2] },
@@ -500,6 +501,21 @@ describe('T10 creating a case field', () => {
     } finally { await runtime.shutdown(); }
   });
 
+  // TestRail documents two refusals here, and they reach the caller as two different codes.
+  it.each([
+    [400, 'UPSTREAM_ERROR'],
+    [404, 'NOT_FOUND'],
+  ] as const)('reports TestRail\'s documented %i as %s', async (status, code) => {
+    const fetch = replying({ error: 'Field :type is not a valid field type.' }, status);
+    const runtime = runtimeFor(fetch);
+    try {
+      const result = await executeToolCall(operation('testrail_add_case_field'), { body: REQUEST }, { runtime, configuration });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(result.isError).toBe(true);
+      expect(errorOf(result)).toMatchObject({ code, http_status: status, write_outcome: 'unknown' });
+    } finally { await runtime.shutdown(); }
+  });
+
   it('publishes the write as neither destructive nor safe to repeat', () => {
     const { annotations } = operation('testrail_add_case_field');
     expect(annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false, idempotentHint: false });
@@ -561,13 +577,15 @@ describe('T10 the version is asked for only when a caller asks', () => {
       const fetch = routed({ get_version: { version }, get_case_types: [{ id: 6, name: 'Other', is_default: true }] });
       const session = await connect(fetch);
       try {
-        const before = (await session.client.listTools()).tools.map(({ name }) => name);
+        // Whole tool objects, not names: a description or schema rewritten by the answer
+        // would withdraw a tool as surely as removing it.
+        const before = (await session.client.listTools()).tools;
         const result = await session.client.callTool({ name: 'testrail_get_version', arguments: {} });
         expect(result.isError).toBeFalsy();
         expect((result.structuredContent as { data: unknown }).data).toEqual({ version });
         expect(fetch).toHaveBeenCalledTimes(1);
         expect(requested(fetch)).toMatch(/\/api\/v2\/get_version$/);
-        const after = (await session.client.listTools()).tools.map(({ name }) => name);
+        const after = (await session.client.listTools()).tools;
         expect(after).toEqual(before);
         // Nothing asked again on its own after the answer arrived.
         expect(fetch).toHaveBeenCalledTimes(1);

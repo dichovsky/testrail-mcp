@@ -28,7 +28,7 @@
     {
       "id": "testrail-case-fields",
       "url": "https://support.testrail.com/hc/en-us/articles/7077281158164-Case-Fields",
-      "supports": "add_case_field takes type, name, label and configs as required fields and description, include_all and template_ids as optional ones. type accepts a type name or its number, and the number must be sent as a string or TestRail answers 400. name is given without a prefix; from TestRail 9.0 system_name takes the custom_case_ prefix for a case field. include_all true applies the field to every template, otherwise template_ids names them. Each configuration needs context and options; context is {is_global, project_ids}, with the examples using an empty array and an empty string for a global field and an ID list for specific projects. is_required is common to every type; default_value is allowed except on Multiselect, Milestone and Date; a dropdown takes items as \"1, First\\n2, Second\"; a text field takes format, plain or markdown, and rows, \"3\" to \"10\" or the empty string. The example reply carries configs as a JSON-encoded string and is_multi, is_active, is_system and include_all as 0 or 1. The documented responses are 200, 400 for a bad request, 404 for a bad parameter and, on TestRail Cloud only, 429. The page documents no further option, such as the has_expected toggle a Steps field shows in a read reply."
+      "supports": "add_case_field takes type, name, label and configs as required fields and description, include_all and template_ids as optional ones. type accepts a type name or its number, and the number must be sent as a string or TestRail answers 400. name is given without a prefix; from TestRail 9.0 system_name takes the custom_case_ prefix for a case field. include_all true applies the field to every template, otherwise template_ids names them. Each configuration needs context and options; context is {is_global, project_ids}, with the examples using an empty array and an empty string for a global field and an ID list for specific projects. is_required is common to every type; default_value is allowed except on Multiselect, Milestone and Date; a dropdown takes items as \"1, First\\n2, Second\"; a text field takes format, plain or markdown, and rows, \"3\" to \"10\" or the empty string. The example reply carries configs as a JSON-encoded string and is_multi, is_active, is_system and include_all as 0 or 1. The documented responses are 200, 400 for a bad request, 404 for a bad parameter and, on TestRail Cloud only, 429. The page documents no further option, such as the has_expected toggle that TestRail's result-field example shows on a Step Results field."
     },
     {
       "id": "testrail-indexing",
@@ -39,12 +39,12 @@
   "input_policy": {
     "ordinary_fields": "reject",
     "custom_fields": "reject",
-    "notes": "The driver forwards whatever it is given, so the payload's shape is the boundary's alone to hold. It adopts the driver's declared fields at every depth and closes each object, so a reply-only field such as system_name, an unknown context key, or a step option such as has_expected that neither TestRail's add_case_field reference nor the driver's payload schema declares (the driver models it on read replies only) is refused rather than forwarded with an effect nobody documents. template_ids is tightened to the identifier domain. Rules that depend on the field type or on instance state stay TestRail's: which types exist, which take a default, the slug format of name, the values of format and rows, index eligibility and the five-field limit. Those requests are forwarded, and a refusal is reported as UPSTREAM_ERROR with TestRail's HTTP status; TestRail's own message text is not echoed."
+    "notes": "The driver forwards whatever it is given, so the payload's shape is the boundary's alone to hold. It adopts the driver's declared fields at every depth and closes each object, so a reply-only field such as system_name, an unknown context key, or a step option such as has_expected that neither TestRail's add_case_field reference nor the driver's payload schema declares (the driver models it on read replies only) is refused rather than forwarded with an effect nobody documents. template_ids is tightened to the identifier domain. Rules that depend on the field type or on instance state stay TestRail's: which types exist, which take a default, the slug format of name, the values of format and rows, index eligibility and the five-field limit. Those requests are forwarded, and a refusal is reported with TestRail's HTTP status: a 400 as UPSTREAM_ERROR, and the 404 TestRail documents for a bad parameter as NOT_FOUND. TestRail's own message text is not echoed."
   },
   "outer_result": {
     "driver": "record",
     "tool_data": "record",
-    "notes": "TestRail answers with the new field in a shape of its own: configs is a JSON-encoded string rather than the array get_case_fields returns, and its flags are 0 or 1 rather than booleans. The record is returned exactly as the driver received it, the string left unparsed, so a caller sees what TestRail sent. Entity-field drift is advisory. The replies in rules-left-to-testrail and more-rules-left-to-testrail are stand-ins rather than documented TestRail answers. Each request breaks rules the sources say TestRail enforces: a default on a Multiselect and a name that is not a slug in the first; in the second a type the add_case_field reference does not list, indexing on a type TestRail does not index, and format and rows values outside those it documents. A fixture can carry only a success body, so each stand-in echoes the request and invents nothing; the cases prove only that the requests reach the wire unchanged, and the refusal path is asserted in tests/families/t10.test.ts."
+    "notes": "TestRail answers with the new field in a shape of its own: configs is a JSON-encoded string rather than the array get_case_fields returns, and its flags are 0 or 1 rather than booleans. The record is returned exactly as the driver received it, the string left unparsed, so a caller sees what TestRail sent. Entity-field drift is advisory. The replies in rules-left-to-testrail and more-rules-left-to-testrail are stand-ins rather than documented TestRail answers. Each request breaks rules the sources say TestRail enforces: a default on a Multiselect and a name that is not a slug in the first; in the second a type the add_case_field reference does not list, indexing on a type TestRail does not index, and format and rows values outside those it documents. A fixture can carry only a success body, so each stand-in echoes the request's own fields and adds only an identifier; the cases prove only that the requests reach the wire unchanged, and the refusal path is asserted in tests/families/t10.test.ts."
   },
   "requirements": [
     {
@@ -70,7 +70,7 @@
     {
       "id": "unknown-option",
       "kind": "invalid",
-      "description": "Reject an option that neither TestRail's add_case_field reference nor the driver's payload declares, including the has_expected toggle a Steps field shows in a read reply."
+      "description": "Reject an option that neither TestRail's add_case_field reference nor the driver's payload declares, including the has_expected toggle that TestRail's result-field example shows on a Step Results field."
     }
   ],
   "parameters": [
@@ -995,7 +995,7 @@
         {
           "id": "empty",
           "kind": "valid",
-          "description": "Accept the empty string and send it, as TestRail's own examples do."
+          "description": "Accept the empty string and send it."
         },
         {
           "id": "server-rule",
@@ -2304,8 +2304,7 @@
           "body": {
             "id": 38,
             "name": "Target Platforms",
-            "label": "Target Platforms",
-            "type_id": 12
+            "label": "Target Platforms"
           }
         },
         "driver_result": {
@@ -2313,8 +2312,7 @@
           "value": {
             "id": 38,
             "name": "Target Platforms",
-            "label": "Target Platforms",
-            "type_id": 12
+            "label": "Target Platforms"
           }
         }
       }
