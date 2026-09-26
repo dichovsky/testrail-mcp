@@ -39,7 +39,9 @@ function operation(tool: string) {
  * replaced, so what these tests prove about caching, coalescing and retries is what a real
  * call does. A test that wants a different retry budget or the cache turned on says so.
  */
-function driverFor(fetch: ReturnType<typeof vi.fn>, overrides: { enableCache?: boolean; maxRetries?: number } = {}) {
+type DriverOverrides = { enableCache?: boolean; maxRetries?: number; timeout?: number; bodyTimeout?: number };
+
+function driverFor(fetch: ReturnType<typeof vi.fn>, overrides: DriverOverrides = {}) {
   return new TestRailClient({
     ...driverOptions(configuration),
     ...overrides,
@@ -48,7 +50,7 @@ function driverFor(fetch: ReturnType<typeof vi.fn>, overrides: { enableCache?: b
   });
 }
 
-function runtimeFor(fetch: ReturnType<typeof vi.fn>, overrides: { enableCache?: boolean; maxRetries?: number } = {}) {
+function runtimeFor(fetch: ReturnType<typeof vi.fn>, overrides: DriverOverrides = {}) {
   return createRuntime({ client: driverFor(fetch, overrides), limits: configuration.limits });
 }
 
@@ -125,9 +127,9 @@ async function connect(fetch: ReturnType<typeof vi.fn>) {
  * actually reached TestRail.
  */
 describe('T11 every report run reaches TestRail exactly once', () => {
-  it.each(GENERATORS)('%s runs twice when called twice, whether or not the cache is on', async (tool, endpoint) => {
+  it.each(GENERATORS)('%s runs twice when called twice, whether or not the cache is on', async (tool, endpoint, urls) => {
     for (const enableCache of [false, true]) {
-      const fetch = replying(REPORT_URLS);
+      const fetch = replying(urls);
       const runtime = runtimeFor(fetch, { enableCache });
       try {
         const first = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
@@ -140,8 +142,8 @@ describe('T11 every report run reaches TestRail exactly once', () => {
     }
   });
 
-  it.each(GENERATORS)('%s runs three times when three callers ask at once', async (tool) => {
-    const fetch = replying(REPORT_URLS);
+  it.each(GENERATORS)('%s runs three times when three callers ask at once', async (tool, _endpoint, urls) => {
+    const fetch = replying(urls);
     const runtime = runtimeFor(fetch);
     try {
       const results = await Promise.all([1, 2, 3].map(() =>
@@ -159,7 +161,7 @@ describe('T11 every report run reaches TestRail exactly once', () => {
    */
   it.each(GENERATORS.flatMap(([tool, , , method]) => [
     [tool, 'a network error', method, () => Promise.reject(new TypeError('fetch failed'))],
-    ...[408, 500, 502, 503, 504].map((status) =>
+    ...[408, 500, 501, 502, 503, 504, 505, 599].map((status) =>
       [tool, `a ${status}`, method, () => Promise.resolve(json({ error: 'upstream' }, status))] as const),
   ] as const))('%s is not retried after %s, and its outcome stays unknown', async (tool, _label, method, respond) => {
     const fetch = vi.fn().mockImplementation(respond);
@@ -173,6 +175,44 @@ describe('T11 every report run reaches TestRail exactly once', () => {
       expect(invoked).toHaveBeenCalledTimes(1);
       expect(result.isError).toBe(true);
       expect(errorOf(result).write_outcome).toBe('unknown');
+    } finally { await runtime.shutdown(); }
+  });
+
+  /*
+   * The driver's own request timeout is not an HTTP 408 reply: it aborts the fetch and
+   * reports a timeout of its own. A run that times out may still be generating upstream,
+   * so it must not be sent again either.
+   */
+  it.each(GENERATORS)('%s is not retried after the driver\'s own timeout', async (tool, _endpoint, _urls, method) => {
+    const fetch = vi.fn().mockImplementation((_url: unknown, init?: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => {
+        const reason: unknown = init.signal?.reason;
+        reject(reason instanceof Error ? reason : new DOMException('aborted', 'AbortError'));
+      });
+    }));
+    const driver = driverFor(fetch, { timeout: 100 });
+    const invoked = vi.spyOn(driver.reports, method);
+    const runtime = createRuntime({ client: driver, limits: configuration.limits });
+    try {
+      const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(invoked).toHaveBeenCalledTimes(1);
+      expect(result.isError).toBe(true);
+      expect(errorOf(result).write_outcome).toBe('unknown');
+    } finally { await runtime.shutdown(); }
+  });
+
+  // A refusal is TestRail's answer, but it still carries unknown; its code and status say what TestRail answered.
+  it.each(GENERATORS.flatMap(([tool]) => [
+    [tool, 400, 'UPSTREAM_ERROR'],
+    [tool, 403, 'PERMISSION_DENIED'],
+  ] as const))('%s reports a %i refusal with its status and an unknown outcome', async (tool, status, code) => {
+    const fetch = replying({ error: 'refused' }, status);
+    const runtime = runtimeFor(fetch);
+    try {
+      const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(errorOf(result)).toMatchObject({ code, http_status: status, write_outcome: 'unknown' });
     } finally { await runtime.shutdown(); }
   });
 
@@ -230,10 +270,10 @@ describe('T11 every report run reaches TestRail exactly once', () => {
    * F01 accepted the driver re-sending a rate-limited run: TestRail rejects a 429 before
    * handling the request, so nothing was generated. One retry keeps the backoff short.
    */
-  it.each(GENERATORS)('%s is re-sent after a 429, which F01 accepts as safe', async (tool) => {
+  it.each(GENERATORS)('%s is re-sent after a 429, which F01 accepts as safe', async (tool, _endpoint, urls) => {
     const fetch = vi.fn()
       .mockImplementationOnce(() => Promise.resolve(json({ error: 'API rate limit exceeded' }, 429)))
-      .mockImplementationOnce(() => Promise.resolve(json(REPORT_URLS)));
+      .mockImplementationOnce(() => Promise.resolve(json(urls)));
     const runtime = runtimeFor(fetch, { maxRetries: 1 });
     try {
       const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
@@ -268,9 +308,9 @@ describe('T11 what a run returns', () => {
   });
 
   // A reply without a usable URL is still TestRail's answer to the run, whatever its shape.
-  it.each(GENERATORS.flatMap(([tool]) => [
+  it.each(GENERATORS.flatMap(([tool, , urls]) => [
     [tool, 'an empty object', {}],
-    [tool, 'report_html alone', { report_html: REPORT_URLS.report_html }],
+    [tool, 'report_html alone', { report_html: urls.report_html }],
     [tool, 'the legacy user_report_url alone', { user_report_url: 'https://docs.testrail.com/index.php?/reports/view/383' }],
     [tool, 'a null report_url', { report_url: null }],
   ] as const))('%s returns %s as sent, with a warning, and does not run again', async (tool, _label, reply) => {
@@ -286,8 +326,8 @@ describe('T11 what a run returns', () => {
   });
 
   // TestRail answered the run even though this server cannot use the reply, so it is not "not started".
-  it.each(GENERATORS)('%s reports an unusable JSON reply as a run TestRail answered', async (tool) => {
-    const fetch = replying([REPORT_URLS]);
+  it.each(GENERATORS)('%s reports an unusable JSON reply as a run TestRail answered', async (tool, _endpoint, urls) => {
+    const fetch = replying([urls]);
     const runtime = runtimeFor(fetch);
     try {
       const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
@@ -295,6 +335,29 @@ describe('T11 what a run returns', () => {
       expect(errorOf(result)).toMatchObject({ code: 'INVALID_RESPONSE', write_outcome: 'acknowledged' });
       expect(fetch).toHaveBeenCalledTimes(1);
     } finally { await runtime.shutdown(); }
+  });
+
+  /*
+   * The configured data budget is this server's, applied after the driver resolved, so a
+   * reply over it is still one TestRail answered. A reply over the driver's own JSON limit
+   * is never read, so this server cannot tell it from a failed exchange.
+   */
+  it.each(GENERATORS)('%s reports a reply over each size budget with the outcome that budget can know', async (tool, _endpoint, urls) => {
+    const overData = { ...urls, report_url: 'x'.repeat(configuration.limits.max_data_bytes) };
+    const overDriver = { ...urls, report_url: 'x'.repeat(configuration.limits.max_json_response_bytes) };
+    for (const [body, code, outcome] of [
+      [overData, 'RESPONSE_TOO_LARGE', 'acknowledged'],
+      [overDriver, 'INVALID_RESPONSE', 'unknown'],
+    ] as const) {
+      const fetch = replying(body);
+      const runtime = runtimeFor(fetch);
+      try {
+        const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+        expect(result.isError).toBe(true);
+        expect(errorOf(result)).toMatchObject({ code, write_outcome: outcome });
+        expect(fetch).toHaveBeenCalledTimes(1);
+      } finally { await runtime.shutdown(); }
+    }
   });
 
   // A reply the driver cannot parse at all tells this server nothing about the run, so it stays unknown.
@@ -310,8 +373,22 @@ describe('T11 what a run returns', () => {
     } finally { await runtime.shutdown(); }
   });
 
-  it.each(GENERATORS)('%s is refused before any request when the template id is not an identifier', async (tool) => {
-    const fetch = replying(REPORT_URLS);
+  // A body that starts and never finishes is abandoned by the driver, which cannot say whether the run happened.
+  it.each(GENERATORS)('%s reports a reply whose body stalls as an unknown outcome', async (tool) => {
+    const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new TextEncoder().encode('{"report_url":')); },
+    }), { status: 200, headers: { 'content-type': 'application/json' } })));
+    const runtime = runtimeFor(fetch, { bodyTimeout: 100 });
+    try {
+      const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      expect(result.isError).toBe(true);
+      expect(errorOf(result).write_outcome).toBe('unknown');
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally { await runtime.shutdown(); }
+  });
+
+  it.each(GENERATORS)('%s is refused before any request when the template id is not an identifier', async (tool, _endpoint, urls) => {
+    const fetch = replying(urls);
     const runtime = runtimeFor(fetch);
     try {
       const result = await executeToolCall(operation(tool), { report_template_id: '383' }, { runtime, configuration });
@@ -326,8 +403,8 @@ describe('T11 what a run returns', () => {
     expect(description).toContain('template-configured email');
     expect(description).toContain('do not generate the report again to poll');
     // A failed run's outcome is read from write_outcome, which can be either of these.
-    expect(description).toContain('unknown means TestRail may have generated and emailed the report');
-    expect(description).toContain('acknowledged means TestRail answered the run');
+    expect(description).toContain('acknowledged means TestRail returned a success reply this server could not use');
+    expect(description).toContain('unknown is also what a refusal from TestRail carries, with its code and http_status saying what TestRail answered');
     // The retry contract is this family's own text, not the registry's appended sentence.
     expect(description).toContain('Neither this server nor its driver retries a run after a network error or a 5xx');
     expect(description).toContain('the driver re-sends only a rate-limited (429) request, which TestRail rejects before handling');
@@ -336,8 +413,9 @@ describe('T11 what a run returns', () => {
 
   it.each([['testrail_get_cross_project_reports'], ['testrail_run_cross_project_report']] as const)(
     '%s says a permission denial may still mean the instance lacks Enterprise', (tool) => {
-      expect(operation(tool).description).toContain(
-        'every other 403, including other Enterprise wordings, arrives as PERMISSION_DENIED, which here may still mean the instance lacks Enterprise');
+      const { description } = operation(tool);
+      expect(description).toContain('only when its message says "not an" or "requires" followed by "Enterprise licen" or "Enterprise subscription"');
+      expect(description).toContain('"TestRail Enterprise only. Access denied." among them, arrives as PERMISSION_DENIED, which here may still mean the instance lacks Enterprise');
     });
 
   it.each([['testrail_get_reports'], ['testrail_get_cross_project_reports']] as const)(
@@ -355,6 +433,7 @@ describe('T11 what a run returns', () => {
 describe('T11 an instance or user without cross-project reports', () => {
   it.each([
     ['a licence message the driver recognises', 'Not an Enterprise license/subscription.', 'LICENSE_REQUIRED'],
+    ['another wording the rule accepts', 'This feature requires Enterprise subscription.', 'LICENSE_REQUIRED'],
     ['the wording of TestRail\'s own reference', 'TestRail Enterprise only. Access denied.', 'PERMISSION_DENIED'],
     ['a role that does not grant access', 'User role does not grant access.', 'PERMISSION_DENIED'],
   ] as const)('reports %s as %s', async (_label, message, code) => {
