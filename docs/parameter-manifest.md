@@ -12,9 +12,9 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `add_attachment_to_result` | 4 | 17 | Complete input manifest |
 | `add_attachment_to_run` | 4 | 17 | Complete input manifest |
 | `add_bdd` | 4 | 10 | Complete input manifest |
-| `add_case` | 12 | 16 | Complete input manifest |
+| `add_case` | 12 | 17 | Complete input manifest |
 | `add_case_field` | 18 | 53 | Complete input manifest |
-| `add_cases` | 12 | 18 | Complete input manifest |
+| `add_cases` | 12 | 19 | Complete input manifest |
 | `add_config` | 3 | 8 | Complete input manifest |
 | `add_config_group` | 3 | 8 | Complete input manifest |
 | `add_dataset` | 4 | 12 | Complete input manifest |
@@ -24,14 +24,14 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `add_plan` | 27 | 40 | Complete input manifest |
 | `add_plan_entry` | 20 | 31 | Complete input manifest |
 | `add_project` | 4 | 10 | Complete input manifest |
-| `add_result` | 9 | 15 | Complete input manifest |
-| `add_result_for_case` | 10 | 15 | Complete input manifest |
-| `add_results` | 11 | 20 | Complete input manifest |
-| `add_results_for_cases` | 11 | 20 | Complete input manifest |
+| `add_result` | 9 | 16 | Complete input manifest |
+| `add_result_for_case` | 10 | 16 | Complete input manifest |
+| `add_results` | 11 | 21 | Complete input manifest |
+| `add_results_for_cases` | 11 | 21 | Complete input manifest |
 | `add_run` | 13 | 20 | Complete input manifest |
 | `add_run_to_plan_entry` | 12 | 22 | Complete input manifest |
 | `add_section` | 5 | 10 | Complete input manifest |
-| `add_shared_step` | 5 | 11 | Complete input manifest |
+| `add_shared_step` | 5 | 12 | Complete input manifest |
 | `add_suite` | 3 | 9 | Complete input manifest |
 | `add_user` | 11 | 22 | Complete input manifest |
 | `add_variable` | 3 | 8 | Complete input manifest |
@@ -57,7 +57,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `delete_shared_step` | 2 | 7 | Complete input manifest |
 | `delete_suite` | 2 | 7 | Complete input manifest |
 | `delete_variable` | 1 | 3 | Complete input manifest |
-| `edit_result` | 10 | 17 | Complete input manifest |
+| `edit_result` | 10 | 18 | Complete input manifest |
 | `get_attachment` | 1 | 15 | Complete input manifest |
 | `get_attachments_for_case` | 10 | 16 | Complete input manifest |
 | `get_attachments_for_plan` | 10 | 16 | Complete input manifest |
@@ -119,8 +119,8 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `run_cross_project_report` | 1 | 3 | Complete input manifest |
 | `run_report` | 1 | 3 | Complete input manifest |
 | `update_bdd` | 4 | 10 | Complete input manifest |
-| `update_case` | 13 | 15 | Complete input manifest |
-| `update_cases` | 14 | 15 | Complete input manifest |
+| `update_case` | 13 | 16 | Complete input manifest |
+| `update_cases` | 14 | 16 | Complete input manifest |
 | `update_config` | 3 | 8 | Complete input manifest |
 | `update_config_group` | 3 | 8 | Complete input manifest |
 | `update_dataset` | 4 | 11 | Complete input manifest |
@@ -133,7 +133,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | `update_run` | 12 | 19 | Complete input manifest |
 | `update_run_in_plan_entry` | 10 | 19 | Complete input manifest |
 | `update_section` | 3 | 8 | Complete input manifest |
-| `update_shared_step` | 5 | 10 | Complete input manifest |
+| `update_shared_step` | 5 | 11 | Complete input manifest |
 | `update_suite` | 3 | 8 | Complete input manifest |
 | `update_test` | 3 | 10 | Complete input manifest |
 | `update_tests` | 3 | 13 | Complete input manifest |
@@ -201,7 +201,7 @@ The user write payloads demand a stricter address than the lookup accepts, and t
 
 Datasets and variables were the first endpoints in this server gated by an instance's edition; T10's `get_case_statuses`, which TestRail documents as requiring TestRail Enterprise 7.3 or later, and T11's two cross-project report endpoints, which it documents as Enterprise only, are others. Their write payload also takes bare caller-chosen keys, which is unusual but not unique: a flat case, result or shared-step extension must match `custom_*`, a namespace this server owns, but a step entry inside `custom_steps_separated` or `custom_step_results` is an open record whose keys are as unconstrained as these. A key spelled like one of this server's controls is therefore expressible in more than one payload, and this family is where that is tested. TestRail documents a 403 "Not an Enterprise license/subscription" on all nine dataset and variable endpoints, which this boundary cannot anticipate: an instance's edition is not an argument, so the call is made and the refusal reported. The driver separates that refusal from an ordinary permission denial by matching the phrasing TestRail uses, and this server keeps the separation, publishing `LICENSE_REQUIRED` rather than `PERMISSION_DENIED`, because one is answered by a licence and the other by an administrator. The family suite asserts both codes against the same endpoint so a widened match would fail rather than collapse the two.
 
-An open record's declared value domain applies under every key, `__proto__` included. Zod's record parser skips that one key before either of the record's schemas sees it, while the driver is handed the caller's original object with the key intact, so until the shared payload adapter checked it itself a dataset's `variables` or a filter's `filters` map accepted any value there and forwarded it to TestRail. The adapter now applies the record's key and value schemas to that key too, which covers every record-valued payload field at once. The dataset and dynamic-filter manifests each carry a rejected case under `__proto__` beside the ordinary one. The fixture loader keeps each case's input as written rather than the schema's parsed clone, since that clone drops the same key and would run such a case without it. The step entries of shared steps and results are records of arbitrary JSON, so no value under any key is refused there and there is nothing for such a case to prove.
+An open record's declared value domain applies under every key, `__proto__` included. Zod's record parser skips that one key before either of the record's schemas sees it, while the driver is handed the caller's original object with the key intact, so until the shared payload adapter checked it itself a dataset's `variables` or a filter's `filters` map accepted any value there and forwarded it to TestRail. The adapter now applies the record's key and value schemas to that key too, which covers every record-valued payload field at once. The dataset and dynamic-filter manifests each carry a rejected case under `__proto__` beside the ordinary one. The fixture loader keeps each case's input as written rather than the schema's parsed clone, since that clone drops the same key and would run such a case without it. The step entries of shared steps and results are records of arbitrary JSON, so no value under any key is refused there and there is nothing for such a case to prove. The same skip applies to an object's extension point: Zod's object parser passes over an own `__proto__` key in its catch-all, and the `custom_*` name check sees only the parsed clone, so a case, result or shared-step body accepted a `__proto__` field its advertised JSON Schema refuses. The adapter applies the extension policy to that key too, so such a body is refused like any other unknown field, and each of the eleven manifests with a `custom_*` extension carries a rejected case under `__proto__` beside its ordinary unknown-field case.
 
 A dataset's values are written as a map from variable name to value and read back as an array of entries carrying server-assigned identifiers. The two shapes are not interchangeable and neither is converted into the other here. The map's keys stay open because they name instance data, while the payload's own fields do not, so an unknown field beside `name` and `variables` is refused, including the `id` that TestRail's `add_dataset` and `add_variable` examples show in a request body and their parameter tables never list. TestRail states three rules about the map and refuses on each: the variable name must already exist in the project, values must be submitted as strings, and values have a length limit. Only the second is expressible at this boundary, so only that one is enforced here and the other two arrive as TestRail's refusals. An empty map and an absent one are different requests and both are forwarded as written. The family suite writes variable names that collide with this server's own vocabulary, `limit`, `offset`, `_mcp` and `variables` among them, because nothing between a tool call and the wire reads a body's keys looking for a control, and that property is worth pinning where the keys are bare.
 

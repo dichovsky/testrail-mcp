@@ -12,7 +12,7 @@
   "outer_result": { "driver": "array", "tool_data": "array", "notes": "The updated cases are returned as an array, unwrapped by the driver from TestRail's updated_cases envelope; entity-field drift is advisory. An unrecognized successful reply is an INVALID_RESPONSE error whose write outcome is unknown, never a retry or a split." },
   "requirements": [
     { "id": "unknown-top-level", "kind": "invalid", "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them." },
-    { "id": "unknown-body", "kind": "invalid", "description": "Reject an unknown ordinary body field rather than forwarding it; only custom_* names extend the payload." },
+    { "id": "unknown-body", "kind": "invalid", "description": "Reject an unknown ordinary body field, __proto__ included, rather than forwarding it; only custom_* names extend the payload." },
     { "id": "legacy-custom-container", "kind": "invalid", "description": "Reject the driver's nested custom_fields object. TestRail reads custom values only as flat custom_* properties, so forwarding the container would drop them silently." },
     { "id": "no-split", "kind": "mapping", "description": "Send exactly one request carrying every listed case. The adapter never splits the list or retries on its own." }
   ],
@@ -124,6 +124,7 @@
     { "id": "invalid-is-legacy", "input": { "suite_id": 3, "body": { "case_ids": [42],   "is_legacy": 1 } }, "covers": [{ "parameter": "body.is_legacy", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
     { "id": "unknown-body", "input": { "suite_id": 3, "body": { "case_ids": [42],   "unexpected": true } }, "covers": [{ "parameter": "$input", "requirements": ["unknown-body"] }, { "parameter": "body.custom_*", "requirements": ["invalid"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
     { "id": "legacy-custom-container", "input": { "suite_id": 3, "body": { "case_ids": [42],   "custom_fields": { "custom_preconds": "Signed in" } } }, "covers": [{ "parameter": "$input", "requirements": ["legacy-custom-container"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
-    { "id": "unknown-top-level", "input": { "suite_id": 3, "body": { "case_ids": [42] }, "case_ids": [42] }, "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } }
+    { "id": "unknown-top-level", "input": { "suite_id": 3, "body": { "case_ids": [42] }, "case_ids": [42] }, "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } },
+    { "id": "unknown-body-under-proto", "input": { "suite_id": 3, "body": { "case_ids": [42], "__proto__": true } }, "covers": [{ "parameter": "$input", "requirements": ["unknown-body"] }], "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" } }
   ]
 }
