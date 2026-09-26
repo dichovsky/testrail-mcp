@@ -1,0 +1,240 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-26"
+  },
+  "endpoint": {
+    "family_id": "T10",
+    "http_method": "GET",
+    "route": "get_case_fields",
+    "tool": "testrail_get_case_fields",
+    "driver_method": "metadata.getCaseFields"
+  },
+  "sources": [
+    {
+      "id": "driver-module-metadata",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/metadata.ts",
+      "supports": "getVersion, getStatuses, getPriorities, getResultFields, getCaseFields and getCaseTypes each take no argument and issue one GET to their own endpoint with no path segment, query or body, parsing the reply with the matching schema. getDynamicFilterFields and getTemplates validate the project identifier with validateId and place it as the only path segment. None of them consults another endpoint first, so no call here triggers a version or capability request of its own."
+    },
+    {
+      "id": "driver-schema-metadata",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/metadata.ts",
+      "supports": "CaseFieldSchema and ResultFieldSchema require id, system_name, label, name, type_id, display_order, configs, is_active, include_all and template_ids, and admit a nullish description, i18n_custom_id and is_system, the last as a boolean or 0 or 1 because older responses encode it as an integer; CaseFieldSchema also admits a nullish is_indexed. Each config carries a nullish string id, a context whose is_global is a boolean and whose project_ids admits an array of numbers, a string, null or absence, and options whose is_required is a boolean beside nullish default_value, items (a string or an array), format, rows and the step toggles has_expected, has_actual, has_additional and has_reference. The comments record why project_ids is that wide: TestRail sends null or an empty string for a global field, and the normalization that once rewrote those to an empty array was removed, so the parsed shape is the wire shape. Every object is passthrough, so unmodelled keys survive parsing."
+    },
+    {
+      "id": "testrail-case-fields",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077281158164-Case-Fields",
+      "supports": "get_case_fields takes no parameter and returns an array of field definitions. A field can have different configurations and options per project, indicated by its configs: a configuration applies to a project when its context is global (is_global) or its project_ids include that project. The example shows project_ids as null for a global configuration. The type table maps type_id to a type, among them 6 Dropdown, 10 Steps and 12 Multiselect. The documented responses are 200 and, on TestRail Cloud only, 429."
+    },
+    {
+      "id": "testrail-release-10-6-1",
+      "url": "https://support.testrail.com/hc/en-us/articles/51202137678228-TestRail-10-6-1-Default-1001",
+      "supports": "The 10.6.1 release notes state that get_case_fields and get_result_fields previously returned only custom fields and now return system fields alongside them, each carrying an is_system boolean."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "The endpoint takes nothing: TestRail documents no parameter for it and the driver sends none. A field is configured per project inside its reply, not by an argument, so a caller naming a project is refused rather than served the instance-wide list as if it had been narrowed."
+  },
+  "outer_result": {
+    "driver": "array",
+    "tool_data": "array",
+    "notes": "The reply is returned as the driver received it. configs stays the nested array of context and options objects it arrives as, and project_ids keeps whichever of null, an empty string or an array the server sent, since the driver no longer normalizes it. Entity-field drift is advisory: TestRail's own example omits is_active, include_all and template_ids, which the driver's schema requires, so a reply shaped like it is returned intact with a drift warning rather than refused."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "no-arguments",
+      "kind": "mapping",
+      "description": "Call the driver with no arguments at all, and send no path segment, query or body."
+    }
+  ],
+  "baseline": "no-arguments",
+  "parameters": [],
+  "cases": [
+    {
+      "id": "no-arguments",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-arguments"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.getCaseFields",
+          "arguments": []
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_case_fields"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": [
+            {
+              "id": 1,
+              "system_name": "custom_case_preconds",
+              "label": "Preconditions",
+              "name": "preconds",
+              "description": "The preconditions of this test case.",
+              "type_id": 3,
+              "display_order": 1,
+              "configs": [
+                {
+                  "id": "4be1344d55d11",
+                  "context": {
+                    "is_global": true,
+                    "project_ids": null
+                  },
+                  "options": {
+                    "is_required": false,
+                    "default_value": "",
+                    "format": "markdown",
+                    "rows": "5"
+                  }
+                }
+              ],
+              "is_active": true,
+              "include_all": true,
+              "template_ids": [],
+              "is_system": false
+            },
+            {
+              "id": 33,
+              "system_name": "custom_case_browser",
+              "label": "Browser",
+              "name": "browser",
+              "description": null,
+              "type_id": 6,
+              "display_order": 7,
+              "configs": [
+                {
+                  "id": "9f105ba2-1ed0-45e0-b459-18d890bad86e",
+                  "context": {
+                    "is_global": false,
+                    "project_ids": [
+                      5,
+                      10
+                    ]
+                  },
+                  "options": {
+                    "is_required": true,
+                    "default_value": "1",
+                    "items": "1, Chrome\n2, Firefox"
+                  }
+                }
+              ],
+              "is_active": true,
+              "include_all": false,
+              "template_ids": [
+                1,
+                2
+              ],
+              "is_indexed": true,
+              "is_system": false
+            }
+          ]
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 1,
+              "system_name": "custom_case_preconds",
+              "label": "Preconditions",
+              "name": "preconds",
+              "description": "The preconditions of this test case.",
+              "type_id": 3,
+              "display_order": 1,
+              "configs": [
+                {
+                  "id": "4be1344d55d11",
+                  "context": {
+                    "is_global": true,
+                    "project_ids": null
+                  },
+                  "options": {
+                    "is_required": false,
+                    "default_value": "",
+                    "format": "markdown",
+                    "rows": "5"
+                  }
+                }
+              ],
+              "is_active": true,
+              "include_all": true,
+              "template_ids": [],
+              "is_system": false
+            },
+            {
+              "id": 33,
+              "system_name": "custom_case_browser",
+              "label": "Browser",
+              "name": "browser",
+              "description": null,
+              "type_id": 6,
+              "display_order": 7,
+              "configs": [
+                {
+                  "id": "9f105ba2-1ed0-45e0-b459-18d890bad86e",
+                  "context": {
+                    "is_global": false,
+                    "project_ids": [
+                      5,
+                      10
+                    ]
+                  },
+                  "options": {
+                    "is_required": true,
+                    "default_value": "1",
+                    "items": "1, Chrome\n2, Firefox"
+                  }
+                }
+              ],
+              "is_active": true,
+              "include_all": false,
+              "template_ids": [
+                1,
+                2
+              ],
+              "is_indexed": true,
+              "is_system": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "project_id": 5
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

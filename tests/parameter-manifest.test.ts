@@ -50,6 +50,7 @@ import {
   AddVariablePayloadSchema,
   UpdateDatasetPayloadSchema,
   UpdateVariablePayloadSchema,
+  AddCaseFieldPayloadSchema,
 } from '@dichovsky/testrail-api-client';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -190,6 +191,7 @@ describe('independent parameter manifest format', () => {
     expect(report.completeEndpoints).toEqual([
       'testrail_add_bdd',
       'testrail_add_case',
+      'testrail_add_case_field',
       'testrail_add_cases',
       'testrail_add_config',
       'testrail_add_config_group',
@@ -238,12 +240,16 @@ describe('independent parameter manifest format', () => {
       'testrail_get_bdd',
       'testrail_get_bdds',
       'testrail_get_case',
+      'testrail_get_case_fields',
+      'testrail_get_case_statuses',
       'testrail_get_case_titles',
+      'testrail_get_case_types',
       'testrail_get_cases',
       'testrail_get_configs',
       'testrail_get_current_user',
       'testrail_get_dataset',
       'testrail_get_datasets',
+      'testrail_get_dynamic_filter_fields',
       'testrail_get_group',
       'testrail_get_groups',
       'testrail_get_history_for_case',
@@ -253,8 +259,10 @@ describe('independent parameter manifest format', () => {
       'testrail_get_milestones',
       'testrail_get_plan',
       'testrail_get_plans',
+      'testrail_get_priorities',
       'testrail_get_project',
       'testrail_get_projects',
+      'testrail_get_result_fields',
       'testrail_get_results',
       'testrail_get_results_for_case',
       'testrail_get_results_for_run',
@@ -266,14 +274,17 @@ describe('independent parameter manifest format', () => {
       'testrail_get_shared_step',
       'testrail_get_shared_step_history',
       'testrail_get_shared_steps',
+      'testrail_get_statuses',
       'testrail_get_suite',
       'testrail_get_suites',
+      'testrail_get_templates',
       'testrail_get_test',
       'testrail_get_tests',
       'testrail_get_user',
       'testrail_get_user_by_email',
       'testrail_get_users',
       'testrail_get_variables',
+      'testrail_get_version',
       'testrail_move_cases_to_section',
       'testrail_move_section',
       'testrail_update_bdd',
@@ -299,7 +310,7 @@ describe('independent parameter manifest format', () => {
       'testrail_update_variable',
     ]);
     expect(report.partialEndpoints).toEqual([]);
-    expect(report.pendingEndpoints).toHaveLength(24);
+    expect(report.pendingEndpoints).toHaveLength(14);
     expect([...report.reviewedEndpoints, ...report.pendingEndpoints].sort())
       .toEqual(inventory.map(({ tool }) => tool).sort());
     expect(report.pendingEndpoints).toContain('testrail_add_attachment_to_case');
@@ -1056,6 +1067,50 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
     case 'variables.deleteVariable': {
       const [variableId] = z.tuple([z.number()]).parse(expected.driver.arguments);
       return client.variables.deleteVariable(variableId);
+    }
+    case 'metadata.getCaseFields': {
+      z.tuple([]).parse(expected.driver.arguments);
+      return client.metadata.getCaseFields();
+    }
+    case 'metadata.addCaseField': {
+      const [payload] = z.tuple([AddCaseFieldPayloadSchema]).parse(expected.driver.arguments);
+      return client.metadata.addCaseField(payload);
+    }
+    case 'metadata.getCaseTypes': {
+      z.tuple([]).parse(expected.driver.arguments);
+      return client.metadata.getCaseTypes();
+    }
+    case 'metadata.getDynamicFilterFields': {
+      const [projectId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.metadata.getDynamicFilterFields(projectId);
+    }
+    case 'metadata.getPriorities': {
+      z.tuple([]).parse(expected.driver.arguments);
+      return client.metadata.getPriorities();
+    }
+    case 'metadata.getResultFields': {
+      z.tuple([]).parse(expected.driver.arguments);
+      return client.metadata.getResultFields();
+    }
+    case 'metadata.getCaseStatusesPage': {
+      z.tuple([]).parse(expected.driver.arguments);
+      return client.metadata.getCaseStatusesPage();
+    }
+    case 'metadata.getAllCaseStatuses': {
+      const [options] = z.tuple([z.strictObject(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.metadata.getAllCaseStatuses(present(options));
+    }
+    case 'metadata.getStatuses': {
+      z.tuple([]).parse(expected.driver.arguments);
+      return client.metadata.getStatuses();
+    }
+    case 'metadata.getTemplates': {
+      const [projectId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.metadata.getTemplates(projectId);
+    }
+    case 'metadata.getVersion': {
+      z.tuple([]).parse(expected.driver.arguments);
+      return client.metadata.getVersion();
     }
     default: throw new Error(`Missing independent driver evidence harness: ${expected.driver.binding}`);
   }

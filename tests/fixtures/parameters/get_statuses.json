@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-26"
+  },
+  "endpoint": {
+    "family_id": "T10",
+    "http_method": "GET",
+    "route": "get_statuses",
+    "tool": "testrail_get_statuses",
+    "driver_method": "metadata.getStatuses"
+  },
+  "sources": [
+    {
+      "id": "driver-module-metadata",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/metadata.ts",
+      "supports": "getVersion, getStatuses, getPriorities, getResultFields, getCaseFields and getCaseTypes each take no argument and issue one GET to their own endpoint with no path segment, query or body, parsing the reply with the matching schema. getDynamicFilterFields and getTemplates validate the project identifier with validateId and place it as the only path segment. None of them consults another endpoint first, so no call here triggers a version or capability request of its own."
+    },
+    {
+      "id": "driver-schema-metadata",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/metadata.ts",
+      "supports": "StatusSchema requires id, name, label, the three colour integers color_dark, color_medium and color_bright, and the booleans is_system, is_untested and is_final. PrioritySchema requires id, name, short_name, is_default and priority. CaseTypeSchema and TemplateSchema each require id, name and is_default and admit a nullish i18n_custom_id. DynamicFilterFieldSchema requires type_id, system_name and label and admits nullish options and sub_filters strings, its comment describing the two as mutually endpoint-dependent. TestRailVersionSchema requires a version string and its comment dates the endpoint to TestRail 10.6. Every object is passthrough, so unmodelled keys survive parsing."
+    },
+    {
+      "id": "testrail-statuses",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077935129364-Statuses",
+      "supports": "get_statuses takes no parameter and returns an array of all system and custom test statuses, each with a unique id, a name (the system name) and a label (the display name) beside RGB colour fields. The system statuses available by default are 1 Passed, 2 Blocked, 3 Untested, 4 Retest and 5 Failed, and custom statuses are added under Administration > Customizations. get_case_statuses, on the same page, is a different endpoint: it requires TestRail Enterprise 7.3 or later and returns test case statuses identified by case_status_id. The only documented response for either is 200."
+    },
+    {
+      "id": "testrail-results",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077819312404-Results",
+      "supports": "A test result records its outcome as status_id, described in the response table as the status of the test result, e.g. passed or failed, and in add_result as the ID of the test status, whose default system values are 1 Passed, 2 Blocked, 3 Untested (not allowed when adding a new result), 4 Retest and 5 Failed. Both point to get_statuses for the full list of system and custom statuses."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "The endpoint takes nothing: TestRail documents no parameter for it and the driver sends none, so every field is refused. These are the execution statuses of tests and their results; the statuses of test cases themselves come from get_case_statuses, a different endpoint, and nothing here merges the two."
+  },
+  "outer_result": {
+    "driver": "array",
+    "tool_data": "array",
+    "notes": "The array of statuses is returned as the driver received it, system and custom alike. Entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "no-arguments",
+      "kind": "mapping",
+      "description": "Call the driver with no arguments at all, and send no path segment, query or body."
+    }
+  ],
+  "baseline": "no-arguments",
+  "parameters": [],
+  "cases": [
+    {
+      "id": "no-arguments",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-arguments"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.getStatuses",
+          "arguments": []
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_statuses"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": [
+            {
+              "id": 1,
+              "name": "passed",
+              "label": "Passed",
+              "color_dark": 6667107,
+              "color_medium": 9820525,
+              "color_bright": 12709313,
+              "is_system": true,
+              "is_untested": false,
+              "is_final": true
+            },
+            {
+              "id": 6,
+              "name": "custom_status1",
+              "label": "Custom",
+              "color_dark": 0,
+              "color_medium": 10526880,
+              "color_bright": 13684944,
+              "is_system": false,
+              "is_untested": false,
+              "is_final": false
+            }
+          ]
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 1,
+              "name": "passed",
+              "label": "Passed",
+              "color_dark": 6667107,
+              "color_medium": 9820525,
+              "color_bright": 12709313,
+              "is_system": true,
+              "is_untested": false,
+              "is_final": true
+            },
+            {
+              "id": 6,
+              "name": "custom_status1",
+              "label": "Custom",
+              "color_dark": 0,
+              "color_medium": 10526880,
+              "color_bright": 13684944,
+              "is_system": false,
+              "is_untested": false,
+              "is_final": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "case_status_id": 1
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

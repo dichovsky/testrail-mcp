@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-26"
+  },
+  "endpoint": {
+    "family_id": "T10",
+    "http_method": "GET",
+    "route": "get_case_types",
+    "tool": "testrail_get_case_types",
+    "driver_method": "metadata.getCaseTypes"
+  },
+  "sources": [
+    {
+      "id": "driver-module-metadata",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/metadata.ts",
+      "supports": "getVersion, getStatuses, getPriorities, getResultFields, getCaseFields and getCaseTypes each take no argument and issue one GET to their own endpoint with no path segment, query or body, parsing the reply with the matching schema. getDynamicFilterFields and getTemplates validate the project identifier with validateId and place it as the only path segment. None of them consults another endpoint first, so no call here triggers a version or capability request of its own."
+    },
+    {
+      "id": "driver-schema-metadata",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/metadata.ts",
+      "supports": "StatusSchema requires id, name, label, the three colour integers color_dark, color_medium and color_bright, and the booleans is_system, is_untested and is_final. PrioritySchema requires id, name, short_name, is_default and priority. CaseTypeSchema and TemplateSchema each require id, name and is_default and admit a nullish i18n_custom_id. DynamicFilterFieldSchema requires type_id, system_name and label and admits nullish options and sub_filters strings, its comment describing the two as mutually endpoint-dependent. TestRailVersionSchema requires a version string and its comment dates the endpoint to TestRail 10.6. Every object is passthrough, so unmodelled keys survive parsing."
+    },
+    {
+      "id": "testrail-case-types",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077295487252-Case-Types",
+      "supports": "get_case_types takes no parameter and returns an array of case types, each with a unique id and a name, where is_default is true for the default case type. The example lists Automated, Functionality and Other. The only documented response is 200."
+    },
+    {
+      "id": "testrail-cases",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077292642580-Cases",
+      "supports": "A test case carries type_id, the ID of its case type, priority_id, the ID of its priority, and template_id, the ID of its template."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "The endpoint takes nothing: TestRail documents no parameter for it and the driver sends none, so every field is refused."
+  },
+  "outer_result": {
+    "driver": "array",
+    "tool_data": "array",
+    "notes": "The array of case types is returned as the driver received it. Entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "no-arguments",
+      "kind": "mapping",
+      "description": "Call the driver with no arguments at all, and send no path segment, query or body."
+    }
+  ],
+  "baseline": "no-arguments",
+  "parameters": [],
+  "cases": [
+    {
+      "id": "no-arguments",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-arguments"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.getCaseTypes",
+          "arguments": []
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_case_types"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": [
+            {
+              "id": 1,
+              "name": "Automated",
+              "is_default": false
+            },
+            {
+              "id": 2,
+              "name": "Functionality",
+              "is_default": false
+            },
+            {
+              "id": 6,
+              "name": "Other",
+              "is_default": true
+            }
+          ]
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 1,
+              "name": "Automated",
+              "is_default": false
+            },
+            {
+              "id": 2,
+              "name": "Functionality",
+              "is_default": false
+            },
+            {
+              "id": 6,
+              "name": "Other",
+              "is_default": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "is_default": true
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

@@ -1,0 +1,234 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-26"
+  },
+  "endpoint": {
+    "family_id": "T10",
+    "http_method": "GET",
+    "route": "get_result_fields",
+    "tool": "testrail_get_result_fields",
+    "driver_method": "metadata.getResultFields"
+  },
+  "sources": [
+    {
+      "id": "driver-module-metadata",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/metadata.ts",
+      "supports": "getVersion, getStatuses, getPriorities, getResultFields, getCaseFields and getCaseTypes each take no argument and issue one GET to their own endpoint with no path segment, query or body, parsing the reply with the matching schema. getDynamicFilterFields and getTemplates validate the project identifier with validateId and place it as the only path segment. None of them consults another endpoint first, so no call here triggers a version or capability request of its own."
+    },
+    {
+      "id": "driver-schema-metadata",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/metadata.ts",
+      "supports": "CaseFieldSchema and ResultFieldSchema require id, system_name, label, name, type_id, display_order, configs, is_active, include_all and template_ids, and admit a nullish description, i18n_custom_id and is_system, the last as a boolean or 0 or 1 because older responses encode it as an integer; CaseFieldSchema also admits a nullish is_indexed. Each config carries a nullish string id, a context whose is_global is a boolean and whose project_ids admits an array of numbers, a string, null or absence, and options whose is_required is a boolean beside nullish default_value, items (a string or an array), format, rows and the step toggles has_expected, has_actual, has_additional and has_reference. The comments record why project_ids is that wide: TestRail sends null or an empty string for a global field, and the normalization that once rewrote those to an empty array was removed, so the parsed shape is the wire shape. Every object is passthrough, so unmodelled keys survive parsing."
+    },
+    {
+      "id": "testrail-result-fields",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077871398036-Result-Fields",
+      "supports": "get_result_fields takes no parameter and returns an array of result field definitions whose configs, context and options follow the case-field structure: a configuration applies to a project when its context is global or its project_ids include that project. The examples show project_ids as both null and an empty array for global configurations, and a Step Results field whose options carry has_expected and has_actual. The type table adds result-only types, among them 11 Step Results, 14 BDD Scenario Results and 16 Rating, the last available in TestRail 10.3 or later. The only documented response is 200."
+    },
+    {
+      "id": "testrail-release-10-6-1",
+      "url": "https://support.testrail.com/hc/en-us/articles/51202137678228-TestRail-10-6-1-Default-1001",
+      "supports": "The 10.6.1 release notes state that get_case_fields and get_result_fields previously returned only custom fields and now return system fields alongside them, each carrying an is_system boolean."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "The endpoint takes nothing: TestRail documents no parameter for it and the driver sends none, so every field is refused. A result field is scoped to projects inside its reply, not by an argument."
+  },
+  "outer_result": {
+    "driver": "array",
+    "tool_data": "array",
+    "notes": "The reply is returned as the driver received it, with each field's configs kept as the nested array it arrives as and options such as the step toggles preserved rather than flattened. Entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "no-arguments",
+      "kind": "mapping",
+      "description": "Call the driver with no arguments at all, and send no path segment, query or body."
+    }
+  ],
+  "baseline": "no-arguments",
+  "parameters": [],
+  "cases": [
+    {
+      "id": "no-arguments",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-arguments"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.getResultFields",
+          "arguments": []
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_result_fields"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": [
+            {
+              "id": 11,
+              "system_name": "custom_step_results",
+              "label": "Steps",
+              "name": "step_results",
+              "description": null,
+              "type_id": 11,
+              "display_order": 1,
+              "configs": [
+                {
+                  "id": "4be97c65ea2fd",
+                  "context": {
+                    "is_global": true,
+                    "project_ids": null
+                  },
+                  "options": {
+                    "is_required": false,
+                    "format": "markdown",
+                    "has_expected": true,
+                    "has_actual": true,
+                    "rows": "5"
+                  }
+                }
+              ],
+              "is_active": true,
+              "include_all": false,
+              "template_ids": [
+                2
+              ],
+              "i18n_custom_id": "fields_custom_step_results"
+            },
+            {
+              "id": 21,
+              "system_name": "custom_ai_traces",
+              "label": "Traces (URL)",
+              "name": "ai_traces",
+              "description": "Trace URL for AI evaluation",
+              "type_id": 4,
+              "display_order": 104,
+              "configs": [
+                {
+                  "id": "6e5d4c3b-7a8f-4e9d-8c6b-4a3e2d1c9b8f",
+                  "context": {
+                    "is_global": true,
+                    "project_ids": []
+                  },
+                  "options": {
+                    "is_required": false,
+                    "default_value": ""
+                  }
+                }
+              ],
+              "is_active": true,
+              "include_all": false,
+              "template_ids": [
+                5
+              ],
+              "i18n_custom_id": "fields_custom_ai_traces"
+            }
+          ]
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 11,
+              "system_name": "custom_step_results",
+              "label": "Steps",
+              "name": "step_results",
+              "description": null,
+              "type_id": 11,
+              "display_order": 1,
+              "configs": [
+                {
+                  "id": "4be97c65ea2fd",
+                  "context": {
+                    "is_global": true,
+                    "project_ids": null
+                  },
+                  "options": {
+                    "is_required": false,
+                    "format": "markdown",
+                    "has_expected": true,
+                    "has_actual": true,
+                    "rows": "5"
+                  }
+                }
+              ],
+              "is_active": true,
+              "include_all": false,
+              "template_ids": [
+                2
+              ],
+              "i18n_custom_id": "fields_custom_step_results"
+            },
+            {
+              "id": 21,
+              "system_name": "custom_ai_traces",
+              "label": "Traces (URL)",
+              "name": "ai_traces",
+              "description": "Trace URL for AI evaluation",
+              "type_id": 4,
+              "display_order": 104,
+              "configs": [
+                {
+                  "id": "6e5d4c3b-7a8f-4e9d-8c6b-4a3e2d1c9b8f",
+                  "context": {
+                    "is_global": true,
+                    "project_ids": []
+                  },
+                  "options": {
+                    "is_required": false,
+                    "default_value": ""
+                  }
+                }
+              ],
+              "is_active": true,
+              "include_all": false,
+              "template_ids": [
+                5
+              ],
+              "i18n_custom_id": "fields_custom_ai_traces"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "project_id": 5
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}
