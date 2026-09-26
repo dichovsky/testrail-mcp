@@ -1,0 +1,911 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-26"
+  },
+  "endpoint": {
+    "family_id": "T10",
+    "http_method": "GET",
+    "route": "get_case_statuses",
+    "tool": "testrail_get_case_statuses",
+    "driver_method": "metadata.getCaseStatuses"
+  },
+  "sources": [
+    {
+      "id": "driver-module-metadata",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/metadata.ts",
+      "supports": "CASE_STATUSES_PAGINATION is a response-driven paginated executor over the case_statuses collection, declared with requestControls false and an envelope response, and its prepare step selects the get_case_statuses operation with no path parameter and no query. getCaseStatusesPage takes no argument, getAllCaseStatuses takes only the aggregate options, and neither sends a limit or an offset of its own. getStatuses, by contrast, is a plain GET of get_statuses through no executor."
+    },
+    {
+      "id": "driver-schema-metadata",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/metadata.ts",
+      "supports": "CaseStatusSchema requires case_status_id, name, is_default and is_approved and admits a nullish abbreviation and is_untested. Its comments record that get_case_statuses returns case-level statuses such as draft and approved, distinct from the result statuses of get_statuses, keyed by case_status_id rather than id; that the built-in Approved and Draft statuses ship with abbreviation unset, which TestRail's example returns as null; and that TestRail never emits is_untested here, which is kept nullish only so an instance that does send it still parses."
+    },
+    {
+      "id": "driver-paginated-list",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/paginated-list.ts",
+      "supports": "The page step forwards only the limit and offset its caller passes, and getCaseStatusesPage passes none, so the page request carries neither. The aggregate of an executor declared without request controls copies only maxPages, maxItems, maxDurationMs and maxBytes from its options, so it sends no control of its own; a continuation carries the offset and limit from the envelope's next link. Both steps decode each reply with the shared decodePage."
+    },
+    {
+      "id": "driver-pagination",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
+      "supports": "The aggregate bounds maxItems, maxPages, maxBytes and maxDurationMs stop the walk and are never serialized upstream. decodePage turns a bare array into a legacy-array page carrying items and size, and an envelope into an envelope page carrying the envelope's offset, limit, size and _links. An envelope is read only when _links is an object; one without it, such as an envelope keyed links, is an invalid page."
+    },
+    {
+      "id": "testrail-shared-steps",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077919815572-Shared-Steps",
+      "supports": "The get_shared_step_history example reply keys its links object _links, and the field table beneath it labels the same object links and describes offset as where to start counting the step history from. The get_case_statuses field table on the Statuses page repeats that table, step-history wording included, so its links row is the same label for _links."
+    },
+    {
+      "id": "testrail-statuses",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077935129364-Statuses",
+      "supports": "get_case_statuses requires TestRail Enterprise 7.3 or later and returns the available test case statuses, each with case_status_id, name, abbreviation, is_default (true for the default status for test cases) and is_approved (true for an approved status). The reference contradicts itself on the reply: its example is a bare array of Approved and Draft, both with a null abbreviation, while its field table documents offset, limit, size, links and a case_statuses array. It documents no request parameter and only a 200 response. get_statuses, on the same page, lists the test statuses such as Passed and Failed, a different vocabulary."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "The endpoint takes nothing: TestRail documents no parameter for it, and the driver's prepare step sends no query at all. A caller asking to narrow or page it is refused rather than served a list that ignored the request."
+  },
+  "outer_result": {
+    "driver": "page",
+    "tool_data": "array",
+    "notes": "Page mode returns the server-selected page as the driver decoded it. The bare array of TestRail's example becomes a terminal page with no continuation, and an envelope whose links sit under _links, as TestRail's other list pages document them, keeps its offset, limit, size and links. The field table labels that object links, the label the Shared Steps table uses beside an example keyed _links, so it names _links rather than a second spelling; an envelope keyed links literally is refused as an invalid page, which the family suite pins. All mode returns the collected array, and an aggregate that stops at one of its bounds cannot be resumed from where it stopped. Entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-query",
+      "kind": "invalid",
+      "description": "Reject a query field the endpoint does not define rather than dropping it."
+    },
+    {
+      "id": "unknown-control",
+      "kind": "invalid",
+      "description": "Reject an unknown adapter control rather than ignoring it."
+    },
+    {
+      "id": "no-request-controls",
+      "kind": "mapping",
+      "description": "Send no limit, offset or page control of any kind: this endpoint documents none, so the server chooses each page."
+    },
+    {
+      "id": "page-control-refused",
+      "kind": "invalid",
+      "description": "Reject a page-mode limit or offset. TestRail's field table describes both as fields of the reply, but documents neither as a request parameter, and the page helper would never send one, so accepting it would look honoured while nothing reached TestRail."
+    },
+    {
+      "id": "aggregate-control-refused",
+      "kind": "invalid",
+      "description": "Reject an aggregate page size or start offset, which a response-driven list cannot honour because the server chooses each page."
+    },
+    {
+      "id": "bare-array",
+      "kind": "valid",
+      "description": "Read TestRail's own documented example, a bare array, as a terminal page rather than refusing it because the field table promises an envelope."
+    }
+  ],
+  "baseline": "defaults",
+  "parameters": [
+    {
+      "id": "_mcp.pagination",
+      "input_path": [
+        "_mcp",
+        "pagination"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain": {
+        "enum": [
+          "page",
+          "all"
+        ]
+      },
+      "semantics": "Selects the public page helper or the bounded all helper. Never passed to the driver.",
+      "driver": null,
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized upstream."
+      },
+      "sources": [
+        "driver-module-metadata"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Select the page helper for page and the all helper for all."
+        },
+        {
+          "id": "page",
+          "kind": "valid",
+          "description": "Accept an explicit page mode."
+        },
+        {
+          "id": "all",
+          "kind": "valid",
+          "description": "Accept all mode."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject an unknown mode before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Use page mode when omitted."
+        }
+      ]
+    },
+    {
+      "id": "_mcp.max_items",
+      "input_path": [
+        "_mcp",
+        "max_items"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_items",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "maxItems"
+        ]
+      },
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized; bounds the collection inside the driver."
+      },
+      "sources": [
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.max_pages",
+      "input_path": [
+        "_mcp",
+        "max_pages"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_pages",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "maxPages"
+        ]
+      },
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized; bounds the collection inside the driver."
+      },
+      "sources": [
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.max_bytes",
+      "input_path": [
+        "_mcp",
+        "max_bytes"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_bytes",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "maxBytes"
+        ]
+      },
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized; bounds the serialized item bytes inside the driver."
+      },
+      "sources": [
+        "driver-pagination"
+      ]
+    },
+    {
+      "id": "_mcp.max_duration_ms",
+      "input_path": [
+        "_mcp",
+        "max_duration_ms"
+      ],
+      "scope": "mcp",
+      "requiredness": "optional",
+      "domain_ref": "aggregate_max_duration_ms",
+      "baseline": "all-defaults",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "maxDurationMs"
+        ]
+      },
+      "wire": {
+        "location": "adapter_only",
+        "names": [],
+        "encoding": "Never serialized; bounds the aggregate's wall-clock time inside the driver."
+      },
+      "sources": [
+        "driver-pagination"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "defaults",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "_mcp.pagination",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-request-controls"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.getCaseStatusesPage",
+          "arguments": []
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_case_statuses"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 2,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "case_statuses": [
+              {
+                "case_status_id": 1,
+                "name": "Approved",
+                "abbreviation": null,
+                "is_default": false,
+                "is_approved": true
+              },
+              {
+                "case_status_id": 2,
+                "name": "Draft",
+                "abbreviation": null,
+                "is_default": true,
+                "is_approved": false
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [
+              {
+                "case_status_id": 1,
+                "name": "Approved",
+                "abbreviation": null,
+                "is_default": false,
+                "is_approved": true
+              },
+              {
+                "case_status_id": 2,
+                "name": "Draft",
+                "abbreviation": null,
+                "is_default": true,
+                "is_approved": false
+              }
+            ],
+            "offset": 0,
+            "limit": 250,
+            "size": 2,
+            "_links": {
+              "next": null,
+              "prev": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "explicit-page",
+      "input": {
+        "_mcp": {
+          "pagination": "page"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.pagination",
+          "requirements": [
+            "mapping",
+            "page"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.getCaseStatusesPage",
+          "arguments": []
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_case_statuses"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "case_statuses": [
+              {
+                "case_status_id": 2,
+                "name": "Draft",
+                "abbreviation": null,
+                "is_default": true,
+                "is_approved": false
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "envelope",
+            "items": [
+              {
+                "case_status_id": 2,
+                "name": "Draft",
+                "abbreviation": null,
+                "is_default": true,
+                "is_approved": false
+              }
+            ],
+            "offset": 0,
+            "limit": 250,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "documented-bare-array",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "bare-array"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.getCaseStatusesPage",
+          "arguments": []
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_case_statuses"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": [
+            {
+              "case_status_id": 1,
+              "name": "Approved",
+              "abbreviation": null,
+              "is_default": false,
+              "is_approved": true
+            },
+            {
+              "case_status_id": 2,
+              "name": "Draft",
+              "abbreviation": null,
+              "is_default": true,
+              "is_approved": false
+            }
+          ]
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "kind": "legacy-array",
+            "items": [
+              {
+                "case_status_id": 1,
+                "name": "Approved",
+                "abbreviation": null,
+                "is_default": false,
+                "is_approved": true
+              },
+              {
+                "case_status_id": 2,
+                "name": "Draft",
+                "abbreviation": null,
+                "is_default": true,
+                "is_approved": false
+              }
+            ],
+            "size": 2
+          }
+        }
+      }
+    },
+    {
+      "id": "all-defaults",
+      "input": {
+        "_mcp": {
+          "pagination": "all"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.pagination",
+          "requirements": [
+            "all"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_items",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_pages",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_bytes",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_duration_ms",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.getAllCaseStatuses",
+          "arguments": [
+            {
+              "maxItems": 1000,
+              "maxPages": 20,
+              "maxBytes": 1048576,
+              "maxDurationMs": 45000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_case_statuses"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 2,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "case_statuses": [
+              {
+                "case_status_id": 1,
+                "name": "Approved",
+                "abbreviation": null,
+                "is_default": false,
+                "is_approved": true
+              },
+              {
+                "case_status_id": 2,
+                "name": "Draft",
+                "abbreviation": null,
+                "is_default": true,
+                "is_approved": false
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "case_status_id": 1,
+              "name": "Approved",
+              "abbreviation": null,
+              "is_default": false,
+              "is_approved": true
+            },
+            {
+              "case_status_id": 2,
+              "name": "Draft",
+              "abbreviation": null,
+              "is_default": true,
+              "is_approved": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "all-bounds",
+      "input": {
+        "_mcp": {
+          "pagination": "all",
+          "max_items": 10,
+          "max_pages": 2,
+          "max_bytes": 1024,
+          "max_duration_ms": 5000
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.max_items",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_pages",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_bytes",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_duration_ms",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.getAllCaseStatuses",
+          "arguments": [
+            {
+              "maxItems": 10,
+              "maxPages": 2,
+              "maxBytes": 1024,
+              "maxDurationMs": 5000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_case_statuses"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "case_statuses": [
+              {
+                "case_status_id": 1,
+                "name": "Approved",
+                "abbreviation": null,
+                "is_default": false,
+                "is_approved": true
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "case_status_id": 1,
+              "name": "Approved",
+              "abbreviation": null,
+              "is_default": false,
+              "is_approved": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "all-ceilings",
+      "input": {
+        "_mcp": {
+          "pagination": "all",
+          "max_items": 1000,
+          "max_pages": 20,
+          "max_bytes": 1048576,
+          "max_duration_ms": 45000
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.max_items",
+          "requirements": [
+            "ceiling"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_pages",
+          "requirements": [
+            "ceiling"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_bytes",
+          "requirements": [
+            "ceiling"
+          ]
+        },
+        {
+          "parameter": "_mcp.max_duration_ms",
+          "requirements": [
+            "ceiling"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.getAllCaseStatuses",
+          "arguments": [
+            {
+              "maxItems": 1000,
+              "maxPages": 20,
+              "maxBytes": 1048576,
+              "maxDurationMs": 45000
+            }
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_case_statuses"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 0,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "case_statuses": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": []
+        }
+      }
+    },
+    {
+      "id": "pagination-unknown-mode",
+      "input": {
+        "_mcp": {
+          "pagination": "every"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "_mcp.pagination",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "page-limit-rejected",
+      "input": {
+        "query": {
+          "limit": 250
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "page-control-refused"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "page-offset-rejected",
+      "input": {
+        "query": {
+          "offset": 250
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "page-control-refused"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "aggregate-page-size-rejected",
+      "input": {
+        "_mcp": {
+          "pagination": "all",
+          "page_size": 10
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "aggregate-control-refused"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "aggregate-start-offset-rejected",
+      "input": {
+        "_mcp": {
+          "pagination": "all",
+          "start_offset": 0
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "aggregate-control-refused"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-control",
+      "input": {
+        "_mcp": {
+          "pagination": "all",
+          "max_results": 10
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-control"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-query",
+      "input": {
+        "query": {
+          "is_approved": true
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-query"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "is_approved": true
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

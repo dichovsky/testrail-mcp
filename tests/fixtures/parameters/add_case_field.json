@@ -1,0 +1,3886 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-26"
+  },
+  "endpoint": {
+    "family_id": "T10",
+    "http_method": "POST",
+    "route": "add_case_field",
+    "tool": "testrail_add_case_field",
+    "driver_method": "metadata.addCaseField"
+  },
+  "sources": [
+    {
+      "id": "driver-module-metadata",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/metadata.ts",
+      "supports": "addCaseField posts its payload unchanged as the JSON body of add_case_field, with no path parameter or query, and parses the reply with AddCaseFieldResponseSchema rather than CaseFieldSchema. No public method parses AddCaseFieldPayloadSchema, so every payload rule is enforced at the MCP boundary alone. Its comment records that TestRail validates that name is a valid system slug (lowercase, alphanumeric and underscore) and applies field-type-specific rules, and that the client deliberately does not enforce them so that TestRail's 400 surfaces with the upstream message."
+    },
+    {
+      "id": "driver-schema-metadata",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/metadata.ts",
+      "supports": "AddCaseFieldPayloadSchema requires type, name and label as strings and configs as an array of at least one AddCaseFieldConfigPayloadSchema, and declares description, include_all, is_indexed and template_ids as optional, template_ids as an array of any numbers. Each configuration requires a context with a boolean is_global and project_ids that is either an array of positive integers or the empty string, and options with a boolean is_required beside optional string default_value, items, format and rows. Every object is passthrough, so the driver itself would forward undeclared keys. AddCaseFieldResponseSchema records that the reply diverges from get_case_fields: configs is a JSON-encoded string rather than an array, is_active, include_all, is_multi and is_system are 0 or 1, and entity_id, location_id and status_id appear only here."
+    },
+    {
+      "id": "testrail-case-fields",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077281158164-Case-Fields",
+      "supports": "add_case_field takes type, name, label and configs as required fields and description, include_all and template_ids as optional ones. type accepts a type name or its number, and the number must be sent as a string or TestRail answers 400. name is given without a prefix; from TestRail 9.0 system_name takes the custom_case_ prefix for a case field. include_all true applies the field to every template, otherwise template_ids names them. Each configuration needs context and options; context is {is_global, project_ids}, with the examples using an empty array and an empty string for a global field and an ID list for specific projects. is_required is common to every type; default_value is allowed except on Multiselect, Milestone and Date; a dropdown takes items as \"1, First\\n2, Second\"; a text field takes format, plain or markdown, and rows, \"3\" to \"10\" or the empty string. The example reply carries configs as a JSON-encoded string and is_multi, is_active, is_system and include_all as 0 or 1. The documented responses are 200, 400 for a bad request, 404 for a bad parameter and, on TestRail Cloud only, 429. The page documents no further option, such as the has_expected toggle that TestRail's result-field example shows on a Step Results field."
+    },
+    {
+      "id": "testrail-indexing",
+      "url": "https://support.testrail.com/hc/en-us/articles/51275506274836-Indexing-Custom-Case-Fields",
+      "supports": "Indexing custom case fields is a TestRail Cloud feature, available for Checkbox, Date, Dropdown, Integer, Milestone and User fields, with at most five indexed fields per instance. Managing custom case fields requires administrator access. add_case_field accepts an is_indexed parameter to enable indexing when a field is created, subject to the same eligibility and limit rules, and get_case_fields reports is_indexed for each field."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "The driver forwards whatever it is given, so the payload's shape is the boundary's alone to hold. It adopts the driver's declared fields at every depth and closes each object, so a reply-only field such as system_name, an unknown context key, or a step option such as has_expected that neither TestRail's add_case_field reference nor the driver's payload schema declares (the driver models it on read replies only) is refused rather than forwarded with an effect nobody documents. template_ids is tightened to the identifier domain. Rules that depend on the field type or on instance state stay TestRail's: which types exist, which take a default, the slug format of name, the values of format and rows, index eligibility and the five-field limit. Those requests are forwarded, and a refusal is reported with TestRail's HTTP status: a 400 as UPSTREAM_ERROR, and the 404 TestRail documents for a bad parameter as NOT_FOUND. TestRail's own message text is not echoed."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the new field in a shape of its own: configs is a JSON-encoded string rather than the array get_case_fields returns, and its flags are 0 or 1 rather than booleans. The record is returned exactly as the driver received it, the string left unparsed, so a caller sees what TestRail sent. Entity-field drift is advisory. The replies in rules-left-to-testrail and more-rules-left-to-testrail are stand-ins rather than documented TestRail answers. Each request breaks rules the sources say TestRail enforces: a default on a Multiselect and a name that is not a slug in the first; in the second a type the add_case_field reference does not list, indexing on a type TestRail does not index, and format and rows values outside those it documents. A fixture can carry only a success body, so each stand-in echoes the request's own fields and adds only an identifier; the cases prove only that the requests reach the wire unchanged, and the refusal path is asserted in tests/families/t10.test.ts."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "unknown-body",
+      "kind": "invalid",
+      "description": "Reject an unknown body field, including one that only a reply carries, such as system_name."
+    },
+    {
+      "id": "no-custom-fields",
+      "kind": "invalid",
+      "description": "Reject a custom_* field in the body. TestRail's add_case_field reference and the driver's payload declare none, and a case field definition is not a record that carries custom values."
+    },
+    {
+      "id": "unknown-context",
+      "kind": "invalid",
+      "description": "Reject an unknown field of a configuration's context."
+    },
+    {
+      "id": "unknown-option",
+      "kind": "invalid",
+      "description": "Reject an option that neither TestRail's add_case_field reference nor the driver's payload declares, including the has_expected toggle that TestRail's result-field example shows on a Step Results field."
+    }
+  ],
+  "parameters": [
+    {
+      "id": "body",
+      "input_path": [
+        "body"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "object",
+        "required": [
+          "type",
+          "name",
+          "label",
+          "configs"
+        ]
+      },
+      "semantics": "No coercion. The JSON object is passed as the driver's only argument and sent unchanged as the request body.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "body"
+        ],
+        "encoding": "JSON object sent unchanged."
+      },
+      "sources": [
+        "driver-module-metadata",
+        "driver-schema-metadata"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the object at driver argument 0 as the JSON request body."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an object."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a body that is not an object before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing body."
+        }
+      ]
+    },
+    {
+      "id": "body.type",
+      "input_path": [
+        "body",
+        "type"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The field type, as a type name such as \"Dropdown\" or its number written as a string such as \"12\". TestRail answers 400 when the number is sent as a JSON number, and the driver's schema declares a string, so a bare number is refused here. Which names and numbers exist is TestRail's, and is not enumerated here.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "type"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "type"
+        ],
+        "encoding": "JSON string under type."
+      },
+      "sources": [
+        "driver-schema-metadata",
+        "testrail-case-fields"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a type name."
+        },
+        {
+          "id": "numeric-string",
+          "kind": "valid",
+          "description": "Accept a type number written as a string, which TestRail documents as an alternative to the name."
+        },
+        {
+          "id": "server-rule",
+          "kind": "valid",
+          "description": "Forward a type name the add_case_field reference does not list rather than refusing it: which types exist is TestRail's to say, and a copy here would refuse what a newer server accepts."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a type number sent as a JSON number, which TestRail refuses with a 400, before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a body without it."
+        }
+      ]
+    },
+    {
+      "id": "body.name",
+      "input_path": [
+        "body",
+        "name"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The field's name without a prefix, from which TestRail derives system_name. The driver's comment records that TestRail requires a lowercase alphanumeric and underscore slug; that rule is TestRail's and is not checked here.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "name"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "name"
+        ],
+        "encoding": "JSON string under name."
+      },
+      "sources": [
+        "driver-module-metadata",
+        "driver-schema-metadata",
+        "testrail-case-fields"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "server-rule",
+          "kind": "valid",
+          "description": "Forward a name that is not a slug rather than refusing it, since the rule is TestRail's and the driver deliberately leaves it there."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a body without it."
+        }
+      ]
+    },
+    {
+      "id": "body.label",
+      "input_path": [
+        "body",
+        "label"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The display label of the new field. No coercion.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "label"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "label"
+        ],
+        "encoding": "JSON string under label."
+      },
+      "sources": [
+        "driver-schema-metadata",
+        "testrail-case-fields"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a body without it."
+        }
+      ]
+    },
+    {
+      "id": "body.description",
+      "input_path": [
+        "body",
+        "description"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The field's description. TestRail documents a string and the driver declares no null, so null is refused rather than forwarded.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "description"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "description"
+        ],
+        "encoding": "JSON string under description."
+      },
+      "sources": [
+        "driver-schema-metadata",
+        "testrail-case-fields"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no description key when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.include_all",
+      "input_path": [
+        "body",
+        "include_all"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "Whether the field applies to every template. TestRail documents template_ids as the alternative when it is false; neither the driver nor this boundary checks that the two agree.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "include_all"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "include_all"
+        ],
+        "encoding": "JSON boolean under include_all."
+      },
+      "sources": [
+        "driver-schema-metadata",
+        "testrail-case-fields"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the flag under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept true and send it."
+        },
+        {
+          "id": "false-value",
+          "kind": "valid",
+          "description": "Accept false and send it, rather than dropping it as if it were absent."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a numeric stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no flag when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.is_indexed",
+      "input_path": [
+        "body",
+        "is_indexed"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "Whether TestRail indexes the field for faster filtering. TestRail documents it as a TestRail Cloud feature available for Checkbox, Date, Dropdown, Integer, Milestone and User fields, at most five per instance; eligibility and the limit are TestRail's to enforce and are not checked here.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "is_indexed"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "is_indexed"
+        ],
+        "encoding": "JSON boolean under is_indexed."
+      },
+      "sources": [
+        "driver-schema-metadata",
+        "testrail-indexing"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the flag under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept true and send it."
+        },
+        {
+          "id": "false-value",
+          "kind": "valid",
+          "description": "Accept false and send it, rather than dropping it as if it were absent."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a string stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "server-rule",
+          "kind": "valid",
+          "description": "Forward is_indexed on a type TestRail does not index rather than refusing it: eligibility, like the five-field limit, is TestRail's to enforce."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no flag when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.template_ids",
+      "input_path": [
+        "body",
+        "template_ids"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "semantics": "The templates the field applies to when include_all is false. The driver forwards any number, so the boundary holds every member to the identifier domain.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "template_ids"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "template_ids"
+        ],
+        "encoding": "JSON array of integers under template_ids."
+      },
+      "sources": [
+        "driver-schema-metadata",
+        "testrail-case-fields"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every member in order under template_ids."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a list of identifiers."
+        },
+        {
+          "id": "upper-bound",
+          "kind": "valid",
+          "description": "Accept the largest safe integer as a member."
+        },
+        {
+          "id": "empty",
+          "kind": "valid",
+          "description": "Accept an empty array and send it."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-positive member before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no list when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.configs",
+      "input_path": [
+        "body",
+        "configs"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "object"
+        }
+      },
+      "semantics": "The field's configurations, each pairing a context with options. TestRail marks it required and the driver's schema requires at least one entry.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "configs"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "configs"
+        ],
+        "encoding": "JSON array of objects under configs, sent as an array rather than the JSON-encoded string the reply carries."
+      },
+      "sources": [
+        "driver-schema-metadata",
+        "testrail-case-fields"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve every entry in order under configs."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a list of configurations."
+        },
+        {
+          "id": "multiple",
+          "kind": "valid",
+          "description": "Accept several configurations and send them all in order."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a value that is not an array before driver invocation."
+        },
+        {
+          "id": "empty",
+          "kind": "invalid",
+          "description": "Reject an empty array, which the driver's schema refuses with its minimum of one."
+        },
+        {
+          "id": "member",
+          "kind": "invalid",
+          "description": "Reject a configuration that is not an object before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a body without it."
+        }
+      ]
+    },
+    {
+      "id": "body.configs[].context",
+      "input_path": [
+        "body",
+        "configs",
+        "*",
+        "context"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "object",
+        "required": [
+          "is_global",
+          "project_ids"
+        ]
+      },
+      "semantics": "Where the configuration applies. TestRail requires the context and options keys in every configuration.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "configs",
+          "*",
+          "context"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "context"
+        ],
+        "encoding": "JSON object under context in each configuration."
+      },
+      "sources": [
+        "driver-schema-metadata",
+        "testrail-case-fields"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the object under context."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an object."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a context that is not an object before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a configuration without it."
+        }
+      ]
+    },
+    {
+      "id": "body.configs[].context.is_global",
+      "input_path": [
+        "body",
+        "configs",
+        "*",
+        "context",
+        "is_global"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "Whether the configuration applies to every project.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "configs",
+          "*",
+          "context",
+          "is_global"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "is_global"
+        ],
+        "encoding": "JSON boolean under is_global in each context."
+      },
+      "sources": [
+        "driver-schema-metadata",
+        "testrail-case-fields"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the flag under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a boolean, false included."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a numeric stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a context without it."
+        }
+      ]
+    },
+    {
+      "id": "body.configs[].context.project_ids",
+      "input_path": [
+        "body",
+        "configs",
+        "*",
+        "context",
+        "project_ids"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "anyOf": [
+          {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "const": ""
+          }
+        ]
+      },
+      "semantics": "The projects the configuration applies to, or an empty array or empty string for a global one; TestRail's examples use both. The driver's write schema admits exactly these two forms and holds every member to a positive integer. null, which a read reply can carry for a global configuration, is not one of them and is refused.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "configs",
+          "*",
+          "context",
+          "project_ids"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "project_ids"
+        ],
+        "encoding": "JSON array of integers, or the empty string, under project_ids in each context."
+      },
+      "sources": [
+        "driver-schema-metadata",
+        "testrail-case-fields"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name without rewriting one empty form into the other."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a list of project identifiers."
+        },
+        {
+          "id": "empty-array",
+          "kind": "valid",
+          "description": "Accept an empty array and send it."
+        },
+        {
+          "id": "empty-string",
+          "kind": "valid",
+          "description": "Accept the empty string and send it."
+        },
+        {
+          "id": "upper-bound",
+          "kind": "valid",
+          "description": "Accept the largest safe integer as a member."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject null, the form a read reply uses for a global configuration, before driver invocation."
+        },
+        {
+          "id": "invalid-member",
+          "kind": "invalid",
+          "description": "Reject a non-positive member before driver invocation."
+        },
+        {
+          "id": "joined-string",
+          "kind": "invalid",
+          "description": "Reject a comma-joined string of IDs; the only string the schema admits is the empty one."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a context without it."
+        }
+      ]
+    },
+    {
+      "id": "body.configs[].options",
+      "input_path": [
+        "body",
+        "configs",
+        "*",
+        "options"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "object",
+        "required": [
+          "is_required"
+        ]
+      },
+      "semantics": "The configuration's options. TestRail documents is_required for every type and further options per type; the options declared by neither TestRail's add_case_field reference nor the driver's payload are refused.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "configs",
+          "*",
+          "options"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "options"
+        ],
+        "encoding": "JSON object under options in each configuration."
+      },
+      "sources": [
+        "driver-schema-metadata",
+        "testrail-case-fields"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the object under options."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept an object."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject options that are not an object before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a configuration without it."
+        }
+      ]
+    },
+    {
+      "id": "body.configs[].options.is_required",
+      "input_path": [
+        "body",
+        "configs",
+        "*",
+        "options",
+        "is_required"
+      ],
+      "scope": "body",
+      "requiredness": "required",
+      "domain": {
+        "type": "boolean"
+      },
+      "semantics": "Whether the field must be filled in. TestRail documents it as common to every type.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "configs",
+          "*",
+          "options",
+          "is_required"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "is_required"
+        ],
+        "encoding": "JSON boolean under is_required in each options object."
+      },
+      "sources": [
+        "driver-schema-metadata",
+        "testrail-case-fields"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the flag under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a boolean, false included."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a string stand-in for the boolean before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject options without it."
+        }
+      ]
+    },
+    {
+      "id": "body.configs[].options.default_value",
+      "input_path": [
+        "body",
+        "configs",
+        "*",
+        "options",
+        "default_value"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The field's default. TestRail states that Multiselect, Milestone and Date fields do not allow it; that rule is TestRail's and is not checked here.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "configs",
+          "*",
+          "options",
+          "default_value"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "default_value"
+        ],
+        "encoding": "JSON string under default_value in each options object."
+      },
+      "sources": [
+        "driver-module-metadata",
+        "driver-schema-metadata",
+        "testrail-case-fields"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "empty",
+          "kind": "valid",
+          "description": "Accept the empty string and send it."
+        },
+        {
+          "id": "server-rule",
+          "kind": "valid",
+          "description": "Forward a default on a Multiselect field rather than refusing it: which types allow a default is TestRail's rule, not the driver's or this boundary's."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no default when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.configs[].options.items",
+      "input_path": [
+        "body",
+        "configs",
+        "*",
+        "options",
+        "items"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The choices of a dropdown or multiselect, as one newline-separated string of \"id, label\" pairs in TestRail's examples. A read reply can carry an array here, but the write takes a string.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "configs",
+          "*",
+          "options",
+          "items"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "items"
+        ],
+        "encoding": "JSON string under items in each options object; embedded newlines are sent as JSON escapes."
+      },
+      "sources": [
+        "driver-schema-metadata",
+        "testrail-case-fields"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the string under its own name, newlines included, rather than splitting it."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject an array of choices, which the write payload does not take, before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no items when the caller did not supply them."
+        }
+      ]
+    },
+    {
+      "id": "body.configs[].options.format",
+      "input_path": [
+        "body",
+        "configs",
+        "*",
+        "options",
+        "format"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The text format of a Text field, which TestRail documents as plain or markdown. The values are TestRail's to enforce and are not enumerated here.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "configs",
+          "*",
+          "options",
+          "format"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "format"
+        ],
+        "encoding": "JSON string under format in each options object."
+      },
+      "sources": [
+        "driver-schema-metadata",
+        "testrail-case-fields"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a non-string value before driver invocation."
+        },
+        {
+          "id": "server-rule",
+          "kind": "valid",
+          "description": "Forward a format other than plain or markdown rather than refusing it: the values are TestRail's to enforce."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no format when the caller did not supply one."
+        }
+      ]
+    },
+    {
+      "id": "body.configs[].options.rows",
+      "input_path": [
+        "body",
+        "configs",
+        "*",
+        "options",
+        "rows"
+      ],
+      "scope": "body",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string"
+      },
+      "semantics": "The initial height of a Text field, which TestRail documents as a string from \"3\" to \"10\" or the empty string. It is a string on the wire, so a number is refused; the range is TestRail's and is not checked here.",
+      "driver": {
+        "argument": 0,
+        "path": [
+          "configs",
+          "*",
+          "options",
+          "rows"
+        ]
+      },
+      "wire": {
+        "location": "json",
+        "names": [
+          "rows"
+        ],
+        "encoding": "JSON string under rows in each options object."
+      },
+      "sources": [
+        "driver-schema-metadata",
+        "testrail-case-fields"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Preserve the value under its own name."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a string."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a number, which TestRail documents as a string, before driver invocation."
+        },
+        {
+          "id": "server-rule",
+          "kind": "valid",
+          "description": "Forward a value outside \"3\" to \"10\" rather than refusing it: the range is TestRail's to enforce."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Send no rows when the caller did not supply them."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "dropdown-for-projects",
+      "input": {
+        "body": {
+          "type": "Dropdown",
+          "name": "browser",
+          "label": "Browser",
+          "description": "The browser under test",
+          "include_all": false,
+          "template_ids": [
+            1,
+            2
+          ],
+          "is_indexed": true,
+          "configs": [
+            {
+              "context": {
+                "is_global": false,
+                "project_ids": [
+                  5,
+                  10
+                ]
+              },
+              "options": {
+                "is_required": true,
+                "default_value": "1",
+                "items": "1, Chrome\n2, Firefox"
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.type",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.label",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.description",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.include_all",
+          "requirements": [
+            "mapping",
+            "false-value"
+          ]
+        },
+        {
+          "parameter": "body.is_indexed",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.template_ids",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.configs",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.configs[].context",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.configs[].context.is_global",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.configs[].context.project_ids",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.configs[].options",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.configs[].options.is_required",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.configs[].options.default_value",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.configs[].options.items",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.addCaseField",
+          "arguments": [
+            {
+              "type": "Dropdown",
+              "name": "browser",
+              "label": "Browser",
+              "description": "The browser under test",
+              "include_all": false,
+              "template_ids": [
+                1,
+                2
+              ],
+              "is_indexed": true,
+              "configs": [
+                {
+                  "context": {
+                    "is_global": false,
+                    "project_ids": [
+                      5,
+                      10
+                    ]
+                  },
+                  "options": {
+                    "is_required": true,
+                    "default_value": "1",
+                    "items": "1, Chrome\n2, Firefox"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_case_field",
+          "json": {
+            "type": "Dropdown",
+            "name": "browser",
+            "label": "Browser",
+            "description": "The browser under test",
+            "include_all": false,
+            "template_ids": [
+              1,
+              2
+            ],
+            "is_indexed": true,
+            "configs": [
+              {
+                "context": {
+                  "is_global": false,
+                  "project_ids": [
+                    5,
+                    10
+                  ]
+                },
+                "options": {
+                  "is_required": true,
+                  "default_value": "1",
+                  "items": "1, Chrome\n2, Firefox"
+                }
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 33,
+            "name": "browser",
+            "system_name": "custom_case_browser",
+            "entity_id": 1,
+            "label": "Browser",
+            "description": "The browser under test",
+            "type_id": 6,
+            "location_id": 2,
+            "display_order": 7,
+            "configs": "[{\"context\":{\"is_global\":false,\"project_ids\":[5,10]},\"options\":{\"is_required\":true,\"default_value\":\"1\",\"items\":\"1, Chrome\\n2, Firefox\"},\"id\":\"9f105ba2-1ed0-45e0-b459-18d890bad86e\"}]",
+            "is_multi": 0,
+            "is_active": 1,
+            "status_id": 1,
+            "is_system": 0,
+            "include_all": 0,
+            "template_ids": [
+              1,
+              2
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 33,
+            "name": "browser",
+            "system_name": "custom_case_browser",
+            "entity_id": 1,
+            "label": "Browser",
+            "description": "The browser under test",
+            "type_id": 6,
+            "location_id": 2,
+            "display_order": 7,
+            "configs": "[{\"context\":{\"is_global\":false,\"project_ids\":[5,10]},\"options\":{\"is_required\":true,\"default_value\":\"1\",\"items\":\"1, Chrome\\n2, Firefox\"},\"id\":\"9f105ba2-1ed0-45e0-b459-18d890bad86e\"}]",
+            "is_multi": 0,
+            "is_active": 1,
+            "status_id": 1,
+            "is_system": 0,
+            "include_all": 0,
+            "template_ids": [
+              1,
+              2
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "global-text",
+      "input": {
+        "body": {
+          "type": "Text",
+          "name": "notes",
+          "label": "Notes",
+          "include_all": true,
+          "is_indexed": false,
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": false,
+                "default_value": "",
+                "format": "markdown",
+                "rows": "5"
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.include_all",
+          "requirements": [
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.is_indexed",
+          "requirements": [
+            "false-value"
+          ]
+        },
+        {
+          "parameter": "body.description",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.template_ids",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.configs[].context.project_ids",
+          "requirements": [
+            "empty-string"
+          ]
+        },
+        {
+          "parameter": "body.configs[].options.default_value",
+          "requirements": [
+            "empty"
+          ]
+        },
+        {
+          "parameter": "body.configs[].options.format",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.configs[].options.rows",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.configs[].options.items",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.addCaseField",
+          "arguments": [
+            {
+              "type": "Text",
+              "name": "notes",
+              "label": "Notes",
+              "include_all": true,
+              "is_indexed": false,
+              "configs": [
+                {
+                  "context": {
+                    "is_global": true,
+                    "project_ids": ""
+                  },
+                  "options": {
+                    "is_required": false,
+                    "default_value": "",
+                    "format": "markdown",
+                    "rows": "5"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_case_field",
+          "json": {
+            "type": "Text",
+            "name": "notes",
+            "label": "Notes",
+            "include_all": true,
+            "is_indexed": false,
+            "configs": [
+              {
+                "context": {
+                  "is_global": true,
+                  "project_ids": ""
+                },
+                "options": {
+                  "is_required": false,
+                  "default_value": "",
+                  "format": "markdown",
+                  "rows": "5"
+                }
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 34,
+            "name": "notes",
+            "system_name": "custom_case_notes",
+            "entity_id": 1,
+            "label": "Notes",
+            "description": null,
+            "type_id": 3,
+            "location_id": 2,
+            "display_order": 7,
+            "configs": "[{\"context\":{\"is_global\":true,\"project_ids\":\"\"},\"options\":{\"is_required\":false,\"default_value\":\"\",\"format\":\"markdown\",\"rows\":\"5\"},\"id\":\"1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f\"}]",
+            "is_multi": 0,
+            "is_active": 1,
+            "status_id": 1,
+            "is_system": 0,
+            "include_all": 1,
+            "template_ids": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 34,
+            "name": "notes",
+            "system_name": "custom_case_notes",
+            "entity_id": 1,
+            "label": "Notes",
+            "description": null,
+            "type_id": 3,
+            "location_id": 2,
+            "display_order": 7,
+            "configs": "[{\"context\":{\"is_global\":true,\"project_ids\":\"\"},\"options\":{\"is_required\":false,\"default_value\":\"\",\"format\":\"markdown\",\"rows\":\"5\"},\"id\":\"1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f\"}]",
+            "is_multi": 0,
+            "is_active": 1,
+            "status_id": 1,
+            "is_system": 0,
+            "include_all": 1,
+            "template_ids": []
+          }
+        }
+      }
+    },
+    {
+      "id": "type-by-number",
+      "input": {
+        "body": {
+          "type": "12",
+          "name": "my_multiselect",
+          "label": "My Multiselect",
+          "description": "my custom Multiselect description",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": []
+              },
+              "options": {
+                "is_required": false,
+                "items": "1, One\n2, Two"
+              }
+            }
+          ],
+          "include_all": true
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.type",
+          "requirements": [
+            "numeric-string"
+          ]
+        },
+        {
+          "parameter": "body.configs[].context.project_ids",
+          "requirements": [
+            "empty-array"
+          ]
+        },
+        {
+          "parameter": "body.is_indexed",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.configs[].options.default_value",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.configs[].options.format",
+          "requirements": [
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body.configs[].options.rows",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.addCaseField",
+          "arguments": [
+            {
+              "type": "12",
+              "name": "my_multiselect",
+              "label": "My Multiselect",
+              "description": "my custom Multiselect description",
+              "configs": [
+                {
+                  "context": {
+                    "is_global": true,
+                    "project_ids": []
+                  },
+                  "options": {
+                    "is_required": false,
+                    "items": "1, One\n2, Two"
+                  }
+                }
+              ],
+              "include_all": true
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_case_field",
+          "json": {
+            "type": "12",
+            "name": "my_multiselect",
+            "label": "My Multiselect",
+            "description": "my custom Multiselect description",
+            "configs": [
+              {
+                "context": {
+                  "is_global": true,
+                  "project_ids": []
+                },
+                "options": {
+                  "is_required": false,
+                  "items": "1, One\n2, Two"
+                }
+              }
+            ],
+            "include_all": true
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 35,
+            "name": "my_multiselect",
+            "system_name": "custom_case_my_multiselect",
+            "entity_id": 1,
+            "label": "My Multiselect",
+            "description": "my custom Multiselect description",
+            "type_id": 12,
+            "location_id": 2,
+            "display_order": 7,
+            "configs": "[{\"context\":{\"is_global\":true,\"project_ids\":[]},\"options\":{\"is_required\":false,\"items\":\"1, One\\n2, Two\"},\"id\":\"9f105ba2-1ed0-45e0-b459-18d890bad86e\"}]",
+            "is_multi": 1,
+            "is_active": 1,
+            "status_id": 1,
+            "is_system": 0,
+            "include_all": 1,
+            "template_ids": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 35,
+            "name": "my_multiselect",
+            "system_name": "custom_case_my_multiselect",
+            "entity_id": 1,
+            "label": "My Multiselect",
+            "description": "my custom Multiselect description",
+            "type_id": 12,
+            "location_id": 2,
+            "display_order": 7,
+            "configs": "[{\"context\":{\"is_global\":true,\"project_ids\":[]},\"options\":{\"is_required\":false,\"items\":\"1, One\\n2, Two\"},\"id\":\"9f105ba2-1ed0-45e0-b459-18d890bad86e\"}]",
+            "is_multi": 1,
+            "is_active": 1,
+            "status_id": 1,
+            "is_system": 0,
+            "include_all": 1,
+            "template_ids": []
+          }
+        }
+      }
+    },
+    {
+      "id": "minimal",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.include_all",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.addCaseField",
+          "arguments": [
+            {
+              "type": "String",
+              "name": "build",
+              "label": "Build",
+              "configs": [
+                {
+                  "context": {
+                    "is_global": true,
+                    "project_ids": ""
+                  },
+                  "options": {
+                    "is_required": true
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_case_field",
+          "json": {
+            "type": "String",
+            "name": "build",
+            "label": "Build",
+            "configs": [
+              {
+                "context": {
+                  "is_global": true,
+                  "project_ids": ""
+                },
+                "options": {
+                  "is_required": true
+                }
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 40,
+            "name": "build",
+            "system_name": "custom_case_build",
+            "entity_id": 1,
+            "label": "Build",
+            "description": null,
+            "type_id": 1,
+            "location_id": 2,
+            "display_order": 7,
+            "configs": "[{\"context\":{\"is_global\":true,\"project_ids\":\"\"},\"options\":{\"is_required\":true},\"id\":\"0b7c1e52-3f6d-4c1a-9e2b-5d8f7a6c4b31\"}]",
+            "is_multi": 0,
+            "is_active": 1,
+            "status_id": 1,
+            "is_system": 0,
+            "include_all": 0,
+            "template_ids": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 40,
+            "name": "build",
+            "system_name": "custom_case_build",
+            "entity_id": 1,
+            "label": "Build",
+            "description": null,
+            "type_id": 1,
+            "location_id": 2,
+            "display_order": 7,
+            "configs": "[{\"context\":{\"is_global\":true,\"project_ids\":\"\"},\"options\":{\"is_required\":true},\"id\":\"0b7c1e52-3f6d-4c1a-9e2b-5d8f7a6c4b31\"}]",
+            "is_multi": 0,
+            "is_active": 1,
+            "status_id": 1,
+            "is_system": 0,
+            "include_all": 0,
+            "template_ids": []
+          }
+        }
+      }
+    },
+    {
+      "id": "two-configurations",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "environment",
+          "label": "Environment",
+          "include_all": false,
+          "template_ids": [],
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": false,
+                "default_value": "staging"
+              }
+            },
+            {
+              "context": {
+                "is_global": false,
+                "project_ids": [
+                  7
+                ]
+              },
+              "options": {
+                "is_required": true,
+                "default_value": "production"
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs",
+          "requirements": [
+            "multiple"
+          ]
+        },
+        {
+          "parameter": "body.template_ids",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.addCaseField",
+          "arguments": [
+            {
+              "type": "String",
+              "name": "environment",
+              "label": "Environment",
+              "include_all": false,
+              "template_ids": [],
+              "configs": [
+                {
+                  "context": {
+                    "is_global": true,
+                    "project_ids": ""
+                  },
+                  "options": {
+                    "is_required": false,
+                    "default_value": "staging"
+                  }
+                },
+                {
+                  "context": {
+                    "is_global": false,
+                    "project_ids": [
+                      7
+                    ]
+                  },
+                  "options": {
+                    "is_required": true,
+                    "default_value": "production"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_case_field",
+          "json": {
+            "type": "String",
+            "name": "environment",
+            "label": "Environment",
+            "include_all": false,
+            "template_ids": [],
+            "configs": [
+              {
+                "context": {
+                  "is_global": true,
+                  "project_ids": ""
+                },
+                "options": {
+                  "is_required": false,
+                  "default_value": "staging"
+                }
+              },
+              {
+                "context": {
+                  "is_global": false,
+                  "project_ids": [
+                    7
+                  ]
+                },
+                "options": {
+                  "is_required": true,
+                  "default_value": "production"
+                }
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 36,
+            "name": "environment",
+            "system_name": "custom_case_environment",
+            "entity_id": 1,
+            "label": "Environment",
+            "description": null,
+            "type_id": 1,
+            "location_id": 2,
+            "display_order": 7,
+            "configs": "[{\"context\":{\"is_global\":true,\"project_ids\":\"\"},\"options\":{\"is_required\":false,\"default_value\":\"staging\"},\"id\":\"a1\"},{\"context\":{\"is_global\":false,\"project_ids\":[7]},\"options\":{\"is_required\":true,\"default_value\":\"production\"},\"id\":\"a2\"}]",
+            "is_multi": 0,
+            "is_active": 1,
+            "status_id": 1,
+            "is_system": 0,
+            "include_all": 0,
+            "template_ids": []
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 36,
+            "name": "environment",
+            "system_name": "custom_case_environment",
+            "entity_id": 1,
+            "label": "Environment",
+            "description": null,
+            "type_id": 1,
+            "location_id": 2,
+            "display_order": 7,
+            "configs": "[{\"context\":{\"is_global\":true,\"project_ids\":\"\"},\"options\":{\"is_required\":false,\"default_value\":\"staging\"},\"id\":\"a1\"},{\"context\":{\"is_global\":false,\"project_ids\":[7]},\"options\":{\"is_required\":true,\"default_value\":\"production\"},\"id\":\"a2\"}]",
+            "is_multi": 0,
+            "is_active": 1,
+            "status_id": 1,
+            "is_system": 0,
+            "include_all": 0,
+            "template_ids": []
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-ids",
+      "input": {
+        "body": {
+          "type": "Integer",
+          "name": "priority_score",
+          "label": "Priority score",
+          "include_all": false,
+          "template_ids": [
+            9007199254740991
+          ],
+          "configs": [
+            {
+              "context": {
+                "is_global": false,
+                "project_ids": [
+                  9007199254740991
+                ]
+              },
+              "options": {
+                "is_required": false
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.template_ids",
+          "requirements": [
+            "upper-bound"
+          ]
+        },
+        {
+          "parameter": "body.configs[].context.project_ids",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.addCaseField",
+          "arguments": [
+            {
+              "type": "Integer",
+              "name": "priority_score",
+              "label": "Priority score",
+              "include_all": false,
+              "template_ids": [
+                9007199254740991
+              ],
+              "configs": [
+                {
+                  "context": {
+                    "is_global": false,
+                    "project_ids": [
+                      9007199254740991
+                    ]
+                  },
+                  "options": {
+                    "is_required": false
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_case_field",
+          "json": {
+            "type": "Integer",
+            "name": "priority_score",
+            "label": "Priority score",
+            "include_all": false,
+            "template_ids": [
+              9007199254740991
+            ],
+            "configs": [
+              {
+                "context": {
+                  "is_global": false,
+                  "project_ids": [
+                    9007199254740991
+                  ]
+                },
+                "options": {
+                  "is_required": false
+                }
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 37,
+            "name": "priority_score",
+            "system_name": "custom_case_priority_score",
+            "entity_id": 1,
+            "label": "Priority score",
+            "description": null,
+            "type_id": 2,
+            "location_id": 2,
+            "display_order": 7,
+            "configs": "[{\"context\":{\"is_global\":false,\"project_ids\":[9007199254740991]},\"options\":{\"is_required\":false},\"id\":\"b1\"}]",
+            "is_multi": 0,
+            "is_active": 1,
+            "status_id": 1,
+            "is_system": 0,
+            "include_all": 0,
+            "template_ids": [
+              9007199254740991
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 37,
+            "name": "priority_score",
+            "system_name": "custom_case_priority_score",
+            "entity_id": 1,
+            "label": "Priority score",
+            "description": null,
+            "type_id": 2,
+            "location_id": 2,
+            "display_order": 7,
+            "configs": "[{\"context\":{\"is_global\":false,\"project_ids\":[9007199254740991]},\"options\":{\"is_required\":false},\"id\":\"b1\"}]",
+            "is_multi": 0,
+            "is_active": 1,
+            "status_id": 1,
+            "is_system": 0,
+            "include_all": 0,
+            "template_ids": [
+              9007199254740991
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "rules-left-to-testrail",
+      "input": {
+        "body": {
+          "type": "Multiselect",
+          "name": "Target Platforms",
+          "label": "Target Platforms",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": false,
+                "default_value": "1",
+                "items": "1, iOS\n2, Android"
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "server-rule"
+          ]
+        },
+        {
+          "parameter": "body.configs[].options.default_value",
+          "requirements": [
+            "server-rule"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.addCaseField",
+          "arguments": [
+            {
+              "type": "Multiselect",
+              "name": "Target Platforms",
+              "label": "Target Platforms",
+              "configs": [
+                {
+                  "context": {
+                    "is_global": true,
+                    "project_ids": ""
+                  },
+                  "options": {
+                    "is_required": false,
+                    "default_value": "1",
+                    "items": "1, iOS\n2, Android"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_case_field",
+          "json": {
+            "type": "Multiselect",
+            "name": "Target Platforms",
+            "label": "Target Platforms",
+            "configs": [
+              {
+                "context": {
+                  "is_global": true,
+                  "project_ids": ""
+                },
+                "options": {
+                  "is_required": false,
+                  "default_value": "1",
+                  "items": "1, iOS\n2, Android"
+                }
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 38,
+            "name": "Target Platforms",
+            "label": "Target Platforms"
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 38,
+            "name": "Target Platforms",
+            "label": "Target Platforms"
+          }
+        }
+      }
+    },
+    {
+      "id": "more-rules-left-to-testrail",
+      "input": {
+        "body": {
+          "type": "Rating",
+          "name": "quality",
+          "label": "Quality",
+          "is_indexed": true,
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": false,
+                "format": "html",
+                "rows": "20"
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.type",
+          "requirements": [
+            "server-rule"
+          ]
+        },
+        {
+          "parameter": "body.is_indexed",
+          "requirements": [
+            "server-rule"
+          ]
+        },
+        {
+          "parameter": "body.configs[].options.format",
+          "requirements": [
+            "server-rule"
+          ]
+        },
+        {
+          "parameter": "body.configs[].options.rows",
+          "requirements": [
+            "server-rule"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "metadata.addCaseField",
+          "arguments": [
+            {
+              "type": "Rating",
+              "name": "quality",
+              "label": "Quality",
+              "is_indexed": true,
+              "configs": [
+                {
+                  "context": {
+                    "is_global": true,
+                    "project_ids": ""
+                  },
+                  "options": {
+                    "is_required": false,
+                    "format": "html",
+                    "rows": "20"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_case_field",
+          "json": {
+            "type": "Rating",
+            "name": "quality",
+            "label": "Quality",
+            "is_indexed": true,
+            "configs": [
+              {
+                "context": {
+                  "is_global": true,
+                  "project_ids": ""
+                },
+                "options": {
+                  "is_required": false,
+                  "format": "html",
+                  "rows": "20"
+                }
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 39,
+            "name": "quality",
+            "label": "Quality"
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 39,
+            "name": "quality",
+            "label": "Quality"
+          }
+        }
+      }
+    },
+    {
+      "id": "body-missing",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "body-not-object",
+      "input": {
+        "body": "Dropdown"
+      },
+      "covers": [
+        {
+          "parameter": "body",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "type-missing",
+      "input": {
+        "body": {
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.type",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "type-as-number",
+      "input": {
+        "body": {
+          "type": 12,
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.type",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "name-missing",
+      "input": {
+        "body": {
+          "type": "String",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "name-not-string",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": 5,
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.name",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "label-missing",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.label",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "label-not-string",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": [
+            "Build"
+          ],
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.label",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "description-null",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ],
+          "description": null
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.description",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "include-all-number",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ],
+          "include_all": 1
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.include_all",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "is-indexed-string",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ],
+          "is_indexed": "true"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.is_indexed",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "template-id-zero",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ],
+          "template_ids": [
+            0
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.template_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "template-id-negative",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ],
+          "template_ids": [
+            -3
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.template_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "template-id-fractional",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ],
+          "template_ids": [
+            1.5
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.template_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "template-id-string",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ],
+          "template_ids": [
+            "1"
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.template_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "template-id-above-safe",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ],
+          "template_ids": [
+            9007199254740992
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.template_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "configs-missing",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "configs-empty",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": []
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs",
+          "requirements": [
+            "empty"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "configs-not-array",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": {
+            "context": {
+              "is_global": true,
+              "project_ids": ""
+            },
+            "options": {
+              "is_required": true
+            }
+          }
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "config-not-object",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            "global"
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs",
+          "requirements": [
+            "member"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "context-missing",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].context",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "context-not-object",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": "global",
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].context",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "is-global-missing",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].context.is_global",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "is-global-number",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": 1,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].context.is_global",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "project-ids-missing",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].context.project_ids",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "project-ids-null",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": null
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].context.project_ids",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "project-id-zero",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": false,
+                "project_ids": [
+                  0
+                ]
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].context.project_ids",
+          "requirements": [
+            "invalid-member"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "project-id-negative",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": false,
+                "project_ids": [
+                  -3
+                ]
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].context.project_ids",
+          "requirements": [
+            "invalid-member"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "project-id-fractional",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": false,
+                "project_ids": [
+                  1.5
+                ]
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].context.project_ids",
+          "requirements": [
+            "invalid-member"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "project-id-string",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": false,
+                "project_ids": [
+                  "5"
+                ]
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].context.project_ids",
+          "requirements": [
+            "invalid-member"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "project-id-above-safe",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": false,
+                "project_ids": [
+                  9007199254740992
+                ]
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].context.project_ids",
+          "requirements": [
+            "invalid-member"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "project-ids-joined",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": false,
+                "project_ids": "5,10"
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].context.project_ids",
+          "requirements": [
+            "joined-string"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "options-missing",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].options",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "options-not-object",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": []
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].options",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "is-required-missing",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "default_value": "x"
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].options.is_required",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "is-required-string",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": "false"
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].options.is_required",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "default-value-number",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true,
+                "default_value": 1
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].options.default_value",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "items-array",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true,
+                "items": [
+                  "1, One",
+                  "2, Two"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].options.items",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "format-number",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true,
+                "format": 1
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].options.format",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "rows-number",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true,
+                "rows": 5
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.configs[].options.rows",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "reply-field-in-body",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ],
+          "system_name": "custom_case_build"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-body"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "custom-field-in-body",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ],
+          "custom_case_build": "nightly"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-custom-fields"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-context-field",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": false,
+                "project_ids": [
+                  5
+                ],
+                "project_id": 5
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-context"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "step-toggle-option",
+      "input": {
+        "body": {
+          "type": "Steps",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": false,
+                "has_expected": true
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-option"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ]
+        },
+        "project_id": 5
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

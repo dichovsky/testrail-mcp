@@ -44,7 +44,7 @@
   "outer_result": {
     "driver": "array",
     "tool_data": "array",
-    "notes": "TestRail documents a bare array here while every sibling list documents an envelope. The driver accepts the bare array, the users wrapper and a null collection, and resolves to an array in all three cases, so a caller sees one shape whichever the server sends."
+    "notes": "TestRail documents a bare array here while every sibling list in the Users family documents an envelope. The driver accepts the bare array, the users wrapper and a null collection, and resolves to an array in all three cases, so a caller sees one shape whichever the server sends."
   },
   "requirements": [
     {
