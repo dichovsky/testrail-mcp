@@ -897,6 +897,11 @@
           "description": "Reject a numeric mode, which the payload declares as a string."
         },
         {
+          "id": "filter-value",
+          "kind": "invalid",
+          "description": "Reject a filters value that is not an object, under any key, __proto__ included, before driver invocation."
+        },
+        {
           "id": "omitted",
           "kind": "omitted",
           "description": "Send no filter when the caller did not supply one."
@@ -4596,6 +4601,68 @@
           "parameter": "$input",
           "requirements": [
             "unknown-run"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "entry-filter-value-not-object",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "dynamic_filters": {
+                "mode": "and",
+                "filters": {
+                  "cases:priority_id": 5
+                }
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].dynamic_filters",
+          "requirements": [
+            "filter-value"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "entry-filter-value-under-proto",
+      "input": {
+        "project_id": 1,
+        "body": {
+          "name": "Release 1.0",
+          "entries": [
+            {
+              "dynamic_filters": {
+                "mode": "and",
+                "filters": {
+                  "__proto__": 5
+                }
+              }
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.entries[].dynamic_filters",
+          "requirements": [
+            "filter-value"
           ]
         }
       ],

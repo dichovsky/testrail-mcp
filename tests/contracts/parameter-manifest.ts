@@ -275,7 +275,11 @@ export async function loadParameterManifests(): Promise<ParameterManifest[]> {
   const library = await loadDomainLibrary();
   return Promise.all(names.map(async (name) => {
     const raw: unknown = JSON.parse(await readFile(new URL(name, directory), 'utf8'));
-    return resolveDomains(ParameterManifestSchema.parse(raw), library);
+    const manifest = ParameterManifestSchema.parse(raw);
+    // Zod's record parser drops an own __proto__ key from its clone, so a case naming one
+    // would run without it. The case schema is strict throughout, so the validated raw
+    // cases differ from the clone in nothing else, and they are what the fixtures promise.
+    return resolveDomains({ ...manifest, cases: (raw as ParameterManifest).cases }, library);
   }));
 }
 

@@ -117,7 +117,7 @@
       "requirements": [
         { "id": "mapping", "kind": "mapping", "description": "Preserve every key and value under variables, without renaming a key or reshaping the map into the array the reads return." },
         { "id": "valid", "kind": "valid", "description": "Accept a map of variable names to string values." },
-        { "id": "invalid", "kind": "invalid", "description": "Reject a non-string value before driver invocation. It is the only one of TestRail's three stated rules about this map that is expressible here: that the variable name already exists in the project, and that a value is within its length limit, are both instance state this boundary cannot know, so those refusals arrive from TestRail." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a non-string value under any key, __proto__ included, before driver invocation. It is the only one of TestRail's three stated rules about this map that is expressible here: that the variable name already exists in the project, and that a value is within its length limit, are both instance state this boundary cannot know, so those refusals arrive from TestRail." },
         { "id": "empty", "kind": "valid", "description": "Accept an empty map and send it, which asks TestRail for a dataset with no values." },
         { "id": "omitted", "kind": "omitted", "description": "Send no variables key when the caller did not supply one." }
       ]
@@ -244,6 +244,12 @@
       "id": "unknown-top-level",
       "input": { "project_id": 7, "body": { "name": "MyDataSet" }, "variables": { "vara": "test" } },
       "covers": [{ "parameter": "$input", "requirements": ["unknown-top-level"] }],
+      "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
+    },
+    {
+      "id": "variable-value-not-string-under-proto",
+      "input": { "project_id": 7, "body": { "name": "MyDataSet", "variables": { "__proto__": 12345 } } },
+      "covers": [{ "parameter": "body.variables", "requirements": ["invalid"] }],
       "expect": { "kind": "rejected", "code": "INVALID_ARGUMENT" }
     }
   ]
