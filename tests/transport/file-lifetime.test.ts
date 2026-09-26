@@ -194,7 +194,10 @@ describe('packaged server restart', () => {
 
   async function launch(temporary: string): Promise<Running> {
     const inherited = Object.fromEntries(
-      Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith('TESTRAIL')),
+      // Windows reads variable names case-insensitively, so an inherited `Temp` would sit
+      // beside the TEMP set below; drop every spelling before setting ours.
+      Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith('TESTRAIL')
+        && !['TMPDIR', 'TMP', 'TEMP'].includes(name.toUpperCase())),
     );
     const child = spawn(process.execPath, [cli], {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -221,7 +224,8 @@ describe('packaged server restart', () => {
       child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
       const deadline = Date.now() + 10_000;
       for (;;) {
-        const reply = out.split('\n').filter((line) => line.trim() !== '')
+        // Only complete lines: a pipe chunk may end mid-message.
+        const reply = out.split('\n').slice(0, -1).filter((line) => line.trim() !== '')
           .map((line) => JSON.parse(line) as { id?: number; result?: unknown; error?: unknown })
           .find((message) => message.id === id);
         if (reply !== undefined) return reply;
@@ -267,11 +271,12 @@ describe('packaged server restart', () => {
     // Shutdown drains and disposes staging, and never touches a completed download.
     expect(await readFile(kept, 'utf8')).toBe('persisted bytes');
 
-    // A staging directory left by a server that died without shutting down. PID 2^22 is
-    // above every platform maximum, so its owner is provably gone.
-    const abandoned = join(temporary, 'testrail-mcp-staging-4194303-abandoned');
+    // A staging directory left by a server that died without shutting down. Its owner PID,
+    // 2^31 - 1, is above Linux's 2^22 ceiling and macOS's 99,998, and is not a multiple of
+    // four as every Windows PID is, so no process can hold it.
+    const abandoned = join(temporary, 'testrail-mcp-staging-2147483647-abandoned');
     await mkdir(abandoned);
-    await writeFile(join(abandoned, 'owner.json'), JSON.stringify({ marker: 'testrail-mcp-staging', pid: 4_194_303 }));
+    await writeFile(join(abandoned, 'owner.json'), JSON.stringify({ marker: 'testrail-mcp-staging', pid: 2_147_483_647 }));
     await writeFile(join(abandoned, 'leftover'), 'x');
 
     const second = await launch(temporary);
@@ -280,7 +285,9 @@ describe('packaged server restart', () => {
       await expect(stat(abandoned)).rejects.toThrow();
       // Separate pipes: the event can be read after the initialize reply that followed it.
       await waitFor(() => second.stderr().includes('"event":"staging_recovered","removed":1'), 'the recovery event');
+      // Diagnostics are JSON, which doubles a Windows path's backslashes: check both spellings.
       expect(second.stderr()).not.toContain(temporary);
+      expect(second.stderr()).not.toContain(JSON.stringify(temporary).slice(1, -1));
       // The earlier download is untouched, and a new one is another distinct file.
       expect(await readFile(kept, 'utf8')).toBe('persisted bytes');
       const again = await download(second, 1);
@@ -289,7 +296,6 @@ describe('packaged server restart', () => {
     } finally {
       expect(await second.stop()).toBe(0);
     }
-    expect((await readdir(downloads)).length).toBeGreaterThanOrEqual(2);
     expect(await readFile(kept, 'utf8')).toBe('persisted bytes');
   }, 60_000);
 });

@@ -59,6 +59,11 @@ function heldUpstream(body: unknown) {
   };
 }
 
+/** Only for asserting that something has *not* happened. */
+async function settle(ms = 30): Promise<void> {
+  await new Promise((resolve) => { setTimeout(resolve, ms); });
+}
+
 async function waitFor(condition: () => boolean, label: string, timeoutMs = 5_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!condition()) {
@@ -160,7 +165,9 @@ describe.each([
       // A read carries no write outcome.
       expect(errorOf(handled).write_outcome).toBeUndefined();
 
-      // The driver cannot abort the request, so its slot is still owned.
+      // The driver cannot abort the request, so its slot is still owned. The pause lets an
+      // early release happen first, so the assertion cannot pass on timing alone.
+      await settle();
       expect(session.runtime.stats().active).toBe(1);
 
       upstream.releaseAll();
@@ -201,6 +208,7 @@ describe.each([
       const handled = await lastHandlerResult();
       // The request was sent and never answered, so the write may already be applied.
       expect(errorOf(handled)).toMatchObject({ code: 'CANCELLED', write_outcome: 'unknown' });
+      await settle();
       expect(session.runtime.stats().active).toBe(1);
 
       upstream.releaseAll();
