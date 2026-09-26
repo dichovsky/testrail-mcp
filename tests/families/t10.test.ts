@@ -162,10 +162,12 @@ describe('T10 the two status vocabularies and the two field lists', () => {
 
 /*
  * TestRail's reference documents get_case_statuses twice over: its example is a bare
- * array and its field table an envelope. A caller must get the statuses from either, and
- * must not be told there is more to fetch when the bare array is all there is.
+ * array and its field table an envelope. The driver reads the bare array and an envelope
+ * under _links; the field table spells the key links, and that envelope is refused. A
+ * caller must get the statuses from each shape the driver reads, and must not be told
+ * there is more to fetch when the bare array is all there is.
  */
-describe('T10 case statuses in either documented shape', () => {
+describe('T10 case statuses in the shapes the driver reads', () => {
   it('reads the documented bare array as the whole list', async () => {
     const fetch = replying([APPROVED, DRAFT]);
     const runtime = runtimeFor(fetch);

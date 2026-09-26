@@ -58,6 +58,11 @@
       "description": "Reject an unknown body field, including one that only a reply carries, such as system_name."
     },
     {
+      "id": "no-custom-fields",
+      "kind": "invalid",
+      "description": "Reject a custom_* field in the body. TestRail's add_case_field reference and the driver's payload declare none, and a case field definition is not a record that carries custom values."
+    },
+    {
       "id": "unknown-context",
       "kind": "invalid",
       "description": "Reject an unknown field of a configuration's context."
@@ -3733,6 +3738,40 @@
           "parameter": "$input",
           "requirements": [
             "unknown-body"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "custom-field-in-body",
+      "input": {
+        "body": {
+          "type": "String",
+          "name": "build",
+          "label": "Build",
+          "configs": [
+            {
+              "context": {
+                "is_global": true,
+                "project_ids": ""
+              },
+              "options": {
+                "is_required": true
+              }
+            }
+          ],
+          "custom_case_build": "nightly"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-custom-fields"
           ]
         }
       ],

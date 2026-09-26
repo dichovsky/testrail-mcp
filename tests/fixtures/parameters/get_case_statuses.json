@@ -33,7 +33,7 @@
     {
       "id": "driver-pagination",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
-      "supports": "The aggregate bounds maxItems, maxPages, maxBytes and maxDurationMs stop the walk and are never serialized upstream. decodePage turns a bare array into a legacy-array page carrying items and size, and an envelope into an envelope page carrying the envelope's offset, limit, size and links. An envelope is read only when its links sit under _links as an object; one without is an invalid page."
+      "supports": "The aggregate bounds maxItems, maxPages, maxBytes and maxDurationMs stop the walk and are never serialized upstream. decodePage turns a bare array into a legacy-array page carrying items and size, and an envelope into an envelope page carrying the envelope's offset, limit, size and _links. An envelope is read only when _links is an object; one without it, such as an envelope keyed links, is an invalid page."
     },
     {
       "id": "testrail-statuses",

@@ -8,7 +8,7 @@ The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d
 | --- | ---: | ---: | --- |
 | `add_bdd` | 4 | 10 | Complete input manifest |
 | `add_case` | 12 | 16 | Complete input manifest |
-| `add_case_field` | 18 | 52 | Complete input manifest |
+| `add_case_field` | 18 | 53 | Complete input manifest |
 | `add_cases` | 12 | 18 | Complete input manifest |
 | `add_config` | 3 | 8 | Complete input manifest |
 | `add_config_group` | 3 | 8 | Complete input manifest |
