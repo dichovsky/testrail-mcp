@@ -1,6 +1,6 @@
 # Defining endpoint operations
 
-F04 provides registration, input validation, schema generation and independent parity checks. Endpoint families T01–T12 populate the production catalog; F08 connects it to MCP. The foundation catalog has no endpoint implementations and is not exposed by the development CLI.
+F04 provides registration, input validation, schema generation and independent parity checks. Endpoint families T01–T12 populate the production catalog, which now holds all 133 inventory endpoints; F08 serves it over MCP, and the CLI lists exactly these tools.
 
 ## Define one entry per endpoint
 
@@ -36,4 +36,4 @@ Maintain the [parameter manifests](parameter-manifest.md) separately from regist
 
 The registered-parameter test gate requires a complete independent manifest and matching argument targets for every production registration. Whole-body mappings carry reviewed nested fields; renamed filters require explicit mappings. Adapter-only call selectors have no upstream argument target. An accepted fixture counts toward single/page/all coverage only when its expected driver binding matches the selected call. A test-only attachment binding demonstrates all independent accepted/rejected fixtures passing through both schema validators and the real driver; it does not implement the F07 persistent-file tool.
 
-After adding an entry to `src/operations/catalog.ts`, run `npm run registry:generate` and review the generated [operation reference](operation-reference.md). `npm run registry:check` runs after build in CI: missing family implementations are reported as pending, while extra tools, identity/binding differences and stale reference output fail. `npm run registry:complete` additionally fails on every missing endpoint, naming its route, tool and driver method; R01 enables this full-catalog gate once all families are implemented. Pending endpoint and parameter counts must never be presented as completed coverage.
+After adding an entry to `src/operations/catalog.ts`, run `npm run registry:generate` and review the generated [operation reference](operation-reference.md). `npm run registry:check` runs after build in CI and fails on every missing endpoint, naming its route, tool and driver method, as well as on extra tools, identity or binding differences and stale reference output. R01 switched it to this full-catalog mode once all families were registered. `tests/regression-gates.test.ts` repeats the missing, extra and binding checks inside the test suite, so an endpoint dropped from the catalog fails there even if the reference is regenerated to match; only `registry:check` compares the reference itself. Pending endpoint and parameter counts must never be presented as completed coverage.
