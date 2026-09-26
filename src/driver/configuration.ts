@@ -7,6 +7,10 @@ import {
 import { ConfigurationError, DriverSettingsError, type ConfigurationKey } from '../config/errors.js';
 import type { Configuration } from '../config/environment.js';
 
+/** The driver's per-request header and body timeouts. An aggregate clips each to its remaining budget. */
+export const REQUEST_TIMEOUT_MS = 15_000;
+export const BODY_TIMEOUT_MS = 15_000;
+
 export function driverOptions(configuration: Configuration): TestRailConfig {
   return {
     baseUrl: configuration.baseUrl,
@@ -16,8 +20,8 @@ export function driverOptions(configuration: Configuration): TestRailConfig {
     allowInsecure: configuration.allowInsecure,
     registerProcessHandlers: false,
     enableCache: false,
-    timeout: 15_000,
-    bodyTimeout: 15_000,
+    timeout: REQUEST_TIMEOUT_MS,
+    bodyTimeout: BODY_TIMEOUT_MS,
     maxRetries: 3,
     rateLimiter: { maxRequests: 100, windowMs: 60_000 },
     maxJsonResponseBytes: configuration.limits.max_json_response_bytes,

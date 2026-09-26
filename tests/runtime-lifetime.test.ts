@@ -1,9 +1,10 @@
 import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { TestRailClient } from '@dichovsky/testrail-api-client';
+import { TestRailApiError, TestRailClient } from '@dichovsky/testrail-api-client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../src/config/environment.js';
+import { classifyError } from '../src/contracts/errors.js';
 import type { ToolResult } from '../src/contracts/results.js';
 import { createStagingArea } from '../src/files/staging.js';
 import { operationRegistry } from '../src/operations/catalog.js';
@@ -208,34 +209,97 @@ describe('capacity after the driver aggregate deadline', () => {
       await runtime.shutdown();
     }
   });
+});
 
-  /*
-   * The driver bounds the request inside an aggregate with a timer set to the remaining
-   * budget. That timer can fire a moment before the wall clock reaches the deadline, and
-   * the aggregate then rethrows the request's own 408 instead of its duration stop. It
-   * did in 4 of 200 local runs. Freezing the clock makes that ordering certain: the timer still
-   * fires, and the clock never reaches the deadline.
-   */
-  it('reports the aggregate deadline as the same bound when the driver raises it on the request', async () => {
-    const upstream = gate(() => json(EMPTY_PROJECTS));
-    const runtime = createRuntime({
-      client: driver({ fetch: upstream.hold }),
-      limits: configuration.limits, delay: manualDelay().delay,
-    });
-    const now = Date.now();
-    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+/*
+ * The driver bounds each request inside an aggregate with timers set to the budget that
+ * remains: the request's abort timer, a race against the deadline, and the body read.
+ * Any of them can fire a moment before the wall clock reaches the deadline, and the
+ * aggregate then rethrows that timer's own error instead of its duration stop. In local
+ * loops that happened in a few percent of runs. Freezing the clock makes the ordering
+ * certain: the timers still fire, and the clock never reaches the deadline.
+ */
+describe('the aggregate deadline, however the driver raises it', () => {
+  async function frozen(fetch: typeof globalThis.fetch) {
+    const runtime = createRuntime({ client: driver({ fetch }), limits: configuration.limits, delay: manualDelay().delay });
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now());
     try {
-      const result = await call(runtime, getProjects, allProjects);
+      return { result: await call(runtime, getProjects, allProjects), runtime };
+    } finally {
       clock.mockRestore();
+    }
+  }
+
+  it('on a request that ignores its abort signal', async () => {
+    const upstream = gate(() => json(EMPTY_PROJECTS));
+    const { result, runtime } = await frozen(upstream.hold);
+    try {
       // No response arrived, so nothing may claim TestRail answered 408.
       expect(error(result)).toMatchObject(DURATION_STOP);
       expect(error(result)).not.toHaveProperty('http_status');
-      expect(runtime.stats().active).toBe(1);
     } finally {
-      clock.mockRestore();
       upstream.releaseAll();
       await runtime.shutdown();
     }
+  });
+
+  it('on a request that honours its abort signal', async () => {
+    // As a real fetch does: the request's own timer aborts it.
+    const fetch = ((_url: unknown, init?: { signal?: AbortSignal }) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => { reject(new DOMException('aborted', 'AbortError')); }, { once: true });
+    })) as typeof globalThis.fetch;
+    const { result, runtime } = await frozen(fetch);
+    try {
+      expect(error(result)).toMatchObject(DURATION_STOP);
+      expect(error(result)).not.toHaveProperty('http_status');
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it('on a response body still being read', async () => {
+    const body = heldBody(EMPTY_PROJECTS);
+    const { result, runtime } = await frozen((() => Promise.resolve(body.response)));
+    try {
+      expect(error(result)).toMatchObject(DURATION_STOP);
+    } finally {
+      body.finish();
+      body.finishCancel();
+      await runtime.shutdown();
+    }
+  });
+});
+
+describe('classifying a timeout inside an aggregate', () => {
+  const aggregate = { mutates: false, dispatched: true, acknowledged: false, aggregate: true };
+  const single = { ...aggregate, aggregate: false };
+
+  // Constructed exactly as the pinned driver constructs them: no response argument.
+  const deadlineSpellings = [
+    ['the deadline race', new TestRailApiError(408, 'Aggregate request deadline exceeded')],
+    ['a request timeout clipped to the budget', new TestRailApiError(408, 'Request timeout after 20ms')],
+    ['a body timeout clipped to the budget', new TestRailApiError(0, 'Body read timeout', 'body read exceeded 20ms before the response body finished streaming')],
+  ] as const;
+
+  it.each(deadlineSpellings)('reports %s as the duration bound', (_label, raised) => {
+    const safe = classifyError(raised, aggregate);
+    expect(safe).toMatchObject(DURATION_STOP);
+    expect(safe).not.toHaveProperty('http_status');
+  });
+
+  it.each(deadlineSpellings)('leaves %s alone outside an aggregate', (_label, raised) => {
+    expect(classifyError(raised, single).code).not.toBe('PAGINATION_LIMIT');
+  });
+
+  it.each([
+    // The driver's full timeouts were not clipped, so the budget did not end them.
+    ['an unclipped request timeout', new TestRailApiError(408, 'Request timeout after 15000ms'), 'UPSTREAM_ERROR'],
+    ['an unclipped body timeout', new TestRailApiError(0, 'Body read timeout', 'body read exceeded 15000ms before the response body finished streaming'), 'INVALID_RESPONSE'],
+    // A response did arrive: an upstream may send any reason phrase, and its status stands.
+    ['a real 408 carrying the deadline phrase', new TestRailApiError(408, 'Aggregate request deadline exceeded', ''), 'UPSTREAM_ERROR'],
+    ['a real 408 carrying a timeout phrase', new TestRailApiError(408, 'Request timeout after 20ms', '{"error":"slow"}'), 'UPSTREAM_ERROR'],
+  ] as const)('does not report %s as the duration bound', (_label, raised, expected) => {
+    expect(classifyError(raised, aggregate).code).toBe(expected);
   });
 });
 

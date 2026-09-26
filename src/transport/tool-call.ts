@@ -128,6 +128,7 @@ export async function executeToolCall(
   const limits = configuration.limits;
   const mutates = operation.effects.testRail !== 'read';
 
+  let mode: Mode = 'single';
   let dispatched = false;
   let acknowledged = false;
   let staged: StagedUpload | undefined;
@@ -139,7 +140,7 @@ export async function executeToolCall(
     // a parsed clone may drop keys the caller legitimately sent.
     if (!operation.inputSchema.safeParse(input).success) throw new AdapterError('INVALID_ARGUMENT');
 
-    const mode = selectMode(operation, input);
+    mode = selectMode(operation, input);
     if (mode === 'all') refuseBoundsAboveLimits(controls(input), limits);
     const call = selectCall(operation, mode);
     let upload: CallContext['upload'];
@@ -242,7 +243,7 @@ export async function executeToolCall(
      * after the request settles: a cancelled or timed-out upload may still be reading it.
      */
     if (staged !== undefined && !dispatched) await staged.dispose().catch(() => undefined);
-    const safe = classifyError(error, { mutates, dispatched, acknowledged });
+    const safe = classifyError(error, { mutates, dispatched, acknowledged, aggregate: mode === 'all' });
     logEvent('tool_call', {
       correlation, tool: operation.tool, outcome: 'error',
       code: safe.code, duration_ms: Date.now() - started,
