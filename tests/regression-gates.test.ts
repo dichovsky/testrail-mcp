@@ -68,8 +68,9 @@ describe('the registry accounts for the whole inventory', () => {
     expect(new Set(inventory.map(({ family_id: family }) => family)).size).toBe(CONTRACT.families);
     expect(paged).toHaveLength(CONTRACT.paged);
 
-    // The inventory's declared totals agree with its own rows.
-    expect(rawInventory.counts).toMatchObject({
+    // The inventory's declared totals agree with its own rows, key for key: a declared
+    // method or paging kind that no row carries fails here as well as a wrong count.
+    expect(rawInventory.counts).toEqual({
       operations: inventory.length,
       resources: CONTRACT.resources,
       families: CONTRACT.families,
@@ -91,20 +92,25 @@ describe('the registry accounts for the whole inventory', () => {
     expect(operationRegistry.entries).toHaveLength(CONTRACT.operations);
   });
 
-  it('registers each resource and family with the inventory\'s own tools', () => {
+  /*
+   * A registration names its family but not its resource, so a resource is accounted for
+   * through the family that owns it: every registered tool must sit in the family the
+   * inventory gives its resource, and each family must hold exactly its own tools.
+   */
+  it('registers each family with exactly its own tools, and each resource under the family that owns it', () => {
+    const ownerOf = new Map(rawInventory.families.flatMap(({ id, resources }) => resources.map((resource) => [resource, id] as const)));
+    expect(ownerOf.size).toBe(CONTRACT.resources);
     const resourceOf = new Map(rawInventory.operations.map(({ tool, resource }) => [tool, resource]));
-    const byResource = (tools: readonly string[]) => {
+    for (const { tool, family } of operationRegistry.entries) {
+      expect(family, tool).toBe(ownerOf.get(resourceOf.get(tool) ?? ''));
+    }
+    const byFamily = (rows: readonly { tool: string; family: string }[]) => {
       const groups = new Map<string, string[]>();
-      for (const tool of tools) {
-        const resource = resourceOf.get(tool) ?? 'unknown';
-        groups.set(resource, [...(groups.get(resource) ?? []), tool].sort());
-      }
+      for (const { tool, family } of rows) groups.set(family, [...(groups.get(family) ?? []), tool].sort());
       return groups;
     };
-    expect(byResource(operationRegistry.entries.map(({ tool }) => tool)))
-      .toEqual(byResource(rawInventory.operations.map(({ tool }) => tool)));
-    expect(counted(operationRegistry.entries.map(({ family }) => family)))
-      .toEqual(new Map(rawInventory.families.map(({ id, operation_count: count }) => [id, count])));
+    expect(byFamily(operationRegistry.entries))
+      .toEqual(byFamily(rawInventory.operations.map(({ tool, family_id: family }) => ({ tool, family }))));
   });
 
   it('binds each of the 24 page/all pairs to the inventory\'s helpers', () => {
@@ -217,8 +223,20 @@ function without(record: unknown, key: string): Record<string, unknown> {
   return copy;
 }
 
+/*
+ * Each test below runs its gate twice: on the unbroken production sample, where it must
+ * pass, and on the broken one, where it must fail. Without the first half a gate that
+ * rejects everything would pass these tests too.
+ */
 describe('each gate fails on the mistake it exists to catch', () => {
+  let unbrokenAudit: string[] | undefined;
+  /** The full audit is the slowest gate here, so the unbroken result is computed once. */
+  const auditUnbroken = () => (unbrokenAudit ??= auditRegisteredParameters(operationRegistry, manifests));
+
   it('fails an omitted endpoint, both against the inventory and against its manifest', () => {
+    expect(() => { assertRegistryParity(compareRegistry(operationRegistry, inventory), true); }).not.toThrow();
+    expect(unregisteredManifests(operationRegistry, manifests)).toEqual([]);
+    expect(auditUnbroken()).toEqual([]);
     const broken = createRegistry(...operationRegistry.entries.filter(({ tool }) => tool !== 'testrail_get_project'));
     expect(() => { assertRegistryParity(compareRegistry(broken, inventory), true); })
       .toThrow('Missing: GET get_project/{project_id} -> testrail_get_project -> projects.getProject');
@@ -264,10 +282,21 @@ describe('each gate fails on the mistake it exists to catch', () => {
 
   it('refuses a registration that would accept unknown input', () => {
     const project = registered('testrail_get_project');
+    if (project.pagination.kind !== 'none') throw new Error('get_project does not page');
+    const { single } = project.pagination;
     const permissive = z.looseObject({ project_id: z.int().positive() });
-    // Refused where it is defined, before it can reach a catalog…
-    expect(() => defineOperation({ ...project, inputSchema: permissive })).toThrow();
-    // …and, were it slipped in after definition, the audit sees the manifest's unknown-key rejection accepted.
+    /*
+     * Refused where it is defined, before it can reach a catalog. The call must carry the
+     * same schema as the operation, or the definition fails its schema-identity check first
+     * and the looseness itself is never examined. Either closed-input guard may refuse it.
+     */
+    expect(() => defineOperation(project)).not.toThrow();
+    expect(() => defineOperation({
+      ...project, inputSchema: permissive,
+      pagination: { kind: 'none', single: { ...single, inputSchema: permissive } },
+    })).toThrow(/explicitly reject unknown keys|must be closed objects/u);
+    // Were it slipped in after definition, the audit sees the manifest's unknown-key rejection accepted.
+    expect(auditRegisteredParameters(createRegistry(project), manifests)).toEqual([]);
     const slipped = { ...project, inputSchema: permissive } as unknown as Operation;
     const unknownKey = manifestFor('testrail_get_project').cases
       .filter(({ expect: outcome }) => outcome.kind === 'rejected')
@@ -278,6 +307,7 @@ describe('each gate fails on the mistake it exists to catch', () => {
   });
 
   it('fails two tools bound to one driver method', () => {
+    expect(compareRegistry(operationRegistry, inventory).differences).toEqual([]);
     const suite = registered('testrail_get_suite');
     const duplicate = { ...suite, driverBinding: 'projects.getProject' } as unknown as Operation;
     const broken = createRegistry(...operationRegistry.entries.map((entry) => entry.tool === suite.tool ? duplicate : entry));
@@ -289,6 +319,7 @@ describe('each gate fails on the mistake it exists to catch', () => {
   });
 
   it('fails a list that claims page/all helpers its endpoint does not have', () => {
+    expect(compareRegistry(operationRegistry, inventory).differences).toEqual([]);
     const forTest = registered('testrail_get_attachments_for_test');
     const forCase = registered('testrail_get_attachments_for_case');
     if (forCase.pagination.kind === 'none') throw new Error('get_attachments_for_case pages');
@@ -301,7 +332,10 @@ describe('each gate fails on the mistake it exists to catch', () => {
     ]);
   });
 
-  it('fails a manifest that loses the only fixture exercising an optional parameter', () => {
+  // get_sections has three accepted fixtures carrying the suite filter, two in page mode and
+  // one in all mode; with all of them gone, nothing shows the filter reaches either call.
+  it('fails a manifest that loses every fixture exercising an optional parameter', () => {
+    expect(auditUnbroken()).toEqual([]);
     const manifest = manifestFor('testrail_get_sections');
     const thinned = { ...manifest, cases: manifest.cases.filter(({ expect: outcome, input }) =>
       outcome.kind !== 'accepted' || (input.query as { suite_id?: unknown } | undefined)?.suite_id === undefined) };
@@ -315,6 +349,7 @@ describe('each gate fails on the mistake it exists to catch', () => {
   it('fails a fixture whose promised path ID the registration does not send', async () => {
     const promised = fixture('testrail_get_project', 'representative-id');
     if (promised.expect.kind !== 'accepted') throw new Error('Expected an accepted fixture');
+    await expect(runRegisteredFixture(registered('testrail_get_project'), manifestFor('testrail_get_project'), promised)).resolves.toBeUndefined();
     const altered = { ...promised, expect: { ...promised.expect, wire: { ...promised.expect.wire, endpoint: 'get_project/2' } } };
     await expect(runRegisteredFixture(registered('testrail_get_project'), manifestFor('testrail_get_project'), altered)).rejects.toThrow();
   });
