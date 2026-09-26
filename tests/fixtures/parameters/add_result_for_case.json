@@ -55,7 +55,7 @@
     {
       "id": "unknown-body",
       "kind": "invalid",
-      "description": "Reject an unknown ordinary body field rather than forwarding it; only custom_ names extend a result."
+      "description": "Reject an unknown ordinary body field, __proto__ included, rather than forwarding it; only custom_ names extend a result."
     },
     {
       "id": "custom-fields-container",
@@ -1159,6 +1159,29 @@
           "parameter": "$input",
           "requirements": [
             "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-body-under-proto",
+      "input": {
+        "run_id": 1,
+        "case_id": 2,
+        "body": {
+          "status_id": 1,
+          "__proto__": true
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-body"
           ]
         }
       ],

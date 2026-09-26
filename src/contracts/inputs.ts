@@ -189,7 +189,21 @@ function adaptPayload(source: z.ZodType, options: PayloadOptions<InputShape> = {
       const customCheck = customChecks(object).at(-1);
       if (customCheck === undefined) throw new Error('Custom property check was not created');
       representedRefinements.set(customCheck, { propertyNames });
+      // __proto__ is neither a declared field nor a custom_* name, so it is refused
+      // like any other name outside that policy.
+      return checkOwnPrototypeKey(object, (value) => [{
+        code: 'custom', message: 'Invalid input', input: value, path: ['__proto__'],
+      }]);
     }
+    if (options.extensions === 'json') {
+      // Any name is open here, but the value must be JSON like every other extension.
+      return checkOwnPrototypeKey(object, (value, context) => {
+        const result = jsonValueSchema._zod.run({ value, issues: [] }, context);
+        if (result instanceof Promise) throw new Error('Payload objects are validated synchronously');
+        return z.core.util.prefixIssues('__proto__', result.issues);
+      });
+    }
+    // A strict object needs nothing more: Zod reports an own __proto__ as unrecognized.
     return object;
   }
   if (source instanceof z.ZodArray) {
@@ -205,10 +219,71 @@ function adaptPayload(source: z.ZodType, options: PayloadOptions<InputShape> = {
     return source.clone({ ...source.def, options: source.options.map((option) => adaptPayload(option as z.ZodType)) });
   }
   if (source instanceof z.ZodRecord) {
-    return source.clone({ ...source.def, valueType: adaptPayload(classic(source.valueType)) });
+    const record = source.clone({ ...source.def, valueType: adaptPayload(classic(source.valueType)) });
+    return checkOwnPrototypeKey(record, (value, context) => recordPrototypeIssues(record, value, context));
   }
   if (source instanceof z.ZodUnknown || source instanceof z.ZodAny) return jsonValueSchema;
   return source;
+}
+
+/*
+ * Zod's record parser skips an own __proto__ key before either of the record's schemas
+ * sees it, and its object parser skips the key in its catch-all, so neither the key's
+ * name nor its value is checked. The driver is handed the caller's original object, key
+ * included (see driver-call.ts), so a schema that validated one key less than it
+ * forwards would accept what its declared policy refuses. This applies that policy to
+ * the key as well.
+ *
+ * It wraps the parse rather than adding a refinement because a refinement receives the
+ * parsed clone, which no longer has the key. The key stays out of the clone, as Zod
+ * leaves it out: assigning it there would replace the clone's prototype. The wrapper
+ * belongs to this instance, so a copy made from it by describe, meta or refine does not
+ * carry it; adapted payloads are used as they are returned here.
+ */
+type ProtoCheck = (value: unknown, context: z.core.ParseContextInternal) => z.core.$ZodRawIssue[];
+
+function checkOwnPrototypeKey<Schema extends z.ZodType>(schema: Schema, check: ProtoCheck): Schema {
+  const internals = schema._zod;
+  const run = internals.run.bind(internals);
+  internals.run = (payload, context) => {
+    const input: unknown = payload.value;
+    const result = run(payload, context);
+    if (result instanceof Promise) throw new Error('Payloads are validated synchronously');
+    const own = typeof input === 'object' && input !== null
+      ? Object.getOwnPropertyDescriptor(input, '__proto__')
+      : undefined;
+    if (own?.enumerable !== true) return result;
+    result.issues.push(...check(own.value as unknown, context));
+    return result;
+  };
+  return schema;
+}
+
+function recordPrototypeIssues(
+  record: z.ZodRecord,
+  value: unknown,
+  context: z.core.ParseContextInternal,
+): z.core.$ZodRawIssue[] {
+  const key = record.keyType._zod.run({ value: '__proto__', issues: [] }, context);
+  if (key instanceof Promise) throw new Error('Payload records are validated synchronously');
+  if (key.issues.length !== 0) {
+    // As for any other key: a loose record passes a key its schema refuses through
+    // unchecked, and a record whose keys are listed has already reported this one as
+    // unrecognized. Otherwise the key is invalid, and its value is not checked.
+    const listed = record.keyType._zod.values !== undefined && record._zod.def.partial !== true;
+    if (record._zod.def.mode === 'loose' || listed) return [];
+    return [{
+      code: 'invalid_key',
+      origin: 'record',
+      issues: key.issues.map((issue) => z.core.util.finalizeIssue(issue, context, z.core.config())),
+      input: '__proto__',
+      path: ['__proto__'],
+      inst: record,
+    }];
+  }
+  const result = record.valueType._zod.run({ value, issues: [] }, context);
+  if (result instanceof Promise) throw new Error('Payload records are validated synchronously');
+  return z.core.util.prefixIssues('__proto__', result.issues);
 }
 
 /** Preserve the driver's original array bounds while replacing its item schema. */

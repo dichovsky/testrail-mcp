@@ -55,7 +55,7 @@
     {
       "id": "unknown-item-field",
       "kind": "invalid",
-      "description": "Reject an unknown ordinary field in any item rather than forwarding it; only custom_* names extend an item."
+      "description": "Reject an unknown ordinary field, __proto__ included, in any item rather than forwarding it; only custom_* names extend an item."
     },
     {
       "id": "legacy-custom-container",
@@ -1709,6 +1709,46 @@
           "parameter": "$input",
           "requirements": [
             "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-item-field-under-proto",
+      "input": {
+        "section_id": 5,
+        "body": [
+          {
+            "title": "Print document history",
+            "template_id": 1,
+            "type_id": 2,
+            "priority_id": 4,
+            "estimate": "3m",
+            "milestone_id": 9,
+            "refs": "RF-1, RF-2",
+            "labels": [
+              7,
+              "label1"
+            ],
+            "is_legacy": false,
+            "custom_preconds": "These are the preconditions",
+            "custom_null": null
+          },
+          {
+            "title": "Export as PDF",
+            "__proto__": true
+          }
+        ]
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-item-field"
           ]
         }
       ],

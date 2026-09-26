@@ -157,7 +157,7 @@
       "requiredness": "optional",
       "domain_ref": "aggregate_max_items",
       "baseline": "all-defaults",
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "semantics": "All mode only. Forwarded verbatim when supplied at or below the configured limit and refused with INVALID_ARGUMENT before dispatch above it; the configured limit is forwarded when omitted.",
       "driver": {
         "argument": 0,
         "path": [
@@ -183,7 +183,7 @@
       "requiredness": "optional",
       "domain_ref": "aggregate_max_pages",
       "baseline": "all-defaults",
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "semantics": "All mode only. Forwarded verbatim when supplied at or below the configured limit and refused with INVALID_ARGUMENT before dispatch above it; the configured limit is forwarded when omitted.",
       "driver": {
         "argument": 0,
         "path": [
@@ -209,7 +209,7 @@
       "requiredness": "optional",
       "domain_ref": "aggregate_max_bytes",
       "baseline": "all-defaults",
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "semantics": "All mode only. Forwarded verbatim when supplied at or below the configured limit and refused with INVALID_ARGUMENT before dispatch above it; the configured limit is forwarded when omitted.",
       "driver": {
         "argument": 0,
         "path": [
@@ -235,7 +235,7 @@
       "requiredness": "optional",
       "domain_ref": "aggregate_max_duration_ms",
       "baseline": "all-defaults",
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit is forwarded when omitted.",
+      "semantics": "All mode only. Forwarded verbatim when supplied at or below the configured limit and refused with INVALID_ARGUMENT before dispatch above it; the configured limit is forwarded when omitted.",
       "driver": {
         "argument": 0,
         "path": [

@@ -42,14 +42,15 @@ export interface Continuation {
  * preferred. This mirrors how the driver reads its own continuations.
  *
  * A value that is not a canonical decimal integer becomes NaN so validation rejects the
- * whole link, instead of being coerced into a request target.
+ * whole link, instead of being coerced into a request target. Canonical means what the
+ * driver's parser requires too: no sign and no leading zero.
  */
 function collectControls(url: URL): { offsets: number[]; limits: number[] } {
   const pathControls = url.pathname.indexOf('&');
   const fromPath = new URLSearchParams(pathControls === -1 ? '' : url.pathname.slice(pathControls + 1));
   const read = (key: 'offset' | 'limit'): number[] =>
     [...url.searchParams.getAll(key), ...fromPath.getAll(key)]
-      .map((raw) => (/^\d+$/u.test(raw) ? Number(raw) : Number.NaN));
+      .map((raw) => (/^(?:0|[1-9]\d*)$/u.test(raw) ? Number(raw) : Number.NaN));
   return { offsets: read('offset'), limits: read('limit') };
 }
 
@@ -108,10 +109,10 @@ export function pageMetadata(
   }
 
   const hasMore = page._links.next !== null;
-  const continuation = options.responseDriven
-    ? null
-    : parseContinuation(page._links.next, { offset: page.offset, returned });
-  const manual = continuation !== null;
+  const continuation = parseContinuation(page._links.next, { offset: page.offset, returned });
+  // A response-driven list's page methods take no caller-supplied offset, so even a
+  // valid link cannot be offered as a manual page there.
+  const manual = continuation !== null && !options.responseDriven;
 
   return Object.freeze({
     mode: 'page' as const,
@@ -119,9 +120,14 @@ export function pageMetadata(
     returned,
     has_more: hasMore,
     manual_continuation: manual,
-    // Without a validated continuation the only honest way forward is the bounded
-    // aggregate, even though the driver said more exists.
-    next_action: !hasMore ? 'none' : manual ? 'page' : 'all',
+    /*
+     * The aggregate follows the same link through the driver's own parser, and every link
+     * refused here the driver refuses too: as an invalid continuation, or as one that does
+     * not advance. Advising "all" for it would trade a usable page for a failure with no
+     * data, so there is no honest next step to offer. A valid link on a response-driven
+     * list is one the aggregate can follow, though the caller cannot.
+     */
+    next_action: !hasMore ? 'none' : manual ? 'page' : continuation !== null ? 'all' : 'none',
     limit: page.limit,
     offset: page.offset,
     ...(manual ? { next_offset: continuation.offset } : {}),

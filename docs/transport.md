@@ -20,7 +20,7 @@ The adapter validates instead, and a rejected argument is an `INVALID_ARGUMENT` 
 
 ## One call, end to end
 
-Input validation → page/all mode selection → upload staging when the operation takes a file → `runtime.invoke`, which for a download also writes the file → result assembly (`validateOuter`, page or aggregate metadata, `advisoryWarnings`) → `successResult`. A failure anywhere becomes `errorResult(classifyError(...))`; the pipeline never throws, because a failed operation is a tool error while the protocol itself is healthy.
+Input validation → page/all mode selection, refusing in all mode any stated aggregate bound above its configured limit → upload staging when the operation takes a file → `runtime.invoke`, which for a download also writes the file → result assembly (`validateOuter`, page or aggregate metadata, `advisoryWarnings`) → `successResult`. A failure anywhere becomes `errorResult(classifyError(...))`; the pipeline never throws, because a failed operation is a tool error while the protocol itself is healthy.
 
 A download's file is written inside the driver callback the runtime tracks, not after `runtime.invoke` returns. The runtime holds the download slot until that callback settles, so the next download is refused as `BUSY` until the file is written or its write has failed. A reply that arrives after the call has already returned an error writes nothing, since no caller would learn the file's path. A write already under way when the call ends finishes before the slot is freed, and the committed file is kept, as the implementation contract requires of a download whose delivery fails.
 
