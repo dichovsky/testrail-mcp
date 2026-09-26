@@ -119,9 +119,14 @@ export function pageMetadata(
     returned,
     has_more: hasMore,
     manual_continuation: manual,
-    // Without a validated continuation the only honest way forward is the bounded
-    // aggregate, even though the driver said more exists.
-    next_action: !hasMore ? 'none' : manual ? 'page' : 'all',
+    /*
+     * A controlled list's link that fails validation here is one the driver's aggregate
+     * refuses as well, when it reaches the same link: as an invalid continuation, or as
+     * one that does not advance. Advising "all" would trade a usable page for a failure
+     * with no data, so there is no honest next step to offer. A response-driven list's
+     * link is never parsed here, and its aggregate follows the links itself.
+     */
+    next_action: !hasMore ? 'none' : manual ? 'page' : options.responseDriven ? 'all' : 'none',
     limit: page.limit,
     offset: page.offset,
     ...(manual ? { next_offset: continuation.offset } : {}),

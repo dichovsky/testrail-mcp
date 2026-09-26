@@ -1,4 +1,4 @@
-import type { Page } from '@dichovsky/testrail-api-client';
+import { TestRailClient, TestRailPaginationError, type Page } from '@dichovsky/testrail-api-client';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_LIMITS } from '../src/config/limits.js';
 import {
@@ -125,14 +125,15 @@ describe('page metadata', () => {
     expect(meta).toMatchObject({ has_more: true, manual_continuation: true, next_action: 'page', next_offset: 3 });
   });
 
-  it('falls back to the bounded aggregate when the link cannot be validated', () => {
+  it('offers no next step when the link cannot be validated', () => {
     // The driver says more exists, but nothing controllable was proven, so advertising
-    // a manual page would be inventing a cursor.
+    // a manual page would be inventing a cursor, and the aggregate would refuse the same
+    // link (see the comparison with the driver below).
     const meta = pageMetadata(
       envelope({ _links: { next: 'https://x.testrail.io/list?cursor=opaque', prev: null } }),
       { responseDriven: false },
     );
-    expect(meta).toMatchObject({ has_more: true, manual_continuation: false, next_action: 'all' });
+    expect(meta).toMatchObject({ has_more: true, manual_continuation: false, next_action: 'none' });
     expect(meta.next_offset).toBeUndefined();
   });
 
@@ -196,5 +197,73 @@ describe('aggregate control mapping', () => {
   it('omits paging controls a response-driven list cannot accept', () => {
     expect(Object.keys(driverAllOptions({ max_items: 5 }, DEFAULT_LIMITS)).sort())
       .toEqual(['maxBytes', 'maxDurationMs', 'maxItems', 'maxPages']);
+  });
+});
+
+describe('continuation advice agrees with the driver\'s aggregate', () => {
+  /*
+   * "all" is sound advice only for a link the driver's aggregate would follow. The driver
+   * does not export its continuation parser, so each link is put to the public aggregate
+   * helper on a page like the one described: the adapter's verdict is compared with the
+   * driver's rather than with a restatement of its rules. If a driver upgrade starts
+   * following one of these links, its case fails here, and "all" may be sound again.
+   */
+  async function driverFollows(page: { offset: number; items: number }, next: string): Promise<boolean> {
+    const projects = Array.from({ length: page.items }, (_, index) => ({ id: index + 1, name: `P${index + 1}` }));
+    let calls = 0;
+    const client = new TestRailClient({
+      baseUrl: 'https://continuation.testrail.io', email: 'user@example.com', apiKey: 'synthetic',
+      registerProcessHandlers: false, enableCache: false, maxRetries: 0,
+      dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
+      // The first reply carries the link under test; a followed link reaches a terminal page.
+      fetch: () => Promise.resolve(new Response(JSON.stringify(calls++ === 0
+        ? { offset: page.offset, limit: 3, size: page.items, _links: { next, prev: null }, projects }
+        : { offset: page.offset + 3, limit: 3, size: 0, _links: { next: null, prev: null }, projects: [] }),
+      { headers: { 'content-type': 'application/json' } })),
+    });
+    try {
+      await client.projects.getAllProjects({ startOffset: page.offset, pageSize: 3 });
+      return true;
+    } catch (error) {
+      if (error instanceof TestRailPaginationError
+        && (error.reason === 'invalid_continuation' || error.reason === 'non_progress')) return false;
+      throw error;
+    } finally {
+      client.destroy();
+    }
+  }
+
+  function advice(page: { offset: number; items: number }, next: string) {
+    const items = Array.from({ length: page.items }, (_, index) => index);
+    return pageMetadata(envelope({ offset: page.offset, limit: 3, items, _links: { next, prev: null } }), {
+      responseDriven: false,
+    });
+  }
+
+  it('follows a link both accept, so the probe can tell the two outcomes apart', async () => {
+    const page = { offset: 0, items: 3 };
+    const next = '/api/v2/get_projects&limit=3&offset=3';
+    expect(parseContinuation(next, at(page.offset, page.items))).toEqual({ offset: 3, limit: 3 });
+    expect(advice(page, next).next_action).toBe('page');
+    expect(await driverFollows(page, next)).toBe(true);
+  });
+
+  it.each([
+    ['an unparseable reference', { offset: 0, items: 3 }, 'http://[::1'],
+    ['no offset', { offset: 0, items: 3 }, 'https://x.testrail.io/list?cursor=opaque'],
+    ['an offset in both forms', { offset: 0, items: 3 }, '/api/v2/get_projects&offset=3?offset=3'],
+    ['two limits', { offset: 0, items: 3 }, '/api/v2/get_projects&limit=3&limit=3&offset=3'],
+    ['a non-decimal offset', { offset: 0, items: 3 }, '/api/v2/get_projects&offset=3a'],
+    ['a negative offset', { offset: 0, items: 3 }, '/api/v2/get_projects&offset=-3'],
+    ['an offset beyond the safe integers', { offset: 0, items: 3 }, '/api/v2/get_projects&offset=9007199254740993'],
+    ['a zero limit', { offset: 0, items: 3 }, '/api/v2/get_projects&limit=0&offset=3'],
+    ['a limit above the maximum', { offset: 0, items: 3 }, '/api/v2/get_projects&limit=251&offset=3'],
+    ['a non-decimal limit', { offset: 0, items: 3 }, '/api/v2/get_projects&limit=x&offset=3'],
+    ['an offset that does not advance', { offset: 3, items: 3 }, '/api/v2/get_projects&limit=3&offset=3'],
+    ['an offset that overlaps the page', { offset: 0, items: 3 }, '/api/v2/get_projects&limit=3&offset=2'],
+  ])('offers nothing for %s, which the driver refuses too', async (_label, page, next) => {
+    expect(parseContinuation(next, at(page.offset, page.items))).toBeNull();
+    expect(advice(page, next)).toMatchObject({ has_more: true, manual_continuation: false, next_action: 'none' });
+    expect(await driverFollows(page, next)).toBe(false);
   });
 });
