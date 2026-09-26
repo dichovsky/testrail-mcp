@@ -206,6 +206,27 @@ describe('T11 every report run reaches TestRail exactly once', () => {
   });
 
   /*
+   * The declared retry policy is published to clients, so it is held to what the driver
+   * does: under the production budget a run TestRail keeps rate-limiting is sent once and
+   * re-sent up to maxRetries times, and never more.
+   */
+  it.each(GENERATORS)('%s declares the 429-only policy and exhausts exactly the production budget', async (tool) => {
+    expect(operation(tool).retry).toBe('rate-limit-only');
+    const budget = driverOptions(configuration).maxRetries ?? 0;
+    expect(budget).toBeGreaterThan(0);
+    const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response(
+      JSON.stringify({ error: 'API rate limit exceeded' }),
+      { status: 429, headers: { 'content-type': 'application/json', 'retry-after': '0' } },
+    )));
+    const runtime = runtimeFor(fetch);
+    try {
+      const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      expect(fetch).toHaveBeenCalledTimes(1 + budget);
+      expect(errorOf(result)).toMatchObject({ code: 'RATE_LIMITED', http_status: 429, write_outcome: 'unknown' });
+    } finally { await runtime.shutdown(); }
+  }, 30_000);
+
+  /*
    * F01 accepted the driver re-sending a rate-limited run: TestRail rejects a 429 before
    * handling the request, so nothing was generated. One retry keeps the backoff short.
    */

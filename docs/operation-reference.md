@@ -10812,7 +10812,7 @@ Run a cross-project report template, one listed by testrail_get_cross_project_re
 
 REST: `GET run_cross_project_report/{report_template_id}`. Driver: `reports.runCrossProjectReport`. Family: T11.
 
-TestRail effect: `report`. Driver retry policy: `never`. Local file behavior: `none`.
+TestRail effect: `report`. Driver retry policy: `rate-limit-only`. Local file behavior: `none`.
 
 ```json
 {
@@ -10854,7 +10854,7 @@ Run a single-project report template, one listed by testrail_get_reports, and re
 
 REST: `GET run_report/{report_template_id}`. Driver: `reports.runReport`. Family: T11.
 
-TestRail effect: `report`. Driver retry policy: `never`. Local file behavior: `none`.
+TestRail effect: `report`. Driver retry policy: `rate-limit-only`. Local file behavior: `none`.
 
 ```json
 {

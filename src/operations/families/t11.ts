@@ -70,7 +70,8 @@ export const runReport = defineOperation({
   files: { kind: 'none' },
   // Nothing is removed, so it is not destructive; a repeat is a second report, and a second email if the template sends one.
   effects: { testRail: 'report', destructive: false, idempotent: false },
-  retry: 'never',
+  // The driver's own policy for this method: it re-sends a 429 and nothing else.
+  retry: 'rate-limit-only',
 } as const satisfies OperationDefinition);
 
 // -------------------------------------------------------------- cross-project
@@ -115,7 +116,7 @@ export const runCrossProjectReport = defineOperation({
   },
   files: { kind: 'none' },
   effects: { testRail: 'report', destructive: false, idempotent: false },
-  retry: 'never',
+  retry: 'rate-limit-only',
 } as const satisfies OperationDefinition);
 
 /** Registered in tool-name order by the registry; listed here in reviewed order. */
