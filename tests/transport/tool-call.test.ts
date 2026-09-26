@@ -151,12 +151,19 @@ describe('aggregate bounds above the configured limit', () => {
     expect(requests).not.toHaveBeenCalled();
   });
 
-  it.each(cases)('forwards %s equal to the configured %s unchanged', async (bound, limit, option) => {
-    const { result, aggregate } = await call(bound, configured[limit]);
-    expect(result.isError).toBeUndefined();
-    expect(aggregate).toHaveBeenCalledTimes(1);
-    expect(aggregate.mock.calls[0]?.[0]).toMatchObject({ [option]: configured[limit] });
-  });
+  // Below the limit as well as at it: a value equal to the limit reaches the driver
+  // whether the caller's bound or the configured one is forwarded, so alone it cannot
+  // tell the two apart.
+  it.each(cases.flatMap((entry) => [[...entry, 0], [...entry, 1]] as const))(
+    'forwards %s up to the configured %s unchanged, as %s %i below it',
+    async (bound, limit, option, below) => {
+      const value = configured[limit] - below;
+      const { result, aggregate } = await call(bound, value);
+      expect(result.isError).toBeUndefined();
+      expect(aggregate).toHaveBeenCalledTimes(1);
+      expect(aggregate.mock.calls[0]?.[0]).toMatchObject({ [option]: value });
+    },
+  );
 });
 
 describe('download identifiers', () => {

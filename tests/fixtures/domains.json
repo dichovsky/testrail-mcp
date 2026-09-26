@@ -255,7 +255,7 @@
         "note": "The public aggregate helper carries every bound. A value above the adapter ceiling is accepted by the driver, which is why that rejection is recorded as the adapter's."
       },
       "domain": { "type": "integer", "minimum": 1, "maximum": 1000 },
-      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (1,000 by default) is forwarded when omitted, so an aggregate never runs under the driver's own default. The ceiling the schema enforces is the built-in default, because the schema is built before the configuration is read, so a stated value above a lower configured limit passes it and is refused with INVALID_ARGUMENT by the transport before dispatch. A configured limit above the default is not reachable by a caller.",
+      "semantics": "All mode only. Forwarded verbatim when supplied; the configured limit (1,000 by default) is forwarded when omitted, so an aggregate never runs under the driver's own default. The ceiling the schema enforces is the built-in default, because the schema is built before the configuration is read, so a stated value above a lower configured limit passes it and is refused with INVALID_ARGUMENT by the transport before dispatch. A configured limit above the default applies when the caller states no bound, but a caller cannot state a value above the default.",
       "requirements": [
         { "id": "mapping", "kind": "mapping", "description": "Preserve the value as the maxItems option of the aggregate helper." },
         { "id": "valid", "kind": "valid", "description": "Accept a representative bound." },
