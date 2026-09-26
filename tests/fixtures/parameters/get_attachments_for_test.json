@@ -1,0 +1,352 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-26"
+  },
+  "endpoint": {
+    "family_id": "T12",
+    "http_method": "GET",
+    "route": "get_attachments_for_test/{test_id}",
+    "tool": "testrail_get_attachments_for_test",
+    "driver_method": "attachments.getAttachmentsForTest"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/attachments.ts",
+      "supports": "getAttachmentsForTest validates the test ID and runs the shared executor's items path for get_attachments_for_test, which the descriptor declares unregistered: it has no page or all helper. Called with no options it sends no limit or offset, and it returns the unwrapped list alone."
+    },
+    {
+      "id": "driver-paginated-list",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/paginated-list.ts",
+      "supports": "An unregistered operation is still allowed through the executor's items path, which appends limit and offset only when they are defined and returns unwrapList's result."
+    },
+    {
+      "id": "driver-list",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/list.ts",
+      "supports": "listOf accepts a bare array or an envelope whose collection key is present, and unwrapList returns the collection alone: an envelope's offset, limit, size and _links do not survive it. A null collection is an empty list and any other outer shape throws."
+    },
+    {
+      "id": "driver-validation",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/validation.ts",
+      "supports": "validateId accepts a positive safe integer; validateEntryId accepts only a UUID, case-insensitively, with nothing before or after it; validatePaginationParams holds limit to 1..250 and offset to a non-negative integer."
+    },
+    {
+      "id": "driver-schema",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/attachments.ts",
+      "supports": "AttachmentSchema is one passthrough object for every attachment shape TestRail documents: the upload reply, the legacy case and test entries, the plan, plan-entry and run entries with entity_attachments_id and icon_name, and the 7.1 cloud entries whose id is a UUID string. Every field is nullish and id and entity_id admit a number or a string, so each documented entity parses unchanged."
+    },
+    {
+      "id": "testrail-attachments",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077196481428-Attachments",
+      "supports": "get_attachments_for_test/{test_id} requires TestRail 5.7 or later, lists the attachments of a test's results, documents no limit, offset or other filter, and returns the same response format as get_attachments_for_case, whose documented examples are paged envelopes. It answers 400 for an invalid test ID and 403 for no access or insufficient permissions."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement. The endpoint documents no filters and no paging, so the input is the test ID alone: query and _mcp are refused rather than given controls TestRail does not document."
+  },
+  "outer_result": {
+    "driver": "array",
+    "tool_data": "array",
+    "notes": "The driver returns the attachments of one reply as a plain array, whether TestRail sent an envelope or a bare array. An envelope's offset, limit, size and _links are dropped by the driver, so a continuation link, if TestRail sends one, is not reported."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation."
+    },
+    {
+      "id": "no-paging-controls",
+      "kind": "invalid",
+      "description": "Reject query paging controls and an _mcp mode: TestRail documents no paging for this endpoint and the driver offers no page or all helper for it."
+    },
+    {
+      "id": "single-request",
+      "kind": "mapping",
+      "description": "Send exactly one request with no limit or offset."
+    },
+    {
+      "id": "bare-array",
+      "kind": "valid",
+      "description": "Return a bare-array reply as the list it is."
+    }
+  ],
+  "baseline": "documented-envelope",
+  "parameters": [
+    {
+      "id": "test_id",
+      "input_path": [
+        "test_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "No coercion. The validated number is passed positionally and appears verbatim as its path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "test_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "driver-validation",
+        "testrail-attachments"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "documented-envelope",
+      "input": {
+        "test_id": 21
+      },
+      "covers": [
+        {
+          "parameter": "test_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "$input",
+          "requirements": [
+            "single-request"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.getAttachmentsForTest",
+          "arguments": [
+            21
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_attachments_for_test/21"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "offset": 0,
+            "limit": 250,
+            "size": 1,
+            "_links": {
+              "next": null,
+              "prev": null
+            },
+            "attachments": [
+              {
+                "client_id": 614308,
+                "project_id": 2,
+                "entity_type": "case",
+                "id": "2ec27be4-812f-4806-9a5d-d39130d1691a",
+                "created_on": 1631722975,
+                "data_id": "63c82867-526d-43be-b1a5-9ddfcf581cf5",
+                "entity_id": "3",
+                "filename": "msdia80.dll",
+                "filetype": "dll",
+                "legacy_id": 0,
+                "name": "msdia80.dll",
+                "size": 904704,
+                "user_id": 1,
+                "is_image": false,
+                "icon": "other"
+              }
+            ]
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "client_id": 614308,
+              "project_id": 2,
+              "entity_type": "case",
+              "id": "2ec27be4-812f-4806-9a5d-d39130d1691a",
+              "created_on": 1631722975,
+              "data_id": "63c82867-526d-43be-b1a5-9ddfcf581cf5",
+              "entity_id": "3",
+              "filename": "msdia80.dll",
+              "filetype": "dll",
+              "legacy_id": 0,
+              "name": "msdia80.dll",
+              "size": 904704,
+              "user_id": 1,
+              "is_image": false,
+              "icon": "other"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "bare-array",
+      "input": {
+        "test_id": 21
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "bare-array"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.getAttachmentsForTest",
+          "arguments": [
+            21
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_attachments_for_test/21"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": [
+            {
+              "id": 1773,
+              "name": "image.jpg",
+              "size": 21995,
+              "created_on": 1585560521,
+              "project_id": 33,
+              "case_id": 57333,
+              "user_id": 1,
+              "result_id": null
+            }
+          ]
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 1773,
+              "name": "image.jpg",
+              "size": 21995,
+              "created_on": 1585560521,
+              "project_id": 33,
+              "case_id": 57333,
+              "user_id": 1,
+              "result_id": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "largest-safe-test",
+      "input": {
+        "test_id": 9007199254740991
+      },
+      "covers": [
+        {
+          "parameter": "test_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.getAttachmentsForTest",
+          "arguments": [
+            9007199254740991
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_attachments_for_test/9007199254740991"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": []
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": []
+        }
+      }
+    },
+    {
+      "id": "paging-control",
+      "input": {
+        "test_id": 21,
+        "query": {
+          "limit": 10
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-paging-controls"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "pagination-mode",
+      "input": {
+        "test_id": 21,
+        "_mcp": {
+          "pagination": "all"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-paging-controls"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "test_id": 21,
+        "run_id": 3
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

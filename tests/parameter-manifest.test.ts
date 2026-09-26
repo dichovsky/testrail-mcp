@@ -189,6 +189,11 @@ describe('independent parameter manifest format', () => {
   it('reports every unreviewed endpoint and partial endpoint separately', () => {
     const report = parameterCoverageReport(manifests, inventory);
     expect(report.completeEndpoints).toEqual([
+      'testrail_add_attachment_to_case',
+      'testrail_add_attachment_to_plan',
+      'testrail_add_attachment_to_plan_entry',
+      'testrail_add_attachment_to_result',
+      'testrail_add_attachment_to_run',
       'testrail_add_bdd',
       'testrail_add_case',
       'testrail_add_case_field',
@@ -216,6 +221,7 @@ describe('independent parameter manifest format', () => {
       'testrail_close_plan',
       'testrail_close_run',
       'testrail_copy_cases_to_section',
+      'testrail_delete_attachment',
       'testrail_delete_case',
       'testrail_delete_cases',
       'testrail_delete_config',
@@ -236,7 +242,11 @@ describe('independent parameter manifest format', () => {
       'testrail_delete_variable',
       'testrail_edit_result',
       'testrail_get_attachment',
+      'testrail_get_attachments_for_case',
+      'testrail_get_attachments_for_plan',
       'testrail_get_attachments_for_plan_entry',
+      'testrail_get_attachments_for_run',
+      'testrail_get_attachments_for_test',
       'testrail_get_bdd',
       'testrail_get_bdds',
       'testrail_get_case',
@@ -314,10 +324,9 @@ describe('independent parameter manifest format', () => {
       'testrail_update_variable',
     ]);
     expect(report.partialEndpoints).toEqual([]);
-    expect(report.pendingEndpoints).toHaveLength(10);
+    expect(report.pendingEndpoints).toEqual([]);
     expect([...report.reviewedEndpoints, ...report.pendingEndpoints].sort())
       .toEqual(inventory.map(({ tool }) => tool).sort());
-    expect(report.pendingEndpoints).toContain('testrail_add_attachment_to_case');
   });
 
   it('derives a control\'s rejections from the baseline of its own call mode', () => {
@@ -497,6 +506,62 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
     case 'attachments.getAttachmentsForPlanEntry': {
       const [planId, entryId] = z.tuple([z.number(), z.string()]).parse(expected.driver.arguments);
       return client.attachments.getAttachmentsForPlanEntry(planId, entryId);
+    }
+    case 'attachments.getAttachmentsForCasePage': {
+      const [caseId, options] = z.tuple([z.number(), z.strictObject({ limit: z.number(), offset: z.number() })])
+        .parse(expected.driver.arguments);
+      return client.attachments.getAttachmentsForCasePage(caseId, options);
+    }
+    case 'attachments.getAllAttachmentsForCase': {
+      const [caseId, options] = z.tuple([z.number(), z.strictObject(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.attachments.getAllAttachmentsForCase(caseId, present(options));
+    }
+    case 'attachments.getAttachmentsForPlanPage': {
+      const [planId, options] = z.tuple([z.number(), z.strictObject({ limit: z.number(), offset: z.number() })])
+        .parse(expected.driver.arguments);
+      return client.attachments.getAttachmentsForPlanPage(planId, options);
+    }
+    case 'attachments.getAllAttachmentsForPlan': {
+      const [planId, options] = z.tuple([z.number(), z.strictObject(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.attachments.getAllAttachmentsForPlan(planId, present(options));
+    }
+    case 'attachments.getAttachmentsForRunPage': {
+      const [runId, options] = z.tuple([z.number(), z.strictObject({ limit: z.number(), offset: z.number() })])
+        .parse(expected.driver.arguments);
+      return client.attachments.getAttachmentsForRunPage(runId, options);
+    }
+    case 'attachments.getAllAttachmentsForRun': {
+      const [runId, options] = z.tuple([z.number(), z.strictObject(aggregateOptions)]).parse(expected.driver.arguments);
+      return client.attachments.getAllAttachmentsForRun(runId, present(options));
+    }
+    case 'attachments.getAttachmentsForTest': {
+      const [testId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.attachments.getAttachmentsForTest(testId);
+    }
+    case 'attachments.addAttachmentToCase': {
+      const [caseId, file, filename] = z.tuple([z.number(), uploadFile, z.string()]).parse(expected.driver.arguments);
+      return client.attachments.addAttachmentToCase(caseId, present(file), filename);
+    }
+    case 'attachments.addAttachmentToPlan': {
+      const [planId, file, filename] = z.tuple([z.number(), uploadFile, z.string()]).parse(expected.driver.arguments);
+      return client.attachments.addAttachmentToPlan(planId, present(file), filename);
+    }
+    case 'attachments.addAttachmentToPlanEntry': {
+      const [planId, entryId, file, filename] = z.tuple([z.number(), z.string(), uploadFile, z.string()])
+        .parse(expected.driver.arguments);
+      return client.attachments.addAttachmentToPlanEntry(planId, entryId, present(file), filename);
+    }
+    case 'attachments.addAttachmentToResult': {
+      const [resultId, file, filename] = z.tuple([z.number(), uploadFile, z.string()]).parse(expected.driver.arguments);
+      return client.attachments.addAttachmentToResult(resultId, present(file), filename);
+    }
+    case 'attachments.addAttachmentToRun': {
+      const [runId, file, filename] = z.tuple([z.number(), uploadFile, z.string()]).parse(expected.driver.arguments);
+      return client.attachments.addAttachmentToRun(runId, present(file), filename);
+    }
+    case 'attachments.deleteAttachment': {
+      const [id] = z.tuple([z.union([z.number(), z.string()])]).parse(expected.driver.arguments);
+      return client.attachments.deleteAttachment(id);
     }
     case 'results.getResultsPage': {
       const [testId, options] = z.tuple([z.number(), resultFilterOptions.extend({ limit: z.number(), offset: z.number() })])

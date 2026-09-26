@@ -1,0 +1,873 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-26"
+  },
+  "endpoint": {
+    "family_id": "T12",
+    "http_method": "POST",
+    "route": "add_attachment_to_plan_entry/{plan_id}/{entry_id}",
+    "tool": "testrail_add_attachment_to_plan_entry",
+    "driver_method": "attachments.addAttachmentToPlanEntry"
+  },
+  "sources": [
+    {
+      "id": "driver-module",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/attachments.ts",
+      "supports": "addAttachmentToPlanEntry validates the plan ID and the entry ID, places them in that order after add_attachment_to_plan_entry and posts the file through the shared multipart pipeline with the caller's filename under the none retry policy, parsing no schema. Its comment records that entry_id is the plan entry's GUID and that TestRail refuses a numeric one with 400."
+    },
+    {
+      "id": "driver-validation",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/validation.ts",
+      "supports": "validateId accepts a positive safe integer; validateEntryId and validateAttachmentId test strings against one case-insensitive UUID expression anchored at both ends, so a traversal sequence, a surrounding space or a trailing line terminator is refused; validateAttachmentId otherwise accepts only a positive integer."
+    },
+    {
+      "id": "driver-client",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/client-core.ts",
+      "supports": "The multipart pipeline appends the file to a FormData under the field name attachment with the caller's filename, and opens the staged path as a blob whose media type is the one supplied or empty when none was. That form data is the request body, sent without a JSON content type, and the none retry policy the upload methods name re-sends nothing, not even a 429, because the body is a consumed stream."
+    },
+    {
+      "id": "driver-constants",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/constants.ts",
+      "supports": "MULTIPART_FIELD_NAME is attachment."
+    },
+    {
+      "id": "testrail-attachments",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077196481428-Attachments",
+      "supports": "add_attachment_to_plan_entry/{plan_id}/{entry_id} requires TestRail 6.3 or later; its description, copied from the plan section, says it adds an attachment to a test plan. Both IDs are labelled integer. The upload must be multipart/form-data, the maximum upload size is 256MB, and the reply is {\"attachment_id\": 443}. It answers 400 for a malformed request or invalid ID parameters and 403 for no access or insufficient permissions."
+    },
+    {
+      "id": "testrail-accessing",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077039051284-Accessing-the-TestRail-API",
+      "supports": "The documented attachment upload posts the file as the multipart field attachment to add_attachment_to_result/1 and receives {\"attachment_id\":11}."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "Strictness is an MCP boundary requirement. The transport stages an owned copy of the caller's file inside the configured upload roots before dispatch and hands the driver that copy, so the bytes sent are the bytes approved; the staging, its containment, its size limit and its disposal belong to the transport rather than to this endpoint."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the new attachment_id, returned as the driver received it: the upload methods parse no schema. Entity drift against the driver's attachment schema is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "single-request",
+      "kind": "mapping",
+      "description": "Send exactly one multipart request. The adapter never re-reads the file or repeats the upload."
+    }
+  ],
+  "baseline": "upload",
+  "files": [
+    {
+      "token": "console-log",
+      "filename": "console.log",
+      "utf8": "Build 412 console output\nAll 36 checks passed.\n"
+    }
+  ],
+  "parameters": [
+    {
+      "id": "plan_id",
+      "input_path": [
+        "plan_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "No coercion. The validated number is passed positionally and appears verbatim as the first path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "plan_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module",
+        "driver-validation",
+        "testrail-attachments"
+      ]
+    },
+    {
+      "id": "entry_id",
+      "input_path": [
+        "entry_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "entry_id",
+      "semantics": "The plan entry's UUID, as get_plan returns it in entries[].id. TestRail's Attachments reference labels it an integer; the pinned driver validates a UUID and records that TestRail refuses a numeric entry_id here with 400. No trimming or case folding.",
+      "driver": {
+        "argument": 1,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "entry_id"
+        ],
+        "encoding": "UUID path segment after the plan ID, sent with the caller's letter case."
+      },
+      "sources": [
+        "driver-module",
+        "driver-validation",
+        "testrail-attachments"
+      ]
+    },
+    {
+      "id": "file_path",
+      "input_path": [
+        "file_path"
+      ],
+      "scope": "file",
+      "requiredness": "required",
+      "domain": {
+        "type": "string",
+        "minLength": 1,
+        "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+(?![\\s\\S])"
+      },
+      "semantics": "The caller's path to the file. The transport stages an owned copy within the configured upload roots and the driver receives that copy's path, so this value never reaches TestRail; the file's contents do.",
+      "wire": {
+        "location": "multipart",
+        "names": [
+          "attachment"
+        ],
+        "encoding": "The file's contents become the attachment part's body."
+      },
+      "sources": [
+        "driver-module",
+        "driver-client"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Pass the staged copy's path as the file argument."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a path and upload that file's contents."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a path carrying a control character before driver invocation."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing path."
+        }
+      ],
+      "driver": {
+        "argument": 2,
+        "path": [
+          "path"
+        ]
+      }
+    },
+    {
+      "id": "filename",
+      "input_path": [
+        "filename"
+      ],
+      "scope": "file",
+      "requiredness": "required",
+      "domain": {
+        "type": "string",
+        "pattern": "^(?!\\.{1,2}$)(?![A-Za-z]:)[^/\\\\\"\\u0000-\\u001f\\u007f-\\u009f]+(?![\\s\\S])"
+      },
+      "semantics": "The name TestRail records for the attachment. A path separator, a drive prefix, a lone . or .., a control byte and a double quote are refused: the name is not a path, and the encoder percent-escapes a quote, so TestRail would record a name the caller never asked for.",
+      "wire": {
+        "location": "multipart",
+        "names": [
+          "attachment"
+        ],
+        "encoding": "Sent as the attachment part's filename."
+      },
+      "sources": [
+        "driver-module",
+        "driver-client"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Pass the name as the filename argument and send it as the part's filename."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a plain file name."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a name containing a forward or back slash before driver invocation."
+        },
+        {
+          "id": "quote",
+          "kind": "invalid",
+          "description": "Reject a name containing a double quote, which the multipart encoder percent-escapes, so the recorded name would differ from the one requested."
+        },
+        {
+          "id": "dot-segment",
+          "kind": "invalid",
+          "description": "Reject a name that is only . or .., which names a directory rather than a file."
+        },
+        {
+          "id": "drive-prefix",
+          "kind": "invalid",
+          "description": "Reject a name that starts with a drive letter and a colon."
+        },
+        {
+          "id": "control",
+          "kind": "invalid",
+          "description": "Reject a name carrying a control character."
+        },
+        {
+          "id": "required",
+          "kind": "required",
+          "description": "Reject a missing name."
+        }
+      ],
+      "driver": {
+        "argument": 3,
+        "path": []
+      }
+    },
+    {
+      "id": "content_type",
+      "input_path": [
+        "content_type"
+      ],
+      "scope": "file",
+      "requiredness": "optional",
+      "domain": {
+        "type": "string",
+        "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+/[!#$%&'*+.^_`|~0-9A-Za-z-]+(?: *; *[!#$%&'*+.^_`|~0-9A-Za-z-]+ *= *(?:[!#$%&'*+.^_`|~0-9A-Za-z-]+|\"[^\"]*\"))*(?![\\s\\S])"
+      },
+      "semantics": "The media type recorded for the part, as a type and subtype with optional parameters. Omitting it leaves the part's type undeclared, which the encoder writes as application/octet-stream; a supplied value becomes the staged copy's type.",
+      "wire": {
+        "location": "multipart",
+        "names": [
+          "attachment"
+        ],
+        "encoding": "Sent as the attachment part's content type. With none supplied the part carries application/octet-stream, which is what the encoder writes for a blob with no declared type."
+      },
+      "sources": [
+        "driver-client"
+      ],
+      "requirements": [
+        {
+          "id": "mapping",
+          "kind": "mapping",
+          "description": "Pass the value as the staged file's type."
+        },
+        {
+          "id": "valid",
+          "kind": "valid",
+          "description": "Accept a media type and send it on the part."
+        },
+        {
+          "id": "parameter",
+          "kind": "valid",
+          "description": "Accept a media type with a parameter and send it on the part."
+        },
+        {
+          "id": "invalid",
+          "kind": "invalid",
+          "description": "Reject a value that is not a media type before driver invocation."
+        },
+        {
+          "id": "omitted",
+          "kind": "omitted",
+          "description": "Declare no type on the staged copy when the caller supplied none, leaving the encoder's application/octet-stream on the part."
+        }
+      ],
+      "driver": {
+        "argument": 2,
+        "path": [
+          "type"
+        ]
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "upload",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "file_path": "{{console-log}}",
+        "filename": "console.log",
+        "content_type": "text/plain"
+      },
+      "covers": [
+        {
+          "parameter": "plan_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "entry_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "file_path",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "filename",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "content_type",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "$input",
+          "requirements": [
+            "single-request"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.addAttachmentToPlanEntry",
+          "arguments": [
+            7,
+            "3933d74b-4282-44de-82ae-a6412808369d",
+            {
+              "path": "{{console-log}}",
+              "type": "text/plain"
+            },
+            "console.log"
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_attachment_to_plan_entry/7/3933d74b-4282-44de-82ae-a6412808369d",
+          "multipart": [
+            {
+              "name": "attachment",
+              "filename": "console.log",
+              "content_type": "text/plain",
+              "utf8": "Build 412 console output\nAll 36 checks passed.\n"
+            }
+          ]
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "attachment_id": 443
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "attachment_id": 443
+          }
+        }
+      }
+    },
+    {
+      "id": "without-media-type",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "file_path": "{{console-log}}",
+        "filename": "console.log"
+      },
+      "covers": [
+        {
+          "parameter": "content_type",
+          "requirements": [
+            "omitted"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.addAttachmentToPlanEntry",
+          "arguments": [
+            7,
+            "3933d74b-4282-44de-82ae-a6412808369d",
+            {
+              "path": "{{console-log}}"
+            },
+            "console.log"
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_attachment_to_plan_entry/7/3933d74b-4282-44de-82ae-a6412808369d",
+          "multipart": [
+            {
+              "name": "attachment",
+              "filename": "console.log",
+              "content_type": "application/octet-stream",
+              "utf8": "Build 412 console output\nAll 36 checks passed.\n"
+            }
+          ]
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "attachment_id": 443
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "attachment_id": 443
+          }
+        }
+      }
+    },
+    {
+      "id": "media-type-parameter",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "file_path": "{{console-log}}",
+        "filename": "console.log",
+        "content_type": "text/plain;charset=utf-8"
+      },
+      "covers": [
+        {
+          "parameter": "content_type",
+          "requirements": [
+            "parameter"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.addAttachmentToPlanEntry",
+          "arguments": [
+            7,
+            "3933d74b-4282-44de-82ae-a6412808369d",
+            {
+              "path": "{{console-log}}",
+              "type": "text/plain;charset=utf-8"
+            },
+            "console.log"
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_attachment_to_plan_entry/7/3933d74b-4282-44de-82ae-a6412808369d",
+          "multipart": [
+            {
+              "name": "attachment",
+              "filename": "console.log",
+              "content_type": "text/plain;charset=utf-8",
+              "utf8": "Build 412 console output\nAll 36 checks passed.\n"
+            }
+          ]
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "attachment_id": 443
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "attachment_id": 443
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-plan",
+      "input": {
+        "plan_id": 9007199254740991,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "file_path": "{{console-log}}",
+        "filename": "console.log",
+        "content_type": "text/plain"
+      },
+      "covers": [
+        {
+          "parameter": "plan_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.addAttachmentToPlanEntry",
+          "arguments": [
+            9007199254740991,
+            "3933d74b-4282-44de-82ae-a6412808369d",
+            {
+              "path": "{{console-log}}",
+              "type": "text/plain"
+            },
+            "console.log"
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_attachment_to_plan_entry/9007199254740991/3933d74b-4282-44de-82ae-a6412808369d",
+          "multipart": [
+            {
+              "name": "attachment",
+              "filename": "console.log",
+              "content_type": "text/plain",
+              "utf8": "Build 412 console output\nAll 36 checks passed.\n"
+            }
+          ]
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "attachment_id": 443
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "attachment_id": 443
+          }
+        }
+      }
+    },
+    {
+      "id": "upper-case-entry",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933D74B-4282-44DE-82AE-A6412808369D",
+        "file_path": "{{console-log}}",
+        "filename": "console.log",
+        "content_type": "text/plain"
+      },
+      "covers": [
+        {
+          "parameter": "entry_id",
+          "requirements": [
+            "case-insensitive"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "attachments.addAttachmentToPlanEntry",
+          "arguments": [
+            7,
+            "3933D74B-4282-44DE-82AE-A6412808369D",
+            {
+              "path": "{{console-log}}",
+              "type": "text/plain"
+            },
+            "console.log"
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_attachment_to_plan_entry/7/3933D74B-4282-44DE-82AE-A6412808369D",
+          "multipart": [
+            {
+              "name": "attachment",
+              "filename": "console.log",
+              "content_type": "text/plain",
+              "utf8": "Build 412 console output\nAll 36 checks passed.\n"
+            }
+          ]
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "attachment_id": 443
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "attachment_id": 443
+          }
+        }
+      }
+    },
+    {
+      "id": "missing-file-path",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "filename": "console.log",
+        "content_type": "text/plain"
+      },
+      "covers": [
+        {
+          "parameter": "file_path",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "control-character-path",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "file_path": "logs/console\t.log",
+        "filename": "console.log",
+        "content_type": "text/plain"
+      },
+      "covers": [
+        {
+          "parameter": "file_path",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "missing-filename",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "file_path": "{{console-log}}",
+        "content_type": "text/plain"
+      },
+      "covers": [
+        {
+          "parameter": "filename",
+          "requirements": [
+            "required"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "filename-with-separator",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "file_path": "{{console-log}}",
+        "filename": "logs/console.log",
+        "content_type": "text/plain"
+      },
+      "covers": [
+        {
+          "parameter": "filename",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "filename-with-backslash",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "file_path": "{{console-log}}",
+        "filename": "logs\\console.log",
+        "content_type": "text/plain"
+      },
+      "covers": [
+        {
+          "parameter": "filename",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "filename-with-quote",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "file_path": "{{console-log}}",
+        "filename": "console\".log",
+        "content_type": "text/plain"
+      },
+      "covers": [
+        {
+          "parameter": "filename",
+          "requirements": [
+            "quote"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "filename-dot-dot",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "file_path": "{{console-log}}",
+        "filename": "..",
+        "content_type": "text/plain"
+      },
+      "covers": [
+        {
+          "parameter": "filename",
+          "requirements": [
+            "dot-segment"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "filename-drive-prefix",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "file_path": "{{console-log}}",
+        "filename": "C:console.log",
+        "content_type": "text/plain"
+      },
+      "covers": [
+        {
+          "parameter": "filename",
+          "requirements": [
+            "drive-prefix"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "filename-control",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "file_path": "{{console-log}}",
+        "filename": "console\n.log",
+        "content_type": "text/plain"
+      },
+      "covers": [
+        {
+          "parameter": "filename",
+          "requirements": [
+            "control"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "invalid-media-type",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "file_path": "{{console-log}}",
+        "filename": "console.log",
+        "content_type": "text plain"
+      },
+      "covers": [
+        {
+          "parameter": "content_type",
+          "requirements": [
+            "invalid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "plan_id": 7,
+        "entry_id": "3933d74b-4282-44de-82ae-a6412808369d",
+        "file_path": "{{console-log}}",
+        "filename": "console.log",
+        "content_type": "text/plain",
+        "description": "nightly log"
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}
