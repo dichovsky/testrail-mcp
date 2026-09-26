@@ -10781,7 +10781,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_update_dataset
 
-Update a TestRail dataset. Both fields are optional and TestRail accepts an empty body as a no-op. TestRail does not state whether a supplied body.variables replaces the dataset's values or merges into them, so send the full map of values you want set, which is the safe instruction under either reading. Every name in it must already exist as a variable of the project. Clearing a value is not available: the map takes strings only, so there is no way to send an empty or null value for a name. Datasets are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription. Required path arguments: dataset_id. Changes TestRail data.
+Update a TestRail dataset. Both fields are optional and TestRail accepts an empty body as a no-op. TestRail does not state whether a supplied body.variables replaces the dataset's values or merges into them, so send the full map of values you want set, which is the safe instruction under either reading. Every name in it must already exist as a variable of the project. A value must be a string: null is refused here, while an empty string is accepted and sent, and TestRail does not document whether an empty string clears a value or stores it empty. Datasets are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription. Required path arguments: dataset_id. Changes TestRail data.
 
 REST: `POST update_dataset/{dataset_id}`. Driver: `datasets.updateDataset`. Family: T09.
 

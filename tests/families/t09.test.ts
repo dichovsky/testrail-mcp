@@ -71,12 +71,11 @@ function envelope(collection: string, items: readonly unknown[], next: string | 
 }
 
 /*
- * A dataset's values are written as a map keyed by variable name. Other payloads also
- * take caller-chosen body keys, but never bare ones: a case, result or shared-step
- * extension must match custom_*, a namespace this server owns, so no key a caller
- * invents there can be spelled like a control. Here the key is unconstrained caller
- * text, which makes this the one place a collision is even expressible. These names
- * deliberately collide with this server's own vocabulary.
+ * A dataset's values are written as a map keyed by variable name, so its keys are bare
+ * caller text. That is not unique here: a step entry inside custom_steps_separated is an
+ * open record too, while a flat case or result extension is namespaced under custom_*.
+ * What these names check is that nothing between the tool call and the wire reads a
+ * body's keys looking for one of this server's own controls.
  */
 describe('T09 the variable names a dataset write is allowed to use', () => {
   it('sends a name that collides with a paging control as the variable name it is', async () => {
@@ -132,6 +131,29 @@ describe('T09 the variable names a dataset write is allowed to use', () => {
         { dataset_id: 2, body: {} }, { runtime, configuration });
       expect(untouched.isError).toBeUndefined();
       expect(sentBody(fetch, 1)).toEqual({});
+    } finally { await runtime.shutdown(); }
+  });
+
+  /*
+   * The summary tells a caller what a value may be, so the two edges of that sentence are
+   * pinned here. An empty string is accepted and sent: whether TestRail reads it as
+   * clearing the value is TestRail's business, and claiming either way would be inventing
+   * behaviour. A null is refused, because the driver's payload declares a string.
+   */
+  it('sends an empty value and refuses a null one', async () => {
+    const fetch = vi.fn().mockImplementation(() => Promise.resolve(json({ ...DATASET, id: 2 })));
+    const runtime = runtimeFor(fetch);
+    try {
+      const empty = await executeToolCall(operation('testrail_update_dataset'),
+        { dataset_id: 2, body: { variables: { age: '' } } }, { runtime, configuration });
+      expect(empty.isError).toBeUndefined();
+      expect(sentBody(fetch)).toEqual({ variables: { age: '' } });
+      const nulled = await executeToolCall(operation('testrail_update_dataset'),
+        { dataset_id: 2, body: { variables: { age: null } } }, { runtime, configuration });
+      expect(nulled.isError).toBe(true);
+      expect(errorOf(nulled).code).toBe('INVALID_ARGUMENT');
+      // The refusal is local: the null never reached the wire.
+      expect(fetch).toHaveBeenCalledTimes(1);
     } finally { await runtime.shutdown(); }
   });
 

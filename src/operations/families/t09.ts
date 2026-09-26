@@ -133,7 +133,7 @@ export const updateDataset = defineOperation({
   route: 'update_dataset/{dataset_id}',
   family: 'T09',
   driverBinding: 'datasets.updateDataset',
-  summary: 'Update a TestRail dataset. Both fields are optional and TestRail accepts an empty body as a no-op. TestRail does not state whether a supplied body.variables replaces the dataset\'s values or merges into them, so send the full map of values you want set, which is the safe instruction under either reading. Every name in it must already exist as a variable of the project. Clearing a value is not available: the map takes strings only, so there is no way to send an empty or null value for a name. Datasets are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription.',
+  summary: 'Update a TestRail dataset. Both fields are optional and TestRail accepts an empty body as a no-op. TestRail does not state whether a supplied body.variables replaces the dataset\'s values or merges into them, so send the full map of values you want set, which is the safe instruction under either reading. Every name in it must already exist as a variable of the project. A value must be a string: null is refused here, while an empty string is accepted and sent, and TestRail does not document whether an empty string clears a value or stores it empty. Datasets are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription.',
   inputSchema: updateDatasetInput,
   argumentMap: [
     { input: 'dataset_id', call: 'single', argument: 0, serialization: 'path' },
