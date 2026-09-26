@@ -26,7 +26,7 @@ Regex constraints must use only the `u` flag so runtime and JSON Schema use the 
 
 ## Effects and results
 
-Record TestRail effects separately from local files. Report GETs initiate work and may send email; their hints are non-read-only/non-idempotent and their driver policy is `never`. Attachment downloads remain ordinary TestRail reads but create distinct persistent local files, so their hints are non-read-only, non-destructive and non-idempotent. The registry validates these exceptions. Other mutations require individually reviewed destructive/idempotent hints. All tools have `openWorldHint: true`; there is no enabled/confirmation/unlock field.
+Record TestRail effects separately from local files. Report GETs initiate work and may send email; their hints are non-read-only/non-idempotent and their driver policy is `rate-limit-only`: the driver re-sends a rate-limited (429) request, which TestRail rejects before handling, and nothing else, as F01 accepted on 2026-09-17. Attachment downloads remain ordinary TestRail reads but create distinct persistent local files, so their hints are non-read-only, non-destructive and non-idempotent. The registry validates these exceptions. Other mutations require individually reviewed destructive/idempotent hints. All tools have `openWorldHint: true`; there is no enabled/confirmation/unlock field.
 
 Descriptions append relevant path, pagination, file and report behavior and must remain below 2 KiB in UTF-8. Outer schemas describe usable response structures; advisory entity schemas are retained separately for F05 to validate each caller without replacing the driver's original data.
 

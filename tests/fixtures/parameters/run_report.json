@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-26"
+  },
+  "endpoint": {
+    "family_id": "T11",
+    "http_method": "GET",
+    "route": "run_report/{report_template_id}",
+    "tool": "testrail_run_report",
+    "driver_method": "reports.runReport"
+  },
+  "sources": [
+    {
+      "id": "driver-module-reports",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/reports.ts",
+      "supports": "getReports validates the project identifier with validateId and places it as the only path segment of get_reports; getCrossProjectReports takes no argument and requests get_cross_project_reports. runReport and runCrossProjectReport validate the template identifier the same way and place it as the only path segment of run_report and run_cross_project_report, requesting with bypassCache true and retry rateLimitOnly. Their comments record that each call generates a new report and the template may email it, so the cache and in-flight coalescing are bypassed and every explicit call executes once, and that only a 429 is retried because the rate limiter rejects before execution, so nothing was generated."
+    },
+    {
+      "id": "driver-schema-reports",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/reports.ts",
+      "supports": "ReportSchema requires id and name and admits a nullish description and the nullish notify_user, notify_link, notify_link_recipients, notify_attachment, notify_attachment_recipients, notify_attachment_html_format and notify_attachment_pdf_format fields, beside a nullish is_shared. CrossProjectReportSchema also requires project_ids, include_open_runs_and_plans, include_completed_runs_and_plans and report_timeframe, and its comment records that the Summary-only and User Workload-only selections stay optional because TestRail omits them from the other family, and that included_statuses admits both a list and the comma-separated string of the wire example. ReportResultSchema requires report_url and admits nullish report_html, report_pdf and user_report_url, the last a forward and legacy compatibility placeholder absent from the current reference. Every object is passthrough, so unmodelled keys survive parsing."
+    },
+    {
+      "id": "testrail-reports",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077825062036-Reports-and-Cross-Project-Reports",
+      "supports": "The page introduction, which precedes all four endpoints and opens by speaking of single-project reports, says only reports created with \"Create this report: On-demand via the API\" checked are accessible to the API; they appear under API Templates and are visible and executable through the endpoints it describes, and the setting cannot be changed once a report is saved. The same introduction says a report may not be available immediately after being run, and that the delay varies, especially for TestRail Server customers; the cross-project sections do not repeat that warning. get_reports/{project_id} takes a required project_id and returns an array of API-available single-project reports; it answers 400 for an invalid or unknown project and 403 for no access to the project. run_report/{report_template_id} requires TestRail 5.7 or later, executes the report and returns report_url, report_html and report_pdf; it answers 400 for an invalid report template ID and 403 for no access to the project. get_cross_project_reports takes no input parameter and returns the API-available cross-project reports the user has access to, for Enterprise license plans only; its 403 is described as \"TestRail Enterprise only. Access denied. User role does not grant access.\" run_cross_project_report/{report_template_id} is likewise Enterprise only and returns the same three fields, report_url, report_html and report_pdf, whose example URLs point under cross_project_reports rather than reports, with the same 400 and 403. The notify_* fields describe whether the author is notified once the report has been executed, whether links or attachments are emailed, and to whom."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "One identifier in the path and no body, so every field beyond it is refused. TestRail documents no parameter beyond the template for this endpoint, and the driver sends none; it is silent rather than explicit about there being none. What runs is the template, whose settings include the notify_* fields the template lists return."
+  },
+  "outer_result": {
+    "driver": "record",
+    "tool_data": "record",
+    "notes": "TestRail answers with the URLs of the single-project report it just generated, and the record is returned exactly as the driver received it. The URLs may not resolve yet. Each accepted fixture records one call made with the cache off and no retries, which proves the arguments and the request rather than the report effect; the family suite proves the effect, counting requests through the production driver options. Entity-field drift is advisory, so a reply without report_url comes back as sent with a warning rather than as an error."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    }
+  ],
+  "baseline": "representative-id",
+  "parameters": [
+    {
+      "id": "report_template_id",
+      "input_path": [
+        "report_template_id"
+      ],
+      "scope": "path",
+      "requiredness": "required",
+      "domain_ref": "positive_id",
+      "semantics": "The single-project report template to run, as get_reports lists it. No coercion; passed positionally and sent verbatim as the only path segment.",
+      "driver": {
+        "argument": 0,
+        "path": []
+      },
+      "wire": {
+        "location": "path",
+        "names": [
+          "report_template_id"
+        ],
+        "encoding": "Decimal integer path segment; numeric strings are rejected rather than coerced."
+      },
+      "sources": [
+        "driver-module-reports",
+        "testrail-reports"
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "representative-id",
+      "input": {
+        "report_template_id": 383
+      },
+      "covers": [
+        {
+          "parameter": "report_template_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "reports.runReport",
+          "arguments": [
+            383
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "run_report/383"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "report_url": "https://docs.testrail.com/index.php?/reports/view/383",
+            "report_html": "https://docs.testrail.com/index.php?/reports/get_html/383",
+            "report_pdf": "https://docs.testrail.com/index.php?/reports/get_pdf/383"
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "report_url": "https://docs.testrail.com/index.php?/reports/view/383",
+            "report_html": "https://docs.testrail.com/index.php?/reports/get_html/383",
+            "report_pdf": "https://docs.testrail.com/index.php?/reports/get_pdf/383"
+          }
+        }
+      }
+    },
+    {
+      "id": "largest-safe-id",
+      "input": {
+        "report_template_id": 9007199254740991
+      },
+      "covers": [
+        {
+          "parameter": "report_template_id",
+          "requirements": [
+            "upper-bound"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "reports.runReport",
+          "arguments": [
+            9007199254740991
+          ]
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "run_report/9007199254740991"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "report_url": "https://docs.testrail.com/index.php?/reports/view/383",
+            "report_html": "https://docs.testrail.com/index.php?/reports/get_html/383",
+            "report_pdf": "https://docs.testrail.com/index.php?/reports/get_pdf/383"
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "report_url": "https://docs.testrail.com/index.php?/reports/view/383",
+            "report_html": "https://docs.testrail.com/index.php?/reports/get_html/383",
+            "report_pdf": "https://docs.testrail.com/index.php?/reports/get_pdf/383"
+          }
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "report_template_id": 383,
+        "project_id": 7
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

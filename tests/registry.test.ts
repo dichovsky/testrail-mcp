@@ -50,12 +50,14 @@ describe('typed endpoint registry', () => {
       token: 'run_report', route: 'run_report/{report_template_id}', family: 'T11', driverBinding: 'reports.runReport',
       inputSchema: input, argumentMap: [{ input: 'report_template_id', call: 'single', argument: 0, serialization: 'path' }],
       pagination: { kind: 'none', single: driverCall(input, 'reports.runReport', (method, value) => method(value.report_template_id)) },
-      effects: { testRail: 'report', destructive: false, idempotent: false }, retry: 'never',
+      effects: { testRail: 'report', destructive: false, idempotent: false }, retry: 'rate-limit-only',
     });
     expect(report.annotations).toMatchObject({ readOnlyHint: false, idempotentHint: false });
     expect(report.description).toContain('template-configured email');
     expect(report.description).toContain('do not generate the report again to poll');
     expect(() => defineOperation({ ...report, retry: 'ordinary-read' })).toThrow('Invalid report effects');
+    // The driver re-sends a rate-limited report run, so declaring no retry at all would be false.
+    expect(() => defineOperation({ ...report, retry: 'never' })).toThrow('Invalid report effects');
     expect(() => defineOperation({ ...report, effects: { testRail: 'read', destructive: false, idempotent: true }, retry: 'ordinary-read' })).toThrow('Report endpoint must declare report effects');
   });
 

@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "7.2.0",
+    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-09-26"
+  },
+  "endpoint": {
+    "family_id": "T11",
+    "http_method": "GET",
+    "route": "get_cross_project_reports",
+    "tool": "testrail_get_cross_project_reports",
+    "driver_method": "reports.getCrossProjectReports"
+  },
+  "sources": [
+    {
+      "id": "driver-module-reports",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/reports.ts",
+      "supports": "getReports validates the project identifier with validateId and places it as the only path segment of get_reports; getCrossProjectReports takes no argument and requests get_cross_project_reports. runReport and runCrossProjectReport validate the template identifier the same way and place it as the only path segment of run_report and run_cross_project_report, requesting with bypassCache true and retry rateLimitOnly. Their comments record that each call generates a new report and the template may email it, so the cache and in-flight coalescing are bypassed and every explicit call executes once, and that only a 429 is retried because the rate limiter rejects before execution, so nothing was generated."
+    },
+    {
+      "id": "driver-schema-reports",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/reports.ts",
+      "supports": "ReportSchema requires id and name and admits a nullish description and the nullish notify_user, notify_link, notify_link_recipients, notify_attachment, notify_attachment_recipients, notify_attachment_html_format and notify_attachment_pdf_format fields, beside a nullish is_shared. CrossProjectReportSchema also requires project_ids, include_open_runs_and_plans, include_completed_runs_and_plans and report_timeframe, and its comment records that the Summary-only and User Workload-only selections stay optional because TestRail omits them from the other family, and that included_statuses admits both a list and the comma-separated string of the wire example. ReportResultSchema requires report_url and admits nullish report_html, report_pdf and user_report_url, the last a forward and legacy compatibility placeholder absent from the current reference. Every object is passthrough, so unmodelled keys survive parsing."
+    },
+    {
+      "id": "testrail-reports",
+      "url": "https://support.testrail.com/hc/en-us/articles/7077825062036-Reports-and-Cross-Project-Reports",
+      "supports": "The page introduction, which precedes all four endpoints and opens by speaking of single-project reports, says only reports created with \"Create this report: On-demand via the API\" checked are accessible to the API; they appear under API Templates and are visible and executable through the endpoints it describes, and the setting cannot be changed once a report is saved. The same introduction says a report may not be available immediately after being run, and that the delay varies, especially for TestRail Server customers; the cross-project sections do not repeat that warning. get_reports/{project_id} takes a required project_id and returns an array of API-available single-project reports; it answers 400 for an invalid or unknown project and 403 for no access to the project. run_report/{report_template_id} requires TestRail 5.7 or later, executes the report and returns report_url, report_html and report_pdf; it answers 400 for an invalid report template ID and 403 for no access to the project. get_cross_project_reports takes no input parameter and returns the API-available cross-project reports the user has access to, for Enterprise license plans only; its 403 is described as \"TestRail Enterprise only. Access denied. User role does not grant access.\" run_cross_project_report/{report_template_id} is likewise Enterprise only and returns the same three fields, report_url, report_html and report_pdf, whose example URLs point under cross_project_reports rather than reports, with the same 400 and 403. The notify_* fields describe whether the author is notified once the report has been executed, whether links or attachments are emailed, and to whom."
+    }
+  ],
+  "input_policy": {
+    "ordinary_fields": "reject",
+    "custom_fields": "reject",
+    "notes": "The endpoint takes nothing: TestRail documents no input parameter and the driver sends none, so every field is refused. The templates it returns span projects, so a caller naming a project is refused rather than served the unnarrowed list as if it had been filtered."
+  },
+  "outer_result": {
+    "driver": "array",
+    "tool_data": "array",
+    "notes": "The array of templates is returned as the driver received it. The two report families carry different optional fields: the users, times and sorting TestRail labels User Workload only, and milestone switches that appear only in the Summary example. Neither is filled in for the other. Entity-field drift is advisory."
+  },
+  "requirements": [
+    {
+      "id": "unknown-top-level",
+      "kind": "invalid",
+      "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
+    },
+    {
+      "id": "no-arguments",
+      "kind": "mapping",
+      "description": "Call the driver with no arguments at all, and send no path segment, query or body."
+    }
+  ],
+  "baseline": "no-arguments",
+  "parameters": [],
+  "cases": [
+    {
+      "id": "no-arguments",
+      "input": {},
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "no-arguments"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "reports.getCrossProjectReports",
+          "arguments": []
+        },
+        "wire": {
+          "method": "GET",
+          "endpoint": "get_cross_project_reports"
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": [
+            {
+              "id": 1,
+              "name": "Test Execution Projects Summary %date%",
+              "description": null,
+              "project_ids": [],
+              "include_open_milestones": true,
+              "include_completed_milestones": true,
+              "include_open_runs_and_plans": true,
+              "include_completed_runs_and_plans": true,
+              "report_timeframe": "90 days",
+              "included_statuses": "Passed, Blocked, Untested",
+              "content_hide_links": false,
+              "notify_user": true,
+              "notify_link": false,
+              "notify_link_recipients": null,
+              "notify_attachment": false,
+              "notify_attachment_recipients": "person1@example.com\r\nperson2@example.com",
+              "notify_attachment_html_format": false,
+              "notify_attachment_pdf_format": false
+            },
+            {
+              "id": 2,
+              "name": "Test Execution User Workload %date%",
+              "description": null,
+              "user_ids": [],
+              "project_ids": [],
+              "report_timeframe": "90 days",
+              "include_open_runs_and_plans": true,
+              "include_completed_runs_and_plans": true,
+              "include_elapsed_test_time": true,
+              "include_estimated_test_time": true,
+              "sort_by": "alphabetical",
+              "content_hide_links": false,
+              "notify_user": true,
+              "notify_link": false,
+              "notify_link_recipients": null,
+              "notify_attachment": false,
+              "notify_attachment_recipients": "person1@example.com\r\nperson2@example.com",
+              "notify_attachment_html_format": false,
+              "notify_attachment_pdf_format": false
+            }
+          ]
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 1,
+              "name": "Test Execution Projects Summary %date%",
+              "description": null,
+              "project_ids": [],
+              "include_open_milestones": true,
+              "include_completed_milestones": true,
+              "include_open_runs_and_plans": true,
+              "include_completed_runs_and_plans": true,
+              "report_timeframe": "90 days",
+              "included_statuses": "Passed, Blocked, Untested",
+              "content_hide_links": false,
+              "notify_user": true,
+              "notify_link": false,
+              "notify_link_recipients": null,
+              "notify_attachment": false,
+              "notify_attachment_recipients": "person1@example.com\r\nperson2@example.com",
+              "notify_attachment_html_format": false,
+              "notify_attachment_pdf_format": false
+            },
+            {
+              "id": 2,
+              "name": "Test Execution User Workload %date%",
+              "description": null,
+              "user_ids": [],
+              "project_ids": [],
+              "report_timeframe": "90 days",
+              "include_open_runs_and_plans": true,
+              "include_completed_runs_and_plans": true,
+              "include_elapsed_test_time": true,
+              "include_estimated_test_time": true,
+              "sort_by": "alphabetical",
+              "content_hide_links": false,
+              "notify_user": true,
+              "notify_link": false,
+              "notify_link_recipients": null,
+              "notify_attachment": false,
+              "notify_attachment_recipients": "person1@example.com\r\nperson2@example.com",
+              "notify_attachment_html_format": false,
+              "notify_attachment_pdf_format": false
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "unknown-top-level",
+      "input": {
+        "project_id": 7
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "unknown-top-level"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

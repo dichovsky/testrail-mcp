@@ -55,7 +55,12 @@ export interface OperationDefinition<Token extends string = string> {
     readonly idempotent: boolean;
   };
   /** Driver policy documentation; never used to implement an adapter retry. */
-  readonly retry: 'ordinary-read' | 'json-write' | 'never';
+  /*
+   * rate-limit-only is the report methods' policy: the driver re-sends a request TestRail
+   * rate-limited (429), which TestRail rejects before handling, and nothing else. F01
+   * accepted that exemption for report generation on 2026-09-17.
+   */
+  readonly retry: 'ordinary-read' | 'json-write' | 'rate-limit-only' | 'never';
 }
 
 export interface Operation<Token extends string = string> extends OperationDefinition<Token> {
@@ -115,7 +120,7 @@ function validateDefinition(operation: OperationDefinition): void {
   if (effects.testRail === 'read' && (operation.method !== 'GET' || effects.destructive || (!effects.idempotent && files.kind !== 'download'))) {
     throw new Error(`Invalid read effects: ${token}`);
   }
-  if (effects.testRail === 'report' && (operation.method !== 'GET' || effects.idempotent || operation.retry !== 'never')) {
+  if (effects.testRail === 'report' && (operation.method !== 'GET' || effects.idempotent || operation.retry !== 'rate-limit-only')) {
     throw new Error(`Invalid report effects: ${token}`);
   }
   if (effects.testRail === 'write' && operation.method !== 'POST') throw new Error(`Invalid write method: ${token}`);

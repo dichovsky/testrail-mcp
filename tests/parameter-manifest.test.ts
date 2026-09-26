@@ -246,6 +246,7 @@ describe('independent parameter manifest format', () => {
       'testrail_get_case_types',
       'testrail_get_cases',
       'testrail_get_configs',
+      'testrail_get_cross_project_reports',
       'testrail_get_current_user',
       'testrail_get_dataset',
       'testrail_get_datasets',
@@ -262,6 +263,7 @@ describe('independent parameter manifest format', () => {
       'testrail_get_priorities',
       'testrail_get_project',
       'testrail_get_projects',
+      'testrail_get_reports',
       'testrail_get_result_fields',
       'testrail_get_results',
       'testrail_get_results_for_case',
@@ -287,6 +289,8 @@ describe('independent parameter manifest format', () => {
       'testrail_get_version',
       'testrail_move_cases_to_section',
       'testrail_move_section',
+      'testrail_run_cross_project_report',
+      'testrail_run_report',
       'testrail_update_bdd',
       'testrail_update_case',
       'testrail_update_cases',
@@ -310,7 +314,7 @@ describe('independent parameter manifest format', () => {
       'testrail_update_variable',
     ]);
     expect(report.partialEndpoints).toEqual([]);
-    expect(report.pendingEndpoints).toHaveLength(14);
+    expect(report.pendingEndpoints).toHaveLength(10);
     expect([...report.reviewedEndpoints, ...report.pendingEndpoints].sort())
       .toEqual(inventory.map(({ tool }) => tool).sort());
     expect(report.pendingEndpoints).toContain('testrail_add_attachment_to_case');
@@ -1111,6 +1115,22 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
     case 'metadata.getVersion': {
       z.tuple([]).parse(expected.driver.arguments);
       return client.metadata.getVersion();
+    }
+    case 'reports.getReports': {
+      const [projectId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.reports.getReports(projectId);
+    }
+    case 'reports.runReport': {
+      const [reportTemplateId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.reports.runReport(reportTemplateId);
+    }
+    case 'reports.getCrossProjectReports': {
+      z.tuple([]).parse(expected.driver.arguments);
+      return client.reports.getCrossProjectReports();
+    }
+    case 'reports.runCrossProjectReport': {
+      const [reportTemplateId] = z.tuple([z.number()]).parse(expected.driver.arguments);
+      return client.reports.runCrossProjectReport(reportTemplateId);
     }
     default: throw new Error(`Missing independent driver evidence harness: ${expected.driver.binding}`);
   }
