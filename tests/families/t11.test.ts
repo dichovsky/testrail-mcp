@@ -418,6 +418,13 @@ describe('T11 what a run returns', () => {
       expect(description).toContain('"TestRail Enterprise only. Access denied." among them, arrives as PERMISSION_DENIED, which here may still mean the instance lacks Enterprise');
     });
 
+  // The availability warning sits in the page introduction, before all four endpoints, so it is not called single-project only.
+  it('says where TestRail warns that a cross-project report may not be ready', () => {
+    const { description } = operation('testrail_run_cross_project_report');
+    expect(description).toContain('in the introduction that precedes all four report endpoints but opens by speaking of single-project reports');
+    expect(description).not.toMatch(/silent/iu);
+  });
+
   it.each([['testrail_get_reports'], ['testrail_get_cross_project_reports']] as const)(
     '%s stays an ordinary read', (tool) => {
       expect(operation(tool).annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false, idempotentHint: true });
