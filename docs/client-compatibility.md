@@ -1,6 +1,6 @@
 # MCP client setup and release verification
 
-Status: implementation and verification plan, researched on 2026-09-09. The server is not implemented and no client compatibility test has passed yet. Configuration examples are proposed release documentation, not changes to the user's client settings.
+Status: the server is implemented, and all 133 tools are verified offline (see [coverage reports](coverage-reports.md)). No client compatibility test has run yet; that is [R02](https://github.com/dichovsky/testrail-mcp/issues/23). The client research below dates from 2026-09-09. The configuration examples are release documentation, not changes to your client settings.
 
 ## Required surfaces and evidence
 
@@ -25,7 +25,7 @@ Use `serveStdio(factory)` from `@modelcontextprotocol/server/stdio`. The release
 
 ## Shared installation and environment
 
-Planned package: `@dichovsky/testrail-mcp`. Planned npm executable: `testrail-mcp`. These names do not assert that a release has already been published.
+Package: `@dichovsky/testrail-mcp`. Executable: `testrail-mcp`. The package is not yet published to npm; until it is, install it from a packed checkout as the [README](../README.md#install) describes.
 
 For release verification, build and pack the candidate, install that tarball into an isolated prefix, and use the installed executable. Verify the published, exact version through npm once publication is part of the release workflow. The examples below assume `testrail-mcp` is on the host's executable path. When it is not, replace `command` with the absolute path of that same installed executable; check this separately for the desktop launch environment.
 
@@ -39,9 +39,17 @@ Supply these variables to the client process before launching it. The client for
 | `TESTRAIL_MCP_UPLOAD_ROOTS` | A JSON array of absolute directories, for example `["/absolute/path/to/testrail-uploads"]` |
 | `TESTRAIL_MCP_DOWNLOAD_DIR` | An absolute directory, for example `/absolute/path/to/testrail-downloads` |
 
+These optional variables are only needed when you use them. When you do, add them to the client's forwarding list or `env` map as well:
+
+| Variable | Expected value |
+| --- | --- |
+| `TESTRAIL_MCP_LIMITS` | A JSON object overriding limits, for example `{"max_all_items": 5000}`; the README lists the keys and their ranges |
+| `TESTRAIL_ALLOW_PRIVATE_HOSTS` | `true` for an instance on a private or loopback network; default `false` |
+| `TESTRAIL_ALLOW_INSECURE` | `true` to allow plain HTTP; default `false` |
+
 Replace the example directories with existing locations accessible to the local server and consumer. Do not store actual credentials in committed configuration or evidence. A desktop application may not inherit variables exported in an unrelated terminal; test the environment delivered to its subprocess without printing values.
 
-Set client tool-call timeouts to 120 seconds. The server plan uses separate 15-second driver request/body timeouts, a 45-second aggregation budget and a 60-second response-wait watchdog. DNS and retries can add time; the watchdog does not abort an already-running driver request, whose operation handle retains its execution slot until actual descendant settlement. An internal driver deadline may reject the public result first; F01 supplies the required independent settlement signal. The client timeout provides headroom for the server to return its own result or error; it does not extend the server's limits. Verify actual elapsed behavior, including retries and the driver's handling of an already-running request when a budget expires.
+Set client tool-call timeouts to 120 seconds. The server uses separate 15-second driver request and body timeouts, a 45-second aggregation budget and a 60-second response-wait watchdog. DNS and retries can add time; the watchdog does not abort an already-running driver request, whose operation handle retains its execution slot until actual descendant settlement. An internal driver deadline may reject the public result first; F01 supplies the required independent settlement signal. The client timeout provides headroom for the server to return its own result or error; it does not extend the server's limits. Verify actual elapsed behavior, including retries and the driver's handling of an already-running request when a budget expires.
 
 ## Codex desktop and CLI
 
@@ -131,7 +139,13 @@ Copilot CLI can move large tool output to a temporary file and present a preview
 
 ### 1. Deterministic protocol and package checks
 
-Run these in CI without real TestRail credentials or upstream network access:
+Run these in CI without real TestRail credentials or upstream network access. [R01](issues/R01.md) records where each one is:
+- the packaged-executable protocol checks, in `scripts/package-protocol.mjs`;
+- the catalog and registry gates, in `tests/regression-gates.test.ts` and `npm run registry:check`;
+- the fixture contracts, in `tests/registered-parameters.test.ts`, and the result wrapper, in `tests/result-contract.test.ts`;
+- the stdout, shutdown and cancellation checks, in `tests/transport/`.
+
+Item 3 differs from its wording in one way. Every fixture runs through the registered tool's driver call and the real driver, not the server. One accepted fixture per tool also runs through a connected client and the server, where the result wrapper is checked.
 
 1. Install the packed candidate and spawn its executable with fixture credentials. Initialization/discovery and `tools/list` must not require a TestRail request. Validate the installed executable rather than only a source-development runner.
 2. Enumerate the complete catalog over legacy initialization and MCP 2026-07-28 discovery using the pinned SDK clients. Compare the exact 133 names with the versioned coverage matrix; detect missing, additional, duplicate, or incorrectly mapped operations. Verify stable ordering, input/output schemas, descriptions, and annotations.
