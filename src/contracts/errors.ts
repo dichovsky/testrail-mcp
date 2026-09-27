@@ -4,6 +4,7 @@ import {
   TestRailPaginationError,
   TestRailValidationError,
 } from '@dichovsky/testrail-api-client';
+import { BODY_TIMEOUT_MS, REQUEST_TIMEOUT_MS } from '../driver/configuration.js';
 import { RuntimeError } from '../runtime/errors.js';
 
 export const ERROR_CODES = [
@@ -70,10 +71,39 @@ export interface ErrorContext {
   readonly dispatched: boolean;
   /** The driver's result resolved and a later adapter stage failed. */
   readonly acknowledged: boolean;
+  /** The call was an all-mode aggregate, whose own deadline the driver may report as a timeout. */
+  readonly aggregate?: boolean;
 }
 
 /** Driver aggregation stops that are a safety bound rather than a broken response. */
 const BOUND_REASONS = new Set(['max_pages', 'max_items', 'max_bytes', 'max_duration']);
+
+/*
+ * The driver bounds each request inside an aggregate with timers set to the budget that
+ * remains: the request's abort timer, a race against the deadline, and the body read.
+ * Any of them can fire a moment before the wall clock reaches the deadline, and the
+ * aggregate then rethrows that timer's own error rather than its duration stop. That is
+ * the same bound, not an upstream failure, and no response arrived to give it a status.
+ *
+ * Only the driver raises these: an error built from a received response always carries
+ * its body text, and a status of 0 never comes from HTTP. A request or body timeout is the
+ * deadline only when the driver clipped it below its full length, which only the aggregate
+ * budget does; an unclipped one is a slow request like any other.
+ */
+function clippedBelow(text: unknown, pattern: RegExp, full: number): boolean {
+  const match = typeof text === 'string' ? pattern.exec(text) : null;
+  return match !== null && Number(match[1]) < full;
+}
+
+function isAggregateDeadline(error: unknown): boolean {
+  if (!(error instanceof TestRailApiError)) return false;
+  if (error.status === 408 && error.response === undefined) {
+    return error.statusText === 'Aggregate request deadline exceeded'
+      || clippedBelow(error.statusText, /^Request timeout after (\d+)ms$/u, REQUEST_TIMEOUT_MS);
+  }
+  return error.status === 0 && error.statusText === 'Body read timeout'
+    && clippedBelow(error.response, /^body read exceeded (\d+)ms /u, BODY_TIMEOUT_MS);
+}
 
 function classifyApi(error: TestRailApiError): ErrorCode {
   // A usable-looking status with an unusable body is a response problem, not an
@@ -114,12 +144,14 @@ function writeOutcome(context: ErrorContext): WriteOutcome | undefined {
 }
 
 export function classifyError(error: unknown, context: ErrorContext): SafeError {
-  const code = codeFor(error);
+  const deadline = context.aggregate === true && isAggregateDeadline(error);
+  const code = deadline ? 'PAGINATION_LIMIT' : codeFor(error);
   const safe: {
     -readonly [K in keyof SafeError]: SafeError[K];
   } = { code, message: MESSAGES[code] };
 
-  if (error instanceof TestRailApiError && error.status > 0) safe.http_status = error.status;
+  if (deadline) safe.reason = 'max_duration';
+  else if (error instanceof TestRailApiError && error.status > 0) safe.http_status = error.status;
   if (error instanceof TestRailPaginationError) {
     safe.reason = error.reason;
     if (Number.isSafeInteger(error.pagesFetched)) safe.pages_fetched = error.pagesFetched;

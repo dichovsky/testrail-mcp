@@ -30,6 +30,10 @@ Subclass precedence is load-bearing, because the driver's own hierarchy makes th
 
 Status 0 and status 200 both map to `INVALID_RESPONSE`. A status-zero failure is not automatically a transport failure; malformed success JSON reaches the adapter the same way.
 
+An aggregate's duration bound is always `PAGINATION_LIMIT` with reason `max_duration`, however the driver raises it. Usually the aggregate raises its own stop. But each request inside it is bounded by timers set to the budget that remains: the request's abort timer, a race against the deadline, and the body read. Any of them can fire a moment before the wall clock reaches the deadline, and the aggregate then rethrows that timer's own error: `408 Request timeout after Nms`, `408 Aggregate request deadline exceeded`, or a status-0 `Body read timeout`. In local loops that happened in a few percent of runs. The 408s reached the caller as `UPSTREAM_ERROR` with `http_status: 408`, claiming TestRail had answered when no response arrived, and the body timeout as `INVALID_RESPONSE`.
+
+They are recognised only on an all-mode call, and only when the driver itself raised them. An error built from a received response always carries its body text, so a real 408 with any reason phrase keeps its status. A request or body timeout counts only when the driver clipped it below its full 15 seconds, which only the aggregate budget does; an unclipped one is an ordinary slow request. The recognition reads the pinned driver's fixed status texts and timeout messages, so a driver upgrade must keep `tests/runtime-lifetime.test.ts` passing. That suite freezes the clock to force each ordering through `testrail_get_projects`, and checks each look-alike that must not match.
+
 ## Truthful write outcomes
 
 Every error on an operation that mutates TestRail or initiates report generation carries a `write_outcome`, and it is never inferred from MCP annotations — an attachment download has local file effects but does not mutate TestRail, so it carries none.
