@@ -164,7 +164,21 @@ try {
       }
     }
   }
-  console.log(`Package smoke passed: ${manifest.name}@${manifest.version}, ${files.size} allowed files, installed CLI verified.`);
+
+  // The installed executable must also serve MCP: the catalog, a call and clean stdout,
+  // in each protocol era a host may negotiate.
+  const { verifyProtocol } = await import('./package-protocol.mjs');
+  const inventory = JSON.parse(readFileSync(join(projectDirectory, 'docs', 'operation-inventory.json'), 'utf8'));
+  const downloadDirectory = join(temporaryDirectory, 'downloads');
+  mkdirSync(downloadDirectory);
+  const eras = await verifyProtocol({
+    command: process.execPath,
+    args: [installedCli],
+    env: cleanEnvironment,
+    downloadDirectory,
+    tools: inventory.operations.map(({ tool }) => tool),
+  });
+  console.log(`Package smoke passed: ${manifest.name}@${manifest.version}, ${files.size} allowed files, installed CLI verified; MCP over stdio (${eras.join(', ')}).`);
 } catch (error) {
   const diagnostic = error instanceof Error ? error.message : String(error);
   console.error(`Package smoke failed: ${diagnostic.slice(0, 4000)}`);
