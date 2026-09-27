@@ -1,5 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { operationRegistry } from '../src/operations/catalog.js';
 
@@ -43,12 +44,13 @@ describe('paging disclosure in tool descriptions', () => {
 
 describe('how the adapter reaches the driver', () => {
   it('imports the driver only through its public entry point, never a private file', async () => {
-    const root = new URL('../src/', import.meta.url);
+    // fileURLToPath, not URL.pathname, which reads as /D:/... on Windows.
+    const root = fileURLToPath(new URL('../src/', import.meta.url));
     const files = (await readdir(root, { recursive: true })).filter((file) => file.endsWith('.ts'));
     expect(files.length).toBeGreaterThan(0);
     const offending: string[] = [];
     for (const file of files) {
-      const source = await readFile(join(root.pathname, file), 'utf8');
+      const source = await readFile(join(root, file), 'utf8');
       for (const [, specifier] of source.matchAll(/(?:from\s+|import\s*\(?\s*|require\(\s*)['"]([^'"]+)['"]/gu)) {
         if (specifier !== undefined && (/testrail-api-client\//u.test(specifier) || specifier.includes('node_modules'))) offending.push(`${file}: ${specifier}`);
       }
