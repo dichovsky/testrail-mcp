@@ -179,11 +179,12 @@ describe('every tool\'s result, as a connected client receives it', () => {
     // The SDK client validates as well; this check does not depend on it doing so.
     const verdict = validator.getValidator(outputSchema as unknown as JsonSchemaType)(result.structuredContent);
     expect(verdict.valid, JSON.stringify(verdict)).toBe(true);
-    // One text block carrying exactly the structured wrapper.
+    // One text block carrying exactly the structured wrapper, byte for byte: its compact
+    // serialization, in the same key order.
     const content = result.content as { type: string; text: string }[];
     expect(content).toHaveLength(1);
     expect(content[0]?.type).toBe('text');
-    expect(JSON.parse(content[0]?.text ?? 'null')).toEqual(result.structuredContent);
+    expect(content[0]?.text).toBe(JSON.stringify(result.structuredContent));
     // A paged list says how much of the dataset it returned; nothing else claims to.
     expect(Object.hasOwn(result.structuredContent ?? {}, 'pagination')).toBe(operation.pagination.kind !== 'none');
   });
@@ -201,7 +202,7 @@ describe('every tool\'s result, as a connected client receives it', () => {
     expect(result.isError).toBe(true);
     const content = result.content as { type: string; text: string }[];
     expect(content).toHaveLength(1);
-    expect(JSON.parse(content[0]?.text ?? 'null')).toEqual(result.structuredContent);
+    expect(content[0]?.text).toBe(JSON.stringify(result.structuredContent));
     const payload = result.structuredContent as { error: { code: string; write_outcome?: string; reason?: string } };
     expect(payload).not.toHaveProperty('data');
     expect(payload.error.code).toBe(code);
