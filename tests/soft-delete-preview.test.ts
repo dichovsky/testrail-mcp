@@ -89,6 +89,15 @@ describe('soft-delete previews', () => {
       expect(extended.structured).toEqual({ data: { affected_tests: 4, affected_attachments: 9 } });
     });
 
+    it.each([
+      'affected_tests', 'affected_cases', 'affected_sections', 'affected_runs',
+      'affected_milestones', 'affected_plans', 'affected_suites',
+    ])('answers a preview that carries only %s', async (counter) => {
+      // TestRail sends a subset of the counts that depends on the target, so any one is an answer.
+      const outcome = await call(tool, soft(input, true), json({ [counter]: 0 }));
+      expect(outcome).toEqual({ isError: false, structured: { data: { [counter]: 0 } }, urls: [previewUrl] });
+    });
+
     it('reports a counter of the wrong type as drift, not as a failure', async () => {
       const outcome = await call(tool, soft(input, true), json({ affected_tests: '4', affected_cases: 2 }));
       expect(outcome.isError).toBe(false);
