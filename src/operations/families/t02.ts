@@ -11,7 +11,7 @@ import {
 import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
 import { driverCall } from '../driver-call.js';
 import { defineOperation, type ArgumentMapping, type OperationDefinition } from '../registry.js';
-import { aggregateControlMappings, allControls, control, flag, pageResponse, recordResponse } from './common.js';
+import { aggregateControlMappings, allControls, control, flag, pageResponse, recordResponse, softDeletePreview } from './common.js';
 
 const getCaseInput = strictObject({ case_id: positiveIdSchema });
 
@@ -332,15 +332,15 @@ export const deleteCase = defineOperation({
   route: 'delete_case/{case_id}',
   family: 'T02',
   driverBinding: 'cases.deleteCase',
-  summary: 'Delete a TestRail test case together with its results in active runs. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later).',
+  summary: 'Delete a TestRail test case together with its results in active runs. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later); a preview reply with no count is reported as an unknown outcome, since an instance that ignores the flag deletes.',
   inputSchema: deleteCaseInput,
   argumentMap: [
     { input: 'case_id', call: 'single', argument: 0, serialization: 'path' },
     { input: 'query.soft', call: 'single', argument: 1, property: 'soft', serialization: 'query-scalar' },
   ],
   // Void after a deletion; TestRail's affected-entity counts after a preview, which are
-  // the driver's own parse and are not drift-checked here.
-  response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null },
+  // drift-checked advisorily and must carry at least one count (see softDeletePreview).
+  response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null, preview: softDeletePreview },
   pagination: {
     kind: 'none',
     single: driverCall(deleteCaseInput, 'cases.deleteCase', (method, input) => {
@@ -368,7 +368,7 @@ export const deleteCases = defineOperation({
   route: 'delete_cases/{suite_id}',
   family: 'T02',
   driverBinding: 'cases.deleteCases',
-  summary: 'Delete several TestRail test cases of one suite in a single call, together with their results in active runs. This cannot be undone. query.project_id is required and body.case_ids names the cases. Set query.soft to true to preview the affected counts without deleting anything.',
+  summary: 'Delete several TestRail test cases of one suite in a single call, together with their results in active runs. This cannot be undone. query.project_id is required and body.case_ids names the cases. Set query.soft to true to preview the affected counts without deleting anything; a preview reply with no count is reported as an unknown outcome, since an instance that ignores the flag deletes.',
   inputSchema: deleteCasesInput,
   argumentMap: [
     { input: 'suite_id', call: 'single', argument: 0, serialization: 'path' },
@@ -376,7 +376,7 @@ export const deleteCases = defineOperation({
     { input: 'body', call: 'single', argument: 2, serialization: 'json-body' },
     { input: 'query.soft', call: 'single', argument: 3, property: 'soft', serialization: 'query-scalar' },
   ],
-  response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null },
+  response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null, preview: softDeletePreview },
   pagination: {
     kind: 'none',
     single: driverCall(deleteCasesInput, 'cases.deleteCases', (method, input) => {

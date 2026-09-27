@@ -15,8 +15,22 @@ export type Files =
   | { readonly kind: 'upload'; readonly featureFilename: boolean }
   | { readonly kind: 'download' };
 
+/**
+ * A reply that answers a different question from the operation's own: a destructive
+ * delete asked, through its soft flag, what it would remove. The call's outer contract
+ * still covers both replies; this names when the other one was requested, how to
+ * drift-check it, and which counters make it an answer at all.
+ */
+export interface PreviewContract {
+  readonly requested: (input: unknown) => boolean;
+  readonly entitySchema: z.ZodType;
+  /** A preview reply carrying none of these, with a value, cannot be told from a completed delete. */
+  readonly counters: readonly string[];
+}
+
 export type ResponseContract = {
   readonly entitySchema: z.ZodType | null;
+  readonly preview?: PreviewContract;
 } & (
   | { readonly shape: 'record'; readonly outerSchema: z.ZodType<Record<string, unknown>> }
   | { readonly shape: 'array'; readonly outerSchema: z.ZodType<unknown[]> }

@@ -48,11 +48,6 @@
       "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them."
     },
     {
-      "id": "feature-extension",
-      "kind": "invalid",
-      "description": "Reject a filename that does not end in .feature, which TestRail would not read as a feature file."
-    },
-    {
       "id": "single-request",
       "kind": "mapping",
       "description": "Send exactly one multipart request. The adapter never re-reads the file or repeats the upload."
@@ -198,6 +193,11 @@
           "id": "quote",
           "kind": "invalid",
           "description": "Reject a name containing a double quote, which the multipart encoder percent-escapes, so the recorded name would differ from the one requested."
+        },
+        {
+          "id": "feature-extension",
+          "kind": "invalid",
+          "description": "Reject a filename that does not end in .feature, which TestRail would not read as a feature file."
         }
       ]
     },
@@ -571,7 +571,7 @@
       },
       "covers": [
         {
-          "parameter": "$input",
+          "parameter": "filename",
           "requirements": [
             "feature-extension"
           ]

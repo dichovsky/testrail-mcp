@@ -39,7 +39,7 @@
   "outer_result": {
     "driver": "record_or_void",
     "tool_data": "record_or_null",
-    "notes": "After a deletion the method resolves with no value and the wrapper reports data: null. After a preview it resolves with TestRail's affected-entity counts, which are not drift-checked; every count is optional in the driver's schema, so an empty reply to soft=1 is reported as an empty preview. Deletion removes the run's tests and results with it."
+    "notes": "After a deletion the method resolves with no value and the wrapper reports data: null. After a preview it resolves with TestRail's affected-entity counts, which are returned as sent and drift-checked advisorily against the driver's SoftDeletePreviewSchema. A preview reply carrying none of the seven counts with a value is reported as INVALID_RESPONSE with an unknown write outcome, since a TestRail that ignores soft=1 deletes and answers the same way. Deletion removes the run's tests and results with it."
   },
   "requirements": [
     {

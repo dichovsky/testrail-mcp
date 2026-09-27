@@ -306,6 +306,7 @@
       "scope": "body",
       "requiredness": "optional",
       "domain_ref": "positive_id",
+      "rejected_by": "adapter",
       "semantics": "The milestone this one sits under, making it a sub-milestone, supported on TestRail 5.3 or later. The driver's payload type admits no null and TestRail documents no way to clear it, so a sub-milestone cannot be detached through this driver. The driver forwards any number, so the boundary holds it to the identifier domain.",
       "driver": {
         "argument": 1,

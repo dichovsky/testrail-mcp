@@ -8,7 +8,7 @@
     { "id": "testrail-cases", "url": "https://support.testrail.com/hc/en-us/articles/7077292642580-Cases", "supports": "delete_cases/{suite_id}&soft=1 deletes multiple cases from a project or suite and cannot be undone; case_ids and project_id are required, suite_id is required in multi-suite mode, and soft=1 returns information about the data that would be deleted without proceeding." }
   ],
   "input_policy": { "ordinary_fields": "reject", "custom_fields": "reject", "notes": "Strictness is an MCP boundary requirement at every depth. The suite is a path argument, the project and the preview flag are query controls, and the body carries only the case identifiers. A body-level soft key is refused here rather than forwarded, matching the refinement the driver's exported payload type declares but never runs." },
-  "outer_result": { "driver": "record_or_void", "tool_data": "record_or_null", "notes": "After a deletion the method resolves with no value and the wrapper reports data: null. After a preview it resolves with TestRail's affected-entity counts, which are not drift-checked; every count is optional in the driver's schema, so an empty reply to soft=1 is reported as an empty preview. One request deletes every listed case together with its results in active runs." },
+  "outer_result": { "driver": "record_or_void", "tool_data": "record_or_null", "notes": "After a deletion the method resolves with no value and the wrapper reports data: null. After a preview it resolves with TestRail's affected-entity counts, which are returned as sent and drift-checked advisorily against the driver's SoftDeletePreviewSchema. A preview reply carrying none of the seven counts with a value is reported as INVALID_RESPONSE with an unknown write outcome, since a TestRail that ignores soft=1 deletes and answers the same way. One request deletes every listed case together with its results in active runs." },
   "requirements": [
     { "id": "unknown-top-level", "kind": "invalid", "description": "Reject unknown top-level fields before driver invocation rather than forwarding or discarding them." },
     { "id": "unknown-query", "kind": "invalid", "description": "Reject an unsupported query key rather than discarding it." },
@@ -60,7 +60,7 @@
       ]
     },
     {
-      "id": "body.case_ids", "input_path": ["body", "case_ids"], "scope": "body", "requiredness": "required", "domain_ref": "case_ids",
+      "id": "body.case_ids", "input_path": ["body", "case_ids"], "scope": "body", "requiredness": "required", "domain_ref": "case_ids", "rejected_by": "adapter",
       "semantics": "The cases to delete. The driver forwards the payload unchecked, so the boundary holds every member to the identifier domain and requires at least one; the list is sent as a JSON array.",
       "driver": { "argument": 2, "path": ["case_ids"] },
       "wire": { "location": "json", "names": ["case_ids"], "encoding": "JSON array of integers under case_ids." },

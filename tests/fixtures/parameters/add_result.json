@@ -158,6 +158,7 @@
       ],
       "requiredness": "required",
       "domain_ref": "positive_id",
+      "rejected_by": "adapter",
       "semantics": "The outcome, which TestRail's own documentation lists alongside comment and assignedto_id as alternatives while the driver's payload type declares it required; a comment-only or assignment-only result is therefore not reachable through this client. The driver does not check the payload at runtime, so this is the declared type being honoured at the boundary rather than a rule the driver enforces. The driver forwards any number, so the boundary holds it to the identifier domain.",
       "wire": {
         "location": "json",
@@ -394,6 +395,7 @@
       ],
       "requiredness": "optional",
       "domain_ref": "positive_id",
+      "rejected_by": "adapter",
       "semantics": "The user the test is assigned to. The driver forwards any number and its declared type admits no null, so the boundary holds it to the identifier domain.",
       "wire": {
         "location": "json",

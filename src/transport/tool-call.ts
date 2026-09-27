@@ -106,6 +106,12 @@ function isPage(value: unknown): value is Page<unknown> {
   return typeof value === 'object' && value !== null && Array.isArray((value as { items?: unknown }).items);
 }
 
+/** Whether a preview reply names at least one of its counters with a value. */
+function carriesCount(value: unknown, counters: readonly string[]): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  return counters.some((name) => Object.hasOwn(value, name) && (value as Record<string, unknown>)[name] != null);
+}
+
 /**
  * Run one tool call end to end.
  *
@@ -194,6 +200,14 @@ export async function executeToolCall(
         ...(staged === undefined ? {} : { cleanup: staged.dispose }),
       },
     );
+    /*
+     * A preview asked what a delete would remove. A reply carrying no count answers
+     * nothing, and it is also what a TestRail that ignores the flag sends after really
+     * deleting, so it is reported before the reply counts as acknowledged: the caller
+     * learns the outcome is unknown rather than that nothing would be affected.
+     */
+    const preview = operation.response.preview?.requested(input) === true ? operation.response.preview : undefined;
+    if (preview !== undefined && !carriesCount(value, preview.counters)) throw new AdapterError('INVALID_RESPONSE');
     acknowledged = true;
 
     let data: unknown = value;
@@ -220,7 +234,7 @@ export async function executeToolCall(
 
     const warnings = download
       ? []
-      : advisoryWarnings(operation.response.entitySchema, operation.response.shape, data);
+      : advisoryWarnings(preview?.entitySchema ?? operation.response.entitySchema, operation.response.shape, data);
 
     const result = successResult({
       data,

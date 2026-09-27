@@ -10,7 +10,7 @@ import {
 import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
 import { driverCall } from '../driver-call.js';
 import { defineOperation, type OperationDefinition } from '../registry.js';
-import { allControls, control, flag, pageResponse, recordResponse } from './common.js';
+import { allControls, control, flag, pageResponse, recordResponse, softDeletePreview } from './common.js';
 
 const getProjectInput = strictObject({ project_id: positiveIdSchema });
 
@@ -285,16 +285,15 @@ export const deleteSuite = defineOperation({
   route: 'delete_suite/{suite_id}',
   family: 'T01',
   driverBinding: 'suites.deleteSuite',
-  summary: 'Delete a TestRail test suite with its sections, cases and active runs and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later).',
+  summary: 'Delete a TestRail test suite with its sections, cases and active runs and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later); a preview reply with no count is reported as an unknown outcome, since an instance that ignores the flag deletes.',
   inputSchema: deleteSuiteInput,
   argumentMap: [
     { input: 'suite_id', call: 'single', argument: 0, serialization: 'path' },
     { input: 'query.soft', call: 'single', argument: 1, property: 'soft', serialization: 'query-scalar' },
   ],
-  // Void after a deletion; TestRail's affected-entity counts after a preview. The
-  // counts vary by TestRail version and are the driver's own parse, so they are not
-  // drift-checked against an entity schema here.
-  response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null },
+  // Void after a deletion; TestRail's affected-entity counts after a preview, which are
+  // drift-checked advisorily and must carry at least one count (see softDeletePreview).
+  response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null, preview: softDeletePreview },
   pagination: {
     kind: 'none',
     single: driverCall(deleteSuiteInput, 'suites.deleteSuite', (method, input) => {
@@ -485,15 +484,15 @@ export const deleteSection = defineOperation({
   route: 'delete_section/{section_id}',
   family: 'T01',
   driverBinding: 'sections.deleteSection',
-  summary: 'Delete a TestRail section with its subsections, cases and active tests and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later).',
+  summary: 'Delete a TestRail section with its subsections, cases and active tests and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later); a preview reply with no count is reported as an unknown outcome, since an instance that ignores the flag deletes.',
   inputSchema: deleteSectionInput,
   argumentMap: [
     { input: 'section_id', call: 'single', argument: 0, serialization: 'path' },
     { input: 'query.soft', call: 'single', argument: 1, property: 'soft', serialization: 'query-scalar' },
   ],
   // Void after a deletion; TestRail's affected-entity counts after a preview, which are
-  // the driver's own parse and are not drift-checked here.
-  response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null },
+  // drift-checked advisorily and must carry at least one count (see softDeletePreview).
+  response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null, preview: softDeletePreview },
   pagination: {
     kind: 'none',
     single: driverCall(deleteSectionInput, 'sections.deleteSection', (method, input) => {

@@ -12,7 +12,7 @@ import { driverAllOptions, pageRequestDefaults } from '../../contracts/paginatio
 import { driverCall } from '../driver-call.js';
 import { defineOperation, type ArgumentMapping, type OperationDefinition } from '../registry.js';
 import {
-  aggregateControlMappings, allControls, control, flag, pageResponse, recordResponse,
+  aggregateControlMappings, allControls, control, flag, pageResponse, recordResponse, softDeletePreview,
 } from './common.js';
 
 const getRunInput = strictObject({ run_id: positiveIdSchema });
@@ -232,15 +232,15 @@ export const deleteRun = defineOperation({
   route: 'delete_run/{run_id}',
   family: 'T04',
   driverBinding: 'runs.deleteRun',
-  summary: 'Delete a TestRail test run with its tests and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later). A run inside a plan is deleted through the plan instead.',
+  summary: 'Delete a TestRail test run with its tests and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later); a preview reply with no count is reported as an unknown outcome, since an instance that ignores the flag deletes. A run inside a plan is deleted through the plan instead.',
   inputSchema: deleteRunInput,
   argumentMap: [
     { input: 'run_id', call: 'single', argument: 0, serialization: 'path' },
     { input: 'query.soft', call: 'single', argument: 1, property: 'soft', serialization: 'query-scalar' },
   ],
   // Void after a deletion; TestRail's affected-entity counts after a preview, which are
-  // the driver's own parse and are not drift-checked here.
-  response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null },
+  // drift-checked advisorily and must carry at least one count (see softDeletePreview).
+  response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null, preview: softDeletePreview },
   pagination: {
     kind: 'none',
     single: driverCall(deleteRunInput, 'runs.deleteRun', (method, input) => {
