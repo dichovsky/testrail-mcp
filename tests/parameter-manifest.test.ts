@@ -63,7 +63,12 @@ import {
   resolveDomains,
 } from './contracts/parameter-manifest.js';
 import type { ParameterFixture } from './contracts/parameter-manifest.js';
+import { auditRegisteredParameters } from './contracts/registered-parameters.js';
 import { describeBody, materializeFiles, substituteTokens } from './contracts/uploads.js';
+import { positiveIdSchema, strictObject } from '../src/contracts/inputs.js';
+import { driverCall } from '../src/operations/driver-call.js';
+import { deletePlanEntry } from '../src/operations/families/t06.js';
+import { createRegistry, defineOperation } from '../src/operations/registry.js';
 
 const manifests = await loadParameterManifests();
 const rawInventory: unknown = JSON.parse(await readFile(new URL('../docs/operation-inventory.json', import.meta.url), 'utf8'));
@@ -382,10 +387,333 @@ describe('independent parameter manifest format', () => {
     expect(auditParameterManifests([sections])).toEqual([]);
   });
 
+  it('holds each parameter\'s declared driver location to the case\'s literal arguments', () => {
+    const find = (tool: string) => {
+      const manifest = manifests.find(({ endpoint }) => endpoint.tool === `testrail_${tool}`);
+      if (!manifest) throw new Error(`Required ${tool} manifest is missing`);
+      return structuredClone(manifest);
+    };
+    const relocate = (tool: string, id: string, driver: { argument: number; path: string[] }) => {
+      const manifest = find(tool);
+      manifest.parameters = manifest.parameters.map((parameter) => parameter.id === id ? { ...parameter, driver } : parameter);
+      return auditParameterManifests([manifest]);
+    };
+    expect(auditParameterManifests([find('get_cases'), find('add_section')])).toEqual([]);
+    // A positional argument moved.
+    expect(relocate('get_project', 'project_id', { argument: 1, path: [] })).toEqual([
+      'testrail_get_project: Case representative-id passes project_id to argument 1 as [], not [7]',
+      'testrail_get_project: Case largest-safe-id passes project_id to argument 1 as [], not [9007199254740991]',
+    ]);
+    // Two filters renamed onto each other's options. Distinct values are what expose it.
+    expect(relocate('get_cases', 'query.type_id', { argument: 1, path: ['templateId'] }))
+      .toContain('testrail_get_cases: Case list-filters passes query.type_id to argument 1 at templateId as [[1,2]], not [[2,3]]');
+    // A body field the case supplies without claiming to cover it is checked all the same.
+    const sections = find('add_section');
+    const covering = sections.cases.filter(({ covers }) => covers.some(({ parameter }) => parameter === 'body.description'));
+    sections.cases = sections.cases.map((fixture) => fixture.id !== 'every-field' || fixture.expect.kind !== 'accepted' ? fixture : {
+      ...fixture,
+      covers: fixture.covers.filter(({ parameter }) => parameter !== 'body.description'),
+      expect: { ...fixture.expect, driver: { ...fixture.expect.driver, arguments: [7, {
+        name: 'Nested section', suite_id: 3, parent_id: 10, description: 'Created under section 3.',
+      }] } },
+    });
+    expect(covering.map(({ id }) => id)).toContain('every-field');
+    expect(auditParameterManifests([sections])).toContain(
+      'testrail_add_section: Case every-field passes body.description to argument 1 at description as ["Created under section 3."], not ["Created under section 10."]',
+    );
+  });
+
+  it('reads an extension point and every member of a fan-out when it compares locations', () => {
+    const find = (tool: string) => {
+      const manifest = manifests.find(({ endpoint }) => endpoint.tool === `testrail_${tool}`);
+      if (!manifest) throw new Error(`Required ${tool} manifest is missing`);
+      return structuredClone(manifest);
+    };
+    // custom_* gathers the matching keys on both sides, so a moved extension point is seen.
+    const cases = find('add_case');
+    const custom = cases.parameters.find(({ id }) => id === 'body.custom_*');
+    expect(custom?.driver).toEqual({ argument: 1, path: ['custom_*'] });
+    cases.parameters = cases.parameters.map((parameter) => parameter === custom ? { ...parameter, driver: { argument: 1, path: ['extra_*'] } } : parameter);
+    expect(auditParameterManifests([cases]).some((error) => error.startsWith('testrail_add_case: Case full-body passes body.custom_* to argument 1 at extra_* as [], not [{'))).toBe(true);
+    // A second member whose argument differs is caught, not only the first.
+    const results = find('add_results');
+    results.cases = results.cases.map((fixture) => {
+      if (fixture.id !== 'two-entries' || fixture.expect.kind !== 'accepted') return fixture;
+      const changed = structuredClone(fixture);
+      if (changed.expect.kind !== 'accepted') return changed;
+      ((changed.expect.driver.arguments[1] as { results: { status_id: number }[] }).results[1] ?? { status_id: 0 }).status_id = 4;
+      return changed;
+    });
+    expect(auditParameterManifests([results])).toContain(
+      'testrail_add_results: Case two-entries passes body[].status_id to argument 1 at results.*.status_id as [5,4], not [5,1]',
+    );
+  });
+
+  it('tells every pair of parameter locations apart by some accepted case', () => {
+    // Two parameters that carry equal values in every case could have their locations
+    // swapped, in the manifest and the registration alike, and every literal argument
+    // list would still agree. Each pair needs a case where they differ or one is absent.
+    const undetected: string[] = [];
+    for (const manifest of manifests) {
+      const located = manifest.parameters.filter(({ driver }) => driver !== null);
+      for (const [index, left] of located.entries()) {
+        for (const right of located.slice(index + 1)) {
+          if (JSON.stringify(left.driver) === JSON.stringify(right.driver)) continue;
+          const swapped = { ...manifest, parameters: manifest.parameters.map((parameter) => parameter === left
+            ? { ...parameter, driver: right.driver } : parameter === right ? { ...parameter, driver: left.driver } : parameter) };
+          if (auditParameterManifests([swapped]).length === 0) undetected.push(`${manifest.endpoint.tool}: ${left.id} <-> ${right.id}`);
+        }
+      }
+    }
+    expect(undetected).toEqual([]);
+  });
+
+  it('requires a case covering a shared domain requirement to use a value the domain proved for it', () => {
+    const project = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_get_project');
+    const cases = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_get_cases');
+    if (!project || !cases) throw new Error('Required get_project and get_cases manifests are missing');
+    const retarget = (manifest: typeof project, id: string, input: ParameterFixture['input']) => ({
+      ...manifest, cases: manifest.cases.map((fixture) => fixture.id === id ? { ...fixture, input } : fixture),
+    });
+    // The issue's example: the upper bound claimed with an ordinary identifier.
+    expect(auditParameterManifests([retarget(project, 'largest-safe-id', { project_id: 7 })])).toContain(
+      'testrail_get_project: Case largest-safe-id covers project_id/upper-bound with [7], not a value positive_id proves for it: [9007199254740991]',
+    );
+    // The representative pair admits any value in the domain, but nothing outside it.
+    expect(auditParameterManifests([retarget(project, 'representative-id', { project_id: 42 })])
+      .filter((error) => error.includes('covers project_id/'))).toEqual([]);
+    expect(auditParameterManifests([retarget(project, 'representative-id', { project_id: 1.5 })])).toContain(
+      'testrail_get_project: Case representative-id covers project_id/mapping with [1.5], outside the positive_id domain',
+    );
+    // Every member of a fan-out must be in the domain, not only the first.
+    const results = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_add_results');
+    const twoEntries = results?.cases.find(({ id }) => id === 'two-entries');
+    if (!results || twoEntries === undefined) throw new Error('Required add_results two-entries case is missing');
+    const fractional = structuredClone(twoEntries.input);
+    ((fractional.body as { results: { status_id: number }[] }).results[1] ?? { status_id: 0 }).status_id = 1.5;
+    expect(auditParameterManifests([retarget(results, 'two-entries', fractional)])).toContain(
+      'testrail_add_results: Case two-entries covers body[].status_id/mapping with [5,1.5], outside the positive_id domain',
+    );
+    // A case that covers the pair must supply the value it claims.
+    expect(auditParameterManifests([retarget(project, 'representative-id', {})])).toContain(
+      'testrail_get_project: Case representative-id covers project_id/mapping with [], outside the positive_id domain',
+    );
+    expect(auditParameterManifests([retarget(project, 'largest-safe-id', {})])).toContain(
+      'testrail_get_project: Case largest-safe-id covers project_id/upper-bound with [], not a value positive_id proves for it: [9007199254740991]',
+    );
+    // An exact requirement judges every member too: one proven bound does not carry an unproven one.
+    const bounded = structuredClone(twoEntries);
+    ((bounded.input.body as { results: { status_id: number }[] }).results[0] ?? { status_id: 0 }).status_id = 9007199254740991;
+    bounded.covers = [...bounded.covers, { parameter: 'body[].status_id', requirements: ['upper-bound'] }];
+    expect(auditParameterManifests([{ ...results, cases: results.cases.map((fixture) => fixture.id === 'two-entries' ? bounded : fixture) }])).toContain(
+      'testrail_add_results: Case two-entries covers body[].status_id/upper-bound with [9007199254740991,1], not a value positive_id proves for it: [9007199254740991]',
+    );
+    // A list is exact too: only lists the probe drove through the driver count.
+    const listFilters = cases.cases.find(({ id }) => id === 'list-filters');
+    if (listFilters === undefined) throw new Error('Required list-filters case is missing');
+    expect(auditParameterManifests([retarget(cases, 'list-filters', { ...listFilters.input, query: {
+      ...(listFilters.input.query as object), type_id: [5, 6],
+    } })])).toContain(
+      'testrail_get_cases: Case list-filters covers query.type_id/list with [[5,6]], not a value id_filter proves for it: [[3,4],[1,2],[2,3],[7,8],[9,10],[10,11],[11,12]]',
+    );
+  });
+
   it('detects a removed union-branch fixture instead of merely counting endpoints', () => {
     const manifest = example();
     manifest.cases = manifest.cases.filter(({ id }) => id !== 'uuid-id');
     expect(auditParameterManifests([manifest])).toContain('testrail_get_attachment: Uncovered requirement: attachment_id/uuid');
+  });
+
+  it('refuses a rejected case that claims the rejections of more than one parameter', () => {
+    const plans = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_delete_plan_entry');
+    if (!plans) throw new Error('Required delete_plan_entry manifest is missing');
+    // Both values are outside their domains, so only the count rule can object.
+    const doubled = { ...plans, cases: [...plans.cases, {
+      id: 'both-wrong', input: { plan_id: 0, entry_id: '../../admin' },
+      covers: [{ parameter: 'plan_id', requirements: ['invalid'] }, { parameter: 'entry_id', requirements: ['path-safety'] }],
+      expect: { kind: 'rejected' as const, code: 'INVALID_ARGUMENT' as const },
+    }] };
+    expect(auditParameterManifests([doubled])).toEqual([
+      'testrail_delete_plan_entry: Case both-wrong attributes one rejection to 2 parameters: plan_id, entry_id',
+    ]);
+  });
+
+  it('refuses a rejection attributed to a parameter whose own value is not what is wrong', () => {
+    const plans = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_delete_plan_entry');
+    if (!plans) throw new Error('Required delete_plan_entry manifest is missing');
+    const uuid = '3933d74b-4282-44de-82ae-a6412808369d';
+    const rejected = { kind: 'rejected' as const, code: 'INVALID_ARGUMENT' as const };
+    const audit = (id: string, input: ParameterFixture['input'], covers: ParameterFixture['covers']) =>
+      auditParameterManifests([{ ...plans, cases: [...plans.cases, { id, input, covers, expect: rejected }] }])
+        .map((error) => error.replace('testrail_delete_plan_entry: ', ''));
+    const entry = (...requirements: string[]) => [{ parameter: 'entry_id', requirements }];
+    const unknownKey = { parameter: '$input', requirements: ['unknown-top-level'] };
+
+    // The one cause, named: a value the library proved refused for that requirement.
+    expect(audit('attributable', { plan_id: 10, entry_id: '../../admin' }, entry('path-safety'))).toEqual([]);
+    // The named parameter is not what is wrong.
+    expect(audit('other-field', { plan_id: 0, entry_id: uuid }, entry('terminal'))).toEqual([
+      'Case other-field gives entry_id a value its domain accepts, so its refusal is not evidence for entry_id/terminal',
+      'Case other-field also gives plan_id a value outside its domain, so its refusal is not evidence for entry_id',
+    ]);
+    // It is wrong, but so is another field, which could have caused the refusal alone.
+    expect(audit('two-faults', { plan_id: 0, entry_id: '../../admin' }, entry('path-safety'))).toEqual([
+      'Case two-faults also gives plan_id a value outside its domain, so its refusal is not evidence for entry_id',
+    ]);
+    // An unknown key is a second cause, whether or not the case admits to it.
+    expect(audit('unknown-key', { plan_id: 10, entry_id: '../../admin', extra: true }, [unknownKey, ...entry('path-safety')])).toEqual([
+      'Case unknown-key shares its refusal between $input and entry_id',
+      'Case unknown-key also carries the unknown key extra, so its refusal is not evidence for entry_id',
+    ]);
+    expect(audit('silent-key', { plan_id: 10, entry_id: '../../admin', extra: true }, entry('path-safety'))).toEqual([
+      'Case silent-key also carries the unknown key extra, so its refusal is not evidence for entry_id',
+    ]);
+    // An endpoint-wide claim is refused when a parameter is wrong as well.
+    expect(audit('wide', { plan_id: 0, entry_id: uuid, extra: true }, [unknownKey])).toEqual([
+      'Case wide also gives plan_id a value outside its domain, so its refusal is not evidence for $input',
+    ]);
+    // A required parameter left out is a second cause too, whatever the case names.
+    expect(audit('no-plan', { entry_id: '../../admin' }, entry('path-safety'))).toEqual([
+      'Case no-plan also leaves out the required plan_id, so its refusal is not evidence for entry_id',
+    ]);
+    expect(audit('bare-key', { extra: 1 }, [unknownKey])).toEqual([
+      'Case bare-key also leaves out the required plan_id, so its refusal is not evidence for $input',
+      'Case bare-key also leaves out the required entry_id, so its refusal is not evidence for $input',
+    ]);
+    expect(audit('empty', {}, entry('required'))).toEqual([
+      'Case empty also leaves out the required plan_id, so its refusal is not evidence for entry_id',
+    ]);
+    // One out-of-domain value does not cover every rejection: each needs its own proven value.
+    expect(audit('one-for-all', { plan_id: 10, entry_id: '../../admin' }, entry('invalid', 'path-safety', 'terminal'))).toEqual([
+      'Case one-for-all rejects entry_id with ["../../admin"], not a value entry_id proves refused for entry_id/invalid',
+      'Case one-for-all rejects entry_id with ["../../admin"], not a value entry_id proves refused for entry_id/terminal',
+    ]);
+    // Presence: the parameter must be absent, and the value rule needs one to judge.
+    expect(audit('present', { plan_id: 10, entry_id: uuid }, entry('required'))).toEqual([
+      'Case present does not leave out only entry_id, so its refusal is not evidence for entry_id/required',
+    ]);
+    expect(audit('absent', { plan_id: 10 }, entry('invalid'))).toEqual([
+      'Case absent carries no entry_id, so its refusal is not evidence for entry_id/invalid',
+    ]);
+  });
+
+  it('attributes a missing nested field only when its parent is present and well-typed', () => {
+    const users = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_add_user');
+    if (!users) throw new Error('Required add_user manifest is missing');
+    const missing = users.cases.find(({ id }) => id === 'missing-name');
+    expect(missing?.covers).toEqual([{ parameter: 'body.name', requirements: ['required'] }]);
+    expect(auditParameterManifests([users])).toEqual([]);
+    for (const input of [{}, { body: 7 }, { body: [] }, { body: [{ email: 'ada@example.com' }] }]) {
+      expect(auditParameterManifests([{ ...users, cases: users.cases.map((fixture) => fixture === missing ? { ...fixture, input } : fixture) }]))
+        .toContain('testrail_add_user: Case missing-name does not leave out only body.name, so its refusal is not evidence for body.name/required');
+    }
+  });
+
+  it('judges a wildcard parameter by its members and exempts an extension point', () => {
+    const results = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_add_results');
+    const update = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_update_case');
+    if (!results || !update) throw new Error('Required add_results and update_case manifests are missing');
+    const missing = results.cases.find(({ id }) => id === 'body[].status_id:missing');
+    if (missing === undefined) throw new Error('Required derived omission is missing');
+    // The derivation removes the field from the first member only, and that is enough.
+    expect(auditParameterManifests([results])).toEqual([]);
+    const refilled = structuredClone(missing);
+    const [first] = (refilled.input.body as { results: { status_id?: number }[] }).results;
+    if (first !== undefined) first.status_id = 5;
+    expect(auditParameterManifests([{ ...results, cases: results.cases.map((fixture) => fixture === missing ? refilled : fixture) }]))
+      .toEqual(['testrail_add_results: Case body[].status_id:missing does not leave out only body[].status_id, so its refusal is not evidence for body[].status_id/required']);
+    // With no array to hold members, the fault is the array's, not a member's.
+    for (const body of [{}, { results: {} }]) {
+      expect(auditParameterManifests([{ ...results, cases: results.cases.map((fixture) => fixture === missing ? { ...fixture, input: { run_id: 1, body } } : fixture) }]))
+        .toContain('testrail_add_results: Case body[].status_id:missing does not leave out only body[].status_id, so its refusal is not evidence for body[].status_id/required');
+    }
+    // An unknown body key covers the custom_* rule by being outside the prefix, not by a value.
+    expect(update.cases.find(({ id }) => id === 'unknown-body')?.covers)
+      .toContainEqual({ parameter: 'body.custom_*', requirements: ['invalid'] });
+    expect(auditParameterManifests([update])).toEqual([]);
+  });
+
+  /*
+   * The hole this guard closes, rebuilt end to end. The entry identifier is registered as
+   * any string, so a traversal sequence or a trailing newline would reach the request
+   * path, and the derived fixtures that isolate its domain are replaced by one case that
+   * claims them. The registration audit is blind to every such replacement: the fixtures
+   * it is given all agree with the weakened schema, because the one rejection it sees is
+   * caused by something other than the entry identifier. Removing the fixtures without a
+   * replacement is already reported as uncovered; the replacements are what this catches.
+   */
+  it('detects a weakened parameter constraint whose isolating fixtures were replaced', () => {
+    const plans = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_delete_plan_entry');
+    if (!plans) throw new Error('Required delete_plan_entry manifest is missing');
+    const weakenedInput = strictObject({ plan_id: positiveIdSchema, entry_id: z.string() });
+    const weakened = defineOperation({
+      ...deletePlanEntry,
+      inputSchema: weakenedInput,
+      pagination: {
+        kind: 'none',
+        single: driverCall(weakenedInput, 'plans.deletePlanEntry', (method, input) => method(input.plan_id, input.entry_id)),
+      },
+    });
+    const isolating = plans.cases.filter(({ id }) => id.startsWith('entry_id:') && id !== 'entry_id:missing');
+    expect(isolating.map(({ id }) => id)).toEqual([
+      'entry_id:malformed', 'entry_id:numeric', 'entry_id:empty', 'entry_id:traversal',
+      'entry_id:leading-space', 'entry_id:trailing-space', 'entry_id:trailing-line-feed', 'entry_id:trailing-carriage-return',
+    ]);
+    // With the isolating fixtures present the weakening is visible, which is what they are for.
+    expect(auditParameterManifests([plans])).toEqual([]);
+    expect(auditRegisteredParameters(createRegistry(weakened), [plans])).toEqual(
+      isolating.flatMap(({ id }) => [
+        `testrail_delete_plan_entry: runtime schema disagrees with fixture ${id}`,
+        `testrail_delete_plan_entry: JSON Schema disagrees with fixture ${id}`,
+      ]),
+    );
+    const kept = plans.cases.filter((fixture) => !isolating.includes(fixture));
+    expect(auditParameterManifests([{ ...plans, cases: kept }])).toEqual(['invalid', 'path-safety', 'terminal']
+      .map((id) => `testrail_delete_plan_entry: Uncovered requirement: entry_id/${id}`));
+
+    const uuid = '3933d74b-4282-44de-82ae-a6412808369d';
+    const entryRejections = { parameter: 'entry_id', requirements: ['invalid', 'path-safety', 'terminal'] };
+    // A carrier whose entry value is wrong is still refused when another field is wrong too.
+    const twoFaults = { ...plans, cases: [...kept, {
+      id: 'smuggled', input: { plan_id: 0, entry_id: '../../admin' }, covers: [{ parameter: 'entry_id', requirements: ['path-safety'] }],
+      expect: { kind: 'rejected' as const, code: 'INVALID_ARGUMENT' as const },
+    }] };
+    expect(auditRegisteredParameters(createRegistry(weakened), [twoFaults])).toEqual([]);
+    expect(auditParameterManifests([twoFaults])).toContain(
+      'testrail_delete_plan_entry: Case smuggled also gives plan_id a value outside its domain, so its refusal is not evidence for entry_id',
+    );
+    // So is a carrier that simply leaves the other identifier out.
+    const withoutPlan = { ...plans, cases: [...kept, ...isolating.map(({ input, ...fixture }) => ({
+      ...fixture, input: Object.fromEntries(Object.entries(input).filter(([key]) => key !== 'plan_id')),
+    }))] };
+    expect(auditRegisteredParameters(createRegistry(weakened), [withoutPlan])).toEqual([]);
+    expect(auditParameterManifests([withoutPlan])).toEqual(isolating.map(({ id }) =>
+      `testrail_delete_plan_entry: Case ${id} also leaves out the required plan_id, so its refusal is not evidence for entry_id`));
+    const accepts = (id: string) => `Case smuggled gives entry_id a value its domain accepts, so its refusal is not evidence for entry_id/${id}`;
+    const carriers = [
+      {
+        input: { plan_id: 0, entry_id: uuid },
+        covers: [{ parameter: 'plan_id', requirements: ['invalid'] }, entryRejections],
+        errors: ['Case smuggled attributes one rejection to 2 parameters: plan_id, entry_id'],
+      },
+      {
+        input: { plan_id: 0, entry_id: uuid },
+        covers: [entryRejections],
+        errors: [...entryRejections.requirements.map(accepts),
+          'Case smuggled also gives plan_id a value outside its domain, so its refusal is not evidence for entry_id'],
+      },
+      {
+        input: { plan_id: 10, entry_id: uuid, extra: true },
+        covers: [{ parameter: '$input', requirements: ['unknown-top-level'] }, entryRejections],
+        errors: ['Case smuggled shares its refusal between $input and entry_id', ...entryRejections.requirements.map(accepts),
+          'Case smuggled also carries the unknown key extra, so its refusal is not evidence for entry_id'],
+      },
+    ];
+    for (const { errors, ...carrier } of carriers) {
+      const hole = { ...plans, cases: [...kept, { id: 'smuggled', ...carrier, expect: { kind: 'rejected' as const, code: 'INVALID_ARGUMENT' as const } }] };
+      expect(auditRegisteredParameters(createRegistry(weakened), [hole])).toEqual([]);
+      expect(auditParameterManifests([hole])).toEqual(errors.map((error) => `testrail_delete_plan_entry: ${error}`));
+    }
   });
 
   it('requires mapping and validation requirements for every reviewed parameter', () => {
