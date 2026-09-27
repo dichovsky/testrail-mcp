@@ -164,6 +164,15 @@ describe('error classification', () => {
     }
   });
 
+  it('carries progress only when the driver supplied it, and keeps it in the envelope', () => {
+    // A timer deadline surfaces as a 408 with no response and no progress counts, so the
+    // adapter reports the reason and nothing it did not observe.
+    const deadline = classifyError(new TestRailApiError(408, 'Aggregate request deadline exceeded'), { ...read, aggregate: true });
+    expect(deadline).toEqual({ code: 'PAGINATION_LIMIT', message: deadline.message, reason: 'max_duration' });
+    const bound = classifyError(new TestRailPaginationError('max_pages', 'stopped', 2, 40), read);
+    expect(structured(errorResult(bound)).error).toMatchObject({ reason: 'max_pages', pages_fetched: 2, items_fetched: 40 });
+  });
+
   it('maps upstream statuses and treats 0 or 200 as an unusable response', () => {
     const cases: [number, string][] = [
       [401, 'AUTHENTICATION_FAILED'], [403, 'PERMISSION_DENIED'], [404, 'NOT_FOUND'],

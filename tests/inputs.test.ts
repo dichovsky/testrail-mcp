@@ -394,6 +394,11 @@ describe('structural page/all input discrimination', () => {
       { project_id: 1, query: { offset: 0 }, _mcp: { pagination: 'all' } },
       { project_id: 1, _mcp: { pagination: 'page', max_items: 1 } },
       { project_id: 1, _mcp: { pagination: 'page', page_size: 1 } },
+      // Every aggregate-only control, not just the first two: page mode would ignore it.
+      { project_id: 1, _mcp: { pagination: 'page', start_offset: 0 } },
+      { project_id: 1, _mcp: { pagination: 'page', max_pages: 1 } },
+      { project_id: 1, _mcp: { pagination: 'page', max_bytes: 1 } },
+      { project_id: 1, _mcp: { pagination: 'page', max_duration_ms: 1 } },
       { project_id: 1, _mcp: { pagination: 'all', max_items: 1001 } },
       { project_id: 1, _mcp: { pagination: 'all', max_pages: 0 } },
       { project_id: 1, _mcp: { pagination: 'all', max_bytes: 1.5 } },
@@ -411,6 +416,8 @@ describe('structural page/all input discrimination', () => {
       { query: { limit: 1 } }, { query: { offset: 0 } },
       { _mcp: { pagination: 'all', page_size: 1 } }, { _mcp: { pagination: 'all', start_offset: 0 } },
       { _mcp: { pagination: 'all', next: 'https://example.test/' } },
+      { _mcp: { pagination: 'page', max_items: 1 } }, { _mcp: { pagination: 'page', max_pages: 1 } },
+      { _mcp: { pagination: 'page', max_bytes: 1 } }, { _mcp: { pagination: 'page', max_duration_ms: 1 } },
     ]);
   });
 
