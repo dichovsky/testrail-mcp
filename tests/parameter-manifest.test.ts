@@ -489,6 +489,17 @@ describe('independent parameter manifest format', () => {
     expect(auditParameterManifests([retarget(results, 'two-entries', fractional)])).toContain(
       'testrail_add_results: Case two-entries covers body[].status_id/mapping with [5,1.5], outside the positive_id domain',
     );
+    // A case that covers the pair must supply the value it claims.
+    expect(auditParameterManifests([retarget(project, 'representative-id', {})])).toContain(
+      'testrail_get_project: Case representative-id covers project_id/mapping with [], outside the positive_id domain',
+    );
+    // An exact requirement judges every member too: one proven bound does not carry an unproven one.
+    const bounded = structuredClone(twoEntries);
+    ((bounded.input.body as { results: { status_id: number }[] }).results[0] ?? { status_id: 0 }).status_id = 9007199254740991;
+    bounded.covers = [...bounded.covers, { parameter: 'body[].status_id', requirements: ['upper-bound'] }];
+    expect(auditParameterManifests([{ ...results, cases: results.cases.map((fixture) => fixture.id === 'two-entries' ? bounded : fixture) }])).toContain(
+      'testrail_add_results: Case two-entries covers body[].status_id/upper-bound with [9007199254740991,1], not a value positive_id proves for it: [9007199254740991]',
+    );
     // A list is exact too: only lists the probe drove through the driver count.
     const listFilters = cases.cases.find(({ id }) => id === 'list-filters');
     if (listFilters === undefined) throw new Error('Required list-filters case is missing');

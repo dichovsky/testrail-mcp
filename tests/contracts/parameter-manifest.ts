@@ -465,7 +465,8 @@ export function auditParameterManifests(
          * it: covering `upper-bound` with 7 would otherwise pass. The representative pair
          * is the exception. Any value inside the domain represents it as well as the
          * domain's own example, and the case's accepted driver evidence proves the value
-         * it uses, so there it is enough that the domain's schema admits the value.
+         * it uses, so there it is enough that the domain's schema admits the value. Either
+         * way every member of a fan-out is judged, and a case must supply the value at all.
          */
         for (const coverage of fixture.covers) {
           const parameter = manifest.parameters.find(({ id }) => id === coverage.parameter);
@@ -484,7 +485,7 @@ export function auditParameterManifests(
               continue;
             }
             const proven = domain.valid.filter(({ requirements }) => requirements.includes(id)).map(({ value }) => value);
-            if (!given.some((value) => proven.some((candidate) => isDeepStrictEqual(value, candidate)))) {
+            if (given.length === 0 || !given.every((value) => proven.some((candidate) => isDeepStrictEqual(value, candidate)))) {
               fail(`Case ${fixture.id} covers ${parameter.id}/${id} with ${JSON.stringify(given)}, not a value ${parameter.domain_ref} proves for it: ${JSON.stringify(proven)}`);
             }
           }
