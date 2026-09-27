@@ -3403,7 +3403,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_delete_case
 
-Delete a TestRail test case together with its results in active runs. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later). Required path arguments: case_id. Changes TestRail data.
+Delete a TestRail test case together with its results in active runs. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later); a preview reply with no count is reported as an unknown outcome, since an instance that ignores the flag deletes. Required path arguments: case_id. Changes TestRail data.
 
 REST: `POST delete_case/{case_id}`. Driver: `cases.deleteCase`. Family: T02.
 
@@ -3461,7 +3461,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_delete_cases
 
-Delete several TestRail test cases of one suite in a single call, together with their results in active runs. This cannot be undone. query.project_id is required and body.case_ids names the cases. Set query.soft to true to preview the affected counts without deleting anything. Required path arguments: suite_id. Changes TestRail data.
+Delete several TestRail test cases of one suite in a single call, together with their results in active runs. This cannot be undone. query.project_id is required and body.case_ids names the cases. Set query.soft to true to preview the affected counts without deleting anything; a preview reply with no count is reported as an unknown outcome, since an instance that ignores the flag deletes. Required path arguments: suite_id. Changes TestRail data.
 
 REST: `POST delete_cases/{suite_id}`. Driver: `cases.deleteCases`. Family: T02.
 
@@ -4008,7 +4008,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_delete_run
 
-Delete a TestRail test run with its tests and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later). A run inside a plan is deleted through the plan instead. Required path arguments: run_id. Changes TestRail data.
+Delete a TestRail test run with its tests and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later); a preview reply with no count is reported as an unknown outcome, since an instance that ignores the flag deletes. A run inside a plan is deleted through the plan instead. Required path arguments: run_id. Changes TestRail data.
 
 REST: `POST delete_run/{run_id}`. Driver: `runs.deleteRun`. Family: T04.
 
@@ -4108,7 +4108,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_delete_section
 
-Delete a TestRail section with its subsections, cases and active tests and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later). Required path arguments: section_id. Changes TestRail data.
+Delete a TestRail section with its subsections, cases and active tests and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later); a preview reply with no count is reported as an unknown outcome, since an instance that ignores the flag deletes. Required path arguments: section_id. Changes TestRail data.
 
 REST: `POST delete_section/{section_id}`. Driver: `sections.deleteSection`. Family: T01.
 
@@ -4224,7 +4224,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_delete_suite
 
-Delete a TestRail test suite with its sections, cases and active runs and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later). Required path arguments: suite_id. Changes TestRail data.
+Delete a TestRail test suite with its sections, cases and active runs and results. This cannot be undone. Set query.soft to true to preview the affected counts without deleting anything (TestRail 6.5 or later); a preview reply with no count is reported as an unknown outcome, since an instance that ignores the flag deletes. Required path arguments: suite_id. Changes TestRail data.
 
 REST: `POST delete_suite/{suite_id}`. Driver: `suites.deleteSuite`. Family: T01.
 

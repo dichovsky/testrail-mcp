@@ -1,9 +1,9 @@
-import type { UploadFilePathInput } from '@dichovsky/testrail-api-client';
+import { SoftDeletePreviewSchema, type UploadFilePathInput } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
 import { AdapterError } from '../../contracts/errors.js';
 import type { AllControls } from '../../contracts/pagination.js';
 import type { CallContext } from '../driver-call.js';
-import type { ArgumentMapping } from '../registry.js';
+import type { ArgumentMapping, PreviewContract } from '../registry.js';
 
 /** A usable JSON object response; entity fields are checked advisorily, not here. */
 export const recordResponse = z.record(z.string(), z.unknown());
@@ -12,6 +12,23 @@ export const pageResponse = z.object({
   kind: z.enum(['envelope', 'legacy-array']),
   items: z.array(z.unknown()),
 });
+
+/**
+ * The soft-delete preview shared by delete_case, delete_cases, delete_section,
+ * delete_suite and delete_run: `query.soft` true asks TestRail what the delete would
+ * remove instead of removing it.
+ *
+ * The counters are checked against the driver's own preview schema so drift is reported
+ * rather than invisible, and are its seven affected-entity counts. A reply carrying none
+ * of them with a value is not an empty preview: a TestRail that ignores the flag deletes
+ * and answers just the same, so it is reported as an unknown outcome instead.
+ */
+export const softDeletePreview: PreviewContract = {
+  requested: (input) => typeof input === 'object' && input !== null
+    && flag((input as { query?: object }).query, 'soft') === true,
+  entitySchema: SoftDeletePreviewSchema,
+  counters: Object.keys(SoftDeletePreviewSchema.shape),
+};
 
 /**
  * Read one control from a validated list input.
