@@ -153,7 +153,8 @@ describe('advisory entity validation', () => {
 
   it('accumulates across collection items and stays bounded', () => {
     const many = Array.from({ length: 2_000 }, () => ({ id: 'x', name: 5 }));
-    expect(advisoryWarnings(entity, 'array', many)[0]?.count).toBe(MAX_WARNING_COUNT);
+    expect(MAX_WARNING_COUNT).toBe(1_000);
+    expect(advisoryWarnings(entity, 'array', many)[0]?.count).toBe(1_000);
   });
 
   it('gives each caller its own warnings even for one coalesced response', async () => {

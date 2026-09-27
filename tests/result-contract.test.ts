@@ -508,14 +508,14 @@ describe('F05 result evidence through registered tools', () => {
         runtime, configuration, stagingDirectory: () => Promise.resolve(base),
       });
       const lines = write.mock.calls.map(([chunk]) => String(chunk));
-      // One event per call, in call order.
+      // One event per call, in call order, each carrying only its fixed code.
       expect(lines.map((line) => {
-        const { tool, outcome } = JSON.parse(line) as Record<string, unknown>;
-        return [tool, outcome];
+        const { tool, outcome, code } = JSON.parse(line) as Record<string, unknown>;
+        return [tool, outcome, code];
       })).toEqual([
-        ['testrail_add_project', 'error'],
-        ['testrail_get_project', 'success'],
-        ['testrail_add_attachment_to_case', 'error'],
+        ['testrail_add_project', 'error', 'UPSTREAM_ERROR'],
+        ['testrail_get_project', 'success', undefined],
+        ['testrail_add_attachment_to_case', 'error', 'FILE_ACCESS_DENIED'],
       ]);
       // Only these fields may ever appear.
       const allowed = new Set(['event', 'correlation', 'tool', 'outcome', 'code', 'duration_ms', 'warnings']);
@@ -523,7 +523,7 @@ describe('F05 result evidence through registered tools', () => {
         const event = JSON.parse(line) as Record<string, unknown>;
         expect(event.event).toBe('tool_call');
         expect(Object.keys(event).filter((key) => !allowed.has(key))).toEqual([]);
-        for (const leaked of [marker, 'SECRET-9d2', 'internal.example.test', '/Users/someone', 'data-marker-3b8e', outside, configuration.baseUrl, configuration.apiKey]) {
+        for (const leaked of [marker, 'SECRET-9d2', 'internal.example.test', '/Users/someone', 'data-marker-3b8e', outside, configuration.baseUrl, new URL(configuration.baseUrl).host, configuration.apiKey]) {
           expect(line).not.toContain(leaked);
         }
       }
