@@ -51,6 +51,10 @@ jobs:
         run: npm run lint
 
       - name: Test
+        env:
+          # tests/coverage-report.test.ts writes the R01 reports here only after every
+          # one of its gates has passed; they are uploaded only if every later step passes.
+          TESTRAIL_MCP_REPORT_DIR: ${{ runner.temp }}/coverage-reports
         run: npm test
 
       - name: Inspect package contents
@@ -58,3 +62,10 @@ jobs:
 
       - name: Test packed installation and executable
         run: npm run test:package
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-reports-${{ matrix.os }}-node${{ matrix.node }}
+          path: ${{ runner.temp }}/coverage-reports
+          if-no-files-found: error
