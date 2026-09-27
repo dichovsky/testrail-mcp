@@ -315,10 +315,11 @@ describe('each aggregate bound through a controlled and a response-driven list',
 /*
  * F06 boundaries and continuation through the tool-call path. Every expected value
  * comes from the driver source at the pinned commit (dist/pagination.js,
- * collectAllPages): the aggregate counts a page's items, then its UTF-8 serialized
- * item bytes, against `>` on a terminal page and `>=` before fetching another, and
- * rebuilds each request from its own prepared endpoint using only the link's
- * offset and limit.
+ * collectAllPages). After every page the aggregate checks its items, then its UTF-8
+ * serialized item bytes, with `>`; only when a continuation follows does it check
+ * pages, items and bytes with `>=`, so max_pages never applies to the last page. It
+ * rebuilds each request from its own prepared endpoint, taking the link's offset, and
+ * its limit only on a response-driven list; a controlled list keeps its page size.
  */
 describe('F06 boundaries and continuation through the tools', () => {
   const both = [
@@ -403,22 +404,22 @@ describe('F06 boundaries and continuation through the tools', () => {
   });
 
   it.each(both.flatMap(([tool, key]) => [
-    [tool, key, 'a malformed offset', `/api/v2/${tool.replace('testrail_', '')}&offset=abc`],
-    [tool, key, 'an offset that does not advance', `/api/v2/${tool.replace('testrail_', '')}&limit=1&offset=0`],
-  ] as const))('%s fails an aggregate whose continuation has %s as INVALID_RESPONSE', async (tool, key, _label, next) => {
+    [tool, 'a malformed offset', key, `/api/v2/${tool.replace('testrail_', '')}&offset=abc`, 'invalid_continuation'],
+    [tool, 'an offset that does not advance', key, `/api/v2/${tool.replace('testrail_', '')}&limit=1&offset=0`, 'non_progress'],
+  ] as const))('%s fails an aggregate whose continuation has %s as INVALID_RESPONSE', async (tool, _label, key, next, reason) => {
     const [first, second] = items(tool, key);
     const server = serve(linked(key, tool.replace('testrail_', ''), first, second, next));
     const payload = await all(tool, {}, server.fetch);
-    expect(payload.error).toMatchObject({ code: 'INVALID_RESPONSE' });
+    expect(payload.error).toMatchObject({ code: 'INVALID_RESPONSE', reason });
     expect(payload.error).not.toHaveProperty('write_outcome');
     expect(payload).not.toHaveProperty('data');
     expect(server.fetch).toHaveBeenCalledTimes(1);
   });
 
   it.each(both.flatMap(([tool, key]) => [
-    [tool, key, 'another endpoint and filter', '/api/v2/get_cases/999&suite_id=7&limit=1&offset=1'],
-    [tool, key, 'another host', 'https://attacker.example/index.php?/api/v2/get_users&limit=1&offset=1'],
-  ] as const))('%s follows a link naming %s only for its offset', async (tool, key, _label, next) => {
+    [tool, 'another endpoint and filter', key, '/api/v2/get_cases/999&suite_id=7&limit=1&offset=1'],
+    [tool, 'another host', key, 'https://attacker.example/index.php?/api/v2/get_users&limit=1&offset=1'],
+  ] as const))('%s follows a link naming %s only for its offset', async (tool, _label, key, next) => {
     const [first, second] = items(tool, key);
     const server = serve(linked(key, tool.replace('testrail_', ''), first, second, next));
     const controlled = tool === 'testrail_get_projects';
@@ -431,8 +432,35 @@ describe('F06 boundaries and continuation through the tools', () => {
     expect(two?.host).toBe(new URL(configuration.baseUrl).host);
     expect(two?.search.replace(/&(?:limit|offset)=\d+/gu, '')).toBe(one?.search.replace(/&(?:limit|offset)=\d+/gu, ''));
     expect(control(server.urls[1], 'offset')).toBe('1');
+    // A controlled list keeps its own page size (the driver's default, 250, when the
+    // caller names none); a response-driven list takes the link's limit, here 1.
+    expect(control(server.urls[1], 'limit')).toBe(controlled ? '250' : '1');
     expect(server.urls[1]).not.toMatch(/suite_id|get_cases|get_users|attacker/u);
     if (controlled) expect(server.urls[1]).toMatch(/[?&]is_completed=1(?:&|$)/u);
+  });
+
+  it.each(both)('%s describes an empty last page in page mode, and pages past an empty page in all mode', async (tool, key) => {
+    const [first] = items(tool, key);
+    const token = tool.replace('testrail_', '');
+    const empty = { '0': { offset: 0, limit: 50, size: 0, _links: { next: null, prev: null }, [key]: [] } };
+    const runtime = runtimeFor(serve(empty).fetch);
+    try {
+      const page = structured(await executeToolCall(registered(tool), pageFixture(manifestFor(tool)).input, { runtime, configuration }));
+      expect(page.data).toEqual([]);
+      expect(page.pagination).toEqual({
+        mode: 'page', source: 'envelope', returned: 0, has_more: false, manual_continuation: false, next_action: 'none',
+        limit: 50, offset: 0, driver: { size: 0, links: { next: null, prev: null } },
+      });
+    } finally { await runtime.shutdown(); }
+    // An empty page that links on still advances (the link's offset is past the page), so
+    // the aggregate follows it and returns what the next page holds.
+    const onward = serve({
+      '0': { offset: 0, limit: 1, size: 0, _links: { next: `/api/v2/${token}&limit=1&offset=1`, prev: null }, [key]: [] },
+      '1': { offset: 1, limit: 1, size: 1, _links: { next: null, prev: null }, [key]: [first] },
+    });
+    const payload = await all(tool, {}, onward.fetch);
+    expect(payload.data).toEqual([first]);
+    expect(onward.fetch).toHaveBeenCalledTimes(2);
   });
 
   it('reports the start offset the caller asked for, and starts there', async () => {
