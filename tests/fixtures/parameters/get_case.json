@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "review": { "status": "complete", "pending": [], "driver_version": "7.2.0", "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-19" },
+  "review": { "status": "complete", "pending": [], "driver_version": "7.2.0", "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-19" },
   "endpoint": { "family_id": "T02", "http_method": "GET", "route": "get_case/{case_id}", "tool": "testrail_get_case", "driver_method": "cases.getCase" },
   "sources": [
     { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts", "supports": "getCase validates the case ID and places it as the only path segment of get_case; the reply is parsed advisorily against CaseSchema and returned as received." },

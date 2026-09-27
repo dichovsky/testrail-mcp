@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -55,6 +56,8 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { loadDomainLibrary } from './contracts/domains.js';
+import { auditDriverReleases, loadDriverReleases } from './contracts/driver-releases.js';
+import type { DriverReleases, InstalledDriver } from './contracts/driver-releases.js';
 import {
   auditParameterManifests,
   loadParameterManifests,
@@ -62,7 +65,7 @@ import {
   ParameterManifestSchema,
   resolveDomains,
 } from './contracts/parameter-manifest.js';
-import type { ParameterFixture } from './contracts/parameter-manifest.js';
+import type { ParameterFixture, ParameterManifest } from './contracts/parameter-manifest.js';
 import { auditRegisteredParameters } from './contracts/registered-parameters.js';
 import { describeBody, materializeFiles, substituteTokens } from './contracts/uploads.js';
 import { positiveIdSchema, strictObject } from '../src/contracts/inputs.js';
@@ -79,6 +82,22 @@ const rawDriverMetadata: unknown = JSON.parse(await readFile(
   new URL('../package.json', import.meta.resolve('@dichovsky/testrail-api-client')), 'utf8',
 ));
 const driverVersion = z.object({ version: z.string() }).parse(rawDriverMetadata).version;
+const releases = await loadDriverReleases();
+const driverRoot = new URL('../', import.meta.resolve('@dichovsky/testrail-api-client'));
+const rawLock: unknown = JSON.parse(await readFile(new URL('../package-lock.json', import.meta.url), 'utf8'));
+const lockedDriver = z.object({
+  packages: z.object({ 'node_modules/@dichovsky/testrail-api-client': z.object({ integrity: z.string() }) }),
+}).parse(rawLock).packages['node_modules/@dichovsky/testrail-api-client'];
+const installedDriver: InstalledDriver = {
+  version: driverVersion,
+  integrity: lockedDriver.integrity,
+  read: (path) => {
+    const file = new URL(path, driverRoot);
+    return existsSync(file) ? readFileSync(file) : undefined;
+  },
+};
+const release700 = '71a80d984aea14713d8eeaf6ac9a0d41c1fba12b';
+const release720 = 'cc7751c01c3d3956d061073283bee6b23bf33422';
 
 function example() {
   const manifest = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_get_attachment');
@@ -88,8 +107,12 @@ function example() {
 
 function zeroParameterExample() {
   const baseline = example();
+  // Authored at the pinned commit, so it inherits none of the attachment manifest's evidence.
+  const review = { ...baseline.review, authored_commit: baseline.review.driver_commit };
+  delete review.evidence;
   return ParameterManifestSchema.parse({
     ...baseline,
+    review,
     endpoint: {
       family_id: 'T10', http_method: 'GET', route: 'get_priorities',
       tool: 'testrail_get_priorities', driver_method: 'metadata.getPriorities',
@@ -122,6 +145,214 @@ function zeroParameterExample() {
     }],
   });
 }
+
+describe('driver provenance evidence', () => {
+  function find(name: string) {
+    const manifest = manifests.find(({ endpoint }) => endpoint.tool === `testrail_${name}`);
+    if (!manifest) throw new Error(`Required ${name} manifest is missing`);
+    return structuredClone(manifest);
+  }
+
+  function ledger(edit: (copy: DriverReleases) => void): DriverReleases {
+    const copy = structuredClone(releases);
+    edit(copy);
+    return copy;
+  }
+
+  function releaseFile(copy: DriverReleases, commit: string, path: string) {
+    const file = copy.releases.find((release) => release.commit === commit)?.files[path];
+    if (!file) throw new Error(`Ledger has no ${path} at ${commit}`);
+    return file;
+  }
+
+  function audit(manifest: ParameterManifest, ledgerCopy: DriverReleases = releases): string[] {
+    return auditParameterManifests([manifest], undefined, undefined, ledgerCopy);
+  }
+
+  const bumped = ['get_attachment', 'get_attachments_for_plan_entry', 'get_cases', 'update_case', 'update_project'];
+
+  it('carries evidence on exactly the five manifests whose driver commit advanced from 7.0.0', () => {
+    expect(manifests.filter(({ review }) => review.authored_commit !== review.driver_commit).map(({ endpoint }) => endpoint.tool).sort())
+      .toEqual(bumped.map((name) => `testrail_${name}`));
+    expect(manifests.filter(({ review }) => review.evidence !== undefined).map(({ endpoint }) => endpoint.tool).sort())
+      .toEqual(bumped.map((name) => `testrail_${name}`));
+    for (const name of bumped) {
+      const { review } = find(name);
+      expect(review.authored_commit).toBe(release700);
+      expect(review.evidence?.map(({ from_commit, to_commit }) => [from_commit, to_commit])).toEqual([[release700, release720]]);
+    }
+  });
+
+  it('records the installed driver in the release ledger, integrity and shipped files alike', () => {
+    expect(auditDriverReleases(releases, installedDriver)).toEqual([]);
+    const installed = releases.releases.find(({ version }) => version === driverVersion);
+    expect(installed?.commit).toBe(release720);
+  });
+
+  it('fails a driver_commit bump that carries no evidence', () => {
+    const project = find('update_project');
+    delete project.review.evidence;
+    expect(audit(project)).toEqual(['testrail_update_project: Driver commit advanced from 71a80d98 to cc7751c0 without evidence']);
+  });
+
+  it('fails a manifest backdated to an earlier authored commit without evidence', () => {
+    const cases = find('add_case');
+    cases.review.authored_commit = release700;
+    expect(audit(cases)).toEqual(['testrail_add_case: Driver commit advanced from 71a80d98 to cc7751c0 without evidence']);
+  });
+
+  it('rejects evidence claiming a changed file unchanged', () => {
+    const attachment = find('get_attachment');
+    const entry = attachment.review.evidence?.[0]?.files.find(({ path }) => path === 'src/retry-policy.ts');
+    if (!entry) throw new Error('retry-policy evidence is missing');
+    entry.changed = false;
+    expect(audit(attachment)).toEqual([
+      'testrail_get_attachment: Evidence 71a80d98..cc7751c0 claims src/retry-policy.ts unchanged, but the release ledger records it changed',
+    ]);
+  });
+
+  it('rejects an unchanged claim for a newly cited file that changed', () => {
+    const project = find('update_project');
+    project.sources.push({
+      id: 'driver-client-core',
+      url: `https://github.com/dichovsky/testrail-api-client/blob/${release720}/src/client-core.ts`,
+      supports: 'The shared request pipeline.',
+    });
+    expect(audit(project)).toEqual(['testrail_update_project: Evidence 71a80d98..cc7751c0 does not cover cited file src/client-core.ts']);
+    project.review.evidence?.[0]?.files.push({ path: 'src/client-core.ts', changed: false });
+    expect(audit(project)).toEqual([
+      'testrail_update_project: Evidence 71a80d98..cc7751c0 claims src/client-core.ts unchanged, but the release ledger records it changed',
+    ]);
+  });
+
+  it('rejects evidence claiming an unchanged file changed', () => {
+    const project = find('update_project');
+    const entry = project.review.evidence?.[0]?.files[0];
+    if (!entry) throw new Error('update_project evidence is missing');
+    entry.changed = true;
+    entry.note = 'Claimed changed.';
+    expect(audit(project)).toEqual([
+      'testrail_update_project: Evidence 71a80d98..cc7751c0 claims src/modules/projects.ts changed, but the release ledger records it unchanged',
+    ]);
+  });
+
+  it('judges a change by the ledger, in the source blob or the shipped file', () => {
+    const project = find('update_project');
+    expect(audit(project, ledger((copy) => { releaseFile(copy, release720, 'src/modules/projects.ts').git_blob = '0'.repeat(40); }))).toEqual([
+      'testrail_update_project: Evidence 71a80d98..cc7751c0 claims src/modules/projects.ts unchanged, but the release ledger records it changed',
+    ]);
+    expect(audit(project, ledger((copy) => { releaseFile(copy, release700, 'src/schemas/projects.ts').package_sha256 = '0'.repeat(64); }))).toEqual([
+      'testrail_update_project: Evidence 71a80d98..cc7751c0 claims src/schemas/projects.ts unchanged, but the release ledger records it changed',
+    ]);
+  });
+
+  it('requires a note for every file recorded as changed', () => {
+    const attachment = find('get_attachment');
+    const entry = attachment.review.evidence?.[0]?.files.find(({ path }) => path === 'src/retry-policy.ts');
+    if (!entry) throw new Error('retry-policy evidence is missing');
+    delete entry.note;
+    expect(audit(attachment)).toEqual(['testrail_get_attachment: Evidence 71a80d98..cc7751c0 gives no note for changed file src/retry-policy.ts']);
+  });
+
+  it('requires every cited driver file to be covered once', () => {
+    const cases = find('update_case');
+    const files = cases.review.evidence?.[0]?.files;
+    if (!files) throw new Error('update_case evidence is missing');
+    const [first] = files.splice(1, 1);
+    if (!first) throw new Error('update_case evidence is too short');
+    expect(audit(cases)).toEqual([`testrail_update_case: Evidence 71a80d98..cc7751c0 does not cover cited file ${first.path}`]);
+    files.push(first, { ...first });
+    expect(audit(cases)).toEqual([`testrail_update_case: Evidence 71a80d98..cc7751c0 names ${first.path} twice`]);
+  });
+
+  it('refuses evidence naming a file the ledger does not record at both commits', () => {
+    const project = find('update_project');
+    project.review.evidence?.[0]?.files.push({ path: 'src/unrecorded.ts', changed: false });
+    expect(audit(project)).toEqual([
+      'testrail_update_project: Evidence 71a80d98..cc7751c0 names src/unrecorded.ts, which the release ledger does not record at both commits',
+    ]);
+  });
+
+  it('requires the evidence to chain from the authored commit to the driver commit', () => {
+    const project = find('update_project');
+    const step = project.review.evidence?.[0];
+    if (!step) throw new Error('update_project evidence is missing');
+    const broken = structuredClone(project);
+    const brokenStep = broken.review.evidence?.[0];
+    if (!brokenStep) throw new Error('update_project evidence is missing');
+    brokenStep.from_commit = release720;
+    expect(audit(broken)).toEqual([
+      'testrail_update_project: Evidence step 1 starts at cc7751c0, not 71a80d98',
+      'testrail_update_project: Evidence step 1 does not advance',
+    ]);
+    const short = structuredClone(project);
+    const shortStep = short.review.evidence?.[0];
+    if (!shortStep) throw new Error('update_project evidence is missing');
+    shortStep.to_commit = release700;
+    expect(audit(short)).toEqual([
+      'testrail_update_project: Evidence step 1 does not advance',
+      'testrail_update_project: Evidence ends at 71a80d98, not at driver commit cc7751c0',
+    ]);
+    const unrecorded = structuredClone(project);
+    const unrecordedStep = unrecorded.review.evidence?.[0];
+    if (!unrecordedStep) throw new Error('update_project evidence is missing');
+    unrecorded.review.evidence?.push({ ...unrecordedStep, from_commit: release720, to_commit: 'f'.repeat(40) });
+    expect(audit(unrecorded)).toEqual([
+      'testrail_update_project: Evidence cc7751c0..ffffffff names a commit that is not a recorded release',
+      'testrail_update_project: Evidence ends at ffffffff, not at driver commit cc7751c0',
+    ]);
+  });
+
+  it('refuses evidence on a manifest whose driver commit never advanced', () => {
+    const cases = find('add_case');
+    const step = find('update_case').review.evidence?.[0];
+    if (!step) throw new Error('update_case evidence is missing');
+    cases.review.evidence = [step];
+    expect(audit(cases)).toEqual(['testrail_add_case: Evidence is recorded for a driver commit that never advanced']);
+  });
+
+  it('requires the driver and authored commits to be recorded releases of the stated version', () => {
+    const cases = find('add_case');
+    cases.review.driver_version = '7.0.0';
+    expect(audit(cases)).toEqual(['testrail_add_case: Driver version 7.0.0 disagrees with release 7.2.0 recorded for cc7751c0']);
+    const orphan = find('add_case');
+    orphan.review.authored_commit = 'a'.repeat(40);
+    expect(audit(orphan)).toEqual([
+      'testrail_add_case: Authored commit aaaaaaaa is not a recorded release',
+      'testrail_add_case: Driver commit advanced from aaaaaaaa to cc7751c0 without evidence',
+    ]);
+    expect(audit(find('add_case'), ledger((copy) => { copy.releases = copy.releases.filter(({ commit }) => commit !== release720); })))
+      .toContain('testrail_add_case: Driver commit cc7751c0 is not a recorded release');
+  });
+
+  it('requires the ledger to record every cited driver file at the driver commit', () => {
+    const without = ledger((copy) => {
+      const release = copy.releases.find(({ commit }) => commit === release720);
+      if (!release) throw new Error('7.2.0 is missing from the ledger');
+      release.files = Object.fromEntries(Object.entries(release.files).filter(([path]) => path !== 'src/schemas/cases.ts'));
+    });
+    expect(audit(find('add_case'), without)).toEqual(['testrail_add_case: Release ledger does not record cited file src/schemas/cases.ts at cc7751c0']);
+  });
+
+  it('holds the ledger to the installed package', () => {
+    expect(auditDriverReleases(releases, { ...installedDriver, version: '9.9.9' })).toEqual(['No recorded release for installed driver 9.9.9']);
+    expect(auditDriverReleases(releases, { ...installedDriver, integrity: 'sha512-AAAA' }))
+      .toEqual(['Release 7.2.0 integrity disagrees with the locked package']);
+    expect(auditDriverReleases(ledger((copy) => { releaseFile(copy, release720, 'src/url.ts').package_sha256 = '0'.repeat(64); }), installedDriver))
+      .toEqual(['src/url.ts: installed dist/url.js does not match its recorded SHA-256']);
+    expect(auditDriverReleases(ledger((copy) => { releaseFile(copy, release720, 'src/url.ts').package_sha256 = null; }), installedDriver))
+      .toEqual(['src/url.ts: dist/url.js is installed but recorded as absent']);
+    expect(auditDriverReleases(ledger((copy) => { releaseFile(copy, release720, 'src/url.ts').package_file = 'dist/absent.js'; }), installedDriver))
+      .toEqual(['src/url.ts: dist/absent.js is recorded but not installed']);
+    expect(auditDriverReleases(ledger((copy) => {
+      const [first] = copy.releases;
+      if (first) copy.releases.push({ ...first });
+    }), installedDriver)).toEqual([
+      'Duplicate release version: 7.0.0',
+      'Duplicate release commit: 71a80d984aea14713d8eeaf6ac9a0d41c1fba12b',
+    ]);
+  });
+});
 
 describe('independent parameter manifest format', () => {
   it('audits reviewed requirements, references and exact inventory identities', () => {

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "review": { "status": "complete", "pending": [], "driver_version": "7.2.0", "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-19" },
+  "review": { "status": "complete", "pending": [], "driver_version": "7.2.0", "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-19" },
   "endpoint": { "family_id": "T02", "http_method": "POST", "route": "move_cases_to_section/{section_id}", "tool": "testrail_move_cases_to_section", "driver_method": "cases.moveCasesToSection" },
   "sources": [
     { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts", "supports": "moveCasesToSection validates the section ID, sends it as the only path segment, forwards the JSON body unchanged and resolves with no value. The driver documents suite_id as required even for a same-suite move and section_id as path-only, never in the body." },

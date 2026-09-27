@@ -2,7 +2,7 @@
 
 F04 provides a test-only fixture format and reviewed examples. Endpoint families T01–T12 must finish the manifests and adapter contract tests before R01. A manifest's `complete` review status means that its parameter requirements have been reviewed and represented in fixtures; it does not certify an implemented tool, file policy, client compatibility or a live TestRail instance.
 
-The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d061073283bee6b23bf33422`](https://github.com/dichovsky/testrail-api-client/tree/cc7751c01c3d3956d061073283bee6b23bf33422). Updating a package pin does not automatically update reviewed fixture provenance: a version gate fails until each manifest is re-reviewed against the installed driver, and the re-review must cite evidence, not restate the new version.
+The examples use the qualified driver `7.2.0`, source commit [`cc7751c01c3d3956d061073283bee6b23bf33422`](https://github.com/dichovsky/testrail-api-client/tree/cc7751c01c3d3956d061073283bee6b23bf33422). Updating a package pin does not automatically update reviewed fixture provenance: a version gate fails until each manifest is re-reviewed against the installed driver, and the re-review must record [evidence the audit checks](#driver-provenance-evidence), not restate the new version.
 
 | Endpoint | Reviewed parameters | Fixture cases | Review status |
 | --- | ---: | ---: | --- |
@@ -240,6 +240,23 @@ The five uploads share the transport's staging and the driver's multipart pipeli
 3. Author literal input, driver argument, request and response fixtures by hand from the evidence. Include all union branches, omission versus null, bounds, required fields, unknown fields and cross-field constraints. Review nested ordinary fields as well as the outer object. Give every parameter a mapping and validation requirement.
 4. Run the manifest audit and the family adapter suite, including generated JSON Schema acceptance and real public driver requests with injected fetch/DNS. Prove invalid calls are rejected before invocation. Add harness support explicitly for new binary/text/multipart or outer-result variants.
 5. Have the independent reviewer compare the complete field list with sources. Set `review.status: complete` and clear `review.pending` only when the source review and fixture requirements are complete. Keep implementation/host/live qualification status in their corresponding work items.
+
+## Driver provenance evidence
+
+A manifest's `review` names two driver commits. `authored_commit` is the one it was first reviewed against and never moves; `driver_commit` is the one it is reviewed against now. When they differ, `review.evidence` must record each advance as a step from one commit to the next, and the steps must chain from `authored_commit` to `driver_commit`. Each step lists every driver file the manifest cites at `driver_commit`, says whether that file changed between the step's two commits, and carries a note for each file that did. A pointer bump that edits `driver_commit` and the source links alone therefore fails the audit, as does a manifest backdated to an earlier `authored_commit` without evidence.
+
+The audit does not take a changed-or-unchanged claim on trust. [`tests/fixtures/driver-releases.json`](../tests/fixtures/driver-releases.json) records, for each reviewed driver release, its tag commit, its npm integrity and, for every driver file any manifest cites, the file's git blob ID at that commit and the SHA-256 of the file the published package ships for it (`src/x.ts` ships as `dist/x.js`; `skill/SKILL.md` ships as itself). A file has changed between two releases when either hash differs. A claim that disagrees with the ledger is rejected, and so is evidence naming a file or commit the ledger does not record. Every file a manifest cites must be recorded at its `driver_commit`, so a future step always has both ends to compare.
+
+The gate runs without a network. The installed package ships no sources, so git blob IDs cannot be recomputed in CI. Instead, the ledger entry for the installed version is held to the installed package: its integrity must equal the lockfile's, and each shipped file it names must match its recorded SHA-256. The blob IDs were recorded from the driver's git history, and anyone can re-check them with one command per release:
+
+```sh
+git clone https://github.com/dichovsky/testrail-api-client && cd testrail-api-client
+git rev-parse cc7751c01c3d3956d061073283bee6b23bf33422:src/modules/cases.ts   # compare with the ledger
+```
+
+The five manifests F04 wrote at 7.0.0 (`71a80d98`) carry one step each, to 7.2.0 (`cc7751c`), reviewed on 2026-09-17. `get_attachment` also cites `src/retry-policy.ts`, which did change between the releases: 7.2.0 added the `rateLimitOnly` policy. That file was first cited on 2026-09-26, when the manifest was rewritten directly against `cc7751c`, and its evidence entry records it as changed, with that note. The other 128 manifests were authored at `cc7751c` and carry no evidence.
+
+To advance the driver: add the new release to the ledger from its tag commit and published tarball; re-review each manifest against it; set `driver_commit`, `driver_version` and the source links; and append an evidence step whose claims the audit will check. The audit's negative tests are in [`tests/parameter-manifest.test.ts`](../tests/parameter-manifest.test.ts) under "driver provenance evidence".
 
 ## Shared parameter domains
 

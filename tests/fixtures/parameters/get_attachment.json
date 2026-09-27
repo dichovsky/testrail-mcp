@@ -5,7 +5,18 @@
     "pending": [],
     "driver_version": "7.2.0",
     "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-09-26"
+    "authored_commit": "71a80d984aea14713d8eeaf6ac9a0d41c1fba12b",
+    "reviewed_on": "2026-09-26",
+    "evidence": [
+      {
+        "from_commit": "71a80d984aea14713d8eeaf6ac9a0d41c1fba12b", "to_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-17",
+        "files": [
+          { "path": "src/modules/attachments.ts", "changed": false },
+          { "path": "src/validation.ts", "changed": false },
+          { "path": "src/retry-policy.ts", "changed": true, "note": "Changed between the releases: 7.2.0 adds the rateLimitOnly policy for report generation; the binaryGet and none policies a download and an upload use are unchanged. First cited on 2026-09-26 (f6b0a6f), in a review made directly against cc7751c; not a source at the 71a80d98 review this step records." }
+        ]
+      }
+    ]
   },
   "endpoint": {
     "family_id": "T12",
