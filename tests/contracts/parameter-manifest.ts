@@ -398,6 +398,14 @@ export function auditParameterManifests(
         }
       }
       for (const duplicate of duplicates(caseReferences)) fail(`Case ${fixture.id} repeats coverage ${duplicate}`);
+      // A refusal names no field, so an input malformed in one place could otherwise
+      // claim the rejections of every parameter it carries, and a constraint weakened on
+      // any of the others would still look covered. Endpoint-wide rules are not a
+      // parameter target and do not count.
+      const rejectedTargets = new Set(fixture.covers.map(({ parameter }) => parameter).filter((id) => id !== '$input'));
+      if (fixture.expect.kind === 'rejected' && rejectedTargets.size > 1) {
+        fail(`Case ${fixture.id} attributes one rejection to ${rejectedTargets.size} parameters: ${[...rejectedTargets].join(', ')}`);
+      }
       if (fixture.expect.kind === 'accepted' && fixture.expect.wire.method !== manifest.endpoint.http_method) {
         fail(`Case ${fixture.id} wire method disagrees with endpoint`);
       }

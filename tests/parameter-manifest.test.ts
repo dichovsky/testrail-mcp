@@ -63,7 +63,12 @@ import {
   resolveDomains,
 } from './contracts/parameter-manifest.js';
 import type { ParameterFixture } from './contracts/parameter-manifest.js';
+import { auditRegisteredParameters } from './contracts/registered-parameters.js';
 import { describeBody, materializeFiles, substituteTokens } from './contracts/uploads.js';
+import { positiveIdSchema, strictObject } from '../src/contracts/inputs.js';
+import { driverCall } from '../src/operations/driver-call.js';
+import { deletePlanEntry } from '../src/operations/families/t06.js';
+import { createRegistry, defineOperation } from '../src/operations/registry.js';
 
 const manifests = await loadParameterManifests();
 const rawInventory: unknown = JSON.parse(await readFile(new URL('../docs/operation-inventory.json', import.meta.url), 'utf8'));
@@ -386,6 +391,74 @@ describe('independent parameter manifest format', () => {
     const manifest = example();
     manifest.cases = manifest.cases.filter(({ id }) => id !== 'uuid-id');
     expect(auditParameterManifests([manifest])).toContain('testrail_get_attachment: Uncovered requirement: attachment_id/uuid');
+  });
+
+  it('refuses a rejected case that claims the rejections of more than one parameter', () => {
+    const manifest = example();
+    manifest.cases = manifest.cases.map((fixture) => fixture.id === 'zero-id'
+      ? { ...fixture, covers: [...fixture.covers, { parameter: '$input', requirements: ['unknown-top-level'] }] }
+      : fixture);
+    // Endpoint-wide rules are not a parameter, so pairing one with a parameter is allowed.
+    expect(auditParameterManifests([manifest]).filter((error) => error.includes('attributes one rejection'))).toEqual([]);
+
+    const plans = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_delete_plan_entry');
+    if (!plans) throw new Error('Required delete_plan_entry manifest is missing');
+    const doubled = { ...plans, cases: plans.cases.map((fixture) => fixture.id === 'plan_id:zero'
+      ? { ...fixture, covers: [...fixture.covers, { parameter: 'entry_id', requirements: ['invalid'] }] }
+      : fixture) };
+    expect(auditParameterManifests([doubled])).toEqual([
+      'testrail_delete_plan_entry: Case plan_id:zero attributes one rejection to 2 parameters: plan_id, entry_id',
+    ]);
+  });
+
+  /*
+   * The hole this guard closes, rebuilt end to end. The entry identifier is registered as
+   * any string, so a traversal sequence or a trailing newline would reach the request
+   * path, and the derived fixtures that isolate its domain are gone. One input that is
+   * malformed only in the plan identifier then claims every entry rejection. The
+   * registration audit is blind to it: every fixture it is given still agrees with the
+   * weakened schema, because the one rejection it sees is caused by the other field.
+   * Only attribution in the manifest audit can see that nothing proves the entry domain.
+   */
+  it('detects a weakened parameter constraint whose isolating fixtures were removed', () => {
+    const plans = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_delete_plan_entry');
+    if (!plans) throw new Error('Required delete_plan_entry manifest is missing');
+    const weakenedInput = strictObject({ plan_id: positiveIdSchema, entry_id: z.string() });
+    const weakened = defineOperation({
+      ...deletePlanEntry,
+      inputSchema: weakenedInput,
+      pagination: {
+        kind: 'none',
+        single: driverCall(weakenedInput, 'plans.deletePlanEntry', (method, input) => method(input.plan_id, input.entry_id)),
+      },
+    });
+    const isolating = plans.cases.filter(({ id }) => id.startsWith('entry_id:') && id !== 'entry_id:missing');
+    expect(isolating.map(({ id }) => id)).toEqual([
+      'entry_id:malformed', 'entry_id:numeric', 'entry_id:empty', 'entry_id:traversal',
+      'entry_id:leading-space', 'entry_id:trailing-space', 'entry_id:trailing-line-feed', 'entry_id:trailing-carriage-return',
+    ]);
+    // With the isolating fixtures present the weakening is visible, which is what they are for.
+    expect(auditParameterManifests([plans])).toEqual([]);
+    expect(auditRegisteredParameters(createRegistry(weakened), [plans])).toEqual(
+      isolating.flatMap(({ id }) => [
+        `testrail_delete_plan_entry: runtime schema disagrees with fixture ${id}`,
+        `testrail_delete_plan_entry: JSON Schema disagrees with fixture ${id}`,
+      ]),
+    );
+
+    const smuggled = {
+      id: 'smuggled', input: { plan_id: 0, entry_id: '3933d74b-4282-44de-82ae-a6412808369d' },
+      covers: [
+        { parameter: 'plan_id', requirements: ['invalid'] },
+        { parameter: 'entry_id', requirements: ['invalid', 'path-safety', 'terminal'] },
+      ],
+      expect: { kind: 'rejected' as const, code: 'INVALID_ARGUMENT' as const },
+    };
+    const hole = { ...plans, cases: [...plans.cases.filter((fixture) => !isolating.includes(fixture)), smuggled] };
+    expect(auditRegisteredParameters(createRegistry(weakened), [hole])).toEqual([]);
+    expect(auditParameterManifests([hole])).toEqual([
+      'testrail_delete_plan_entry: Case smuggled attributes one rejection to 2 parameters: plan_id, entry_id',
+    ]);
   });
 
   it('requires mapping and validation requirements for every reviewed parameter', () => {
