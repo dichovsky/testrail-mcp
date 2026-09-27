@@ -304,6 +304,16 @@ describe('shared domains where they are used', () => {
         // A relabel names only values the domain has, so none can silently lapse.
         for (const id of Object.keys(parameter.rejected_by)) expect(domain.invalid.map((invalid) => invalid.id)).toContain(id);
       }
+      if (parameter.rejected_by !== undefined) {
+        // An override says the binding differs from the probe, so it must change a label
+        // there; one restating what the reference inherits would be noise that hides that.
+        const inherited = { ...parameter, rejected_by: undefined };
+        const changes = domain.invalid.filter((invalid) => claimedLabel(parameter, invalid) !== claimedLabel(inherited, invalid));
+        expect(changes.length, 'override changes no inherited label').toBeGreaterThan(0);
+        if (typeof parameter.rejected_by === 'object') {
+          for (const id of Object.keys(parameter.rejected_by)) expect(changes.map((invalid) => invalid.id), `${id} restates the probe`).toContain(id);
+        }
+      }
       const directory = manifest.files === undefined ? undefined : await mkdtemp(join(tmpdir(), 'testrail-mcp-domain-'));
       try {
         const paths = directory === undefined ? {} : await materializeFiles(manifest, directory);
