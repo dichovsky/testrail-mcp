@@ -297,6 +297,7 @@
       ],
       "requiredness": "optional",
       "domain_ref": "positive_id",
+      "rejected_by": "adapter",
       "semantics": "The user the entry's runs are assigned to. The driver forwards any number, so the boundary holds it to the identifier domain.",
       "wire": {
         "location": "json",

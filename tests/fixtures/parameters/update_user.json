@@ -143,7 +143,8 @@
       "scope": "body",
       "requiredness": "optional",
       "domain": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       },
       "semantics": "The user's new full name. No coercion; TestRail owns the format.",
       "driver": {
@@ -200,7 +201,8 @@
       "scope": "body",
       "requiredness": "optional",
       "domain": {
-        "type": "string"
+        "type": "string",
+        "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
       },
       "semantics": "The user's new address. The format is stricter than the lookup tool's and demands a dotted domain. No coercion; TestRail owns the format.",
       "driver": {
@@ -371,6 +373,7 @@
       "scope": "body",
       "requiredness": "optional",
       "domain_ref": "positive_id",
+      "rejected_by": "adapter",
       "semantics": "The global role to give the user. The driver forwards any number, so the boundary holds it to the identifier domain.",
       "driver": {
         "argument": 1,
@@ -1240,6 +1243,107 @@
           "json": {
             "is_admin": true,
             "sso_enabled": true
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        }
+      }
+    },
+    {
+      "id": "mixed-flags",
+      "input": {
+        "user_id": 1,
+        "body": {
+          "is_active": true,
+          "is_admin": true,
+          "mfa_required": false,
+          "sso_enabled": false
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.is_active",
+          "requirements": [
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.is_admin",
+          "requirements": [
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.mfa_required",
+          "requirements": [
+            "false-value"
+          ]
+        },
+        {
+          "parameter": "body.sso_enabled",
+          "requirements": [
+            "false-value"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.updateUser",
+          "arguments": [
+            1,
+            {
+              "is_active": true,
+              "is_admin": true,
+              "mfa_required": false,
+              "sso_enabled": false
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_user/1",
+          "json": {
+            "is_active": true,
+            "is_admin": true,
+            "mfa_required": false,
+            "sso_enabled": false
           }
         },
         "upstream_response": {
