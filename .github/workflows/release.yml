@@ -1,0 +1,104 @@
+name: Release
+
+# Publishes an exact, already-tested tag to npm through trusted publishing (GitHub OIDC,
+# no stored token), with the provenance attestation npm generates for it. See
+# docs/release.md for the one-time npm and GitHub setup and the release checklist.
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: verify ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ['22', '24']
+
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run every check
+        run: npm run check
+
+  publish:
+    name: publish to npm
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # A protected environment: its required reviewers approve each release, and npm's
+    # trusted publisher configuration names it.
+    environment: npm-release
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Require an npm that supports trusted publishing
+        run: node -e "const [a,b,c]=process.argv[1].split('.').map(Number); if (a<11||(a===11&&(b<5||(b===5&&c<1)))) { console.error('npm '+process.argv[1]+' is older than 11.5.1'); process.exit(1); }" "$(npm --version)"
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Write the release notes, refusing a tag that does not match the version
+        run: node scripts/release-notes.mjs "$GITHUB_REF_NAME" > release-notes.md
+
+      - name: Pack the release tarball
+        id: pack
+        run: |
+          npm pack --json > pack.json
+          node -e "const [r]=Object.values(JSON.parse(require('fs').readFileSync('pack.json','utf8'))).flat(); require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'tarball='+r.filename+'\nintegrity='+r.integrity+'\nversion='+r.version+'\n')"
+
+      - name: Write the dependency inventory (CycloneDX SBOM)
+        run: npm sbom --sbom-format cyclonedx --omit dev > testrail-mcp-sbom.cdx.json
+
+      - name: Publish the packed tarball
+        run: npm publish "./${{ steps.pack.outputs.tarball }}" --access public
+
+      - name: Verify the published package from the registry
+        run: >-
+          node scripts/verify-published.mjs "@dichovsky/testrail-mcp@${{ steps.pack.outputs.version }}"
+          --version "${{ steps.pack.outputs.version }}"
+          --integrity "${{ steps.pack.outputs.integrity }}"
+          --require-provenance
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --notes-file release-notes.md
+          "./${{ steps.pack.outputs.tarball }}" testrail-mcp-sbom.cdx.json
