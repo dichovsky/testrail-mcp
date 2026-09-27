@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
 import { z } from 'zod';
 import { loadDomainLibrary, type DomainLibrary } from './domains.js';
+import { fileChanged, loadDriverReleases, type DriverReleases } from './driver-releases.js';
 
 const identifier = z.string().min(1);
 const jsonObject = z.record(z.string(), z.json());
@@ -57,7 +58,23 @@ export const ParameterManifestSchema = z.strictObject({
     pending: z.array(identifier),
     driver_version: identifier,
     driver_commit: z.string().regex(/^[0-9a-f]{40}$/),
+    // The driver commit the manifest was first reviewed against. It never moves, so a
+    // driver_commit that differs from it has advanced and must carry evidence.
+    authored_commit: z.string().regex(/^[0-9a-f]{40}$/),
     reviewed_on: z.iso.date(),
+    // One step per advance, chained from authored_commit to driver_commit. Each names
+    // every driver file the manifest cites and whether it changed; the audit checks the
+    // claim against the recorded release hashes rather than taking it on trust.
+    evidence: z.array(z.strictObject({
+      from_commit: z.string().regex(/^[0-9a-f]{40}$/),
+      to_commit: z.string().regex(/^[0-9a-f]{40}$/),
+      reviewed_on: z.iso.date(),
+      files: z.array(z.strictObject({
+        path: identifier,
+        changed: z.boolean(),
+        note: identifier.optional(),
+      })).min(1),
+    })).min(1).optional(),
   }),
   endpoint: z.strictObject({
     family_id: z.string().regex(/^T\d{2}$/),
@@ -376,6 +393,131 @@ function duplicates(values: readonly string[]): string[] {
  */
 const sharedDomains = await loadDomainLibrary();
 
+/** The recorded driver releases, audited against by default for the same reason. */
+const sharedReleases = await loadDriverReleases();
+
+const driverSourcePrefix = 'https://github.com/dichovsky/testrail-api-client/blob/';
+/**
+ * Whether a URL names the driver repository in any spelling GitHub would serve. It is
+ * parsed rather than matched as text, so an explicit port, a trailing-dot host, user
+ * information, letter case and percent-encoded path segments are all seen through.
+ */
+function citesDriver(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  const host = parsed.hostname.toLowerCase().replace(/\.$/u, '');
+  if (!/(?:^|\.)(?:github\.com|githubusercontent\.com)$/u.test(host)) return false;
+  const [owner, repository] = parsed.pathname.split('/').filter((segment) => segment !== '').map((segment) => {
+    try {
+      return decodeURIComponent(segment).toLowerCase();
+    } catch {
+      return segment.toLowerCase();
+    }
+  });
+  return owner === 'dichovsky' && (repository === 'testrail-api-client' || repository === 'testrail-api-client.git');
+}
+
+/**
+ * Hold a manifest's driver provenance to the release ledger. A driver_commit that has
+ * moved off authored_commit needs an unbroken chain of evidence steps, each covering
+ * every driver file the manifest cites, and each changed or unchanged claim has to agree
+ * with the ledger's hashes for both commits. A bare pointer bump therefore fails, and
+ * so does evidence that calls a changed file unchanged.
+ */
+function auditProvenance(manifest: ParameterManifest, ledger: DriverReleases, fail: (message: string) => void): void {
+  const { review } = manifest;
+  const releases = new Map(ledger.releases.map((release) => [release.commit, release]));
+  const short = (commit: string): string => commit.slice(0, 8);
+  const current = releases.get(review.driver_commit);
+  if (current === undefined) fail(`Driver commit ${short(review.driver_commit)} is not a recorded release`);
+  else if (current.version !== review.driver_version) {
+    fail(`Driver version ${review.driver_version} disagrees with release ${current.version} recorded for ${short(review.driver_commit)}`);
+  }
+  if (!releases.has(review.authored_commit)) fail(`Authored commit ${short(review.authored_commit)} is not a recorded release`);
+  if (`${ledger.repository}/blob/` !== driverSourcePrefix) fail(`Release ledger describes ${ledger.repository}, not the driver the manifests cite`);
+
+  const pinned = `${driverSourcePrefix}${review.driver_commit}/`;
+  const paths = new Set<string>();
+  for (const source of manifest.sources) {
+    if (!source.url.startsWith(pinned)) {
+      // Any other spelling of a driver link (raw, blame, tree, another host, port or
+      // letter case) would escape both the revision check and the evidence rule.
+      if (!source.url.startsWith(driverSourcePrefix) && citesDriver(source.url)) {
+        fail(`Source ${source.id} cites the driver outside a blob URL pinned at ${short(review.driver_commit)}`);
+      }
+      continue;
+    }
+    // A line anchor or query names part of a file, not another file.
+    const encoded = source.url.slice(pinned.length).split(/[?#]/)[0] ?? '';
+    try {
+      paths.add(decodeURIComponent(encoded));
+    } catch {
+      fail(`Source ${source.id} has a malformed driver path: ${encoded}`);
+    }
+  }
+  const cited = [...paths].sort();
+  if (current !== undefined) {
+    for (const path of cited) {
+      if (current.files[path]?.git_blob == null) fail(`Release ledger does not record cited file ${path} at ${short(review.driver_commit)}`);
+    }
+  }
+
+  const steps = review.evidence ?? [];
+  if (review.authored_commit === review.driver_commit) {
+    if (steps.length > 0) fail('Evidence is recorded for a driver commit that never advanced');
+    return;
+  }
+  if (steps.length === 0) {
+    fail(`Driver commit advanced from ${short(review.authored_commit)} to ${short(review.driver_commit)} without evidence`);
+    return;
+  }
+  const order = new Map(ledger.releases.map((release, index) => [release.commit, index]));
+  let at = review.authored_commit;
+  let reviewed = '';
+  for (const [index, step] of steps.entries()) {
+    const span = `${short(step.from_commit)}..${short(step.to_commit)}`;
+    if (step.from_commit !== at) fail(`Evidence step ${index + 1} starts at ${short(step.from_commit)}, not ${short(at)}`);
+    if (step.from_commit === step.to_commit) fail(`Evidence step ${index + 1} does not advance`);
+    else if ((order.get(step.to_commit) ?? Infinity) < (order.get(step.from_commit) ?? -Infinity)) {
+      fail(`Evidence step ${index + 1} moves back to an earlier release`);
+    }
+    // ISO dates compare as strings: a step is reviewed no earlier than the one before it
+    // and no later than the manifest's own review.
+    if (step.reviewed_on < reviewed || step.reviewed_on > review.reviewed_on) {
+      fail(`Evidence step ${index + 1} reviewed on ${step.reviewed_on}, out of order with the review dates around it`);
+    }
+    reviewed = step.reviewed_on;
+    at = step.to_commit;
+    const from = releases.get(step.from_commit);
+    const to = releases.get(step.to_commit);
+    if (from === undefined || to === undefined) {
+      fail(`Evidence ${span} names a commit that is not a recorded release`);
+      continue;
+    }
+    for (const duplicate of duplicates(step.files.map(({ path }) => path))) fail(`Evidence ${span} names ${duplicate} twice`);
+    const named = new Set(step.files.map(({ path }) => path));
+    for (const path of cited) if (!named.has(path)) fail(`Evidence ${span} does not cover cited file ${path}`);
+    for (const entry of step.files) {
+      const before = from.files[entry.path];
+      const after = to.files[entry.path];
+      if (before === undefined || after === undefined) {
+        fail(`Evidence ${span} names ${entry.path}, which the release ledger does not record at both commits`);
+        continue;
+      }
+      const changed = fileChanged(before, after);
+      if (entry.changed !== changed) {
+        fail(`Evidence ${span} claims ${entry.path} ${entry.changed ? 'changed' : 'unchanged'}, but the release ledger records it ${changed ? 'changed' : 'unchanged'}`);
+      }
+      if (entry.changed && entry.note === undefined) fail(`Evidence ${span} gives no note for changed file ${entry.path}`);
+    }
+  }
+  if (at !== review.driver_commit) fail(`Evidence ends at ${short(at)}, not at driver commit ${short(review.driver_commit)}`);
+}
+
 const validators = new WeakMap<object, (value: unknown) => boolean>();
 
 /** A domain's JSON Schema fragment as a predicate, compiled once per fragment. */
@@ -394,6 +536,7 @@ export function auditParameterManifests(
   manifests: readonly ParameterManifest[],
   inventory?: readonly EndpointIdentity[],
   library: DomainLibrary = sharedDomains,
+  releases: DriverReleases = sharedReleases,
 ): string[] {
   const errors: string[] = [];
   for (const duplicate of duplicates(manifests.map((manifest) => manifest.endpoint.tool))) {
@@ -422,7 +565,6 @@ export function auditParameterManifests(
       }
     }
     const sources = new Set(manifest.sources.map(({ id }) => id));
-    const driverSourcePrefix = 'https://github.com/dichovsky/testrail-api-client/blob/';
     if (!manifest.sources.some(({ url }) => url.startsWith(`${driverSourcePrefix}${manifest.review.driver_commit}/`))) {
       fail('Missing pinned driver source evidence');
     }
@@ -431,6 +573,7 @@ export function auditParameterManifests(
         fail(`Source ${source.id} uses a different driver revision`);
       }
     }
+    auditProvenance(manifest, releases, fail);
     for (const duplicate of duplicates(manifest.sources.map(({ id }) => id))) fail(`Duplicate source: ${duplicate}`);
     for (const duplicate of duplicates(manifest.parameters.map(({ id }) => id))) fail(`Duplicate parameter: ${duplicate}`);
     for (const duplicate of duplicates(manifest.cases.map(({ id }) => id))) fail(`Duplicate case: ${duplicate}`);

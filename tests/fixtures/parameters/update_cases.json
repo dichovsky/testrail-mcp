@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "review": { "status": "complete", "pending": [], "driver_version": "7.2.0", "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-19" },
+  "review": { "status": "complete", "pending": [], "driver_version": "7.2.0", "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-19" },
   "endpoint": { "family_id": "T02", "http_method": "POST", "route": "update_cases/{suite_id}", "tool": "testrail_update_cases", "driver_method": "cases.updateCases" },
   "sources": [
     { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts", "supports": "updateCases validates the suite ID, sends it as the only path segment of update_cases, forwards the JSON payload unchanged in one request, unwraps TestRail's { updated_cases: [...] } reply, and fails closed with a status-200 API error when a successful reply has any other shape, because the write may already have happened. The driver notes that suite_id is required even in single-suite mode." },

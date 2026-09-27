@@ -5,6 +5,7 @@
     "pending": [],
     "driver_version": "7.2.0",
     "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-09-19"
   },
   "endpoint": {
