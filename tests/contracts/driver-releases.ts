@@ -80,6 +80,16 @@ export function auditDriverReleases(ledger: DriverReleases, installed: Installed
       errors.push(`Duplicate release ${key}: ${value}`);
     }
   }
+  // Releases are listed oldest first, which is what lets an evidence step be told
+  // apart from a downgrade.
+  const numeric = (version: string): number[] => version.split(/[.-]/).map((part) => Number.parseInt(part, 10) || 0);
+  for (const [index, release] of ledger.releases.entries()) {
+    const previous = ledger.releases[index - 1];
+    if (previous === undefined) continue;
+    const [a, b] = [numeric(previous.version), numeric(release.version)];
+    const later = a.findIndex((part, at) => part !== (b[at] ?? 0));
+    if (later === -1 || (a[later] ?? 0) > (b[later] ?? 0)) errors.push(`Release ${release.version} is not listed after ${previous.version}`);
+  }
   for (const release of ledger.releases) {
     for (const [path, file] of Object.entries(release.files)) {
       const expected = shippedPath(path);

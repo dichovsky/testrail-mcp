@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -190,6 +191,19 @@ describe('driver provenance evidence', () => {
     }
   });
 
+  it('pins every recorded release, installed or not', () => {
+    // Only the installed release can be checked against real bytes offline. The others are
+    // pinned here, so rewriting a historical entry, which would let a false unchanged claim
+    // pass, also has to edit this test; scripts/audit-driver-ledger.mjs re-checks every
+    // entry against the driver's history and npm.
+    expect(Object.fromEntries(releases.releases.map((release) => [
+      release.version, createHash('sha256').update(JSON.stringify(release)).digest('hex'),
+    ]))).toEqual({
+      '7.0.0': '1a282e74688b1869c60b01f0779b6e8938fb83cb1daf8b58a92b3767023797f0',
+      '7.2.0': '534006e542fca18c92b9c8bdfd7edb8b48c150a3fdae44db2f6f2ddb143f0743',
+    });
+  });
+
   it('records the installed driver in the release ledger, integrity and shipped files alike', () => {
     expect(auditDriverReleases(releases, installedDriver)).toEqual([]);
     const installed = releases.releases.find(({ version }) => version === driverVersion);
@@ -308,6 +322,64 @@ describe('driver provenance evidence', () => {
       'testrail_update_project: Evidence cc7751c0..ffffffff names a commit that is not a recorded release',
       'testrail_update_project: Evidence ends at ffffffff, not at driver commit cc7751c0',
     ]);
+    const unrecordedStart = structuredClone(project);
+    Object.assign(unrecordedStart.review, { authored_commit: 'e'.repeat(40) });
+    const startStep = unrecordedStart.review.evidence?.[0];
+    if (!startStep) throw new Error('update_project evidence is missing');
+    startStep.from_commit = 'e'.repeat(40);
+    expect(audit(unrecordedStart)).toEqual([
+      'testrail_update_project: Authored commit eeeeeeee is not a recorded release',
+      'testrail_update_project: Evidence eeeeeeee..cc7751c0 names a commit that is not a recorded release',
+    ]);
+  });
+
+  it('refuses a driver link in any form but a blob URL pinned at the driver commit', () => {
+    const stale = `${release700}/src/client-core.ts`;
+    for (const url of [
+      `https://github.com/dichovsky/testrail-api-client/blame/${stale}`,
+      `https://github.com/dichovsky/testrail-api-client/raw/${stale}`,
+      `https://github.com/dichovsky/testrail-api-client/tree/${release700}`,
+      `https://raw.githubusercontent.com/dichovsky/testrail-api-client/${stale}`,
+      `https://github.com/Dichovsky/testrail-api-client/blob/${stale}`,
+      `http://github.com/dichovsky/testrail-api-client/blob/${stale}`,
+      'https://github.com/dichovsky/testrail-api-client.git',
+    ]) {
+      const project = find('update_project');
+      project.sources.push({ id: 'stale-link', url, supports: 'A driver link in another form.' });
+      expect(audit(project), url).toEqual(['testrail_update_project: Source stale-link cites the driver outside a blob URL pinned at cc7751c0']);
+    }
+    const unrelated = find('update_project');
+    unrelated.sources.push({ id: 'other', url: 'https://github.com/dichovsky/testrail-api-client-extras/blob/main/x.ts', supports: 'Another repository.' });
+    expect(audit(unrelated)).toEqual([]);
+  });
+
+  it('refuses a ledger that describes another repository', () => {
+    expect(audit(find('add_case'), ledger((copy) => { copy.repository = 'https://github.com/example/testrail-api-client'; })))
+      .toEqual(['testrail_add_case: Release ledger describes https://github.com/example/testrail-api-client, not the driver the manifests cite']);
+  });
+
+  it('keeps evidence steps in release and review order', () => {
+    const project = find('update_project');
+    const step = project.review.evidence?.[0];
+    if (!step) throw new Error('update_project evidence is missing');
+    // A downgrade: authored at 7.2.0, evidenced back to 7.0.0.
+    const downgrade = structuredClone(project);
+    Object.assign(downgrade.review, { authored_commit: release720, driver_commit: release700, driver_version: '7.0.0' });
+    downgrade.sources = downgrade.sources.map((source) => ({ ...source, url: source.url.replace(release720, release700) }));
+    downgrade.review.evidence = [{ ...step, from_commit: release720, to_commit: release700 }];
+    expect(audit(downgrade)).toEqual(['testrail_update_project: Evidence step 1 moves back to an earlier release']);
+    const late = structuredClone(project);
+    const lateStep = late.review.evidence?.[0];
+    if (!lateStep) throw new Error('update_project evidence is missing');
+    lateStep.reviewed_on = '2026-09-19';
+    expect(audit(late)).toEqual(['testrail_update_project: Evidence step 1 reviewed on 2026-09-19, out of order with the review dates around it']);
+    const twoSteps = structuredClone(project);
+    Object.assign(twoSteps.review, { authored_commit: release700, driver_commit: release720 });
+    twoSteps.review.evidence = [
+      { ...step, reviewed_on: '2026-09-18' },
+      { ...step, from_commit: release720, to_commit: release720, reviewed_on: '2026-09-17' },
+    ];
+    expect(audit(twoSteps)).toContain('testrail_update_project: Evidence step 2 reviewed on 2026-09-17, out of order with the review dates around it');
   });
 
   it('refuses evidence on a manifest whose driver commit never advanced', () => {
@@ -393,7 +465,10 @@ describe('driver provenance evidence', () => {
     }), installedDriver)).toEqual([
       'Duplicate release version: 7.0.0',
       'Duplicate release commit: 71a80d984aea14713d8eeaf6ac9a0d41c1fba12b',
+      'Release 7.0.0 is not listed after 7.2.0',
     ]);
+    expect(auditDriverReleases(ledger((copy) => { copy.releases.reverse(); }), installedDriver))
+      .toEqual(['Release 7.0.0 is not listed after 7.2.0']);
   });
 });
 

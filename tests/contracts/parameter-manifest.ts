@@ -397,6 +397,7 @@ const sharedDomains = await loadDomainLibrary();
 const sharedReleases = await loadDriverReleases();
 
 const driverSourcePrefix = 'https://github.com/dichovsky/testrail-api-client/blob/';
+const driverReference = /^[a-z]+:\/\/(?:[a-z0-9-]+\.)*(?:github\.com|githubusercontent\.com)\/dichovsky\/testrail-api-client(?:[/?#.]|$)/i;
 
 /**
  * Hold a manifest's driver provenance to the release ledger. A driver_commit that has
@@ -415,11 +416,19 @@ function auditProvenance(manifest: ParameterManifest, ledger: DriverReleases, fa
     fail(`Driver version ${review.driver_version} disagrees with release ${current.version} recorded for ${short(review.driver_commit)}`);
   }
   if (!releases.has(review.authored_commit)) fail(`Authored commit ${short(review.authored_commit)} is not a recorded release`);
+  if (`${ledger.repository}/blob/` !== driverSourcePrefix) fail(`Release ledger describes ${ledger.repository}, not the driver the manifests cite`);
 
   const pinned = `${driverSourcePrefix}${review.driver_commit}/`;
   const paths = new Set<string>();
   for (const source of manifest.sources) {
-    if (!source.url.startsWith(pinned)) continue;
+    if (!source.url.startsWith(pinned)) {
+      // Any other spelling of a driver link (raw, blame, tree, another host form or
+      // letter case) would escape both the revision check and the evidence rule.
+      if (!source.url.startsWith(driverSourcePrefix) && driverReference.test(source.url)) {
+        fail(`Source ${source.id} cites the driver outside a blob URL pinned at ${short(review.driver_commit)}`);
+      }
+      continue;
+    }
     // A line anchor or query names part of a file, not another file.
     const encoded = source.url.slice(pinned.length).split(/[?#]/)[0] ?? '';
     try {
@@ -444,11 +453,22 @@ function auditProvenance(manifest: ParameterManifest, ledger: DriverReleases, fa
     fail(`Driver commit advanced from ${short(review.authored_commit)} to ${short(review.driver_commit)} without evidence`);
     return;
   }
+  const order = new Map(ledger.releases.map((release, index) => [release.commit, index]));
   let at = review.authored_commit;
+  let reviewed = '';
   for (const [index, step] of steps.entries()) {
     const span = `${short(step.from_commit)}..${short(step.to_commit)}`;
     if (step.from_commit !== at) fail(`Evidence step ${index + 1} starts at ${short(step.from_commit)}, not ${short(at)}`);
     if (step.from_commit === step.to_commit) fail(`Evidence step ${index + 1} does not advance`);
+    else if ((order.get(step.to_commit) ?? Infinity) < (order.get(step.from_commit) ?? -Infinity)) {
+      fail(`Evidence step ${index + 1} moves back to an earlier release`);
+    }
+    // ISO dates compare as strings: a step is reviewed no earlier than the one before it
+    // and no later than the manifest's own review.
+    if (step.reviewed_on < reviewed || step.reviewed_on > review.reviewed_on) {
+      fail(`Evidence step ${index + 1} reviewed on ${step.reviewed_on}, out of order with the review dates around it`);
+    }
+    reviewed = step.reviewed_on;
     at = step.to_commit;
     const from = releases.get(step.from_commit);
     const to = releases.get(step.to_commit);
