@@ -352,7 +352,9 @@ describe('packaged server shutdown after a staging failure', () => {
 
       session.child.stdin.end();
       const { code, signal } = await session.exited;
-      // A rejected shutdown used to exit 1 with a raw error, and its path, on stderr.
+      // In this scenario shutdown used to rethrow the remembered staging failure: exit 1
+      // with a raw error, and its path, on stderr. The failure is now forgotten, so this
+      // holds the retry and the clean stop; composition-staging.test.ts holds the guard.
       expect({ code, signal }).toEqual({ code: 0, signal: null });
       const names = eventNames(session.err());
       expect(names.filter((name) => name === 'server_stopped')).toHaveLength(1);

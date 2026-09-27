@@ -227,7 +227,7 @@ describe('the composition root', () => {
     await session.close();
   });
 
-  it('records a write pending at shutdown as unknown, observes its late failure and still destroys once', async () => {
+  it('records a write pending at shutdown as unknown, and stops cleanly when it fails during the drain', async () => {
     const destroy = vi.spyOn(TestRailClient.prototype, 'destroy');
     const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const unhandled = vi.fn();
