@@ -143,7 +143,8 @@
       "scope": "body",
       "requiredness": "optional",
       "domain": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       },
       "semantics": "The user's new full name. No coercion; TestRail owns the format.",
       "driver": {
@@ -200,7 +201,8 @@
       "scope": "body",
       "requiredness": "optional",
       "domain": {
-        "type": "string"
+        "type": "string",
+        "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
       },
       "semantics": "The user's new address. The format is stricter than the lookup tool's and demands a dotted domain. No coercion; TestRail owns the format.",
       "driver": {

@@ -1,4 +1,5 @@
 import { readFile, readdir } from 'node:fs/promises';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
 import { z } from 'zod';
 import { loadDomainLibrary, type DomainLibrary } from './domains.js';
 
@@ -304,8 +305,39 @@ export function supplies(value: unknown, path: readonly string[]): boolean {
   return Object.hasOwn(record, head) && supplies(record[head], rest);
 }
 
+/** Every value the path reaches; a bare `*` fans out over an array's members. */
+function reach(value: unknown, path: readonly string[]): unknown[] {
+  const [head, ...rest] = path;
+  if (head === undefined) return [value];
+  if (head === '*') return Array.isArray(value) ? value.flatMap((item) => reach(item, rest)) : [];
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return [];
+  return Object.hasOwn(value, head) ? reach((value as Record<string, unknown>)[head], rest) : [];
+}
+
+/** Whether the path is absent somewhere: at the top, or in at least one array member. */
+function lacks(value: unknown, path: readonly string[]): boolean {
+  const [head, ...rest] = path;
+  if (head === undefined) return false;
+  if (head === '*') return !Array.isArray(value) || value.some((item) => lacks(item, rest));
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return true;
+  return !Object.hasOwn(value, head) || lacks((value as Record<string, unknown>)[head], rest);
+}
+
 function duplicates(values: readonly string[]): string[] {
   return [...new Set(values.filter((value, index) => values.indexOf(value) !== index))];
+}
+
+const validators = new WeakMap<object, (value: unknown) => boolean>();
+
+/** A parameter's authored domain as a predicate, compiled once per fragment. */
+function domainValidator(domain: JsonObject): (value: unknown) => boolean {
+  let validate = validators.get(domain);
+  if (validate === undefined) {
+    const compiled = new AjvJsonSchemaValidator().getValidator(domain);
+    validate = (value) => compiled(value).valid;
+    validators.set(domain, validate);
+  }
+  return validate;
 }
 
 /** Audit authored coverage; this does not certify an adapter or infer missing API fields. */
@@ -405,6 +437,35 @@ export function auditParameterManifests(
       const rejectedTargets = new Set(fixture.covers.map(({ parameter }) => parameter).filter((id) => id !== '$input'));
       if (fixture.expect.kind === 'rejected' && rejectedTargets.size > 1) {
         fail(`Case ${fixture.id} attributes one rejection to ${rejectedTargets.size} parameters: ${[...rejectedTargets].join(', ')}`);
+      }
+      /*
+       * Naming one parameter is not yet evidence that it caused the refusal: an input
+       * malformed elsewhere, or carrying an unknown key, is refused just the same. So the
+       * named parameter must itself be what is wrong, judged by its own independently
+       * authored domain: absent for a presence requirement, and outside the domain for
+       * any other. An extension point such as `custom_*` is exempt, because its rejection
+       * is by construction a key outside the pattern, which no value domain describes.
+       */
+      if (fixture.expect.kind === 'rejected') {
+        for (const coverage of fixture.covers) {
+          const parameter = manifest.parameters.find(({ id }) => id === coverage.parameter);
+          if (parameter?.domain === undefined || parameter.input_path.some((part) => part !== '*' && part.endsWith('*'))) continue;
+          for (const id of coverage.requirements) {
+            const reference = `${coverage.parameter}/${id}`;
+            const kind = requirements.get(reference)?.kind;
+            if (kind === 'required') {
+              if (!lacks(fixture.input, parameter.input_path)) fail(`Case ${fixture.id} supplies ${parameter.id}, so its refusal is not evidence for ${reference}`);
+              continue;
+            }
+            if (kind !== 'invalid') continue;
+            const values = reach(fixture.input, parameter.input_path);
+            const inDomain = domainValidator(parameter.domain);
+            if (values.length === 0) fail(`Case ${fixture.id} carries no ${parameter.id}, so its refusal is not evidence for ${reference}`);
+            else if (values.every((value) => inDomain(value))) {
+              fail(`Case ${fixture.id} gives ${parameter.id} a value its domain accepts, so its refusal is not evidence for ${reference}`);
+            }
+          }
+        }
       }
       if (fixture.expect.kind === 'accepted' && fixture.expect.wire.method !== manifest.endpoint.http_method) {
         fail(`Case ${fixture.id} wire method disagrees with endpoint`);
