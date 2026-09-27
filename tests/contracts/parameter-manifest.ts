@@ -479,16 +479,27 @@ export function auditParameterManifests(
        */
       const [target, ...others] = [...rejectedTargets];
       const parameter = manifest.parameters.find(({ id }) => id === target);
-      // An endpoint-wide refusal is attributable only when no parameter is wrong too.
-      if (fixture.expect.kind === 'rejected' && rejectedTargets.size === 0) {
+      /*
+       * Every parameter but the named one must be sound, or it could have caused the
+       * refusal alone: a value outside its own domain, or a required parameter left out
+       * where its parent is present, is a second cause. A parameter on the named one's
+       * own path is judged with it rather than beside it.
+       */
+      const secondCauses = (named: string, path: readonly string[] | undefined): void => {
         for (const other of manifest.parameters) {
-          if (other.domain === undefined || isExtension(other.input_path)) continue;
+          if (path !== undefined && nested(other.input_path, path)) continue;
+          if (other.requiredness === 'required' && lacksLeaf(fixture.input, other.input_path)) {
+            fail(`Case ${fixture.id} also leaves out the required ${other.id}, so its refusal is not evidence for ${named}`);
+          }
+          if (other.domain === undefined) continue;
           const inDomain = domainValidator(other.domain);
           if (!reach(fixture.input, other.input_path).every((value) => inDomain(value))) {
-            fail(`Case ${fixture.id} also gives ${other.id} a value outside its domain, so its refusal is not evidence for $input`);
+            fail(`Case ${fixture.id} also gives ${other.id} a value outside its domain, so its refusal is not evidence for ${named}`);
           }
         }
-      }
+      };
+      // An endpoint-wide refusal is attributable only when no parameter is wrong too.
+      if (fixture.expect.kind === 'rejected' && rejectedTargets.size === 0) secondCauses('$input', undefined);
       if (fixture.expect.kind === 'rejected' && parameter !== undefined && others.length === 0) {
         const extension = isExtension(parameter.input_path);
         const endpointWide = fixture.covers.some(({ parameter: id }) => id === '$input');
@@ -518,13 +529,7 @@ export function auditParameterManifests(
             }
           }
         }
-        for (const other of manifest.parameters) {
-          if (other.domain === undefined || isExtension(other.input_path) || nested(other.input_path, parameter.input_path)) continue;
-          const inDomain = domainValidator(other.domain);
-          if (!reach(fixture.input, other.input_path).every((value) => inDomain(value))) {
-            fail(`Case ${fixture.id} also gives ${other.id} a value outside its domain, so its refusal is not evidence for ${parameter.id}`);
-          }
-        }
+        secondCauses(parameter.id, parameter.input_path);
         const known = new Set(manifest.parameters.map(({ input_path: [head] }) => head));
         for (const key of extension ? [] : Object.keys(fixture.input)) {
           if (!known.has(key)) fail(`Case ${fixture.id} also carries the unknown key ${key}, so its refusal is not evidence for ${parameter.id}`);

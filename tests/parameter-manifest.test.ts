@@ -441,6 +441,17 @@ describe('independent parameter manifest format', () => {
     expect(audit('wide', { plan_id: 0, entry_id: uuid, extra: true }, [unknownKey])).toEqual([
       'Case wide also gives plan_id a value outside its domain, so its refusal is not evidence for $input',
     ]);
+    // A required parameter left out is a second cause too, whatever the case names.
+    expect(audit('no-plan', { entry_id: '../../admin' }, entry('path-safety'))).toEqual([
+      'Case no-plan also leaves out the required plan_id, so its refusal is not evidence for entry_id',
+    ]);
+    expect(audit('bare-key', { extra: 1 }, [unknownKey])).toEqual([
+      'Case bare-key also leaves out the required plan_id, so its refusal is not evidence for $input',
+      'Case bare-key also leaves out the required entry_id, so its refusal is not evidence for $input',
+    ]);
+    expect(audit('empty', {}, entry('required'))).toEqual([
+      'Case empty also leaves out the required plan_id, so its refusal is not evidence for entry_id',
+    ]);
     // One out-of-domain value does not cover every rejection: each needs its own proven value.
     expect(audit('one-for-all', { plan_id: 10, entry_id: '../../admin' }, entry('invalid', 'path-safety', 'terminal'))).toEqual([
       'Case one-for-all rejects entry_id with ["../../admin"], not a value entry_id proves refused for entry_id/invalid',
@@ -540,6 +551,13 @@ describe('independent parameter manifest format', () => {
     expect(auditParameterManifests([twoFaults])).toContain(
       'testrail_delete_plan_entry: Case smuggled also gives plan_id a value outside its domain, so its refusal is not evidence for entry_id',
     );
+    // So is a carrier that simply leaves the other identifier out.
+    const withoutPlan = { ...plans, cases: [...kept, ...isolating.map(({ input, ...fixture }) => ({
+      ...fixture, input: Object.fromEntries(Object.entries(input).filter(([key]) => key !== 'plan_id')),
+    }))] };
+    expect(auditRegisteredParameters(createRegistry(weakened), [withoutPlan])).toEqual([]);
+    expect(auditParameterManifests([withoutPlan])).toEqual(isolating.map(({ id }) =>
+      `testrail_delete_plan_entry: Case ${id} also leaves out the required plan_id, so its refusal is not evidence for entry_id`));
     const accepts = (id: string) => `Case smuggled gives entry_id a value its domain accepts, so its refusal is not evidence for entry_id/${id}`;
     const carriers = [
       {
