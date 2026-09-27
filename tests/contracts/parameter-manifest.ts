@@ -1,4 +1,6 @@
 import { readFile, readdir } from 'node:fs/promises';
+import { isDeepStrictEqual } from 'node:util';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
 import { z } from 'zod';
 import { loadDomainLibrary, type DomainLibrary } from './domains.js';
 
@@ -304,14 +306,68 @@ export function supplies(value: unknown, path: readonly string[]): boolean {
   return Object.hasOwn(record, head) && supplies(record[head], rest);
 }
 
+/** Every value the path reaches; a bare `*` fans out over an array's members. */
+function reach(value: unknown, path: readonly string[]): unknown[] {
+  const [head, ...rest] = path;
+  if (head === undefined) return [value];
+  if (head === '*') return Array.isArray(value) ? value.flatMap((item) => reach(item, rest)) : [];
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return [];
+  return Object.hasOwn(value, head) ? reach((value as Record<string, unknown>)[head], rest) : [];
+}
+
+/**
+ * Whether the path's last key is missing while everything leading to it is present and
+ * well-typed: at the top, or in at least one member of an array on the way. A missing or
+ * malformed parent is a different fault, the parent's, and is not evidence of this one.
+ */
+function lacksLeaf(value: unknown, path: readonly string[]): boolean {
+  const [head, ...rest] = path;
+  if (head === undefined) return false;
+  if (head === '*') return Array.isArray(value) && value.some((item) => lacksLeaf(item, rest));
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  if (rest.length === 0) return !Object.hasOwn(value, head);
+  return Object.hasOwn(value, head) && lacksLeaf((value as Record<string, unknown>)[head], rest);
+}
+
+/** Whether one path leads to or through the other, so their values are not independent. */
+function nested(left: readonly string[], right: readonly string[]): boolean {
+  const shorter = Math.min(left.length, right.length);
+  return left.slice(0, shorter).every((part, index) => part === right[index]);
+}
+
+/** An extension point such as `custom_*`, whose rejection is a key rather than a value. */
+function isExtension(path: readonly string[]): boolean {
+  return path.some((part) => part !== '*' && part.endsWith('*'));
+}
+
 function duplicates(values: readonly string[]): string[] {
   return [...new Set(values.filter((value, index) => values.indexOf(value) !== index))];
+}
+
+/**
+ * The shared domain library the manifests reference. A domain reference is audited
+ * against it by default, so omitting the argument can never skip the check.
+ */
+const sharedDomains = await loadDomainLibrary();
+
+const validators = new WeakMap<object, (value: unknown) => boolean>();
+
+/** A parameter's authored domain as a predicate, compiled once per fragment. */
+function domainValidator(domain: JsonObject): (value: unknown) => boolean {
+  let validate = validators.get(domain);
+  if (validate === undefined) {
+    const compiled = new AjvJsonSchemaValidator().getValidator(domain);
+    validate = (value) => compiled(value).valid;
+    validators.set(domain, validate);
+  }
+  return validate;
 }
 
 /** Audit authored coverage; this does not certify an adapter or infer missing API fields. */
 export function auditParameterManifests(
   manifests: readonly ParameterManifest[],
   inventory?: readonly EndpointIdentity[],
+  library: DomainLibrary = sharedDomains,
 ): string[] {
   const errors: string[] = [];
   for (const duplicate of duplicates(manifests.map((manifest) => manifest.endpoint.tool))) {
@@ -398,6 +454,87 @@ export function auditParameterManifests(
         }
       }
       for (const duplicate of duplicates(caseReferences)) fail(`Case ${fixture.id} repeats coverage ${duplicate}`);
+      // A refusal names no field, so an input malformed in one place could otherwise
+      // claim the rejections of every parameter it carries, and a constraint weakened on
+      // any of the others would still look covered. Endpoint-wide rules are not a
+      // parameter target and do not count.
+      const rejectedTargets = new Set(fixture.covers.map(({ parameter }) => parameter).filter((id) => id !== '$input'));
+      if (fixture.expect.kind === 'rejected' && rejectedTargets.size > 1) {
+        fail(`Case ${fixture.id} attributes one rejection to ${rejectedTargets.size} parameters: ${[...rejectedTargets].join(', ')}`);
+      }
+      /*
+       * Naming one parameter is not yet evidence that it caused the refusal: an input
+       * malformed elsewhere, or carrying an unknown key, is refused just the same. So a
+       * rejected case must have exactly one cause, and it must be the one it names. The
+       * named parameter is what is wrong, judged by its own independently authored
+       * domain: its leaf is absent for a presence requirement, and for any other its
+       * value is outside the domain, or for a shared domain is a value the library
+       * proved refused for that very requirement. Every other parameter the case
+       * supplies stays inside its own domain, and no top-level key is unknown.
+       *
+       * An extension point such as `custom_*` is refused for a key outside its pattern,
+       * which no value domain describes and the unknown-key rule is the same fact as, so
+       * it alone may share its case with an endpoint-wide rule and is spared the value
+       * and unknown-key rules.
+       */
+      const [target, ...others] = [...rejectedTargets];
+      const parameter = manifest.parameters.find(({ id }) => id === target);
+      /*
+       * Every parameter but the named one must be sound, or it could have caused the
+       * refusal alone: a value outside its own domain, or a required parameter left out
+       * where its parent is present, is a second cause. A parameter on the named one's
+       * own path is judged with it rather than beside it.
+       */
+      const secondCauses = (named: string, path: readonly string[] | undefined): void => {
+        for (const other of manifest.parameters) {
+          if (path !== undefined && nested(other.input_path, path)) continue;
+          if (other.requiredness === 'required' && lacksLeaf(fixture.input, other.input_path)) {
+            fail(`Case ${fixture.id} also leaves out the required ${other.id}, so its refusal is not evidence for ${named}`);
+          }
+          if (other.domain === undefined) continue;
+          const inDomain = domainValidator(other.domain);
+          if (!reach(fixture.input, other.input_path).every((value) => inDomain(value))) {
+            fail(`Case ${fixture.id} also gives ${other.id} a value outside its domain, so its refusal is not evidence for ${named}`);
+          }
+        }
+      };
+      // An endpoint-wide refusal is attributable only when no parameter is wrong too.
+      if (fixture.expect.kind === 'rejected' && rejectedTargets.size === 0) secondCauses('$input', undefined);
+      if (fixture.expect.kind === 'rejected' && parameter !== undefined && others.length === 0) {
+        const extension = isExtension(parameter.input_path);
+        const endpointWide = fixture.covers.some(({ parameter: id }) => id === '$input');
+        if (endpointWide && !extension) fail(`Case ${fixture.id} shares its refusal between $input and ${parameter.id}`);
+        const shared = parameter.domain_ref === undefined ? undefined : library.domains[parameter.domain_ref];
+        for (const coverage of extension ? [] : fixture.covers.filter(({ parameter: id }) => id === parameter.id)) {
+          for (const id of coverage.requirements) {
+            const reference = `${parameter.id}/${id}`;
+            const kind = requirements.get(reference)?.kind;
+            if (kind === 'required') {
+              if (!lacksLeaf(fixture.input, parameter.input_path)) {
+                fail(`Case ${fixture.id} does not leave out only ${parameter.id}, so its refusal is not evidence for ${reference}`);
+              }
+              continue;
+            }
+            if (kind !== 'invalid' || parameter.domain === undefined) continue;
+            const values = reach(fixture.input, parameter.input_path);
+            const inDomain = domainValidator(parameter.domain);
+            if (values.length === 0) fail(`Case ${fixture.id} carries no ${parameter.id}, so its refusal is not evidence for ${reference}`);
+            else if (values.every((value) => inDomain(value))) {
+              fail(`Case ${fixture.id} gives ${parameter.id} a value its domain accepts, so its refusal is not evidence for ${reference}`);
+            } else if (shared !== undefined) {
+              const proven = shared.invalid.filter(({ requirements: covered }) => covered.includes(id)).map(({ value }) => value);
+              if (!values.some((value) => proven.some((candidate) => isDeepStrictEqual(value, candidate)))) {
+                fail(`Case ${fixture.id} rejects ${parameter.id} with ${JSON.stringify(values)}, not a value ${parameter.domain_ref} proves refused for ${reference}`);
+              }
+            }
+          }
+        }
+        secondCauses(parameter.id, parameter.input_path);
+        const known = new Set(manifest.parameters.map(({ input_path: [head] }) => head));
+        for (const key of extension ? [] : Object.keys(fixture.input)) {
+          if (!known.has(key)) fail(`Case ${fixture.id} also carries the unknown key ${key}, so its refusal is not evidence for ${parameter.id}`);
+        }
+      }
       if (fixture.expect.kind === 'accepted' && fixture.expect.wire.method !== manifest.endpoint.http_method) {
         fail(`Case ${fixture.id} wire method disagrees with endpoint`);
       }
