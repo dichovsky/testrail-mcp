@@ -139,7 +139,13 @@ Copilot CLI can move large tool output to a temporary file and present a preview
 
 ### 1. Deterministic protocol and package checks
 
-Run these in CI without real TestRail credentials or upstream network access. All four are in place, as [R01](issues/R01.md) records: the packaged-executable protocol checks in `scripts/package-protocol.mjs`; the catalog and registry gates in `tests/regression-gates.test.ts` and `npm run registry:check`; every fixture contract in `tests/registered-parameters.test.ts`; and the stdout, shutdown and cancellation checks in `tests/transport/`.
+Run these in CI without real TestRail credentials or upstream network access. [R01](issues/R01.md) records where each one is:
+- the packaged-executable protocol checks, in `scripts/package-protocol.mjs`;
+- the catalog and registry gates, in `tests/regression-gates.test.ts` and `npm run registry:check`;
+- the fixture contracts, in `tests/registered-parameters.test.ts`, and the result wrapper, in `tests/result-contract.test.ts`;
+- the stdout, shutdown and cancellation checks, in `tests/transport/`.
+
+Item 3 differs from its wording in one way. Every fixture runs through the registered tool's driver call and the real driver, not the server. One accepted fixture per tool also runs through a connected client and the server, where the result wrapper is checked.
 
 1. Install the packed candidate and spawn its executable with fixture credentials. Initialization/discovery and `tools/list` must not require a TestRail request. Validate the installed executable rather than only a source-development runner.
 2. Enumerate the complete catalog over legacy initialization and MCP 2026-07-28 discovery using the pinned SDK clients. Compare the exact 133 names with the versioned coverage matrix; detect missing, additional, duplicate, or incorrectly mapped operations. Verify stable ordering, input/output schemas, descriptions, and annotations.

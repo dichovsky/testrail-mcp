@@ -69,15 +69,15 @@ The client passes the variables under [Configure](#configure) to the server, so 
 
 ## How the tools behave
 
-- **Results.** A result is `{data, pagination, warnings}`. `data` is TestRail's reply with its own field names, custom fields included. `warnings` flags fields that differ from the expected shape; the data is still passed through. See [results and errors](docs/results-and-errors.md).
+- **Results.** A result is `{data}`, with `pagination` on a paged list and `warnings` when there are any. `data` is TestRail's reply with its own field names, custom fields included. `warnings` flags fields that differ from the expected shape; the data is still passed through. See [results and errors](docs/results-and-errors.md).
 - **Errors.** Every error carries a fixed code, such as `INVALID_ARGUMENT`, `NOT_FOUND`, `PERMISSION_DENIED`, `RATE_LIMITED`, `TIMEOUT` or `PAGINATION_LIMIT`. On a write, `write_outcome` says whether the change reached TestRail: `not_started`, `acknowledged` or `unknown`. Check before retrying an `unknown` write.
-- **Lists.** The 24 paged lists return one page of 50 by default, and up to 250 on request. Set `_mcp.pagination` to `"all"` for a bounded complete fetch. It stops with `PAGINATION_LIMIT`, and no partial data, if it would pass a bound. Other lists, such as `testrail_get_statuses` and `testrail_get_users`, return TestRail's whole reply and take no `_mcp` settings.
+- **Lists.** 24 lists are paged. 18 of them return one page of 50 by default, and up to 250 on request. On any of the 24, set `_mcp.pagination` to `"all"` for a bounded complete fetch. It stops with `PAGINATION_LIMIT`, and no partial data, if it would pass a bound. Other lists, such as `testrail_get_statuses` and `testrail_get_users`, return TestRail's whole reply and take no `_mcp` settings.
   - Six lists choose their own pages and take no page size or offset: `testrail_get_variables`, `testrail_get_datasets`, `testrail_get_shared_step_history`, `testrail_get_roles`, `testrail_get_groups` and `testrail_get_case_statuses`.
   - Their later pages are reachable only through `"all"`.
   - See [pagination](docs/pagination.md).
 - **Files.** Uploads read a local path that must resolve inside an upload root. The server sends a copy it makes in a private directory under the system's temporary directory, and removes the copy once the request has settled. Each download writes a new file to the download directory and never overwrites one, so its tools are marked as not read-only. The server never deletes a completed download. See [local files](docs/local-files.md).
 - **Side effects.** Every tool carries MCP annotations describing its effect. Report runs generate a report, and may send the template's configured email, so don't call them repeatedly. The server adds no confirmation step of its own; your client's approval settings apply.
-- **Cancellation.** Cancelling a call stops the server waiting for it, and the client gets no result for that call. A request already sent to TestRail may still complete, so treat a cancelled write as possibly applied and check before retrying it. See [runtime lifetime](docs/runtime-lifetime.md).
+- **Cancellation.** Cancelling a call stops the server waiting for it, and the client gets no result for that call. A request already sent to TestRail may still complete, so treat a cancelled write as possibly applied and check before retrying it. One exception comes from the MCP SDK: on a 2026-07-28 connection, cancelling the first ordinary request, whose id is 0, is ignored, and that call completes and answers normally. See [runtime lifetime](docs/runtime-lifetime.md) and [stdio transport](docs/transport.md).
 
 ## Development
 

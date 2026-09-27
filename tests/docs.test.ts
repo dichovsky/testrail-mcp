@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, win32 } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -73,7 +73,10 @@ describe('the README\'s configuration', () => {
   it('gives a Windows upload root that is valid JSON and an absolute Windows path', () => {
     const row = readme.split('\n').find((line) => line.startsWith('| `TESTRAIL_MCP_UPLOAD_ROOTS` |')) ?? '';
     const roots = JSON.parse(/On Windows[^`]*`(\[[^`]+\])`/u.exec(row)?.[1] ?? 'null') as unknown;
-    expect(Array.isArray(roots) && roots.length > 0 && roots.every((root) => typeof root === 'string' && win32.isAbsolute(root))).toBe(true);
+    // Drive-qualified or UNC, as src/config/environment.ts requires on Windows: a path rooted
+    // on the current drive is absolute to Node but refused by the server.
+    const usable = (root: unknown): boolean => typeof root === 'string' && win32.isAbsolute(root) && !/^[\\/]$/u.test(win32.parse(root).root);
+    expect(Array.isArray(roots) && roots.length > 0 && roots.every(usable)).toBe(true);
   });
 
   it('installs the tarball npm packs by its file name, and runs the published executable', () => {
@@ -126,11 +129,14 @@ describe('the README\'s configuration', () => {
     expect([...bullet.matchAll(/`(testrail_[a-z_]+)`/gu)].map(([, tool]) => tool).sort()).toEqual(driven);
   });
 
-  it('counts the paged lists, and gives only unpaged lists as ones that return the whole reply', () => {
+  it('counts the paged lists and those that take a page size, and gives only unpaged lists as ones that return the whole reply', () => {
     const kinds = new Map(inventory.operations.map(({ tool, pagination }) => [tool, pagination.kind]));
     const paged = [...kinds.values()].filter((kind) => kind !== 'none').length;
+    const controlled = [...kinds.values()].filter((kind) => kind === 'controlled').length;
     const bullet = readme.split('\n').find((line) => line.startsWith('- **Lists.**')) ?? '';
-    expect(bullet).toContain(`The ${String(paged)} paged lists return one page of`);
+    // Only the controlled lists take a page size; the response-driven ones choose their own.
+    expect(bullet).toContain(`${String(paged)} lists are paged. ${String(controlled)} of them return one page of`);
+    expect(bullet).toContain(`On any of the ${String(paged)}, set \`_mcp.pagination\``);
     const whole = [...(/Other lists, such as (.*?), return TestRail's whole reply/u.exec(bullet)?.[1] ?? '').matchAll(/`(testrail_[a-z_]+)`/gu)].map(([, tool]) => tool);
     expect(whole.length).toBeGreaterThan(0);
     expect(whole.filter((tool) => kinds.get(tool ?? '') !== 'none')).toEqual([]);
@@ -145,8 +151,11 @@ describe('the README\'s configuration', () => {
     // so no client ever sees CANCELLED or the outcome that goes with it.
     expect(named).not.toContain('CANCELLED');
     expect(readme).toContain('the client gets no result for that call');
-    expect([...readme.matchAll(/write_outcome: "([a-z_]+)"/gu)].map(([, outcome]) => outcome)
-      .filter((outcome) => !['acknowledged', 'not_started', 'unknown'].includes(outcome ?? ''))).toEqual([]);
+    // Every outcome a line about write_outcome names is one the server returns.
+    const stated = readme.split('\n').filter((line) => line.includes('write_outcome'))
+      .flatMap((line) => [...line.matchAll(/`([a-z_]+)`/gu)].map(([, word = '']) => word)).filter((word) => word !== 'write_outcome');
+    expect(stated.length).toBeGreaterThan(0);
+    expect(stated.filter((word) => !['acknowledged', 'not_started', 'unknown'].includes(word))).toEqual([]);
     const errors = readme.split('\n').find((line) => line.startsWith('- **Errors.**')) ?? '';
     // The three outcomes of src/contracts/errors.ts's WriteOutcome, each named at least once.
     expect([...new Set([...errors.matchAll(/`([a-z_]+)`/gu)].map(([, outcome]) => outcome))].filter((outcome) => outcome !== 'write_outcome').sort())
@@ -246,6 +255,13 @@ describe('the client setup guide', () => {
       .map((table) => [...table.matchAll(/^\| `(TESTRAIL_[A-Z_]+)` \|/gmu)].map(([, key]) => key).sort())
       .filter((keys) => keys.length > 0);
     expect(tables).toEqual([required, keysWhere('Optional')]);
+  });
+
+  it('points to deterministic checks that exist', async () => {
+    const stage = /^### 1\. Deterministic protocol and package checks\n([\s\S]*?)^### /mu.exec(clients)?.[1] ?? '';
+    const paths = [...stage.matchAll(/`((?:tests|scripts)\/[^`]+)`/gu)].map(([, path = '']) => path);
+    expect(paths.length).toBeGreaterThan(3);
+    for (const path of paths) await expect(access(new URL(`../${path}`, import.meta.url)), path).resolves.toBeUndefined();
   });
 
   it('documents the budgets the code enforces', () => {
