@@ -247,6 +247,7 @@
       "scope": "body",
       "requiredness": "optional",
       "domain_ref": "positive_id",
+      "rejected_by": "adapter",
       "semantics": "The milestone to link the run to. The driver forwards any number and its declared type admits no null, so the boundary holds it to the identifier domain; unlinking is not available through the pinned driver.",
       "driver": {
         "argument": 1,
@@ -275,6 +276,7 @@
       "scope": "body",
       "requiredness": "optional",
       "domain_ref": "positive_id",
+      "rejected_by": "adapter",
       "semantics": "The user the whole run is assigned to. The driver forwards any number and its declared type admits no null, so the boundary holds it to the identifier domain; unlinking is not available through the pinned driver.",
       "driver": {
         "argument": 1,

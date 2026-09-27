@@ -761,6 +761,23 @@ describe('independent parameter manifest format', () => {
     expect(errors).toContain('testrail_get_attachment: Review status disagrees with pending work');
   });
 
+  it('accepts enforcement labels only on a shared domain reference', () => {
+    const manifest = example();
+    const [parameter] = manifest.parameters;
+    if (parameter === undefined) throw new Error('Required attachment parameter is missing');
+    manifest.parameters = [{ ...parameter, rejected_by: 'adapter' }];
+    expect(ParameterManifestSchema.safeParse(manifest).success).toBe(false);
+    const plans = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_delete_plan_entry');
+    if (!plans) throw new Error('Required delete_plan_entry manifest is missing');
+    const raw = JSON.parse(JSON.stringify({ ...plans, cases: plans.cases.filter(({ id }) => !id.includes(':')) })) as typeof plans;
+    // Resolution inlined each referenced domain; the authored form carries only the reference.
+    raw.parameters = raw.parameters.map((parameter) => ({
+      ...Object.fromEntries(Object.entries(parameter).filter(([key]) => key !== 'domain' && key !== 'requirements')) as typeof parameter,
+      rejected_by: { malformed: 'driver' },
+    }));
+    expect(ParameterManifestSchema.safeParse(raw).success).toBe(true);
+  });
+
   it('rejects unknown fixture-format keys', () => {
     expect(ParameterManifestSchema.safeParse({ ...example(), ignored: true }).success).toBe(false);
   });
