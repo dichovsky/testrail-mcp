@@ -191,6 +191,46 @@ describe.each([
     }
   });
 
+  it('keeps all four slots after four dispatched calls are cancelled, refusing a fifth without a request', async () => {
+    const upstream = heldUpstream({ id: 7, name: 'Project' });
+    const session = await connect(upstream.fetch, era);
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      const cancels = Array.from({ length: 4 }, () => new AbortController());
+      const calls = cancels.map((cancel, index) => session.client.callTool(
+        { name: 'testrail_get_project', arguments: { project_id: index + 1 } },
+        { signal: cancel.signal },
+      ).catch(() => undefined));
+      await waitFor(() => upstream.calls === 4, 'four dispatched requests');
+      for (const cancel of cancels) cancel.abort('caller gave up');
+      await Promise.all(calls);
+      await waitFor(() => vi.mocked(executeToolCall).mock.results.length >= 4, 'four handler calls');
+      for (const result of vi.mocked(executeToolCall).mock.results.slice(0, 4)) {
+        if (result.type !== 'return') throw new Error('The tool handler threw');
+        expect(errorOf(await result.value)).toMatchObject({ code: 'CANCELLED' });
+      }
+      await settle();
+      // Cancelling stopped the waiting, not the requests: every slot is still owned.
+      expect(session.runtime.stats().active).toBe(4);
+      const refused = await session.client.callTool({ name: 'testrail_get_project', arguments: { project_id: 5 } });
+      expect(errorOf(refused as ToolResult)).toMatchObject({ code: 'BUSY' });
+      expect(upstream.calls).toBe(4);
+
+      upstream.releaseAll();
+      await waitFor(() => session.runtime.stats().active === 0, 'slots released on settlement');
+      const next = session.client.callTool({ name: 'testrail_get_project', arguments: { project_id: 6 } });
+      await waitFor(() => upstream.calls === 5, 'exactly one new request');
+      upstream.releaseAll();
+      expect((await next).isError).toBeFalsy();
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+      upstream.releaseAll();
+      await session.close();
+    }
+  });
+
   it('reports a dispatched registered write that is cancelled as of unknown outcome', async () => {
     const upstream = heldUpstream({ id: 9, name: 'Created' });
     const session = await connect(upstream.fetch, era);

@@ -296,3 +296,60 @@ describe('staged uploads', () => {
     }
   });
 });
+
+describe('work that never reaches TestRail', () => {
+  /** A driver that counts every lookup and request, and answers each with a created project. */
+  function counted() {
+    let lookups = 0;
+    let requests = 0;
+    const client = new TestRailClient({
+      baseUrl: configuration.baseUrl, email: configuration.email, apiKey: configuration.apiKey,
+      registerProcessHandlers: false, maxRetries: 0,
+      dnsLookup: () => { lookups += 1; return Promise.resolve([{ address: '203.0.113.10', family: 4 as const }]); },
+      fetch: () => {
+        requests += 1;
+        return Promise.resolve(new Response(JSON.stringify({ id: 9, name: 'Created' }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        }));
+      },
+    });
+    return { client, get lookups() { return lookups; }, get requests() { return requests; } };
+  }
+
+  const addProject = operationRegistry.entries.find(({ tool }) => tool === 'testrail_add_project');
+  if (addProject === undefined) throw new Error('testrail_add_project is not registered');
+
+  it('reports a write cancelled before dispatch as not started, with no lookup or request', async () => {
+    const upstream = counted();
+    const runtime = createRuntime({ client: upstream.client, limits: configuration.limits });
+    try {
+      const result = await executeToolCall(addProject, { body: { name: 'Never sent' } }, {
+        runtime, configuration, signal: AbortSignal.abort(), stagingDirectory: () => Promise.resolve(base),
+      });
+      expect((result.structuredContent as { error: object }).error)
+        .toMatchObject({ code: 'CANCELLED', write_outcome: 'not_started' });
+      await new Promise((resolve) => { setTimeout(resolve, 30); });
+      expect({ lookups: upstream.lookups, requests: upstream.requests }).toEqual({ lookups: 0, requests: 0 });
+      expect(runtime.stats().active).toBe(0);
+    } finally { await runtime.shutdown(); }
+  });
+
+  it('accepts no transport override from a tool argument', async () => {
+    const upstream = counted();
+    const runtime = createRuntime({ client: upstream.client, limits: configuration.limits });
+    try {
+      // The only fetch and resolver seams are the composition root's; a caller naming one is refused whole.
+      for (const input of [
+        { body: { name: 'x' }, fetch: 'https://attacker.example' },
+        { body: { name: 'x' }, _mcp: { dnsLookup: '127.0.0.1' } },
+      ]) {
+        const result = await executeToolCall(addProject, input, {
+          runtime, configuration, stagingDirectory: () => Promise.resolve(base),
+        });
+        expect((result.structuredContent as { error: object }).error)
+          .toMatchObject({ code: 'INVALID_ARGUMENT', write_outcome: 'not_started' });
+      }
+      expect({ lookups: upstream.lookups, requests: upstream.requests }).toEqual({ lookups: 0, requests: 0 });
+    } finally { await runtime.shutdown(); }
+  });
+});

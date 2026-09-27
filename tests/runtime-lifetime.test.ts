@@ -455,6 +455,36 @@ describe('deferred body settlement', () => {
       await runtime.shutdown();
     }
   });
+  it('fills every slot with aggregates whose body cancellation is still pending, and admits nothing until each completes', async () => {
+    const bodies = Array.from({ length: SLOTS }, () => heldBody(EMPTY_PROJECTS));
+    let requests = 0;
+    const fetch = () => {
+      const body = bodies[requests];
+      requests += 1;
+      if (body === undefined) throw new Error('A request was issued past the filled slots');
+      return Promise.resolve(body.response);
+    };
+    const runtime = createRuntime({ client: driver({ fetch }), limits: configuration.limits, delay: manualDelay().delay });
+    try {
+      const outcomes = await Promise.all(bodies.map(() => call(runtime, getProjects, allProjects)));
+      for (const outcome of outcomes) expect(error(outcome)).toMatchObject(DURATION_STOP);
+      await waitFor(() => bodies.every((body) => body.cancelled), 'every body cancellation request');
+      await settle();
+      expect(runtime.stats().active).toBe(SLOTS);
+      expect(code(await call(runtime, getProject, { project_id: 9 }))).toBe('BUSY');
+      expect(requests).toBe(SLOTS);
+
+      // One cancellation completing frees exactly one slot, not all four.
+      bodies[0]?.finishCancel();
+      await waitFor(() => runtime.stats().active === SLOTS - 1, 'one slot released');
+      for (const body of bodies) body.finishCancel();
+      await waitFor(() => runtime.stats().active === 0, 'capacity released once every cancellation completes');
+      expect(requests).toBe(SLOTS);
+    } finally {
+      for (const body of bodies) { body.finish(); body.finishCancel(); }
+      await runtime.shutdown();
+    }
+  });
 });
 
 describe('coalesced identical reads', () => {
