@@ -498,6 +498,9 @@ describe('independent parameter manifest format', () => {
     expect(auditParameterManifests([retarget(project, 'representative-id', {})])).toContain(
       'testrail_get_project: Case representative-id covers project_id/mapping with [], outside the positive_id domain',
     );
+    expect(auditParameterManifests([retarget(project, 'largest-safe-id', {})])).toContain(
+      'testrail_get_project: Case largest-safe-id covers project_id/upper-bound with [], not a value positive_id proves for it: [9007199254740991]',
+    );
     // An exact requirement judges every member too: one proven bound does not carry an unproven one.
     const bounded = structuredClone(twoEntries);
     ((bounded.input.body as { results: { status_id: number }[] }).results[0] ?? { status_id: 0 }).status_id = 9007199254740991;
