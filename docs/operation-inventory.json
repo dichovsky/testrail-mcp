@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "planned",
+  "status": "implemented",
   "compatibility": {
     "testrail_baseline": "10.7.0",
     "older_versions": "best_effort",
@@ -221,7 +221,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/projects.ts#L49",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T01",
@@ -236,7 +236,7 @@
         "all_method": "projects.getAllProjects"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/projects.ts#L64",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T01",
@@ -251,7 +251,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/projects.ts#L88",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T01",
@@ -266,7 +266,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/projects.ts#L109",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T01",
@@ -281,7 +281,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/projects.ts#L98",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T01",
@@ -296,7 +296,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/sections.ts#L45",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T01",
@@ -311,7 +311,7 @@
         "all_method": "sections.getAllSections"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/sections.ts#L55",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T01",
@@ -326,7 +326,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/sections.ts#L70",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T01",
@@ -341,7 +341,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/sections.ts#L99",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T01",
@@ -356,7 +356,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/sections.ts#L131",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T01",
@@ -371,7 +371,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/sections.ts#L81",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T01",
@@ -386,7 +386,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/suites.ts#L43",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T01",
@@ -401,7 +401,7 @@
         "all_method": "suites.getAllSuites"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/suites.ts#L58",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T01",
@@ -416,7 +416,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/suites.ts#L78",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T01",
@@ -431,7 +431,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/suites.ts#L114",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T01",
@@ -446,7 +446,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/suites.ts#L94",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T02",
@@ -461,7 +461,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/cases.ts#L113",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T02",
@@ -476,7 +476,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/cases.ts#L123",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T02",
@@ -491,7 +491,7 @@
         "all_method": "cases.getAllCases"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/cases.ts#L137",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T02",
@@ -506,7 +506,7 @@
         "all_method": "cases.getAllHistoryForCase"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/cases.ts#L370",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T02",
@@ -521,7 +521,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/cases.ts#L152",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T02",
@@ -536,7 +536,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/cases.ts#L172",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T02",
@@ -551,7 +551,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/cases.ts#L344",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T02",
@@ -566,7 +566,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/cases.ts#L222",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T02",
@@ -581,7 +581,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/cases.ts#L293",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T02",
@@ -596,7 +596,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/cases.ts#L360",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T02",
@@ -611,7 +611,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/cases.ts#L203",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T02",
@@ -626,7 +626,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/cases.ts#L260",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T03",
@@ -641,7 +641,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/bdd.ts#L83",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T03",
@@ -656,7 +656,7 @@
         "all_method": "bdd.getAllBdds"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/bdd.ts#L96",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T03",
@@ -671,7 +671,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/bdd.ts#L114",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T03",
@@ -686,7 +686,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/bdd.ts#L123",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T03",
@@ -701,7 +701,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/sharedSteps.ts#L88",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T03",
@@ -716,7 +716,7 @@
         "all_method": "sharedSteps.getAllSharedStepHistory"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/sharedSteps.ts#L147",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T03",
@@ -731,7 +731,7 @@
         "all_method": "sharedSteps.getAllSharedSteps"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/sharedSteps.ts#L98",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T03",
@@ -746,7 +746,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/sharedSteps.ts#L113",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T03",
@@ -761,7 +761,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/sharedSteps.ts#L135",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T03",
@@ -776,7 +776,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/sharedSteps.ts#L124",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T04",
@@ -791,7 +791,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/runs.ts#L59",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T04",
@@ -806,7 +806,7 @@
         "all_method": "runs.getAllRuns"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/runs.ts#L65",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T04",
@@ -821,7 +821,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/runs.ts#L80",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T04",
@@ -836,7 +836,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/runs.ts#L102",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T04",
@@ -851,7 +851,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/runs.ts#L119",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T04",
@@ -866,7 +866,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/runs.ts#L91",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T04",
@@ -881,7 +881,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/tests.ts#L53",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T04",
@@ -896,7 +896,7 @@
         "all_method": "tests.getAllTests"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/tests.ts#L78",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T04",
@@ -911,7 +911,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/tests.ts#L96",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T04",
@@ -926,7 +926,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/tests.ts#L110",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T05",
@@ -941,7 +941,7 @@
         "all_method": "results.getAllResults"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/results.ts#L90",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T05",
@@ -956,7 +956,7 @@
         "all_method": "results.getAllResultsForCase"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/results.ts#L105",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T05",
@@ -971,7 +971,7 @@
         "all_method": "results.getAllResultsForRun"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/results.ts#L120",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T05",
@@ -986,7 +986,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/results.ts#L135",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T05",
@@ -1001,7 +1001,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/results.ts#L146",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T05",
@@ -1016,7 +1016,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/results.ts#L169",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T05",
@@ -1031,7 +1031,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/results.ts#L158",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T05",
@@ -1046,7 +1046,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/results.ts#L183",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1061,7 +1061,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/configurations.ts#L18",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1076,7 +1076,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/configurations.ts#L62",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1091,7 +1091,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/configurations.ts#L28",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1106,7 +1106,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/configurations.ts#L84",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1121,7 +1121,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/configurations.ts#L53",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1136,7 +1136,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/configurations.ts#L73",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1151,7 +1151,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/configurations.ts#L39",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1166,7 +1166,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/plans.ts#L61",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1181,7 +1181,7 @@
         "all_method": "plans.getAllPlans"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/plans.ts#L67",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1196,7 +1196,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/plans.ts#L82",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1211,7 +1211,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/plans.ts#L120",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1226,7 +1226,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/plans.ts#L153",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1241,7 +1241,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/plans.ts#L104",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1256,7 +1256,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/plans.ts#L114",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1271,7 +1271,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/plans.ts#L143",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1286,7 +1286,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/plans.ts#L176",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1301,7 +1301,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/plans.ts#L93",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1316,7 +1316,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/plans.ts#L131",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T06",
@@ -1331,7 +1331,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/plans.ts#L165",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T07",
@@ -1346,7 +1346,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/labels.ts#L44",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T07",
@@ -1361,7 +1361,7 @@
         "all_method": "labels.getAllLabels"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/labels.ts#L54",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T07",
@@ -1376,7 +1376,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/labels.ts#L69",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T07",
@@ -1391,7 +1391,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/labels.ts#L92",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T07",
@@ -1406,7 +1406,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/labels.ts#L101",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T07",
@@ -1421,7 +1421,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/labels.ts#L80",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T07",
@@ -1436,7 +1436,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/milestones.ts#L43",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T07",
@@ -1451,7 +1451,7 @@
         "all_method": "milestones.getAllMilestones"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/milestones.ts#L53",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T07",
@@ -1466,7 +1466,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/milestones.ts#L68",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T07",
@@ -1481,7 +1481,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/milestones.ts#L90",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T07",
@@ -1496,7 +1496,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/milestones.ts#L79",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T08",
@@ -1511,7 +1511,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/users.ts#L118",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T08",
@@ -1526,7 +1526,7 @@
         "all_method": "users.getAllGroups"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/users.ts#L128",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T08",
@@ -1541,7 +1541,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/users.ts#L143",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T08",
@@ -1556,7 +1556,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/users.ts#L167",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T08",
@@ -1571,7 +1571,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/users.ts#L153",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T08",
@@ -1586,7 +1586,7 @@
         "all_method": "metadata.getAllRoles"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/metadata.ts#L183",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T08",
@@ -1601,7 +1601,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/users.ts#L88",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T08",
@@ -1616,7 +1616,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/users.ts#L46",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T08",
@@ -1631,7 +1631,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/users.ts#L56",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T08",
@@ -1646,7 +1646,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/users.ts#L66",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T08",
@@ -1661,7 +1661,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/users.ts#L97",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T08",
@@ -1676,7 +1676,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/users.ts#L107",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T09",
@@ -1691,7 +1691,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/datasets.ts#L39",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T09",
@@ -1706,7 +1706,7 @@
         "all_method": "datasets.getAllDatasets"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/datasets.ts#L49",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T09",
@@ -1721,7 +1721,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/datasets.ts#L64",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T09",
@@ -1736,7 +1736,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/datasets.ts#L86",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T09",
@@ -1751,7 +1751,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/datasets.ts#L75",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T09",
@@ -1766,7 +1766,7 @@
         "all_method": "variables.getAllVariables"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/variables.ts#L39",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T09",
@@ -1781,7 +1781,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/variables.ts#L54",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T09",
@@ -1796,7 +1796,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/variables.ts#L76",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T09",
@@ -1811,7 +1811,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/variables.ts#L65",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T10",
@@ -1826,7 +1826,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/metadata.ts#L123",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T10",
@@ -1841,7 +1841,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/metadata.ts#L154",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T10",
@@ -1856,7 +1856,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/metadata.ts#L164",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T10",
@@ -1871,7 +1871,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/metadata.ts#L104",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T10",
@@ -1886,7 +1886,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/metadata.ts#L95",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T10",
@@ -1901,7 +1901,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/metadata.ts#L114",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T10",
@@ -1916,7 +1916,7 @@
         "all_method": "metadata.getAllCaseStatuses"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/metadata.ts#L80",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T10",
@@ -1931,7 +1931,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/metadata.ts#L71",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T10",
@@ -1946,7 +1946,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/metadata.ts#L173",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T10",
@@ -1961,7 +1961,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/metadata.ts#L62",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T11",
@@ -1976,7 +1976,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/reports.ts#L34",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T11",
@@ -1991,7 +1991,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/reports.ts#L10",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T11",
@@ -2006,7 +2006,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/reports.ts#L46",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T11",
@@ -2021,7 +2021,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/reports.ts#L20",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T12",
@@ -2036,7 +2036,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/attachments.ts#L140",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T12",
@@ -2051,7 +2051,7 @@
         "all_method": "attachments.getAllAttachmentsForCase"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/attachments.ts#L67",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T12",
@@ -2066,7 +2066,7 @@
         "all_method": "attachments.getAllAttachmentsForPlan"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/attachments.ts#L102",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T12",
@@ -2081,7 +2081,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/attachments.ts#L126",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T12",
@@ -2096,7 +2096,7 @@
         "all_method": "attachments.getAllAttachmentsForRun"
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/attachments.ts#L82",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T12",
@@ -2111,7 +2111,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/attachments.ts#L97",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T12",
@@ -2126,7 +2126,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/attachments.ts#L151",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T12",
@@ -2141,7 +2141,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/attachments.ts#L184",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T12",
@@ -2156,7 +2156,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/attachments.ts#L200",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T12",
@@ -2171,7 +2171,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/attachments.ts#L162",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T12",
@@ -2186,7 +2186,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/attachments.ts#L173",
-      "status": "planned"
+      "status": "implemented"
     },
     {
       "family_id": "T12",
@@ -2201,7 +2201,7 @@
         "all_method": null
       },
       "source_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/src/modules/attachments.ts#L217",
-      "status": "planned"
+      "status": "implemented"
     }
   ]
 }
