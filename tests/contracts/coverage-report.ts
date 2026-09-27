@@ -39,7 +39,7 @@ function header(environment: ReportEnvironment, manifests: readonly ParameterMan
   return {
     schema_version: 1,
     evidence: 'offline_fixtures',
-    statement: 'Offline evidence only: hand-authored fixtures replayed through the registered tools and the pinned driver with an injected fetch. No TestRail instance, credentials, user directories or MCP host clients were involved.',
+    statement: 'Offline evidence only, from a passing run of the deterministic suite (npm test), which replays hand-authored fixtures through the registered tools and the pinned driver with an injected fetch. No TestRail instance, credentials, user directories or MCP host clients were involved.',
     live: {
       testrail: { status: 'not_run', tracked_by: `${ISSUES}/24` },
       clients: { status: 'not_run', tracked_by: `${ISSUES}/23` },

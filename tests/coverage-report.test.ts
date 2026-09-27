@@ -22,6 +22,7 @@ const rawInventory = JSON.parse(await read('../docs/operation-inventory.json')) 
   status: string;
   status_scope: string;
   release_verification: {
+    provenance_note: string;
     production_release: { status: string; exact_dependency: string | null };
     qualified_release: { version: string; release_commit: string; npm_integrity: string; qualified_for_production: boolean };
   };
@@ -94,18 +95,9 @@ describe('the coverage reports', () => {
   });
 
   gate('count what the manifests hold, not what the report builder kept', () => {
-    // Every target a manifest declares, in order, with every requirement row it declares.
-    const declared = (manifest: ParameterManifest) => [
-      { id: '$input', requirements: manifest.requirements.map(({ id }) => id) },
-      ...manifest.parameters.map(({ id, requirements }) => ({ id, requirements: (requirements ?? []).map((requirement) => requirement.id) })),
-    ];
-    const reported = new Map(reports.parameters.endpoints.map(({ tool, targets }) =>
-      [tool, targets.map(({ id, requirements }) => ({ id, requirements: requirements.map((requirement) => requirement.id) }))]));
-    expect(manifests.filter((manifest) => JSON.stringify(reported.get(manifest.endpoint.tool)) !== JSON.stringify(declared(manifest)))
-      .map(({ endpoint }) => endpoint.tool)).toEqual([]);
-
-    const rows = (manifest: ParameterManifest): number => declared(manifest).reduce((sum, { requirements }) => sum + requirements.length, 0);
     const cases = (kind: string): number => manifests.reduce((sum, { cases: all }) => sum + all.filter(({ expect: outcome }) => outcome.kind === kind).length, 0);
+    const rows = (manifest: ParameterManifest): number =>
+      manifest.requirements.length + manifest.parameters.reduce((sum, { requirements }) => sum + (requirements ?? []).length, 0);
     expect({
       parameters: totals.parameters,
       requirements: totals.requirements.total,
@@ -117,13 +109,62 @@ describe('the coverage reports', () => {
       accepted: cases('accepted'),
       rejected: cases('rejected'),
     });
-    // The three files describe the same endpoints and the same cases.
-    const evidence = new Map(reports.evidence.endpoints.map((entry) => [entry.tool, entry]));
+    // Per endpoint, the coverage summary agrees with the manifest it summarises.
     expect(endpoints.filter(({ tool, manifest }) => {
-      const recorded = evidence.get(tool);
-      return manifest === null || recorded === undefined || manifest.requirements.total !== rows(manifestFor(tool))
-        || recorded.accepted.length !== manifest.cases.accepted || recorded.rejected.length !== manifest.cases.rejected;
+      const source = manifestFor(tool);
+      return manifest === null || manifest.parameters !== source.parameters.length || manifest.requirements.total !== rows(source)
+        || manifest.cases.accepted !== source.cases.filter(({ expect: outcome }) => outcome.kind === 'accepted').length
+        || manifest.cases.rejected !== source.cases.filter(({ expect: outcome }) => outcome.kind === 'rejected').length;
     }).map(({ tool }) => tool)).toEqual([]);
+  });
+
+  gate('hold every field of every report to the file it came from', () => {
+    // Endpoint identity, straight from the pinned inventory.
+    expect(endpoints.map(({ tool, family, resource, method, route, driver_method: driverMethod, pagination, inventory_status: status }) =>
+      ({ tool, family, resource, method, route, driver_method: driverMethod, pagination, status })))
+      .toEqual(rawInventory.operations.map(({ tool, family_id: family, resource, http_method: method, route, driver_method: driverMethod, pagination, status }) =>
+        ({ tool, family, resource, method, route, driver_method: driverMethod, pagination, status })));
+
+    // Each requirement's covering cases, found by searching the manifest's cases for that
+    // exact parameter and requirement rather than through the builder's index.
+    const coveredBy = (manifest: ParameterManifest, target: string, requirement: string): string[] =>
+      manifest.cases.filter(({ covers }) => covers.some(({ parameter, requirements }) => parameter === target && requirements.includes(requirement)))
+        .map(({ id }) => id);
+    const rowsOf = (manifest: ParameterManifest, target: string, requirements: readonly { id: string; kind: string }[]) =>
+      requirements.map(({ id, kind }) => ({ id, kind, covered_by: coveredBy(manifest, target, id) }));
+    expect(reports.parameters.endpoints).toEqual(rawInventory.operations.map(({ tool }) => {
+      const manifest = manifestFor(tool);
+      return {
+        tool,
+        targets: [
+          { id: '$input', requirements: rowsOf(manifest, '$input', manifest.requirements) },
+          ...manifest.parameters.map((parameter) => ({
+            id: parameter.id, scope: parameter.scope, requiredness: parameter.requiredness, location: parameter.wire.location,
+            requirements: rowsOf(manifest, parameter.id, parameter.requirements ?? []),
+          })),
+        ],
+      };
+    }));
+
+    // Each manifest's provenance and each case's recorded outcome, as the manifest states them.
+    expect(reports.evidence.endpoints).toEqual(rawInventory.operations.map(({ tool }) => {
+      const manifest = manifestFor(tool);
+      return {
+        tool,
+        review: manifest.review,
+        sources: manifest.sources,
+        input_policy: { ordinary_fields: manifest.input_policy.ordinary_fields, custom_fields: manifest.input_policy.custom_fields },
+        outer_result: { driver: manifest.outer_result.driver, tool_data: manifest.outer_result.tool_data },
+        accepted: manifest.cases.flatMap(({ id, expect: outcome }) => outcome.kind !== 'accepted' ? [] : [{
+          id,
+          driver_binding: outcome.driver.binding,
+          wire: { method: outcome.wire.method, endpoint: outcome.wire.endpoint, body: bodyKind(outcome.wire) },
+          upstream_response: outcome.upstream_response.kind,
+          driver_result: outcome.driver_result.kind,
+        }]),
+        rejected: manifest.cases.flatMap(({ id, expect: outcome }) => outcome.kind !== 'rejected' ? [] : [{ id, code: outcome.code }]),
+      };
+    }));
   });
 
   gate('show every endpoint registered, with a complete manifest whose every requirement a fixture covers', () => {
@@ -169,16 +210,6 @@ describe('the coverage reports', () => {
       ['every-field', 'projects.addProject', { method: 'POST', endpoint: 'add_project', body: 'json' }],
     ]);
     expect(evidence('testrail_add_attachment_to_case')?.accepted.map(({ wire }) => wire.body)).toEqual(Array<string>(5).fill('multipart'));
-    // Every accepted case keeps its own binding and body kind, and every endpoint its sources.
-    const drifted = reports.evidence.endpoints.flatMap(({ tool, accepted, sources }) => {
-      const manifest = manifestFor(tool);
-      const expected = manifest.cases.flatMap(({ id, expect: outcome }) => outcome.kind !== 'accepted' ? [] : [{
-        id, driver_binding: outcome.driver.binding, wire: { method: outcome.wire.method, endpoint: outcome.wire.endpoint, body: bodyKind(outcome.wire) },
-      }]);
-      const recorded = accepted.map(({ id, driver_binding, wire }) => ({ id, driver_binding, wire }));
-      return JSON.stringify(recorded) === JSON.stringify(expected) && sources.length === manifest.sources.length ? [] : [tool];
-    });
-    expect(drifted).toEqual([]);
   });
 
   gate('say they are offline evidence, and name the exact package, driver and commits', () => {
@@ -237,6 +268,7 @@ describe('the coverage reports', () => {
     expect(rawInventory.status).toBe(complete.size === endpoints.length ? 'implemented' : 'planned');
     // The file says what that status means, and its release record names the pinned driver.
     expect(rawInventory.status_scope).toMatch(/^Offline verification only\b/u);
+    expect(rawInventory.release_verification.provenance_note).toMatch(/kept for provenance/u);
     expect(rawInventory.release_verification.production_release.exact_dependency).toBe(REVIEWED_DRIVER.version);
     expect(rawInventory.release_verification.qualified_release).toMatchObject({
       version: REVIEWED_DRIVER.version, release_commit: REVIEWED_DRIVER.commit, npm_integrity: locked.integrity, qualified_for_production: true,
@@ -245,21 +277,42 @@ describe('the coverage reports', () => {
 
   gate('match the API coverage document: every endpoint and resource row, the total and the status line', async () => {
     const document = await read('../docs/api-coverage.md');
-    const statuses = new Map([...document.matchAll(/^\| `(?:GET|POST) [^`]+` \| `(testrail_[a-z_]+)` \|.*\| ([a-z]+) \|$/gmu)]
-      .map(([, tool, status]) => [tool, status]));
-    expect(statuses.size).toBe(CONTRACT.operations);
-    expect(endpoints.filter(({ tool, inventory_status: status }) => statuses.get(tool) !== status).map(({ tool }) => tool)).toEqual([]);
+    const short = (method: string | null): string => `\`${method?.split('.')[1] ?? ''}()\``;
+    const helpers = ({ kind, page_method: page, all_method: all }: InventoryRow['pagination']): string =>
+      kind === 'none' ? 'No page/all helpers' : `${kind === 'controlled' ? 'Controlled' : 'Response-driven'}: ${short(page)}, ${short(all)}`;
 
-    const resources = [...document.matchAll(/^\| \[([A-Za-z ]+)\]\(#[a-z-]+\) \|.*\| ([a-z]+) \|$/gmu)].map(([, resource = '', status]) => ({ resource, status }));
-    expect(resources.map(({ resource }) => resource).sort()).toEqual([...new Set(endpoints.map(({ resource }) => resource))].sort());
-    const statusOf = (rows: readonly { inventory_status: string }[]): string =>
-      rows.every(({ inventory_status: status }) => status === 'implemented') ? 'implemented' : 'planned';
-    expect(resources.filter(({ resource, status }) => status !== statusOf(endpoints.filter((row) => row.resource === resource)))
+    // Each endpoint row: its REST endpoint, tool, driver method, page/all helpers and status.
+    const rows = [...document.matchAll(/^\| `((?:GET|POST) [^`]+)` \| `(testrail_[a-z_]+)` \| \[`([a-zA-Z]+\.[a-zA-Z]+)`\]\([^)]+\) \| ([^|]+) \| ([a-z]+) \|$/gmu)]
+      .map(([, endpoint, tool, driverMethod, pagination, status]) => ({ tool, endpoint, driver_method: driverMethod, helpers: pagination?.trim(), status }));
+    expect(rows.sort((left, right) => (left.tool ?? '').localeCompare(right.tool ?? ''))).toEqual(rawInventory.operations
+      .map((row) => ({ tool: row.tool, endpoint: `${row.http_method} ${row.route}`, driver_method: row.driver_method, helpers: helpers(row.pagination), status: row.status }))
+      .sort((left, right) => left.tool.localeCompare(right.tool)));
+
+    // Each resource row: its counts and status, over exactly the inventory's resources.
+    const statusOf = (operations: readonly InventoryRow[]): string =>
+      operations.every(({ status }) => status === 'implemented') ? 'implemented' : 'planned';
+    const summary = (operations: readonly InventoryRow[]): string[] => [
+      String(operations.length),
+      String(operations.filter(({ http_method: method }) => method === 'GET').length),
+      String(operations.filter(({ http_method: method }) => method === 'POST').length),
+      String(operations.filter(({ pagination }) => pagination.kind !== 'none').length),
+      statusOf(operations),
+    ];
+    const resources = [...document.matchAll(/^\| \[([A-Za-z ]+)\]\(#[a-z-]+\) \| (\d+) \| (\d+) \| (\d+) \| (\d+) \| ([a-z]+) \|$/gmu)]
+      .map(([, resource = '', ...cells]) => ({ resource, cells }));
+    const names = [...new Set(rawInventory.operations.map(({ resource }) => resource))].sort();
+    expect(resources.map(({ resource }) => resource).sort()).toEqual(names);
+    expect(resources.filter(({ resource, cells }) =>
+      JSON.stringify(cells) !== JSON.stringify(summary(rawInventory.operations.filter((row) => row.resource === resource))))
       .map(({ resource }) => resource)).toEqual([]);
 
-    const overall = statusOf(endpoints);
-    expect([...document.matchAll(/^\| \*\*Total\*\* \|.*\| \*\*([a-z]+)\*\* \|$/gmu)].map(([, status]) => status)).toEqual([overall]);
-    expect(document).toMatch(overall === 'implemented' ? /^Status: implemented and verified offline\./mu : /^Status: planning baseline\./mu);
+    // The total row and the status line.
+    const total = [...document.matchAll(/^\| \*\*Total\*\* \| \*\*(\d+)\*\* \| \*\*(\d+)\*\* \| \*\*(\d+)\*\* \| \*\*(\d+)\*\* \| \*\*([a-z]+)\*\* \|$/gmu)]
+      .map(([, ...cells]) => cells);
+    expect(total).toEqual([summary(rawInventory.operations)]);
+    expect(document).toMatch(statusOf(rawInventory.operations) === 'implemented'
+      ? /^Status: implemented and verified offline\./mu
+      : /^Status: planning baseline\./mu);
   });
 });
 

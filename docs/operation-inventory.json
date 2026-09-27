@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "implemented",
-  "status_scope": "Offline verification only: a row is implemented when its tool is registered with this identity and its complete parameter manifest passes the fixture contracts, as tests/coverage-report.test.ts checks. Live TestRail qualification (R03, https://github.com/dichovsky/testrail-mcp/issues/24) and MCP client qualification (R02, https://github.com/dichovsky/testrail-mcp/issues/23) are recorded separately.",
+  "status_scope": "Offline verification only: a row is implemented when its tool is registered with this identity and has a complete parameter manifest whose every requirement a fixture covers, and every fixture passes through the registered tool and the pinned driver (tests/registered-parameters.test.ts). tests/coverage-report.test.ts holds these statuses to that evidence. Live TestRail qualification (R03, https://github.com/dichovsky/testrail-mcp/issues/24) and MCP client qualification (R02, https://github.com/dichovsky/testrail-mcp/issues/23) are recorded separately.",
   "compatibility": {
     "testrail_baseline": "10.7.0",
     "older_versions": "best_effort",
@@ -21,6 +21,7 @@
     "compatibility_audit_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/docs/TESTRAIL-10.7.0-COMPATIBILITY.md"
   },
   "release_verification": {
+    "provenance_note": "checked_on through recommended_exact_dependency_scope, follow_up_audit, and each production requirement's description record the audits of 7.0.0 on 2026-09-09 and 7.1.0 on 2026-09-10, and are kept for provenance. production_release.status, production_release.exact_dependency, each requirement's status, and qualified_release record the current state: the package pins published 7.2.0.",
     "checked_on": "2026-09-09",
     "latest_stable_version": "7.0.0",
     "release_tag": "release/7.0.0",
