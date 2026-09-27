@@ -391,15 +391,21 @@ describe('F05 result evidence through registered tools', () => {
     } finally { await runtime.shutdown(); }
   });
 
-  it('returns the reply unchanged when the advisory schema coerces, defaults and transforms', async () => {
-    const reply = { id: '7', custom_x: 1 };
-    const { client } = driver(configuration, () => json(reply));
+  const rewritten = { id: '7', custom_x: 1 };
+  const projectPage = { offset: 0, limit: 250, size: 1, _links: { next: null, prev: null }, projects: [rewritten] };
+  it.each([
+    ['a record', 'testrail_get_project', { project_id: 7 }, rewritten, rewritten],
+    ['a list', 'testrail_get_case_titles', { query: { case_ids: [7] } }, [rewritten], [rewritten]],
+    ['a page', 'testrail_get_projects', {}, projectPage, [rewritten]],
+    ['an aggregate', 'testrail_get_projects', { _mcp: { pagination: 'all' } }, projectPage, [rewritten]],
+  ] as const)('returns %s reply unchanged when the advisory schema coerces, defaults and transforms', async (_label, tool, args, reply, expected) => {
+    const { client } = driver(configuration, () => json(structuredClone(reply)));
     const runtime = createRuntime({ client, limits: configuration.limits });
     const rewriting = z.object({ id: z.coerce.number(), status: z.string().default('active') })
       .transform((value) => ({ ...value, extra: 1 }));
     try {
-      const result = await executeToolCall(withEntity(registered('testrail_get_project'), rewriting), { project_id: 7 }, { runtime, configuration });
-      expect(payloadOf(result).data).toEqual(reply);
+      const result = await executeToolCall(withEntity(registered(tool), rewriting), args, { runtime, configuration });
+      expect(payloadOf(result).data).toEqual(expected);
       expect(payloadOf(result).warnings).toBeUndefined();
     } finally { await runtime.shutdown(); }
   });
@@ -502,9 +508,17 @@ describe('F05 result evidence through registered tools', () => {
         runtime, configuration, stagingDirectory: () => Promise.resolve(base),
       });
       const lines = write.mock.calls.map(([chunk]) => String(chunk));
-      expect(lines.length).toBe(3);
-      // Only these fields may ever appear; write_outcome is carried by the F03 change (#76).
-      const allowed = new Set(['event', 'correlation', 'tool', 'outcome', 'code', 'duration_ms', 'warnings', 'write_outcome']);
+      // One event per call, in call order.
+      expect(lines.map((line) => {
+        const { tool, outcome } = JSON.parse(line) as Record<string, unknown>;
+        return [tool, outcome];
+      })).toEqual([
+        ['testrail_add_project', 'error'],
+        ['testrail_get_project', 'success'],
+        ['testrail_add_attachment_to_case', 'error'],
+      ]);
+      // Only these fields may ever appear.
+      const allowed = new Set(['event', 'correlation', 'tool', 'outcome', 'code', 'duration_ms', 'warnings']);
       for (const line of lines) {
         const event = JSON.parse(line) as Record<string, unknown>;
         expect(event.event).toBe('tool_call');

@@ -174,10 +174,15 @@ describe('advisory entity validation', () => {
       .transform((value) => ({ ...value, extra: 1 }));
     const original = { id: '1', custom_extra: 'kept', unknown_field: true, nested: { list: [1] } };
     const before = structuredClone(original);
+    const list = [original];
     advisoryWarnings(rewriting, 'record', original);
-    advisoryWarnings(rewriting, 'array', [original]);
-    // Compared with a copy taken first, so a write into the original is caught.
+    advisoryWarnings(rewriting, 'array', list);
+    advisoryWarnings(rewriting, 'page', list);
+    // Compared with a copy taken first, so a write into the original, or a parsed item
+    // put back in the caller's list, is caught.
     expect(original).toEqual(before);
+    expect(list).toHaveLength(1);
+    expect(list[0]).toBe(original);
     expect(structured(successResult({ data: original }, limits)).data).toEqual(before);
   });
 
