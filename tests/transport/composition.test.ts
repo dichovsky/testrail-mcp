@@ -5,7 +5,7 @@ import { TestRailClient } from '@dichovsky/testrail-api-client';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { startServer, type StartedServer } from '../../src/transport/server.js';
+import { EXIT_GRACE_MS, exitAfterGrace, startServer, type StartedServer } from '../../src/transport/server.js';
 
 /*
  * The composition root, `startServer`, run in-process. Its test-only seams replace the
@@ -148,6 +148,15 @@ describe('the composition root', () => {
     try {
       const call = (session: typeof first, id: number) =>
         session.client.callTool({ name: 'testrail_get_project', arguments: { project_id: id } });
+      // Record which client instance serves each call: the Basic header alone could not
+      // tell one driver from two built from the same configuration.
+      const instances = new Set<TestRailClient>();
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- re-bound to each instance with apply below.
+      const track = TestRailClient.prototype.trackOperation;
+      vi.spyOn(TestRailClient.prototype, 'trackOperation').mockImplementation(function (this: TestRailClient, ...args) {
+        instances.add(this);
+        return track.apply(this, args);
+      });
       const inflight = [call(first, 1), call(first, 2), call(second, 3), call(second, 4)];
       await waitFor(() => fake.calls === 4, 'four requests from two consumers');
 
@@ -155,7 +164,7 @@ describe('the composition root', () => {
       expect(errorOf(await call(first, 5))).toMatchObject({ code: 'BUSY' });
       expect(errorOf(await call(second, 6))).toMatchObject({ code: 'BUSY' });
       expect(fake.calls).toBe(4);
-      expect(new Set(fake.authorizations).size).toBe(1);
+      expect(instances.size).toBe(1);
 
       fake.answerAll();
       for (const result of await Promise.all(inflight)) expect(result.isError).toBeFalsy();
@@ -252,5 +261,41 @@ describe('the composition root', () => {
       process.off('unhandledRejection', unhandled);
       await session.close();
     }
+  });
+});
+
+describe('a shutdown step that fails', () => {
+  it('still completes the shutdown and logs its stop when destroying the driver throws', async () => {
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const fake = upstream();
+    const { started } = await compose(fake);
+    // Only the served driver's destroy fails; the probe was destroyed at load, before this.
+    vi.spyOn(TestRailClient.prototype, 'destroy').mockImplementation(() => { throw new Error('destroy failed'); });
+    await expect(started.shutdown()).resolves.toBeUndefined();
+    expect(events(write).map(({ event }) => event)).toContain('server_stopped');
+  });
+});
+
+describe('the forced exit after shutdown', () => {
+  it('fires after the grace and not before', () => {
+    vi.useFakeTimers();
+    try {
+      const exit = vi.fn();
+      exitAfterGrace(exit);
+      vi.advanceTimersByTime(EXIT_GRACE_MS - 1);
+      expect(exit).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(exit).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('never keeps the process alive by itself', () => {
+    const exit = vi.fn();
+    const timer = exitAfterGrace(exit);
+    try {
+      // An idle process exits on its own first; only lingering work lets this fire.
+      expect(timer.hasRef()).toBe(false);
+    } finally { clearTimeout(timer); }
+    expect(EXIT_GRACE_MS).toBe(250);
   });
 });

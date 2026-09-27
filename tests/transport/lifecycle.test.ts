@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -182,6 +182,8 @@ interface Running {
   readonly child: ChildProcessWithoutNullStreams;
   readonly out: () => string;
   readonly err: () => string;
+  /** When the parent first read the `server_stopped` line, or undefined. */
+  readonly stoppedAt: () => number | undefined;
   readonly exited: Promise<{ code: number | null; signal: NodeJS.Signals | null; at: number }>;
   readonly send: (message: object) => void;
 }
@@ -189,13 +191,17 @@ interface Running {
 function run(child: ChildProcessWithoutNullStreams): Running {
   let out = '';
   let err = '';
+  let stoppedAt: number | undefined;
   child.stdout.on('data', (chunk: Buffer) => { out += chunk.toString('utf8'); });
-  child.stderr.on('data', (chunk: Buffer) => { err += chunk.toString('utf8'); });
+  child.stderr.on('data', (chunk: Buffer) => {
+    err += chunk.toString('utf8');
+    if (stoppedAt === undefined && err.includes('"event":"server_stopped"')) stoppedAt = Date.now();
+  });
   const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null; at: number }>((resolve) => {
     child.on('exit', (code, signal) => { resolve({ code, signal, at: Date.now() }); });
   });
   return {
-    child, exited, out: () => out, err: () => err,
+    child, exited, out: () => out, err: () => err, stoppedAt: () => stoppedAt,
     send: (message) => { child.stdin.write(`${JSON.stringify(message)}\n`); },
   };
 }
@@ -259,7 +265,11 @@ describe('packaged server shutdown against a TestRail that never answers', () =>
       // request timer kept the process alive until it fired.
       expect({ code, signal }).toEqual({ code: 0, signal: null });
       expect(at - ended).toBeGreaterThanOrEqual(4_900);
-      expect(at - ended).toBeLessThan(10_000);
+      expect(at - ended).toBeLessThan(7_000);
+      // The forced exit follows the stop by its 250 ms grace, not by the driver's timers.
+      const stopped = session.stoppedAt();
+      expect(stopped).toBeDefined();
+      expect(at - (stopped ?? 0)).toBeLessThan(1_500);
       const names = eventNames(session.err());
       expect(names.filter((name) => name === 'server_stopping')).toHaveLength(1);
       expect(names.filter((name) => name === 'server_stopped')).toHaveLength(1);
@@ -277,7 +287,7 @@ describe('packaged server shutdown against a TestRail that never answers', () =>
   it.each(STDIN)('exits within the drain window after %s with a request still in flight', exitsWithinTheDrain, 30_000);
   it.skipIf(windows).each(SIGNALS)('exits within the drain window after %s with a request still in flight', exitsWithinTheDrain, 30_000);
 
-  it.skipIf(windows)('finishes its shutdown when a second signal arrives during the drain', async () => {
+  it.skipIf(windows).each(SIGNALS)('finishes its shutdown when a second %s arrives during the drain', async (_label, send) => {
     const testRail = await silentTestRail();
     const session = run(launchAgainst(testRail.url));
     try {
@@ -285,9 +295,9 @@ describe('packaged server shutdown against a TestRail that never answers', () =>
       session.send({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'testrail_get_project', arguments: { project_id: 1 } } });
       await waitFor(() => testRail.requests.length === 1, 'the request to be in flight');
 
-      session.child.kill('SIGTERM');
+      send(session.child);
       await waitFor(() => session.err().includes('server_stopping'), 'the drain to begin');
-      session.child.kill('SIGTERM');
+      send(session.child);
       // With `once` handlers the second signal took the default action and killed the
       // process mid-drain, before the client was destroyed or the stop was logged.
       const { code, signal } = await session.exited;
@@ -296,6 +306,61 @@ describe('packaged server shutdown against a TestRail that never answers', () =>
     } finally {
       session.child.kill('SIGKILL');
       await testRail.close();
+    }
+  }, 30_000);
+});
+
+describe('packaged server shutdown after a staging failure', () => {
+  it('retries staging on the next upload, and still shuts down cleanly and exits 0', async () => {
+    const testRail = await silentTestRail();
+    const base = await mkdtemp(join(tmpdir(), 'testrail-mcp-staging-failure-'));
+    const temporary = join(base, 'tmp');
+    const roots = join(base, 'roots');
+    await mkdir(temporary);
+    await mkdir(roots);
+    const source = join(roots, 'evidence.txt');
+    await writeFile(source, 'evidence');
+    const inherited = Object.fromEntries(
+      Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith('TESTRAIL')),
+    );
+    // os.tmpdir() reads TMPDIR on POSIX and TEMP or TMP on Windows.
+    const session = run(spawn(process.execPath, ['--no-warnings', cli], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: {
+        ...inherited, TMPDIR: temporary, TEMP: temporary, TMP: temporary,
+        TESTRAIL_BASE_URL: testRail.url, TESTRAIL_EMAIL: EMAIL, TESTRAIL_API_KEY: SECRET,
+        TESTRAIL_ALLOW_INSECURE: 'true', TESTRAIL_ALLOW_PRIVATE_HOSTS: 'true',
+        TESTRAIL_MCP_UPLOAD_ROOTS: JSON.stringify([roots]), TESTRAIL_MCP_DOWNLOAD_DIR: directory,
+      },
+    }));
+    const upload = (id: number) => { session.send({ jsonrpc: '2.0', id, method: 'tools/call', params: {
+      name: 'testrail_add_attachment_to_case', arguments: { case_id: 1, file_path: source, filename: 'evidence.txt' },
+    } }); };
+    try {
+      await openSession(session);
+      // The staging parent vanishes before the first upload, so staging fails.
+      await rm(temporary, { recursive: true, force: true });
+      upload(2);
+      await waitFor(() => session.out().includes('"id":2'), 'the failed upload');
+      expect(session.out()).toContain('INTERNAL_ERROR');
+      expect(testRail.requests).toHaveLength(0);
+
+      // A failure is not remembered: once the directory is back, the next upload stages and is sent.
+      await mkdir(temporary);
+      upload(3);
+      await waitFor(() => testRail.requests.length === 1, 'the retried upload to reach TestRail');
+
+      session.child.stdin.end();
+      const { code, signal } = await session.exited;
+      // A rejected shutdown used to exit 1 with a raw error, and its path, on stderr.
+      expect({ code, signal }).toEqual({ code: 0, signal: null });
+      const names = eventNames(session.err());
+      expect(names.filter((name) => name === 'server_stopped')).toHaveLength(1);
+      expect(session.err()).not.toContain(base);
+    } finally {
+      session.child.kill('SIGKILL');
+      await testRail.close();
+      await rm(base, { recursive: true, force: true });
     }
   }, 30_000);
 });

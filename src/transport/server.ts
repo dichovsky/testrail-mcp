@@ -142,7 +142,14 @@ export interface StartOptions {
  * 15-second request timeout, and those would keep the process alive. The timer is
  * unreferenced, so a process with nothing left running exits by itself first.
  */
-const EXIT_GRACE_MS = 250;
+export const EXIT_GRACE_MS = 250;
+
+/** Exit once the grace has passed, unless the process has already exited by itself. */
+export function exitAfterGrace(exit: () => void = () => { process.exit(); }): NodeJS.Timeout {
+  const timer = setTimeout(exit, EXIT_GRACE_MS);
+  timer.unref();
+  return timer;
+}
 
 /**
  * Compose configuration, driver, runtime and transport, and own their lifetimes.
@@ -166,7 +173,12 @@ export async function startServer(
   // Created on first upload so a server that never uploads leaves no directory behind.
   let staging: Promise<{ directory: string; dispose: () => Promise<void> }> | undefined;
   const stagingArea = (): Promise<{ directory: string; dispose: () => Promise<void> }> => {
-    staging ??= createStagingArea(tmpdir());
+    // A failure is forgotten, so the next upload tries again rather than inheriting it,
+    // and shutdown never awaits a staging area that was never created.
+    staging ??= createStagingArea(tmpdir()).catch((error: unknown) => {
+      staging = undefined;
+      throw error;
+    });
     return staging;
   };
 
@@ -182,11 +194,15 @@ export async function startServer(
   // finish rather than returning early and letting the process exit mid-drain.
   let stopping: Promise<void> | undefined;
   const shutdown = (): Promise<void> => {
+    // No step may reject: a rejected shutdown would reach the process as an unhandled
+    // rejection, printing a raw error with local paths on stderr and exiting 1 before
+    // the stop is logged or the forced exit is scheduled. A staging directory left
+    // behind is removed by the next start's recovery.
     stopping ??= (async () => {
       logEvent('server_stopping');
       await handle.close().catch(() => undefined);
-      await runtime.shutdown();
-      if (staging !== undefined) await (await staging).dispose();
+      await runtime.shutdown().catch(() => undefined);
+      await staging?.then((area) => area.dispose()).catch(() => undefined);
       logEvent('server_stopped');
     })();
     return stopping;
@@ -197,9 +213,7 @@ export async function startServer(
     // cleanup once however the host ends the session. The signal handlers stay
     // installed: with `once`, a second SIGINT or SIGTERM during the drain would take
     // the default action and kill the process before the client is destroyed.
-    const stop = (): void => {
-      void shutdown().then(() => { setTimeout(() => { process.exit(); }, EXIT_GRACE_MS).unref(); });
-    };
+    const stop = (): void => { void shutdown().then(() => { exitAfterGrace(); }); };
     process.on('SIGINT', stop);
     process.on('SIGTERM', stop);
     process.stdin.once('end', stop);
