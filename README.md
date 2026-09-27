@@ -2,7 +2,7 @@
 
 A local stdio MCP server for the complete TestRail 10.7.0 API, powered by [`@dichovsky/testrail-api-client`](https://github.com/dichovsky/testrail-api-client).
 
-It exposes **133 tools, one per TestRail REST endpoint**, across all 28 API resources, every one enabled by default, including writes, administration and deletes. It preserves TestRail's own field names and custom fields, pages lists with bounded fetch-all, and reads and writes attachment and BDD files only within directories you configure. It targets Codex desktop and CLI, Claude Code and GitHub Copilot CLI. TestRail 10.7.0 is the baseline; older versions are best effort.
+It exposes **133 tools, one per TestRail REST endpoint**, across all 28 API resources, every one enabled by default, including writes, administration and deletes. It preserves TestRail's own field names and custom fields, pages lists with bounded fetch-all, uploads attachment and BDD files only from directories you configure, and saves downloaded attachments only to the directory you name. It targets Codex desktop and CLI, Claude Code and GitHub Copilot CLI. TestRail 10.7.0 is the baseline; older versions are best effort.
 
 ## Status
 
@@ -17,12 +17,12 @@ It exposes **133 tools, one per TestRail REST endpoint**, across all 28 API reso
 
 Node 22.13 or later in the 22 series, or Node 24, is required. Other Node majors admitted by the package's engine range are best effort.
 
-Until the first npm release, install from a packed checkout:
+Until the first npm release, install from a packed checkout. `npm pack` prints the tarball's file name; install that file by name, since Windows shells do not expand a `*` wildcard:
 
 ```sh
 npm ci
 npm pack
-npm install --global ./dichovsky-testrail-mcp-*.tgz
+npm install --global ./dichovsky-testrail-mcp-<version>.tgz
 testrail-mcp --version
 ```
 
@@ -37,7 +37,7 @@ The server reads its configuration from the environment of the process that laun
 | `TESTRAIL_BASE_URL` | Required | Your TestRail instance URL, such as `https://example.testrail.io`. Installation subpaths are kept. Embedded credentials, queries and fragments are refused. HTTPS unless `TESTRAIL_ALLOW_INSECURE` is `true`. |
 | `TESTRAIL_EMAIL` | Required | The TestRail user the server acts as. |
 | `TESTRAIL_API_KEY` | Required | That user's API key. It is never printed. |
-| `TESTRAIL_MCP_UPLOAD_ROOTS` | Required | A JSON array of existing absolute directories that upload tools may read from, such as `["/home/me/testrail-uploads"]`. `[]` allows no uploads; the tools stay registered. |
+| `TESTRAIL_MCP_UPLOAD_ROOTS` | Required | A JSON array of existing absolute directories that upload tools may read from, such as `["/home/me/testrail-uploads"]`. On Windows, JSON needs forward slashes or doubled backslashes: `["C:/Users/me/testrail-uploads"]`. `[]` allows no uploads; the tools stay registered. |
 | `TESTRAIL_MCP_DOWNLOAD_DIR` | Required | An existing, writable absolute directory where downloaded attachments are kept. |
 | `TESTRAIL_MCP_LIMITS` | Optional | A strict JSON object overriding the limits below, such as `{"max_all_items": 5000}`. Unknown keys and out-of-range values stop startup. |
 | `TESTRAIL_ALLOW_PRIVATE_HOSTS` | Optional | `true` to reach an instance on a private or loopback network. Default `false`. |
@@ -63,19 +63,21 @@ A missing or invalid value stops startup with a message naming the variable, nev
 
 ## Connect a client
 
-[Client configuration](docs/client-compatibility.md) has ready-to-merge examples for Codex desktop and CLI, Claude Code and GitHub Copilot CLI. Give the client a 120-second tool-call timeout, and leave its tool filters unset so the whole catalog stays available.
+[Client configuration](docs/client-compatibility.md) has examples for Codex desktop and CLI, Claude Code and GitHub Copilot CLI. Give the client a 120-second tool-call timeout, and keep every tool enabled: leave allow and deny filters unset, or, in Copilot CLI, set `tools: ["*"]` as its example does.
+
+The client passes the variables under [Configure](#configure) to the server, so they must be in the environment the client itself was launched with, and `node` must be on that environment's path. A desktop app may not inherit what a terminal exports; how each app is set up is recorded under [R02](https://github.com/dichovsky/testrail-mcp/issues/23).
 
 ## How the tools behave
 
 - **Results.** A result is `{data, pagination, warnings}`. `data` is TestRail's reply with its own field names, custom fields included. `warnings` flags fields that differ from the expected shape; the data is still passed through. See [results and errors](docs/results-and-errors.md).
-- **Errors.** Every error carries a fixed code, such as `INVALID_ARGUMENT`, `NOT_FOUND`, `PERMISSION_DENIED`, `RATE_LIMITED`, `TIMEOUT`, `CANCELLED` or `PAGINATION_LIMIT`. On a write, `write_outcome` says whether the change reached TestRail: `not_started`, `acknowledged` or `unknown`. Check before retrying an `unknown` write.
-- **Lists.** A list returns one page of 50 by default, and up to 250 on request. Set `_mcp.pagination` to `"all"` for a bounded complete fetch. It stops with `PAGINATION_LIMIT`, and no partial data, if it would pass a bound.
+- **Errors.** Every error carries a fixed code, such as `INVALID_ARGUMENT`, `NOT_FOUND`, `PERMISSION_DENIED`, `RATE_LIMITED`, `TIMEOUT` or `PAGINATION_LIMIT`. On a write, `write_outcome` says whether the change reached TestRail: `not_started`, `acknowledged` or `unknown`. Check before retrying an `unknown` write.
+- **Lists.** The 24 paged lists return one page of 50 by default, and up to 250 on request. Set `_mcp.pagination` to `"all"` for a bounded complete fetch. It stops with `PAGINATION_LIMIT`, and no partial data, if it would pass a bound. Other lists, such as `testrail_get_statuses` and `testrail_get_users`, return TestRail's whole reply and take no `_mcp` settings.
   - Six lists choose their own pages and take no page size or offset: `testrail_get_variables`, `testrail_get_datasets`, `testrail_get_shared_step_history`, `testrail_get_roles`, `testrail_get_groups` and `testrail_get_case_statuses`.
   - Their later pages are reachable only through `"all"`.
   - See [pagination](docs/pagination.md).
-- **Files.** Uploads read a local path that must resolve inside an upload root. Each download writes a new file to the download directory and never overwrites one, so its tools are marked as not read-only. The server never deletes a completed download. See [local files](docs/local-files.md).
+- **Files.** Uploads read a local path that must resolve inside an upload root. The server sends a copy it makes in a private directory under the system's temporary directory, and removes the copy once the request has settled. Each download writes a new file to the download directory and never overwrites one, so its tools are marked as not read-only. The server never deletes a completed download. See [local files](docs/local-files.md).
 - **Side effects.** Every tool carries MCP annotations describing its effect. Report runs generate a report, and may send the template's configured email, so don't call them repeatedly. The server adds no confirmation step of its own; your client's approval settings apply.
-- **Cancellation.** Cancelling a call stops the server waiting for it. A request already sent to TestRail may still complete, so a cancelled write reports `write_outcome: "unknown"`. See [runtime lifetime](docs/runtime-lifetime.md).
+- **Cancellation.** Cancelling a call stops the server waiting for it, and the client gets no result for that call. A request already sent to TestRail may still complete, so treat a cancelled write as possibly applied and check before retrying it. See [runtime lifetime](docs/runtime-lifetime.md).
 
 ## Development
 
