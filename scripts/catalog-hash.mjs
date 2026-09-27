@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /*
- * Print the catalog an installed server lists, for the C01 evidence record: the tool
- * count and the SHA-256 of the sorted tool names joined by newlines, over both the legacy
- * and the 2026-07-28 protocol. It launches the executable you name against the fixture
+ * Print the catalog an installed server lists, for the C01 evidence record: the protocol
+ * revision each session negotiated, the tool count and the SHA-256 of the sorted tool
+ * names joined by newlines, over both the legacy and the 2026-07-28 protocol. It launches the executable you name against the fixture
  * stand-in, so it needs no TestRail account and makes no TestRail request.
  *
  *   node scripts/catalog-hash.mjs [--command testrail-mcp] [--arg ...]
@@ -43,7 +43,11 @@ export async function listCatalog({ command, args = [] }) {
       await client.connect(new StdioClientTransport({ command, args, env, stderr: 'ignore' }));
       try {
         const names = await listAll(client);
-        eras[label] = { count: names.length, sorted_names_sha256: catalogHash(names), duplicates: names.length - new Set(names).size };
+        // The revision the session really negotiated, so a record can show each era ran.
+        eras[label] = {
+          protocol: client.getNegotiatedProtocolVersion() ?? null,
+          count: names.length, sorted_names_sha256: catalogHash(names), duplicates: names.length - new Set(names).size,
+        };
       } finally {
         await client.close();
       }

@@ -163,43 +163,53 @@ Use an isolated client configuration and the fixture-backed test launcher for re
 The kit lets you run every scenario below with no TestRail account. It needs a clone of this repository with `npm ci` run in it.
 
 1. **Start the stand-in.** Run `node scripts/fixture-testrail.mjs` in the clone. It prints the variables the client needs, with synthetic credentials.
-   - `--pages 3` makes every paged list span three pages, for C04 and C05.
-   - `--log requests.jsonl` records each request's method, endpoint and status. It never records the credentials.
-   - The stand-in answers every one of the 133 routes with that endpoint's reply from its parameter manifest. It accepts any ID, except the reserved ones below.
-2. **Launch the client with those variables.** Also set `TESTRAIL_MCP_UPLOAD_ROOTS` and `TESTRAIL_MCP_DOWNLOAD_DIR` to directories you create. Leave the client's configuration as the examples above give it.
-3. **Check the catalog for C01.** Run `node scripts/catalog-hash.mjs --command testrail-mcp`. It prints the count and hash that the server you installed lists in both protocol eras. The expected catalog is 133 tools, sorted-name SHA-256 `a423193aa71240cb0cca5bd0ed54c30fdadfdadb3d61ac297a9afb4afd111724`.
+   - `--pages 3` makes every paged list hold three pages, for C04 and C05: 150 items, read 50 at a time, for a list that takes a page size, and 6 items, 2 at a time, for a list that chooses its own pages. A larger page size or `"all"` reads the same list.
+   - `--log requests.jsonl` records each request's method, endpoint and status. It never records the credentials, and the stand-in refuses to start if it cannot write the file.
+   - The stand-in answers every one of the 133 endpoints, at every path the fixtures show the driver sending, with that endpoint's reply from its parameter manifest. It accepts any ID, except the reserved ones below.
+2. **Launch the client with those variables.** The stand-in is plain HTTP on the loopback interface, so add `TESTRAIL_ALLOW_INSECURE` and `TESTRAIL_ALLOW_PRIVATE_HOSTS` to the client's forwarding list or `env` map, as the optional variables above describe. Also set `TESTRAIL_MCP_UPLOAD_ROOTS` and `TESTRAIL_MCP_DOWNLOAD_DIR` to directories you create. Otherwise leave the client's configuration as the examples above give it.
+3. **Check the catalog for C01.** Run `node scripts/catalog-hash.mjs --command testrail-mcp`. For each protocol era it prints the revision the session negotiated, and the count and hash of the catalog the server you installed lists. The expected catalog is 133 tools, sorted-name SHA-256 `a423193aa71240cb0cca5bd0ed54c30fdadfdadb3d61ac297a9afb4afd111724`.
 4. **Run the C03 tasks.** Type each prompt from [`tests/fixtures/clients/c03-corpus.json`](../tests/fixtures/clients/c03-corpus.json) into the client. Compare the tool and arguments the client chose with the task's expected ones. Record wrong selections and retries.
 
-Reserved IDs turn any route into a scenario:
+Reserved IDs work as a path ID, on the 112 routes that take a path ID; a route without one, such as `testrail_get_projects`, has no scenario.
 
-| Path ID | Stand-in reply | What the client should show |
-| --- | --- | --- |
-| `990404` | 404 | `NOT_FOUND` (C06) |
-| `990400` | 400, TestRail's reply to an ID it will not serve | `UPSTREAM_ERROR` with `http_status` 400 |
-| `990401`, `990403` | 401, 403 | `AUTHENTICATION_FAILED`, `PERMISSION_DENIED` |
-| `990500` | 500 | On a write, `UPSTREAM_ERROR` with `write_outcome: "unknown"` (C07) |
-| `990001` | The fixture reply with one text field turned into a number | The data plus a `SCHEMA_DRIFT` warning (C06) |
-| `990002` | A JSON string where the entity belongs | `INVALID_RESPONSE`, no data (C06) |
-| `990020` | The reply after 20 seconds | The driver's 15-second request timeout (C10) |
-| `990070` | The reply after 70 seconds | The 60-second response wait expires as `TIMEOUT`, and the request keeps its slot until it settles. Five at once show `BUSY` (C10) |
-| `990900` | A single list page of about 700 KB | A large result within the default budgets (C09) |
-| `990901` | A single list page of about 3 MB | `RESPONSE_TOO_LARGE`, never truncated (C09) |
+| Path ID | Stand-in reply | Routes | What the client should show |
+| --- | --- | --- | --- |
+| `990404` | 404 | the 112 routes that take a path ID | `NOT_FOUND` (C06) |
+| `990400` | 400, TestRail's reply to an ID it will not serve | the same routes | `UPSTREAM_ERROR` with `http_status` 400 |
+| `990401` | 401 | the same routes | `AUTHENTICATION_FAILED` |
+| `990403` | 403 | the same routes | `PERMISSION_DENIED` |
+| `990500` | 500 | the 69 writes among them | `UPSTREAM_ERROR` with `write_outcome: "unknown"` (C07) |
+| `990001` | The entity, or a list's first item, with every top-level text turned into a number and every number into text | the 40 reads that return JSON records. `testrail_get_bdds` rows are open records, so they cannot drift | The data plus a `SCHEMA_DRIFT` warning (C06) |
+| `990002` | A JSON string where the entity belongs | all 41 reads that return JSON, which leaves out the text of `testrail_get_bdd` and the file of `testrail_get_attachment` | `INVALID_RESPONSE`, no data (C06) |
+| `990020` | The reply after 20 seconds | any route with a path ID; the kit's test uses `testrail_get_project` | The driver's 15-second request timeout: `UPSTREAM_ERROR` with `http_status` 408. Four such calls hold every slot until then, so a fifth gets `BUSY` (C10) |
+| `990045` | Each reply after 14 seconds, and a paged list of ten pages of any size | any route with a path ID, and its paged lists for `"all"`; the kit's test uses `testrail_get_cases` | A page after 14 seconds. `"all"` passes the 45-second budget on the fourth page: `PAGINATION_LIMIT` with reason `max_duration`, and no partial data (C05, C10) |
+| `990900` | A single list page of about 700 KB | the 20 paged lists that take a path ID | A large result within the default budgets (C09) |
+| `990901` | A single list page of about 3 MB | the same lists | `RESPONSE_TOO_LARGE`, never truncated (C09) |
 
-`tests/fixture-testrail.test.ts` starts the stand-in as a tester would and points the production server at it through its ordinary configuration. Every one of the 133 tools must succeed against it. Each reserved error, drift, unusable and size ID must produce the outcome above. The two delays are run scaled down, and the test checks only that each reply arrives after its scaled delay. The timeout, `TIMEOUT` and `BUSY` outcomes they lead to in real time are held by `tests/runtime-lifetime.test.ts`, not by the kit. The client itself is the one thing the kit cannot test.
+No stand-in delay reaches the 60-second response wait: the driver's own 15-second request and body timeouts end every stalled request first. `tests/runtime-lifetime.test.ts` holds the wait, and `TIMEOUT`, with a watchdog fired by hand.
+
+`tests/fixture-testrail.test.ts` starts the stand-in as a tester would. It drives the production tool pipeline at it in-process, through its ordinary configuration, with the real driver over real HTTP; only the driver's rate limit is raised for the sweeps.
+- Every one of the 133 tools gets its fixture's reply, with no warning.
+- Each reserved ID produces the outcome above on every route the table gives it, and the IDs and outcomes here equal the test's own table.
+- Every paged list spans its pages, and reads the same list whatever its page size.
+- The 20-second reply runs in real time. The slow pages run scaled down, with the duration budget scaled the same way.
+
+The client itself is the one thing the kit cannot test.
 
 #### Recording results
 
 Record each surface's results in its file under [`docs/evidence/clients/`](evidence/clients/): Codex desktop, Codex CLI, Claude Code and GitHub Copilot CLI. Every scenario starts `not_run`. `tests/client-kit.test.ts` refuses a record that claims more than it shows:
-- A scenario reported as `pass`, `fail` or `blocked` needs its own evidence. A failure or block also needs notes saying why.
-- Once any scenario has run, the record must name:
-  - the client version, OS, Node, model and provider;
-  - the package version and tarball integrity, and the driver version;
-  - the discovery mode and the negotiated protocol;
-  - the provenance, the test date and the tester.
-- Claude Code records both its default negotiation and `MCP_PROTOCOL_NEGOTIATION=auto`.
+- A scenario that passed or failed needs its own evidence, and a failure or block needs notes saying why. A scenario not run cites no evidence.
+- A record of nothing run states nothing else: every other field stays empty.
+- Any attempted scenario, a blocked one included, names the test date, the tester, the client version and the OS.
+- Once a scenario has passed or failed, the record also names:
+  - the client's Node, model and provider;
+  - the package version, tarball integrity and driver version;
+  - the discovery mode and the provenance.
+- A pass names the negotiated protocol. Claude Code also names its `MCP_PROTOCOL_NEGOTIATION=auto` negotiation, or `unsupported` where the installed runtime has none.
 - A C01 pass requires the full 133-tool catalog with the hash above.
 - Live evidence names the TestRail version.
-- Records hold variable names only, never values, and no email address or local path.
+- Records hold variable names only, the `TESTRAIL_` variables and `MCP_PROTOCOL_NEGOTIATION`, never values. They hold no credential header, email address, local path or key-like token. Links, package specs and versions are fine.
 
 The status table at the top of this guide must read `Pending` for a surface with no run scenario. Otherwise it must link that surface's record.
 
