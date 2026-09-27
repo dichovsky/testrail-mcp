@@ -220,9 +220,12 @@ function placed(args: readonly unknown[], destination: NonNullable<Parameter['dr
  * What the pinned driver does with the value at this reference: refuses it with its own
  * validation error or by crashing, in either case before any request, or lets it reach
  * the wire, which leaves the refusal to the adapter. The upstream reply is the
- * baseline's own, so an accepted value can complete the call it was made for.
+ * baseline's own, so an accepted value can complete the call it was made for, and
+ * `completed` says whether it did.
  */
-async function observe(reference: (typeof references)[number], paths: Readonly<Record<string, string>>, value: unknown): Promise<Label> {
+async function observe(
+  reference: (typeof references)[number], paths: Readonly<Record<string, string>>, value: unknown,
+): Promise<{ label: Label; completed: boolean }> {
   const { expected, parameter } = reference;
   if (parameter.driver === null) throw new Error(`${reference.label} has no driver location`);
   let requests = 0;
@@ -231,10 +234,23 @@ async function observe(reference: (typeof references)[number], paths: Readonly<R
     baseUrl: 'https://domains.testrail.io', email: 'user@example.com', apiKey: 'synthetic',
     registerProcessHandlers: false, maxRetries: 0, enableCache: false,
     dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
-    fetch: () => {
+    fetch: (input) => {
       requests += 1;
+      /*
+       * A paged reply echoes the offset it was asked for, as TestRail's does (case history
+       * wraps its envelope in a one-element array), so a start
+       * offset under test gets a reply the driver can accept rather than the baseline's.
+       */
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const offset = /[?&]offset=(\d+)/u.exec(url)?.[1];
+      const echo = (envelope: unknown): unknown => offset !== undefined && typeof envelope === 'object' && envelope !== null
+        && !Array.isArray(envelope) && typeof (envelope as { offset?: unknown }).offset === 'number'
+        ? { ...envelope, offset: Number(offset) } : envelope;
+      // Case history arrives as its envelope inside a one-element array.
+      const body = reply.kind !== 'json' ? undefined
+        : Array.isArray(reply.body) && reply.body.length === 1 ? [echo(reply.body[0])] : echo(reply.body);
       return Promise.resolve(reply.kind === 'json'
-        ? new Response(JSON.stringify(reply.body), { headers: { 'content-type': 'application/json' } })
+        ? new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } })
         : new Response(reply.kind === 'text' ? reply.text : reply.utf8, {
           headers: { 'content-type': reply.kind === 'text' ? 'text/plain' : 'application/octet-stream' },
         }));
@@ -249,9 +265,9 @@ async function observe(reference: (typeof references)[number], paths: Readonly<R
     // Called inside an async function, so a synchronous throw is observed as a refusal too.
     const error: unknown = await (async () => { await Reflect.apply(method, module, args); })()
       .then(() => undefined, (reason: unknown) => reason);
-    if (requests > 0) return 'adapter';
+    if (requests > 0) return { label: 'adapter', completed: error === undefined };
     if (error === undefined) throw new Error(`${reference.label}: the call neither failed nor reached the wire`);
-    return error instanceof TestRailValidationError ? 'driver' : 'driver_crash';
+    return { label: error instanceof TestRailValidationError ? 'driver' : 'driver_crash', completed: false };
   } finally { client.destroy(); }
 }
 
@@ -281,7 +297,7 @@ describe('shared domains where they are used', () => {
       return { label: 'delete_labels body.label_ids', manifest, parameter, expected: baseline.expect as Extract<typeof baseline.expect, { kind: 'accepted' }> };
     };
     const observed = Object.fromEntries(await Promise.all(domain.invalid.map(async (invalid) =>
-      [invalid.id, await observe(reference(), {}, invalid.value)] as const)));
+      [invalid.id, (await observe(reference(), {}, invalid.value)).label] as const)));
     expect(observed).toEqual({
       empty: 'driver', 'zero-member': 'driver', 'negative-member': 'driver', 'fractional-member': 'driver',
       'string-member': 'driver', scalar: 'driver', 'above-safe-member': 'adapter',
@@ -318,10 +334,11 @@ describe('shared domains where they are used', () => {
       try {
         const paths = directory === undefined ? {} : await materializeFiles(manifest, directory);
         for (const valid of domain.valid) {
-          expect(await observe(reference, paths, valid.value), `${valid.id} is accepted`).toBe('adapter');
+          // Accepted means the call went out and completed against the reply it was made for.
+          expect(await observe(reference, paths, valid.value), `${valid.id} is accepted`).toEqual({ label: 'adapter', completed: true });
         }
         for (const invalid of domain.invalid) {
-          expect(await observe(reference, paths, invalid.value), invalid.id).toBe(claimedLabel(parameter, invalid));
+          expect((await observe(reference, paths, invalid.value)).label, invalid.id).toBe(claimedLabel(parameter, invalid));
         }
       } finally {
         if (directory !== undefined) await rm(directory, { recursive: true, force: true });
