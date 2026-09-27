@@ -417,9 +417,18 @@ function auditProvenance(manifest: ParameterManifest, ledger: DriverReleases, fa
   if (!releases.has(review.authored_commit)) fail(`Authored commit ${short(review.authored_commit)} is not a recorded release`);
 
   const pinned = `${driverSourcePrefix}${review.driver_commit}/`;
-  const cited = [...new Set(manifest.sources
-    .filter(({ url }) => url.startsWith(pinned))
-    .map(({ url }) => decodeURIComponent(url.slice(pinned.length).split(/[?#]/)[0] ?? '')))].sort();
+  const paths = new Set<string>();
+  for (const source of manifest.sources) {
+    if (!source.url.startsWith(pinned)) continue;
+    // A line anchor or query names part of a file, not another file.
+    const encoded = source.url.slice(pinned.length).split(/[?#]/)[0] ?? '';
+    try {
+      paths.add(decodeURIComponent(encoded));
+    } catch {
+      fail(`Source ${source.id} has a malformed driver path: ${encoded}`);
+    }
+  }
+  const cited = [...paths].sort();
   if (current !== undefined) {
     for (const path of cited) {
       if (current.files[path]?.git_blob == null) fail(`Release ledger does not record cited file ${path} at ${short(review.driver_commit)}`);

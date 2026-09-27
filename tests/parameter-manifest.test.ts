@@ -176,6 +176,13 @@ describe('driver provenance evidence', () => {
       .toEqual(bumped.map((name) => `testrail_${name}`));
     expect(manifests.filter(({ review }) => review.evidence !== undefined).map(({ endpoint }) => endpoint.tool).sort())
       .toEqual(bumped.map((name) => `testrail_${name}`));
+    // authored_commit is declared, not derived, so the gate alone cannot tell a moved one
+    // from an honest one. Pin it here: re-authoring any manifest at a later commit, the
+    // way a stamp would to avoid evidence, has to edit this test in the same diff.
+    expect(Object.fromEntries(manifests.map(({ endpoint, review }) => [endpoint.tool, review.authored_commit])))
+      .toEqual(Object.fromEntries(manifests.map(({ endpoint }) => [
+        endpoint.tool, bumped.includes(endpoint.tool.replace(/^testrail_/, '')) ? release700 : release720,
+      ])));
     for (const name of bumped) {
       const { review } = find(name);
       expect(review.authored_commit).toBe(release700);
@@ -332,6 +339,24 @@ describe('driver provenance evidence', () => {
       release.files = Object.fromEntries(Object.entries(release.files).filter(([path]) => path !== 'src/schemas/cases.ts'));
     });
     expect(audit(find('add_case'), without)).toEqual(['testrail_add_case: Release ledger does not record cited file src/schemas/cases.ts at cc7751c0']);
+    const absent = ledger((copy) => { releaseFile(copy, release720, 'src/schemas/cases.ts').git_blob = null; });
+    expect(audit(find('add_case'), absent)).toEqual(['testrail_add_case: Release ledger does not record cited file src/schemas/cases.ts at cc7751c0']);
+  });
+
+  it('reads a cited path without its anchor or query, decoded, and reports a malformed one', () => {
+    const cite = (manifest: ParameterManifest, path: string): void => {
+      manifest.sources.push({ id: `extra-${String(manifest.sources.length)}`, url: `https://github.com/dichovsky/testrail-api-client/blob/${release720}/${path}`, supports: 'An extra citation.' });
+    };
+    const anchored = find('update_project');
+    cite(anchored, 'src/modules/projects.ts#L10-L20');
+    cite(anchored, 'src/schemas/projects.ts?plain=1');
+    expect(audit(anchored)).toEqual([]);
+    const encoded = find('update_project');
+    cite(encoded, 'src/url%2Ets');
+    expect(audit(encoded)).toEqual(['testrail_update_project: Evidence 71a80d98..cc7751c0 does not cover cited file src/url.ts']);
+    const malformed = find('update_project');
+    cite(malformed, 'src/%E0.ts');
+    expect(audit(malformed)).toEqual([`testrail_update_project: Source extra-${String(malformed.sources.length - 1)} has a malformed driver path: src/%E0.ts`]);
   });
 
   it('holds the ledger to the installed package', () => {
@@ -343,7 +368,25 @@ describe('driver provenance evidence', () => {
     expect(auditDriverReleases(ledger((copy) => { releaseFile(copy, release720, 'src/url.ts').package_sha256 = null; }), installedDriver))
       .toEqual(['src/url.ts: dist/url.js is installed but recorded as absent']);
     expect(auditDriverReleases(ledger((copy) => { releaseFile(copy, release720, 'src/url.ts').package_file = 'dist/absent.js'; }), installedDriver))
-      .toEqual(['src/url.ts: dist/absent.js is recorded but not installed']);
+      .toEqual([
+        '7.2.0 src/url.ts: package_file dist/absent.js is not the file the package ships for it (dist/url.js)',
+        'src/url.ts: dist/absent.js is recorded but not installed',
+      ]);
+    // A shipped file that exists but belongs to another source is caught by path, not by hash.
+    expect(auditDriverReleases(ledger((copy) => {
+      for (const release of copy.releases) {
+        const plans = release.files['src/modules/plans.ts'];
+        const projects = release.files['src/modules/projects.ts'];
+        if (plans && projects) Object.assign(projects, { package_file: plans.package_file, package_sha256: plans.package_sha256 });
+      }
+    }), installedDriver)).toEqual([
+      '7.0.0 src/modules/projects.ts: package_file dist/modules/plans.js is not the file the package ships for it (dist/modules/projects.js)',
+      '7.2.0 src/modules/projects.ts: package_file dist/modules/plans.js is not the file the package ships for it (dist/modules/projects.js)',
+    ]);
+    expect(auditDriverReleases(ledger((copy) => {
+      const [first] = copy.releases;
+      if (first) first.files['README.md'] = { git_blob: null, package_file: 'README.md', package_sha256: null };
+    }), installedDriver)).toEqual(['7.0.0 README.md: package_file README.md is not the file the package ships for it (none known)']);
     expect(auditDriverReleases(ledger((copy) => {
       const [first] = copy.releases;
       if (first) copy.releases.push({ ...first });

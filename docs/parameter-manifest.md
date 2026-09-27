@@ -245,13 +245,20 @@ The five uploads share the transport's staging and the driver's multipart pipeli
 
 A manifest's `review` names two driver commits. `authored_commit` is the one it was first reviewed against and never moves; `driver_commit` is the one it is reviewed against now. When they differ, `review.evidence` must record each advance as a step from one commit to the next, and the steps must chain from `authored_commit` to `driver_commit`. Each step lists every driver file the manifest cites at `driver_commit`, says whether that file changed between the step's two commits, and carries a note for each file that did. A pointer bump that edits `driver_commit` and the source links alone therefore fails the audit, as does a manifest backdated to an earlier `authored_commit` without evidence.
 
+`authored_commit` is a declared field, and the offline gate has no history to compare it with, so the audit cannot tell a moved `authored_commit` from an honest one: a bump that moves it along with `driver_commit` would pass the audit by itself. The test "carries evidence on exactly the five manifests…" closes that gap by pinning every manifest's `authored_commit`, so re-authoring a manifest at a later commit also has to edit that test, in the same diff a reviewer reads. A manifest for a new endpoint, authored at a later release, edits it the same way.
+
 The audit does not take a changed-or-unchanged claim on trust. [`tests/fixtures/driver-releases.json`](../tests/fixtures/driver-releases.json) records, for each reviewed driver release, its tag commit, its npm integrity and, for every driver file any manifest cites, the file's git blob ID at that commit and the SHA-256 of the file the published package ships for it (`src/x.ts` ships as `dist/x.js`; `skill/SKILL.md` ships as itself). A file has changed between two releases when either hash differs. A claim that disagrees with the ledger is rejected, and so is evidence naming a file or commit the ledger does not record. Every file a manifest cites must be recorded at its `driver_commit`, so a future step always has both ends to compare.
 
-The gate runs without a network. The installed package ships no sources, so git blob IDs cannot be recomputed in CI. Instead, the ledger entry for the installed version is held to the installed package: its integrity must equal the lockfile's, and each shipped file it names must match its recorded SHA-256. The blob IDs were recorded from the driver's git history, and anyone can re-check them with one command per release:
+The gate runs without a network. The installed package ships no sources, so git blob IDs cannot be recomputed in CI. Instead, the ledger entry for the installed version is held to the installed package: its integrity must equal the lockfile's, and each shipped file it names must match its recorded SHA-256. Every entry's `package_file` must also be the file the package ships for its path, so a hash cannot be borrowed from another file. The blob IDs were recorded from the driver's git history. To re-check every blob ID in the ledger, run this from a clone of the driver next to this repository; it prints nothing when all 98 match:
 
 ```sh
 git clone https://github.com/dichovsky/testrail-api-client && cd testrail-api-client
-git rev-parse cc7751c01c3d3956d061073283bee6b23bf33422:src/modules/cases.ts   # compare with the ledger
+node -e 'const { execFileSync } = require("node:child_process");
+for (const r of require("../testrail-mcp/tests/fixtures/driver-releases.json").releases)
+  for (const [path, f] of Object.entries(r.files)) {
+    let blob = null; try { blob = execFileSync("git", ["rev-parse", "-q", "--verify", `${r.commit}:${path}`]).toString().trim(); } catch {}
+    if (blob !== f.git_blob) console.log(r.version, path, blob, "!=", f.git_blob);
+  }'
 ```
 
 The five manifests F04 wrote at 7.0.0 (`71a80d98`) carry one step each, to 7.2.0 (`cc7751c`), reviewed on 2026-09-17. `get_attachment` also cites `src/retry-policy.ts`, which did change between the releases: 7.2.0 added the `rateLimitOnly` policy. That file was first cited on 2026-09-26, when the manifest was rewritten directly against `cc7751c`, and its evidence entry records it as changed, with that note. The other 128 manifests were authored at `cc7751c` and carry no evidence.

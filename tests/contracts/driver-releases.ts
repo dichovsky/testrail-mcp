@@ -47,6 +47,17 @@ export function fileChanged(from: DriverReleaseFile, to: DriverReleaseFile): boo
   return from.git_blob !== to.git_blob || from.package_sha256 !== to.package_sha256;
 }
 
+/**
+ * The file the published package ships for a driver source path: a TypeScript module
+ * under src/ is compiled to the same path under dist/, and a file the package ships
+ * verbatim, such as skill/SKILL.md, is its own counterpart. Undefined for any other path.
+ */
+export function shippedPath(path: string): string | undefined {
+  const module = /^src\/(.+)\.ts$/.exec(path);
+  if (module) return `dist/${module[1] ?? ''}.js`;
+  return path.startsWith('skill/') ? path : undefined;
+}
+
 /** The installed driver as the gate can see it without a network: its version, locked integrity and files. */
 export interface InstalledDriver {
   version: string;
@@ -67,6 +78,14 @@ export function auditDriverReleases(ledger: DriverReleases, installed: Installed
     const values = ledger.releases.map((release) => release[key]);
     for (const value of new Set(values.filter((item, index) => values.indexOf(item) !== index))) {
       errors.push(`Duplicate release ${key}: ${value}`);
+    }
+  }
+  for (const release of ledger.releases) {
+    for (const [path, file] of Object.entries(release.files)) {
+      const expected = shippedPath(path);
+      if (file.package_file !== expected) {
+        errors.push(`${release.version} ${path}: package_file ${file.package_file} is not the file the package ships for it (${expected ?? 'none known'})`);
+      }
     }
   }
   const release = ledger.releases.find(({ version }) => version === installed.version);
