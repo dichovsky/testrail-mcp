@@ -105,6 +105,11 @@ describe('soft-delete previews', () => {
         data: { affected_tests: '4', affected_cases: 2 },
         warnings: [{ code: 'SCHEMA_DRIFT', count: 1 }],
       });
+      // A count sent in the wrong type is still a count: the preview answered, so it is drift.
+      const alone = await call(tool, soft(input, true), json({ affected_tests: '4' }));
+      expect(alone).toEqual({
+        isError: false, structured: { data: { affected_tests: '4' }, warnings: [{ code: 'SCHEMA_DRIFT', count: 1 }] }, urls: [previewUrl],
+      });
     });
 
     it.each([
