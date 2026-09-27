@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { Client, ProtocolError, ProtocolErrorCode } from '@modelcontextprotocol/client';
+import { Client, parseJSONRPCMessage, ProtocolError, ProtocolErrorCode } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
 /*
@@ -273,13 +273,15 @@ export async function verifyProtocol({ command, args, env, downloadDirectory, to
       await transport.close();
       assert.equal(transport.forced, false, `${label}: the server was still running ${STDIN_EXIT_MS / 1000} s after stdin closed.`);
       assert.deepEqual(transport.exit, { code: 0, signal: null }, `${label}: the server exited with ${JSON.stringify(transport.exit)} after stdin closed.`);
-      // Every stdout line, the last one included, is a JSON-RPC message.
+      // Every stdout line, the last one included, is a complete JSON-RPC message: a request,
+      // a notification, or a response with a result or an error. The client validates only
+      // the lines it received, and a final unterminated line never reaches it.
       progress.step = 'output';
       assert.ok(transport.lines.length > 0, `${label}: no protocol output.`);
       for (const line of transport.lines) {
         let message;
         try { message = JSON.parse(line); } catch { assert.fail(`${label}: stdout carried a line that is not JSON: ${line.slice(0, 200)}`); }
-        assert.equal(message?.jsonrpc, '2.0', `${label}: stdout line is not JSON-RPC: ${line.slice(0, 200)}`);
+        assert.doesNotThrow(() => parseJSONRPCMessage(message), `${label}: stdout line is not a JSON-RPC message: ${line.slice(0, 200)}`);
       }
       checkStderr(label, transport.stderr, ['server_started', 'server_stopped']);
       checkNoSecrets(label, testRail.baseUrl, { stdout: transport.lines.join('\n'), stderr: transport.stderr });
