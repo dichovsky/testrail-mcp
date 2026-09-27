@@ -382,6 +382,69 @@ describe('independent parameter manifest format', () => {
     expect(auditParameterManifests([sections])).toEqual([]);
   });
 
+  it('holds each parameter\'s declared driver location to the case\'s literal arguments', () => {
+    const find = (tool: string) => {
+      const manifest = manifests.find(({ endpoint }) => endpoint.tool === `testrail_${tool}`);
+      if (!manifest) throw new Error(`Required ${tool} manifest is missing`);
+      return structuredClone(manifest);
+    };
+    const relocate = (tool: string, id: string, driver: { argument: number; path: string[] }) => {
+      const manifest = find(tool);
+      manifest.parameters = manifest.parameters.map((parameter) => parameter.id === id ? { ...parameter, driver } : parameter);
+      return auditParameterManifests([manifest]);
+    };
+    expect(auditParameterManifests([find('get_cases'), find('add_section')])).toEqual([]);
+    // A positional argument moved.
+    expect(relocate('get_project', 'project_id', { argument: 1, path: [] })).toEqual([
+      'testrail_get_project: Case representative-id passes project_id to argument 1 as [], not [7]',
+      'testrail_get_project: Case largest-safe-id passes project_id to argument 1 as [], not [9007199254740991]',
+    ]);
+    // Two filters renamed onto each other's options. Distinct values are what expose it.
+    expect(relocate('get_cases', 'query.type_id', { argument: 1, path: ['templateId'] }))
+      .toContain('testrail_get_cases: Case list-filters passes query.type_id to argument 1 at templateId as [[1,2]], not [[2,3]]');
+    // A body field the case supplies without claiming to cover it is checked all the same.
+    const sections = find('add_section');
+    const covering = sections.cases.filter(({ covers }) => covers.some(({ parameter }) => parameter === 'body.description'));
+    sections.cases = sections.cases.map((fixture) => fixture.id !== 'every-field' || fixture.expect.kind !== 'accepted' ? fixture : {
+      ...fixture,
+      covers: fixture.covers.filter(({ parameter }) => parameter !== 'body.description'),
+      expect: { ...fixture.expect, driver: { ...fixture.expect.driver, arguments: [7, {
+        name: 'Nested section', suite_id: 3, parent_id: 10, description: 'Created under section 3.',
+      }] } },
+    });
+    expect(covering.map(({ id }) => id)).toContain('every-field');
+    expect(auditParameterManifests([sections])).toContain(
+      'testrail_add_section: Case every-field passes body.description to argument 1 at description as ["Created under section 3."], not ["Created under section 10."]',
+    );
+  });
+
+  it('requires a case covering a shared domain requirement to use a value the domain proved for it', () => {
+    const project = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_get_project');
+    const cases = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_get_cases');
+    if (!project || !cases) throw new Error('Required get_project and get_cases manifests are missing');
+    const retarget = (manifest: typeof project, id: string, input: ParameterFixture['input']) => ({
+      ...manifest, cases: manifest.cases.map((fixture) => fixture.id === id ? { ...fixture, input } : fixture),
+    });
+    // The issue's example: the upper bound claimed with an ordinary identifier.
+    expect(auditParameterManifests([retarget(project, 'largest-safe-id', { project_id: 7 })])).toContain(
+      'testrail_get_project: Case largest-safe-id covers project_id/upper-bound with [7], not a value positive_id proves for it: [9007199254740991]',
+    );
+    // The representative pair admits any value in the domain, but nothing outside it.
+    expect(auditParameterManifests([retarget(project, 'representative-id', { project_id: 42 })])
+      .filter((error) => error.includes('covers project_id/'))).toEqual([]);
+    expect(auditParameterManifests([retarget(project, 'representative-id', { project_id: 1.5 })])).toContain(
+      'testrail_get_project: Case representative-id covers project_id/mapping with [1.5], outside the positive_id domain',
+    );
+    // A list is exact too: only lists the probe drove through the driver count.
+    const listFilters = cases.cases.find(({ id }) => id === 'list-filters');
+    if (listFilters === undefined) throw new Error('Required list-filters case is missing');
+    expect(auditParameterManifests([retarget(cases, 'list-filters', { ...listFilters.input, query: {
+      ...(listFilters.input.query as object), type_id: [5, 6],
+    } })])).toContain(
+      'testrail_get_cases: Case list-filters covers query.type_id/list with [[5,6]], not a value id_filter proves for it: [[3,4],[1,2],[2,3],[7,8],[9,10],[10,11],[11,12]]',
+    );
+  });
+
   it('detects a removed union-branch fixture instead of merely counting endpoints', () => {
     const manifest = example();
     manifest.cases = manifest.cases.filter(({ id }) => id !== 'uuid-id');

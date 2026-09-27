@@ -1,4 +1,6 @@
 import { readFile, readdir } from 'node:fs/promises';
+import { isDeepStrictEqual } from 'node:util';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
 import { z } from 'zod';
 import { loadDomainLibrary, type DomainLibrary } from './domains.js';
 
@@ -304,14 +306,53 @@ export function supplies(value: unknown, path: readonly string[]): boolean {
   return Object.hasOwn(record, head) && supplies(record[head], rest);
 }
 
+/**
+ * Every value the path reaches, in document order. A bare `*` fans out over an array's
+ * members, and a name ending in `*` gathers the own properties with that prefix into one
+ * record, which is how both an input and a driver argument carry an extension point.
+ */
+export function reach(value: unknown, path: readonly string[]): unknown[] {
+  const [head, ...rest] = path;
+  if (head === undefined) return [value];
+  if (head === '*') return Array.isArray(value) ? value.flatMap((item) => reach(item, rest)) : [];
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return [];
+  const record = value as Record<string, unknown>;
+  if (head.endsWith('*')) {
+    const prefix = head.slice(0, -1);
+    const matching = Object.entries(record).filter(([name]) => name.startsWith(prefix));
+    return matching.length === 0 ? [] : reach(Object.fromEntries(matching), rest);
+  }
+  return Object.hasOwn(record, head) ? reach(record[head], rest) : [];
+}
+
 function duplicates(values: readonly string[]): string[] {
   return [...new Set(values.filter((value, index) => values.indexOf(value) !== index))];
+}
+
+/**
+ * The shared domain library the manifests reference. A domain reference is audited
+ * against it by default, so omitting the argument can never skip the check.
+ */
+const sharedDomains = await loadDomainLibrary();
+
+const validators = new WeakMap<object, (value: unknown) => boolean>();
+
+/** A domain's JSON Schema fragment as a predicate, compiled once per fragment. */
+function domainValidator(domain: JsonObject): (value: unknown) => boolean {
+  let validate = validators.get(domain);
+  if (validate === undefined) {
+    const compiled = new AjvJsonSchemaValidator().getValidator(domain);
+    validate = (value) => compiled(value).valid;
+    validators.set(domain, validate);
+  }
+  return validate;
 }
 
 /** Audit authored coverage; this does not certify an adapter or infer missing API fields. */
 export function auditParameterManifests(
   manifests: readonly ParameterManifest[],
   inventory?: readonly EndpointIdentity[],
+  library: DomainLibrary = sharedDomains,
 ): string[] {
   const errors: string[] = [];
   for (const duplicate of duplicates(manifests.map((manifest) => manifest.endpoint.tool))) {
@@ -398,6 +439,57 @@ export function auditParameterManifests(
         }
       }
       for (const duplicate of duplicates(caseReferences)) fail(`Case ${fixture.id} repeats coverage ${duplicate}`);
+      if (fixture.expect.kind === 'accepted') {
+        /*
+         * The manifest says where each parameter lands among the driver's arguments, and
+         * the case lists those arguments literally. Nothing else holds the two together,
+         * so a location both the manifest and the registration misdescribe would stand
+         * while the literal arguments and the adapter were right. Every parameter the case
+         * supplies is checked, not only those it claims to cover, since an argument list
+         * is evidence for every value it carries.
+         */
+        const { arguments: driverArguments } = fixture.expect.driver;
+        for (const parameter of manifest.parameters) {
+          if (parameter.driver === null) continue;
+          const given = reach(fixture.input, parameter.input_path);
+          if (given.length === 0) continue;
+          const { argument, path } = parameter.driver;
+          const passed = argument < driverArguments.length ? reach(driverArguments[argument], path) : [];
+          if (!isDeepStrictEqual(given, passed)) {
+            fail(`Case ${fixture.id} passes ${parameter.id} to argument ${argument}${path.length === 0 ? '' : ` at ${path.join('.')}`} as ${JSON.stringify(passed)}, not ${JSON.stringify(given)}`);
+          }
+        }
+        /*
+         * A shared domain proves its values against the driver, so an accepted case that
+         * claims one of the domain's requirements must use a value the domain proved for
+         * it: covering `upper-bound` with 7 would otherwise pass. The representative pair
+         * is the exception. Any value inside the domain represents it as well as the
+         * domain's own example, and the case's accepted driver evidence proves the value
+         * it uses, so there it is enough that the domain's schema admits the value.
+         */
+        for (const coverage of fixture.covers) {
+          const parameter = manifest.parameters.find(({ id }) => id === coverage.parameter);
+          const domain = parameter?.domain_ref === undefined ? undefined : library.domains[parameter.domain_ref];
+          if (parameter === undefined || domain === undefined) continue;
+          const given = reach(fixture.input, parameter.input_path);
+          const representative = domain.valid.find(({ id }) => id === 'representative')?.requirements ?? [];
+          for (const id of coverage.requirements) {
+            const kind = domain.requirements.find((requirement) => requirement.id === id)?.kind;
+            if (kind !== 'mapping' && kind !== 'valid') continue;
+            if (representative.includes(id)) {
+              const inDomain = domainValidator(domain.domain);
+              if (given.length === 0 || !given.every((value) => inDomain(value))) {
+                fail(`Case ${fixture.id} covers ${parameter.id}/${id} with ${JSON.stringify(given)}, outside the ${parameter.domain_ref} domain`);
+              }
+              continue;
+            }
+            const proven = domain.valid.filter(({ requirements }) => requirements.includes(id)).map(({ value }) => value);
+            if (!given.some((value) => proven.some((candidate) => isDeepStrictEqual(value, candidate)))) {
+              fail(`Case ${fixture.id} covers ${parameter.id}/${id} with ${JSON.stringify(given)}, not a value ${parameter.domain_ref} proves for it: ${JSON.stringify(proven)}`);
+            }
+          }
+        }
+      }
       if (fixture.expect.kind === 'accepted' && fixture.expect.wire.method !== manifest.endpoint.http_method) {
         fail(`Case ${fixture.id} wire method disagrees with endpoint`);
       }
