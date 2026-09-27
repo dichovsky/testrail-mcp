@@ -418,6 +418,51 @@ describe('independent parameter manifest format', () => {
     );
   });
 
+  it('reads an extension point and every member of a fan-out when it compares locations', () => {
+    const find = (tool: string) => {
+      const manifest = manifests.find(({ endpoint }) => endpoint.tool === `testrail_${tool}`);
+      if (!manifest) throw new Error(`Required ${tool} manifest is missing`);
+      return structuredClone(manifest);
+    };
+    // custom_* gathers the matching keys on both sides, so a moved extension point is seen.
+    const cases = find('add_case');
+    const custom = cases.parameters.find(({ id }) => id === 'body.custom_*');
+    expect(custom?.driver).toEqual({ argument: 1, path: ['custom_*'] });
+    cases.parameters = cases.parameters.map((parameter) => parameter === custom ? { ...parameter, driver: { argument: 1, path: ['extra_*'] } } : parameter);
+    expect(auditParameterManifests([cases]).some((error) => error.startsWith('testrail_add_case: Case full-body passes body.custom_* to argument 1 at extra_* as [], not [{'))).toBe(true);
+    // A second member whose argument differs is caught, not only the first.
+    const results = find('add_results');
+    results.cases = results.cases.map((fixture) => {
+      if (fixture.id !== 'two-entries' || fixture.expect.kind !== 'accepted') return fixture;
+      const changed = structuredClone(fixture);
+      if (changed.expect.kind !== 'accepted') return changed;
+      ((changed.expect.driver.arguments[1] as { results: { status_id: number }[] }).results[1] ?? { status_id: 0 }).status_id = 4;
+      return changed;
+    });
+    expect(auditParameterManifests([results])).toContain(
+      'testrail_add_results: Case two-entries passes body[].status_id to argument 1 at results.*.status_id as [5,4], not [5,1]',
+    );
+  });
+
+  it('tells every pair of parameter locations apart by some accepted case', () => {
+    // Two parameters that carry equal values in every case could have their locations
+    // swapped, in the manifest and the registration alike, and every literal argument
+    // list would still agree. Each pair needs a case where they differ or one is absent.
+    const undetected: string[] = [];
+    for (const manifest of manifests) {
+      const located = manifest.parameters.filter(({ driver }) => driver !== null);
+      for (const [index, left] of located.entries()) {
+        for (const right of located.slice(index + 1)) {
+          if (JSON.stringify(left.driver) === JSON.stringify(right.driver)) continue;
+          const swapped = { ...manifest, parameters: manifest.parameters.map((parameter) => parameter === left
+            ? { ...parameter, driver: right.driver } : parameter === right ? { ...parameter, driver: left.driver } : parameter) };
+          if (auditParameterManifests([swapped]).length === 0) undetected.push(`${manifest.endpoint.tool}: ${left.id} <-> ${right.id}`);
+        }
+      }
+    }
+    expect(undetected).toEqual([]);
+  });
+
   it('requires a case covering a shared domain requirement to use a value the domain proved for it', () => {
     const project = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_get_project');
     const cases = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_get_cases');
@@ -434,6 +479,15 @@ describe('independent parameter manifest format', () => {
       .filter((error) => error.includes('covers project_id/'))).toEqual([]);
     expect(auditParameterManifests([retarget(project, 'representative-id', { project_id: 1.5 })])).toContain(
       'testrail_get_project: Case representative-id covers project_id/mapping with [1.5], outside the positive_id domain',
+    );
+    // Every member of a fan-out must be in the domain, not only the first.
+    const results = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_add_results');
+    const twoEntries = results?.cases.find(({ id }) => id === 'two-entries');
+    if (!results || twoEntries === undefined) throw new Error('Required add_results two-entries case is missing');
+    const fractional = structuredClone(twoEntries.input);
+    ((fractional.body as { results: { status_id: number }[] }).results[1] ?? { status_id: 0 }).status_id = 1.5;
+    expect(auditParameterManifests([retarget(results, 'two-entries', fractional)])).toContain(
+      'testrail_add_results: Case two-entries covers body[].status_id/mapping with [5,1.5], outside the positive_id domain',
     );
     // A list is exact too: only lists the probe drove through the driver count.
     const listFilters = cases.cases.find(({ id }) => id === 'list-filters');

@@ -837,6 +837,87 @@
       }
     },
     {
+      "id": "reopened-started",
+      "input": {
+        "milestone_id": 5,
+        "body": {
+          "is_completed": false,
+          "is_started": true
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.is_completed",
+          "requirements": [
+            "false-value"
+          ]
+        },
+        {
+          "parameter": "body.is_started",
+          "requirements": [
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "milestones.updateMilestone",
+          "arguments": [
+            5,
+            {
+              "is_completed": false,
+              "is_started": true
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "update_milestone/5",
+          "json": {
+            "is_completed": false,
+            "is_started": true
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 5,
+            "name": "Release 2.0",
+            "description": null,
+            "start_on": null,
+            "started_on": null,
+            "is_completed": false,
+            "completed_on": null,
+            "due_on": 1646999999,
+            "project_id": 1,
+            "parent_id": null,
+            "refs": null,
+            "is_started": true,
+            "url": "https://example.testrail.io/index.php?/milestones/view/5"
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 5,
+            "name": "Release 2.0",
+            "description": null,
+            "start_on": null,
+            "started_on": null,
+            "is_completed": false,
+            "completed_on": null,
+            "due_on": 1646999999,
+            "project_id": 1,
+            "parent_id": null,
+            "refs": null,
+            "is_started": true,
+            "url": "https://example.testrail.io/index.php?/milestones/view/5"
+          }
+        }
+      }
+    },
+    {
       "id": "largest-safe-values",
       "input": {
         "milestone_id": 9007199254740991,
