@@ -63,11 +63,6 @@
       "description": "Reject an unknown ordinary body field, __proto__ included, rather than forwarding it; only custom_ names extend a result."
     },
     {
-      "id": "empty-body",
-      "kind": "invalid",
-      "description": "Reject a body carrying no field, which the driver also refuses before dispatch: there would be nothing to change."
-    },
-    {
       "id": "custom-fields-container",
       "kind": "invalid",
       "description": "Reject a custom_fields object. This payload declares no such field, so the name would otherwise reach TestRail through the flat extension point and be read as a custom field that does not exist, which is the same silent loss the add-side writes refuse it for."
@@ -147,6 +142,11 @@
           "id": "required",
           "kind": "required",
           "description": "Reject a missing body."
+        },
+        {
+          "id": "empty-body",
+          "kind": "invalid",
+          "description": "Reject a body carrying no field, which the driver also refuses before dispatch: there would be nothing to change."
         }
       ]
     },
@@ -1043,7 +1043,7 @@
       },
       "covers": [
         {
-          "parameter": "$input",
+          "parameter": "body",
           "requirements": [
             "empty-body"
           ]
