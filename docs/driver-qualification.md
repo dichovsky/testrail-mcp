@@ -19,7 +19,9 @@ TestRail rejects a rate-limited request before handling it, so the re-send canno
 
 ### Fixture provenance
 
-The five parameter fixtures were re-reviewed against 7.2.0 rather than re-stamped. Evidence: `dist/types.d.ts` is byte-identical between release commits `71a80d98` and `cc7751c`; all 53 exported payload schemas have identical field sets; and none of the eight driver source files the fixtures cite appear among the 54 files changed between those commits. Their `review` blocks and source links now point at `cc7751c`.
+The five parameter fixtures were re-reviewed against 7.2.0 rather than re-stamped. Evidence: `dist/types.d.ts` is byte-identical between release commits `71a80d98` and `cc7751c`; all 53 exported payload schemas have identical field sets; and none of the eight driver source files the fixtures cited at the time appear among the 54 files changed between those commits. Their `review` blocks and source links now point at `cc7751c`.
+
+That comparison is now data the manifest audit checks rather than prose. Each of the five manifests carries a `review.evidence` step from `71a80d98` to `cc7751c` that names every driver file it cites and whether the file changed. The audit compares each claim with [`tests/fixtures/driver-releases.json`](../tests/fixtures/driver-releases.json), which records both releases' git blob IDs and shipped-file hashes; the 7.2.0 entry is held to the installed package. See [driver provenance evidence](parameter-manifest.md#driver-provenance-evidence).
 
 ## Superseded audits
 

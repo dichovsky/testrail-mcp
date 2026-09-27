@@ -31,7 +31,7 @@ No TestRail instance, credentials, user directories or MCP host clients are invo
 
 **`fixture-evidence.json`**, fixture evidence. For every endpoint:
 
-- the manifest's review block (driver version, commit and review date) and its cited sources;
+- the manifest's review block (driver version, commit, authored commit, review date and any driver provenance evidence) and its cited sources;
 - the input policy and outer result shape;
 - for each accepted case: the driver binding, the literal wire request (method, TestRail endpoint, and whether the body was JSON, multipart or none), and the kinds of upstream response and driver result;
 - for each rejected case: its expected error code.
