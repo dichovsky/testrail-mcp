@@ -146,6 +146,25 @@ describe('every tool\'s result, as a connected client receives it', () => {
     expect(calls.filter(([, mode]) => mode === 'all')).toHaveLength(24);
   });
 
+  /*
+   * The advertised schema is itself the machine-readable contract, so it is held to the
+   * documented wrapper rather than trusted: `data` required, `pagination` an object,
+   * `warnings` an array of objects, and entity fields unconstrained. Validating results
+   * against it alone would only catch a schema that grew stricter.
+   */
+  it('advertises the documented wrapper as every tool\'s output schema', () => {
+    const verdicts = [...advertised.values()].map(({ name, outputSchema }) => {
+      const valid = validator.getValidator(outputSchema as unknown as JsonSchemaType);
+      return {
+        name,
+        accepts: [{ data: null }, { data: [] }, { data: { custom_x: 1 } }, { data: 1, pagination: {}, warnings: [{}] }].every((value) => valid(value).valid),
+        rejects: [{}, { warnings: [] }, { data: 1, pagination: 'page' }, { data: 1, warnings: {} }, { data: 1, warnings: [1] }, []].every((value) => !valid(value).valid),
+      };
+    });
+    expect(verdicts).toHaveLength(133);
+    expect(verdicts.filter(({ accepts, rejects }) => !accepts || !rejects)).toEqual([]);
+  });
+
   it.each(calls)('%s (%s, fixture %s) validates against its advertised output schema', async (tool, _mode, _id, operation, fixture) => {
     if (fixture.expect.kind !== 'accepted') throw new Error('accepted fixtures only');
     const manifest = manifestFor(tool);
@@ -157,6 +176,7 @@ describe('every tool\'s result, as a connected client receives it', () => {
     expect(result.isError, JSON.stringify(result.structuredContent)).not.toBe(true);
     const outputSchema = advertised.get(tool)?.outputSchema;
     expect(outputSchema, `${tool} advertises no output schema`).toBeDefined();
+    // The SDK client validates as well; this check does not depend on it doing so.
     const verdict = validator.getValidator(outputSchema as unknown as JsonSchemaType)(result.structuredContent);
     expect(verdict.valid, JSON.stringify(verdict)).toBe(true);
     // One text block carrying exactly the structured wrapper.
@@ -174,18 +194,19 @@ describe('every tool\'s result, as a connected client receives it', () => {
     ['a write TestRail refused with 500', 'testrail_add_project', { body: { name: 'Gate' } }, json({ error: 'Internal error' }, 500), 'UPSTREAM_ERROR', 'unknown'],
     ['an aggregate past max_items', 'testrail_get_projects', { _mcp: { pagination: 'all', max_items: 1 } },
       json({ offset: 0, limit: 1, size: 1, _links: { next: '/api/v2/get_projects&limit=1&offset=1', prev: null }, projects: [{ id: 1, name: 'One' }] }),
-      'PAGINATION_LIMIT', undefined],
-  ] as const)('keeps the error wrapper identical in text and structure for %s', async (_label, tool, args, upstream, code, outcome) => {
+      'PAGINATION_LIMIT', undefined, 'max_items'],
+  ] as const)('keeps the error wrapper identical in text and structure for %s', async (_label, tool, args, upstream, code, outcome, reason?: string) => {
     next = upstream;
     const result = await client.callTool({ name: tool, arguments: args });
     expect(result.isError).toBe(true);
     const content = result.content as { type: string; text: string }[];
     expect(content).toHaveLength(1);
     expect(JSON.parse(content[0]?.text ?? 'null')).toEqual(result.structuredContent);
-    const payload = result.structuredContent as { error: { code: string; write_outcome?: string } };
+    const payload = result.structuredContent as { error: { code: string; write_outcome?: string; reason?: string } };
     expect(payload).not.toHaveProperty('data');
     expect(payload.error.code).toBe(code);
     expect(payload.error.write_outcome).toBe(outcome);
+    expect(payload.error.reason).toBe(reason);
   });
 });
 
@@ -195,6 +216,9 @@ describe('a read whose success reply cannot be used', () => {
     ['a record read', 'testrail_get_project', { project_id: 7 }, json([{ id: 7 }])],
     ['an array read', 'testrail_get_case_types', {}, json({ case_types: [] })],
     ['a page read', 'testrail_get_projects', {}, json('a string where the envelope belongs')],
+    ['an aggregate read', 'testrail_get_projects', { _mcp: { pagination: 'all' } }, { status: 200, body: 'not json at all', type: 'application/json' }],
+    ['an aggregate read', 'testrail_get_projects', { _mcp: { pagination: 'all' } }, json({ offset: 0, limit: 1, size: 1, _links: { next: null, prev: null } })],
+    // A well-formed envelope for a page the aggregate did not ask for.
     ['an aggregate read', 'testrail_get_projects', { _mcp: { pagination: 'all' } },
       json({ offset: 5, limit: 1, size: 1, _links: { next: null, prev: null }, projects: [{ id: 1 }] })],
   ] as const)('fails %s as INVALID_RESPONSE with no data and no write outcome (%#)', async (_label, tool, args, upstream) => {
@@ -224,12 +248,13 @@ describe('drift warnings belong to the call that received the drifted reply', ()
   // The same entity with a name TestRail would never send: a number where text belongs.
   const drifted = { ...entity, id: 7, name: 42 };
 
-  it('gives joined identical calls one set of warnings each, and a concurrent clean call none', async () => {
+  it('gives joined identical calls one set of warnings each, and a concurrent or later clean call none', async () => {
     let release: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => { release = resolve; });
+    let drifting = true;
     const { client, fetch } = driver(configuration, async (url) => {
       await gate;
-      return /get_project\/7$/u.test(url) ? json(drifted) : json({ ...entity, id: 8 });
+      return /get_project\/7$/u.test(url) ? json(drifting ? drifted : { ...entity, id: 7 }) : json({ ...entity, id: 8 });
     });
     const runtime = createRuntime({ client, limits: configuration.limits });
     try {
@@ -244,8 +269,11 @@ describe('drift warnings belong to the call that received the drifted reply', ()
       expect(warnings(second)).toEqual(warnings(first));
       expect(warnings(other)).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(2);
-      // Nothing carries over to a later call whose reply is clean.
-      const later = await executeToolCall(registered('testrail_get_project'), { project_id: 8 }, { runtime, configuration });
+      // Nothing carries over to a later identical call whose reply is clean.
+      drifting = false;
+      const later = await executeToolCall(registered('testrail_get_project'), { project_id: 7 }, { runtime, configuration });
+      expect(fetch).toHaveBeenCalledTimes(3);
+      expect(later.isError).toBeUndefined();
       expect(warnings(later)).toBeUndefined();
     } finally {
       release();

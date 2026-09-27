@@ -55,6 +55,19 @@ const COLLECTION: Readonly<Record<string, string>> = {
   testrail_get_attachments_for_run: 'attachments',
 };
 
+/**
+ * Lists TestRail answers with the envelope inside a one-element array, from the same
+ * driver source: the only page descriptor declaring `response: 'nested-envelope'`
+ * (src/modules/cases.ts, case history).
+ */
+const NESTED: ReadonlySet<string> = new Set(['testrail_get_history_for_case']);
+
+/** A page call from the start asks for TestRail's first page of 50 (docs/pagination.md). */
+const FIRST_PAGE = { limit: 50, offset: 0 } as const;
+
+/** The reason each caller bound reports when it stops an aggregate (docs/results-and-errors.md). */
+const REASON = { max_items: 'max_items', max_pages: 'max_pages', max_bytes: 'max_bytes', max_duration_ms: 'max_duration' } as const;
+
 let base: string;
 let configuration: Configuration;
 
@@ -103,7 +116,10 @@ function allFixture(manifest: ParameterManifest): Fixture {
 function sampleItem(manifest: ParameterManifest, key: string): Record<string, unknown> {
   for (const fixture of manifest.cases) {
     if (fixture.expect.kind !== 'accepted' || fixture.expect.upstream_response.kind !== 'json') continue;
-    const body: unknown = fixture.expect.upstream_response.body;
+    const reply: unknown = fixture.expect.upstream_response.body;
+    // A nested list's reply is its envelope inside a one-element array; unwrap it so the
+    // item is an entry of the collection, never the envelope itself.
+    const body = NESTED.has(manifest.endpoint.tool) && Array.isArray(reply) ? reply[0] as unknown : reply;
     const items = Array.isArray(body) ? body : (body as Record<string, unknown> | null)?.[key];
     const first: unknown = Array.isArray(items) ? items[0] : undefined;
     if (typeof first === 'object' && first !== null && !Array.isArray(first)) return first as Record<string, unknown>;
@@ -119,7 +135,8 @@ function another(item: Record<string, unknown>): Record<string, unknown> {
 
 /**
  * A two-page list: the first page links on to offset 1 in TestRail's own link form, the
- * second is the last. Which one is served depends only on the offset the driver asks for.
+ * second is the last, each in the reply form TestRail uses for that list. Which one is
+ * served depends only on the offset the driver asks for, so the tests check the request.
  */
 function twoPages(tool: string, route: string, manifest: ParameterManifest) {
   const key = COLLECTION[tool];
@@ -136,7 +153,8 @@ function twoPages(tool: string, route: string, manifest: ParameterManifest) {
   const fetch = vi.fn((target: unknown) => {
     const url = typeof target === 'string' ? target : target instanceof URL ? target.href : (target as Request).url;
     urls.push(url);
-    const body = /[?&]offset=1(?:&|$)/u.test(url) ? pages.second : pages.first;
+    const page = /[?&]offset=1(?:&|$)/u.test(url) ? pages.second : pages.first;
+    const body = NESTED.has(tool) ? [page] : page;
     return Promise.resolve(new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } }));
   });
   return { first, second, next, fetch, urls };
@@ -167,12 +185,17 @@ function structured(result: { structuredContent?: unknown }): Record<string, unk
   return result.structuredContent as Record<string, unknown>;
 }
 
+function control(url: string | undefined, name: string): string | undefined {
+  return new RegExp(`[?&]${name}=([^&]*)`, 'u').exec(url ?? '')?.[1];
+}
+
 const rows = inventory.map(({ tool, route, pagination }) => [tool, route, pagination.kind] as const);
 
 describe('every paged list through the tool-call path', () => {
   it('covers the inventory\'s 24 paged lists, each with a known envelope key', () => {
     expect(rows).toHaveLength(24);
     expect(Object.keys(COLLECTION).sort()).toEqual(rows.map(([tool]) => tool).sort());
+    expect([...NESTED].every((tool) => tool in COLLECTION)).toBe(true);
   });
 
   it.each(rows)('%s: page mode returns the first page and describes what follows it', async (tool, route, kind) => {
@@ -182,12 +205,20 @@ describe('every paged list through the tool-call path', () => {
     try {
       const result = await executeToolCall(registered(tool), pageFixture(manifest).input, { runtime, configuration });
       expect(result.isError, JSON.stringify(result.structuredContent)).toBeUndefined();
-      const { data, pagination } = structured(result);
+      const { data, pagination, warnings } = structured(result);
       expect(data).toEqual([server.first]);
+      // The page is the list's own form with realistic items, so nothing reads as drift.
+      expect(warnings).toBeUndefined();
       expect(server.fetch).toHaveBeenCalledTimes(1);
       // A controlled list offers the next page itself; a response-driven one takes no
       // caller offset, so only the bounded aggregate can follow its link.
       const controlled = kind === 'controlled';
+      // The stand-in serves its first page to any request, so the request itself must be
+      // for the first page: TestRail's default size from offset 0, or, where the server
+      // chooses the page, no controls at all.
+      expect({ limit: control(server.urls[0], 'limit'), offset: control(server.urls[0], 'offset') }).toEqual(controlled
+        ? { limit: String(FIRST_PAGE.limit), offset: String(FIRST_PAGE.offset) }
+        : { limit: undefined, offset: undefined });
       expect(pagination).toEqual({
         mode: 'page', source: 'envelope', returned: 1, has_more: true,
         manual_continuation: controlled, next_action: controlled ? 'page' : 'all',
@@ -205,8 +236,9 @@ describe('every paged list through the tool-call path', () => {
     try {
       const result = await executeToolCall(registered(tool), allFixture(manifest).input, { runtime, configuration });
       expect(result.isError, JSON.stringify(result.structuredContent)).toBeUndefined();
-      const { data, pagination } = structured(result);
+      const { data, pagination, warnings } = structured(result);
       expect(data).toEqual([server.first, server.second]);
+      expect(warnings).toBeUndefined();
       expect(server.fetch).toHaveBeenCalledTimes(2);
       expect(server.urls[1]).toMatch(/[?&]offset=1(?:&|$)/u);
       // Only a controlled list has a caller-chosen start to report.
@@ -223,7 +255,9 @@ describe('every paged list through the tool-call path', () => {
       const result = await executeToolCall(registered(tool), input, { runtime, configuration });
       expect(result.isError).toBe(true);
       const payload = structured(result);
-      expect(payload.error).toMatchObject({ code: 'PAGINATION_LIMIT' });
+      // One-item pages stop max_items and max_pages at the same point, so only the reason
+      // shows which bound did it.
+      expect(payload.error).toMatchObject({ code: 'PAGINATION_LIMIT', reason: REASON.max_items });
       expect(payload).not.toHaveProperty('data');
       // A read reports nothing about a write.
       expect(payload.error).not.toHaveProperty('write_outcome');
@@ -240,16 +274,16 @@ describe('each aggregate bound through a controlled and a response-driven list',
   ] as const;
 
   it.each(bounded.flatMap(([tool, route]) => ([
-    [tool, route, 'max_pages', 1],
-    [tool, route, 'max_bytes', 8],
-  ] as const)))('%s stops at %s', async (tool, route, bound, value) => {
+    [tool, 'max_pages', 1, route],
+    [tool, 'max_bytes', 8, route],
+  ] as const)))('%s stops at %s %s', async (tool, bound, value, route) => {
     const manifest = manifestFor(tool);
     const server = twoPages(tool, route, manifest);
     const runtime = runtimeFor(server.fetch);
     try {
       const input = { ...allFixture(manifest).input, _mcp: { ...(allFixture(manifest).input._mcp as object), [bound]: value } };
       const result = await executeToolCall(registered(tool), input, { runtime, configuration });
-      expect(structured(result).error).toMatchObject({ code: 'PAGINATION_LIMIT' });
+      expect(structured(result).error).toMatchObject({ code: 'PAGINATION_LIMIT', reason: REASON[bound] });
       expect(structured(result)).not.toHaveProperty('data');
     } finally { await runtime.shutdown(); }
   });
@@ -266,7 +300,7 @@ describe('each aggregate bound through a controlled and a response-driven list',
     try {
       const input = { ...allFixture(manifest).input, _mcp: { ...(allFixture(manifest).input._mcp as object), max_duration_ms: 5 } };
       const result = await executeToolCall(registered(tool), input, { runtime, configuration });
-      expect(structured(result).error).toMatchObject({ code: 'PAGINATION_LIMIT' });
+      expect(structured(result).error).toMatchObject({ code: 'PAGINATION_LIMIT', reason: REASON.max_duration_ms });
       expect(structured(result)).not.toHaveProperty('data');
     } finally { await runtime.shutdown(); }
   });
