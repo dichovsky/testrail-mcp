@@ -28,7 +28,7 @@ A download's file is written inside the driver callback the runtime tracks, not 
 
 ## Diagnostics and lifetime
 
-Standard output carries protocol messages only. Diagnostics are one JSON object per line on stderr, restricted to fixed event codes, tool names, a correlation id, durations and counts. Tool results legitimately contain TestRail data and local file paths; diagnostics must not, so they accept no arguments, bodies or paths at all.
+Standard output carries protocol messages only. Diagnostics are one JSON object per line on stderr, restricted to fixed event codes, tool names, a correlation id, durations and counts. Tool results legitimately contain TestRail data and local file paths; diagnostics must not, so they accept no arguments, bodies or paths at all. `tests/result-contract.test.ts` holds this for `tool_call` events: a failed write with a secret-laden error body, a successful read and a refused upload each log one event whose keys are all on that list and which carries no argument, body, path, host or key.
 
 Configuration is loaded before any transport exists, so a misconfigured server never emits a protocol message it cannot honour; it names the offending key on stderr, writes nothing to stdout, and exits non-zero. Shutdown is idempotent and runs once for whichever of stdin closure, `SIGINT` or `SIGTERM` arrives first: it stops admission, closes the connection, drains the runtime and disposes staging.
 

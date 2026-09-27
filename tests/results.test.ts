@@ -4,7 +4,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { DEFAULT_LIMITS, FIXED_BUDGETS, type Limits } from '../src/config/limits.js';
-import { advisoryWarnings, MAX_WARNING_COUNT } from '../src/contracts/drift.js';
+import { advisoryWarnings, MAX_WARNING_COUNT, MAX_WARNINGS } from '../src/contracts/drift.js';
 import { AdapterError, classifyError, type ErrorContext } from '../src/contracts/errors.js';
 import { errorResult, successResult, validateOuter } from '../src/contracts/results.js';
 import { RuntimeError } from '../src/runtime/errors.js';
@@ -80,6 +80,43 @@ describe('result budgets', () => {
       .toThrow(expect.objectContaining({ code: 'RESPONSE_TOO_LARGE' }));
   });
 
+  /** The complete result as the client receives it, in UTF-8 bytes: the reference both budgets are checked against. */
+  const resultBytes = (data: unknown) => {
+    const payload = { data };
+    return Buffer.byteLength(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(payload) }], structuredContent: payload }), 'utf8');
+  };
+
+  it('counts the escaping of the duplicated text, not just the duplication, against the result budget', () => {
+    const data = Array.from({ length: 50 }, () => '"\\'.repeat(40));
+    const actual = resultBytes(data);
+    const payloadBytes = Buffer.byteLength(JSON.stringify({ data }), 'utf8');
+    // The same result if the text block were copied without escaping its quotes and backslashes.
+    const unescaped = actual - Buffer.byteLength(JSON.stringify(JSON.stringify({ data })), 'utf8') + payloadBytes + 2;
+    expect(unescaped).toBeLessThan(actual - 1_000);
+    const roomy = { ...limits, max_data_bytes: payloadBytes };
+    expect(() => successResult({ data }, { ...roomy, max_result_bytes: unescaped })).toThrow(expect.objectContaining({ code: 'RESPONSE_TOO_LARGE' }));
+    expect(() => successResult({ data }, { ...roomy, max_result_bytes: actual - 1 })).toThrow(expect.objectContaining({ code: 'RESPONSE_TOO_LARGE' }));
+    expect(() => successResult({ data }, { ...roomy, max_result_bytes: actual })).not.toThrow();
+  });
+
+  it('measures the result budget in UTF-8 bytes, not code units', () => {
+    const data = '\u{1F600}\u2014'.repeat(200); // 4 + 3 bytes, 2 + 1 code units
+    const actual = resultBytes(data);
+    const payload = { data };
+    const codeUnits = JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(payload) }], structuredContent: payload }).length;
+    expect(codeUnits).toBeLessThan(actual - 1_000);
+    const roomy = { ...limits, max_data_bytes: actual };
+    expect(() => successResult({ data }, { ...roomy, max_result_bytes: actual - 1 })).toThrow(expect.objectContaining({ code: 'RESPONSE_TOO_LARGE' }));
+    expect(() => successResult({ data }, { ...roomy, max_result_bytes: actual })).not.toThrow();
+  });
+
+  it('accepts data of exactly the default 1 MiB and rejects one byte more', () => {
+    expect(DEFAULT_LIMITS.max_data_bytes).toBe(1_048_576);
+    // A JSON string serializes with its two quotes.
+    expect(() => successResult({ data: 'x'.repeat(1_048_574) }, DEFAULT_LIMITS)).not.toThrow();
+    expect(() => successResult({ data: 'x'.repeat(1_048_575) }, DEFAULT_LIMITS)).toThrow(expect.objectContaining({ code: 'RESPONSE_TOO_LARGE' }));
+  });
+
   it('reports an unserializable value as an unusable response', () => {
     const cyclic: Record<string, unknown> = {};
     cyclic.self = cyclic;
@@ -132,12 +169,30 @@ describe('advisory entity validation', () => {
     expect(second).not.toBe(first);
   });
 
-  it('never substitutes parsed output for the returned value', () => {
-    // A schema that would strip unknown keys and apply a default must not alter data.
-    const stripping = z.object({ id: z.number(), status: z.string().default('active') });
-    const original = { id: 1, custom_extra: 'kept', unknown_field: true };
-    advisoryWarnings(stripping, 'record', original);
-    expect(structured(successResult({ data: original }, limits)).data).toEqual(original);
+  it('never alters the value it checks, even with a stripping, defaulting and transforming schema', () => {
+    const rewriting = z.object({ id: z.coerce.number(), status: z.string().default('active') })
+      .transform((value) => ({ ...value, extra: 1 }));
+    const original = { id: '1', custom_extra: 'kept', unknown_field: true, nested: { list: [1] } };
+    const before = structuredClone(original);
+    advisoryWarnings(rewriting, 'record', original);
+    advisoryWarnings(rewriting, 'array', [original]);
+    // Compared with a copy taken first, so a write into the original is caught.
+    expect(original).toEqual(before);
+    expect(structured(successResult({ data: original }, limits)).data).toEqual(before);
+  });
+
+  it('counts a schema that throws as one issue per item instead of throwing', () => {
+    const throwing = z.object({ id: z.number() }).refine(() => { throw new Error('advisory hook failed'); });
+    expect(advisoryWarnings(throwing, 'record', { id: 1 })).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
+    expect(advisoryWarnings(throwing, 'array', [{ id: 1 }, { id: 2 }, { id: 3 }])).toEqual([{ code: 'SCHEMA_DRIFT', count: 3 }]);
+  });
+
+  it('caps a result at ten warning entries, and treats more as an internal fault', () => {
+    expect(MAX_WARNINGS).toBe(10);
+    const entry = { code: 'SCHEMA_DRIFT' as const, count: 1 };
+    expect(() => successResult({ data: 1, warnings: Array.from({ length: 10 }, () => entry) }, limits)).not.toThrow();
+    expect(() => successResult({ data: 1, warnings: Array.from({ length: 11 }, () => entry) }, limits))
+      .toThrow(expect.objectContaining({ code: 'INTERNAL_ERROR' }));
   });
 });
 
@@ -243,6 +298,35 @@ describe('error envelope', () => {
     expect(() => errorResult({
       code: 'INTERNAL_ERROR', message: 'm'.repeat(FIXED_BUDGETS.max_error_bytes * 2),
     })).toThrow(expect.objectContaining({ code: 'INTERNAL_ERROR' }));
+  });
+
+  it('caps the error envelope at 16 KiB of UTF-8, the whole envelope and exactly its limit', () => {
+    expect(FIXED_BUDGETS.max_error_bytes).toBe(16_384);
+    type Safe = Parameters<typeof errorResult>[0];
+    const envelopeBytes = (error: Safe) =>
+      Buffer.byteLength(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify({ error }) }], structuredContent: { error }, isError: true }), 'utf8');
+    // An envelope of exactly 16 384 bytes is returned whole; one byte more drops its metadata.
+    // Every character appears twice, once escaped, so only an escape of odd length (a
+    // newline: 2 bytes in the structured copy, 3 in the text) reaches both parities.
+    let exact: Safe | undefined;
+    for (let length = 7_000; length < 9_000 && exact === undefined; length += 1) {
+      for (const message of ['bounded', 'bounded\n']) {
+        const candidate: Safe = { code: 'PAGINATION_LIMIT', message, reason: 'r'.repeat(length), write_outcome: 'unknown' };
+        if (envelopeBytes(candidate) === 16_384) { exact = candidate; break; }
+      }
+    }
+    if (exact === undefined) throw new Error('no envelope of exactly 16 384 bytes');
+    expect(structured(errorResult(exact)).error).toEqual(exact);
+    // Two ordinary characters (4 bytes) traded for a newline (5 bytes): exactly one byte over.
+    const over: Safe = { ...exact, reason: `${(exact.reason ?? '').slice(0, -2)}\n` };
+    expect(envelopeBytes(over)).toBe(16_385);
+    expect(structured(errorResult(over)).error).not.toHaveProperty('reason');
+    // Multi-byte metadata under the limit in code units but over it in bytes is dropped too.
+    const wide: Safe = { code: 'PAGINATION_LIMIT', message: 'bounded', reason: '\u00e9'.repeat(5_000), write_outcome: 'unknown' };
+    const codeUnits = JSON.stringify({ content: [{ type: 'text', text: JSON.stringify({ error: wide }) }], structuredContent: { error: wide }, isError: true }).length;
+    expect(codeUnits).toBeLessThan(16_384);
+    expect(envelopeBytes(wide)).toBeGreaterThan(16_384);
+    expect(structured(errorResult(wide)).error).toEqual({ code: 'PAGINATION_LIMIT', message: 'bounded', write_outcome: 'unknown' });
   });
 
   it('stays within its fixed budget by dropping metadata before the outcome', () => {

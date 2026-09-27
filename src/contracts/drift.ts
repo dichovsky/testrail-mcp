@@ -35,8 +35,17 @@ export function advisoryWarnings(
   const items = (shape === 'array' || shape === 'page') && Array.isArray(value) ? value : [value];
   let issues = 0;
   for (const item of items) {
-    const outcome = entitySchema.safeParse(item);
-    if (!outcome.success) issues += outcome.error.issues.length;
+    // Advisory means it can never fail the call. safeParse still rethrows an error
+    // raised inside a refinement or transform, so a schema that throws counts as one
+    // issue with that item instead of turning a good reply into an internal error.
+    let outcome: ReturnType<typeof entitySchema.safeParse> | undefined;
+    try {
+      outcome = entitySchema.safeParse(item);
+    } catch {
+      outcome = undefined;
+    }
+    if (outcome === undefined) issues += 1;
+    else if (!outcome.success) issues += outcome.error.issues.length;
     if (issues >= MAX_WARNING_COUNT) { issues = MAX_WARNING_COUNT; break; }
   }
   if (issues === 0) return [];
