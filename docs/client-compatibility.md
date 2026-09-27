@@ -158,6 +158,51 @@ Protocol success establishes the adapter contract. It does not substitute for ho
 
 Use an isolated client configuration and the fixture-backed test launcher for repeatable host checks. Then perform the packaged production-executable smoke checks against a designated TestRail 10.7.0 test instance as part of release verification. Keep fixture and live evidence separate. Any unavailable account, client surface, or instance remains explicitly unverified.
 
+#### The fixture-backed kit
+
+The kit lets you run every scenario below with no TestRail account. It needs a clone of this repository with `npm ci` run in it.
+
+1. **Start the stand-in.** Run `node scripts/fixture-testrail.mjs` in the clone. It prints the variables the client needs, with synthetic credentials.
+   - `--pages 3` makes every paged list span three pages, for C04 and C05.
+   - `--log requests.jsonl` records each request's method, endpoint and status. It never records the credentials.
+   - The stand-in answers every one of the 133 routes with that endpoint's reply from its parameter manifest. It accepts any ID, except the reserved ones below.
+2. **Launch the client with those variables.** Also set `TESTRAIL_MCP_UPLOAD_ROOTS` and `TESTRAIL_MCP_DOWNLOAD_DIR` to directories you create. Leave the client's configuration as the examples above give it.
+3. **Check the catalog for C01.** Run `node scripts/catalog-hash.mjs --command testrail-mcp`. It prints the count and hash that the server you installed lists in both protocol eras. The expected catalog is 133 tools, sorted-name SHA-256 `a423193aa71240cb0cca5bd0ed54c30fdadfdadb3d61ac297a9afb4afd111724`.
+4. **Run the C03 tasks.** Type each prompt from [`tests/fixtures/clients/c03-corpus.json`](../tests/fixtures/clients/c03-corpus.json) into the client. Compare the tool and arguments the client chose with the task's expected ones. Record wrong selections and retries.
+
+Reserved IDs turn any route into a scenario:
+
+| Path ID | Stand-in reply | What the client should show |
+| --- | --- | --- |
+| `990404` | 404 | `NOT_FOUND` (C06) |
+| `990400` | 400, TestRail's reply to an ID it will not serve | `UPSTREAM_ERROR` with `http_status` 400 |
+| `990401`, `990403` | 401, 403 | `AUTHENTICATION_FAILED`, `PERMISSION_DENIED` |
+| `990500` | 500 | On a write, `UPSTREAM_ERROR` with `write_outcome: "unknown"` (C07) |
+| `990001` | The fixture reply with one text field turned into a number | The data plus a `SCHEMA_DRIFT` warning (C06) |
+| `990002` | A JSON string where the entity belongs | `INVALID_RESPONSE`, no data (C06) |
+| `990020` | The reply after 20 seconds | The driver's 15-second request timeout (C10) |
+| `990070` | The reply after 70 seconds | The 60-second response wait expires as `TIMEOUT`, and the request keeps its slot until it settles. Five at once show `BUSY` (C10) |
+| `990900` | A single list page of about 700 KB | A large result within the default budgets (C09) |
+| `990901` | A single list page of about 3 MB | `RESPONSE_TOO_LARGE`, never truncated (C09) |
+
+`tests/fixture-testrail.test.ts` starts the stand-in as a tester would and points the production server at it through its ordinary configuration. Every one of the 133 tools must succeed against it. Each reserved error, drift, unusable and size ID must produce the outcome above. The two delays are run scaled down, and the test checks only that each reply arrives after its scaled delay. The timeout, `TIMEOUT` and `BUSY` outcomes they lead to in real time are held by `tests/runtime-lifetime.test.ts`, not by the kit. The client itself is the one thing the kit cannot test.
+
+#### Recording results
+
+Record each surface's results in its file under [`docs/evidence/clients/`](evidence/clients/): Codex desktop, Codex CLI, Claude Code and GitHub Copilot CLI. Every scenario starts `not_run`. `tests/client-kit.test.ts` refuses a record that claims more than it shows:
+- A scenario reported as `pass`, `fail` or `blocked` needs its own evidence. A failure or block also needs notes saying why.
+- Once any scenario has run, the record must name:
+  - the client version, OS, Node, model and provider;
+  - the package version and tarball integrity, and the driver version;
+  - the discovery mode and the negotiated protocol;
+  - the provenance, the test date and the tester.
+- Claude Code records both its default negotiation and `MCP_PROTOCOL_NEGOTIATION=auto`.
+- A C01 pass requires the full 133-tool catalog with the hash above.
+- Live evidence names the TestRail version.
+- Records hold variable names only, never values, and no email address or local path.
+
+The status table at the top of this guide must read `Pending` for a surface with no run scenario. Otherwise it must link that surface's record.
+
 Run the following scenarios for each required surface, starting with automatic discovery and its normal built-in tools enabled. Do not force all schemas into context to make a discovery test pass.
 
 | ID | Scenario | Required evidence |
