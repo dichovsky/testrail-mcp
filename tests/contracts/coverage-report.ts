@@ -25,8 +25,12 @@ export interface ReportEnvironment {
   readonly package: { readonly name: string; readonly version: string };
   readonly driver: { readonly name: string; readonly version: string; readonly resolved: string; readonly integrity: string };
   readonly runtime: { readonly node: string; readonly platform: string; readonly arch: string };
-  /** The commit CI built, or null outside CI. */
-  readonly source_commit: string | null;
+  /**
+   * Null outside CI. `head_commit` is the commit under review: a pull request's head, or
+   * the pushed commit. `built_commit` is what CI checked out and tested, which on a pull
+   * request is GitHub's temporary merge of that head into the base branch.
+   */
+  readonly source: { readonly head_commit: string | null; readonly built_commit: string | null };
 }
 
 const ISSUES = 'https://github.com/dichovsky/testrail-mcp/issues';
@@ -46,7 +50,7 @@ function header(environment: ReportEnvironment, manifests: readonly ParameterMan
       reviewed_commits: [...new Set(manifests.map(({ review }) => review.driver_commit))].sort(),
     },
     runtime: environment.runtime,
-    source_commit: environment.source_commit,
+    source: environment.source,
   };
 }
 

@@ -1,6 +1,7 @@
 {
   "schema_version": 1,
   "status": "implemented",
+  "status_scope": "Offline verification only: a row is implemented when its tool is registered with this identity and its complete parameter manifest passes the fixture contracts, as tests/coverage-report.test.ts checks. Live TestRail qualification (R03, https://github.com/dichovsky/testrail-mcp/issues/24) and MCP client qualification (R02, https://github.com/dichovsky/testrail-mcp/issues/23) are recorded separately.",
   "compatibility": {
     "testrail_baseline": "10.7.0",
     "older_versions": "best_effort",
@@ -34,8 +35,8 @@
     "runtime_caveat": "Exact npm 7.0.0 is the development baseline only. It lacks the inspected main commit's network-guard fixes, and both revisions still require the report-generator cache/coalescing bypass and no-retry patch. Production release requires a new fixed published driver, pinned and verified exactly. The inspected public method promises can reject while DNS/fetch/body descendants remain pending; F03 additionally requires a published public operation-settlement API.",
     "recommended_exact_dependency_scope": "development_only",
     "production_release": {
-      "status": "blocked_on_published_driver_fixes",
-      "exact_dependency": null,
+      "status": "met_by_published_7.2.0",
+      "exact_dependency": "7.2.0",
       "requirements": [
         {
           "id": "network_guard_fixes",
@@ -44,7 +45,7 @@
         },
         {
           "id": "report_generator_execution_policy",
-          "status": "requires_driver_patch_and_publication",
+          "status": "published_in_7.2.0",
           "driver_methods": [
             "reports.runReport",
             "reports.runCrossProjectReport"
@@ -58,11 +59,12 @@
             "retry": "none"
           },
           "required_cache_behavior": "Bypass GET cache reads, GET cache writes, and pending-request coalescing.",
-          "description": "These GET endpoints generate reports and must execute independently for each explicit invocation without automatic retries. Both exact npm 7.0.0 and inspected main still require this driver patch."
+          "description": "These GET endpoints generate reports and must execute independently for each explicit invocation without automatic retries. Both exact npm 7.0.0 and inspected main still require this driver patch.",
+          "accepted_deviation": "7.2.0 re-sends a rate-limited (429) report run from its rate limiter. TestRail rejects a rate-limited request before handling it, so the re-send cannot generate a report twice; reviewed and accepted on 2026-09-17 and asserted by tests/driver-qualification.test.ts."
         },
         {
           "id": "operation_result_and_settlement",
-          "status": "requires_driver_enhancement_and_publication",
+          "status": "published_in_7.2.0",
           "proposed_api": "trackOperation(callback) -> { result: Promise<T>, settled: Promise<void> }",
           "description": "Expose actual per-operation descendant settlement separately from result deadlines. Track started/joined DNS, fetch, body reads and cancellation, uploads, retries and coalesced work. F03 retains capacity and staging until settled; rejected result promises alone are insufficient.",
           "blocks_work_items": [
@@ -71,7 +73,7 @@
         },
         {
           "id": "published_dependency_pin_and_verification",
-          "status": "after_fixed_driver_publication",
+          "status": "pinned_and_verified_7.2.0",
           "description": "Select the newly published fixed driver version, pin that exact version with a committed lockfile, and reverify endpoint bindings and runtime regression checks against its published package. An unpinned Git dependency is not an acceptable production substitute."
         }
       ]
@@ -87,6 +89,17 @@
       "sequential_report_calls": 2,
       "observed_report_fetches": 1,
       "qualified_for_production": false,
+      "evidence_document": "docs/driver-qualification.md"
+    },
+    "qualified_release": {
+      "checked_on": "2026-09-17",
+      "version": "7.2.0",
+      "release_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+      "release_url": "https://github.com/dichovsky/testrail-api-client/releases/tag/release/7.2.0",
+      "npm_integrity": "sha512-OAVJ1uJtxC0Wzh0jaafBRRcJFhwis/jAPZP3u1441a6wGrtKiZ4JsGtPVERl2wcenKVhqHnxwjkJJExPUB6HHQ==",
+      "public_endpoint_and_helper_bindings_verified": 181,
+      "track_operation_available": true,
+      "qualified_for_production": true,
       "evidence_document": "docs/driver-qualification.md"
     }
   },

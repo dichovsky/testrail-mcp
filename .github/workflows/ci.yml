@@ -52,8 +52,8 @@ jobs:
 
       - name: Test
         env:
-          # tests/coverage-report.test.ts writes the R01 reports here once it has held
-          # them to the contract; they are uploaded only if every later step passes.
+          # tests/coverage-report.test.ts writes the R01 reports here only after every
+          # one of its gates has passed; they are uploaded only if every later step passes.
           TESTRAIL_MCP_REPORT_DIR: ${{ runner.temp }}/coverage-reports
         run: npm test
 
