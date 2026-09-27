@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "surface": "GitHub Copilot CLI",
+  "client": {
+    "version": null,
+    "os": null,
+    "arch": null,
+    "node": null,
+    "model": null,
+    "provider": null
+  },
+  "server": {
+    "package_version": null,
+    "tarball_integrity": null,
+    "driver_version": null
+  },
+  "settings": {
+    "config_scope": null,
+    "discovery_mode": null,
+    "negotiated_revisions": {
+      "default": null
+    },
+    "variables": []
+  },
+  "catalog": {
+    "count": null,
+    "sorted_names_sha256": null
+  },
+  "provenance": null,
+  "testrail_version": null,
+  "tested_on": null,
+  "tester": null,
+  "scenarios": {
+    "C01": {
+      "status": "not_run",
+      "evidence": null,
+      "notes": null
+    },
+    "C02": {
+      "status": "not_run",
+      "evidence": null,
+      "notes": null
+    },
+    "C03": {
+      "status": "not_run",
+      "evidence": null,
+      "notes": null
+    },
+    "C04": {
+      "status": "not_run",
+      "evidence": null,
+      "notes": null
+    },
+    "C05": {
+      "status": "not_run",
+      "evidence": null,
+      "notes": null
+    },
+    "C06": {
+      "status": "not_run",
+      "evidence": null,
+      "notes": null
+    },
+    "C07": {
+      "status": "not_run",
+      "evidence": null,
+      "notes": null
+    },
+    "C08": {
+      "status": "not_run",
+      "evidence": null,
+      "notes": null
+    },
+    "C09": {
+      "status": "not_run",
+      "evidence": null,
+      "notes": null
+    },
+    "C10": {
+      "status": "not_run",
+      "evidence": null,
+      "notes": null
+    },
+    "C11": {
+      "status": "not_run",
+      "evidence": null,
+      "notes": null
+    },
+    "C12": {
+      "status": "not_run",
+      "evidence": null,
+      "notes": null
+    }
+  },
+  "limitations": []
+}
