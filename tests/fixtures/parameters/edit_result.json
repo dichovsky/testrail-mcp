@@ -169,6 +169,7 @@
         "testrail-results"
       ],
       "domain_ref": "positive_id",
+      "rejected_by": "adapter",
       "semantics": "The outcome to change the result to. The driver forwards any number, so the boundary holds it to the identifier domain.",
       "wire": {
         "location": "json",
@@ -405,6 +406,7 @@
         "testrail-results"
       ],
       "domain_ref": "positive_id",
+      "rejected_by": "adapter",
       "semantics": "The user the test is assigned to. The driver forwards any number, so the boundary holds it to the identifier domain.",
       "wire": {
         "location": "json",

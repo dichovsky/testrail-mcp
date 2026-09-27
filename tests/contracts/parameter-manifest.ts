@@ -97,6 +97,19 @@ export const ParameterManifestSchema = z.strictObject({
      */
     domain_ref: identifier.optional(),
     /**
+     * Where this reference's rejections are enforced, when that differs from the
+     * domain's own labels. The domain labels each invalid value by what happened at its
+     * probe, but another binding can treat the same value differently: a body field the
+     * driver forwards unchecked leaves every refusal to the adapter. `adapter` says so
+     * for all of the domain's invalid values; a record relabels only the values it
+     * names. Each reference is driven through its own binding to hold this to the
+     * pinned driver's observed behaviour.
+     */
+    rejected_by: z.union([
+      z.literal('adapter'),
+      z.record(identifier, z.enum(['driver', 'driver_crash', 'adapter'])),
+    ]).optional(),
+    /**
      * The accepted case this parameter's derived rejections mutate, when the manifest
      * baseline is in the other call mode: an aggregate control must be mutated on an
      * all-mode case, a page control on a page-mode one, or the refusal would come from
@@ -125,6 +138,9 @@ export const ParameterManifestSchema = z.strictObject({
     !== (parameter.domain === undefined && parameter.requirements === undefined), {
     message: 'Give exactly one of domain_ref or an inline domain with requirements',
     path: ['domain_ref'],
+  }).refine((parameter) => parameter.rejected_by === undefined || parameter.domain_ref !== undefined, {
+    message: 'Only a domain reference inherits enforcement labels to override',
+    path: ['rejected_by'],
   })),
   cases: z.array(z.strictObject({
     id: identifier,

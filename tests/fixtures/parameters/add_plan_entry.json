@@ -163,6 +163,7 @@
       ],
       "requiredness": "optional",
       "domain_ref": "positive_id",
+      "rejected_by": "adapter",
       "semantics": "The suite the entry draws its cases from. TestRail requires it for a project with more than one suite or with baselines, and the driver's own comments say so, but neither enforces it, so a single-suite project may leave it out. The driver forwards any number, so the boundary holds it to the identifier domain.",
       "wire": {
         "location": "json",
@@ -295,6 +296,7 @@
       ],
       "requiredness": "optional",
       "domain_ref": "positive_id",
+      "rejected_by": "adapter",
       "semantics": "The user the entry's runs are assigned to, which a nested run may override. The driver forwards any number, so the boundary holds it to the identifier domain.",
       "wire": {
         "location": "json",
@@ -815,6 +817,7 @@
       ],
       "requiredness": "optional",
       "domain_ref": "positive_id",
+      "rejected_by": "adapter",
       "semantics": "The user this one run is assigned to, overriding the entry's assignee. The driver forwards any number, so the boundary holds it to the identifier domain.",
       "wire": {
         "location": "json",

@@ -219,6 +219,7 @@
       "scope": "body",
       "requiredness": "required",
       "domain_ref": "positive_id",
+      "rejected_by": "adapter",
       "semantics": "The case the entry is recorded against, named rather than the test it became in this run. The driver forwards any number, so the boundary holds it to the identifier domain.",
       "driver": {
         "argument": 1,
@@ -251,6 +252,7 @@
       "scope": "body",
       "requiredness": "required",
       "domain_ref": "positive_id",
+      "rejected_by": "adapter",
       "semantics": "The outcome for that entry. TestRail's documentation lists it alongside comment and assignedto_id as alternatives while the driver's payload type declares it required, so a comment-only entry is not reachable through this client. The driver does not check the payload at runtime, so this is the declared type being honoured at the boundary rather than a rule the driver enforces. The driver forwards any number, so the boundary holds it to the identifier domain.",
       "driver": {
         "argument": 1,
@@ -507,6 +509,7 @@
       "scope": "body",
       "requiredness": "optional",
       "domain_ref": "positive_id",
+      "rejected_by": "adapter",
       "semantics": "The user that test is assigned to. The driver forwards any number, so the boundary holds it to the identifier domain.",
       "driver": {
         "argument": 1,

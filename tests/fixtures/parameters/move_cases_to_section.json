@@ -37,14 +37,14 @@
       ]
     },
     {
-      "id": "body.case_ids", "input_path": ["body", "case_ids"], "scope": "body", "requiredness": "required", "domain_ref": "case_ids",
+      "id": "body.case_ids", "input_path": ["body", "case_ids"], "scope": "body", "requiredness": "required", "domain_ref": "case_ids", "rejected_by": "adapter",
       "semantics": "The cases to move. The driver forwards the payload unchecked, so the boundary holds every member to the identifier domain and requires at least one; the list is sent as a JSON array.",
       "driver": { "argument": 1, "path": ["case_ids"] },
       "wire": { "location": "json", "names": ["case_ids"], "encoding": "JSON array of integers under case_ids." },
       "sources": ["driver-module", "driver-schema", "testrail-cases"]
     },
     {
-      "id": "body.suite_id", "input_path": ["body", "suite_id"], "scope": "body", "requiredness": "required", "domain_ref": "positive_id",
+      "id": "body.suite_id", "input_path": ["body", "suite_id"], "scope": "body", "requiredness": "required", "domain_ref": "positive_id", "rejected_by": "adapter",
       "semantics": "The suite the target section belongs to, required even for a move within the same suite. The driver forwards any number, so the boundary holds it to the identifier domain; sent as a JSON number.",
       "driver": { "argument": 1, "path": ["suite_id"] },
       "wire": { "location": "json", "names": ["suite_id"], "encoding": "JSON integer under suite_id." },

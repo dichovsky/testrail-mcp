@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { TestRailClient, TestRailValidationError } from '@dichovsky/testrail-api-client';
 import { describe, expect, it } from 'vitest';
 import type { z } from 'zod';
@@ -6,6 +9,8 @@ import {
 } from '../src/contracts/inputs.js';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
 import { auditDomainLibrary, loadDomainLibrary, type ParameterDomain } from './contracts/domains.js';
+import { loadParameterManifests, type ParameterManifest } from './contracts/parameter-manifest.js';
+import { materializeFiles, substituteTokens } from './contracts/uploads.js';
 
 const library = await loadDomainLibrary();
 
@@ -170,4 +175,147 @@ describe('shared parameter domains', () => {
       expect(schema.safeParse(invalid.value).success, `${name}/${invalid.id}`).toBe(false);
     }
   });
+});
+
+type Parameter = ParameterManifest['parameters'][number];
+type Label = ParameterDomain['invalid'][number]['rejected_by'];
+
+/** Every place a manifest uses a shared domain, with the accepted case it is driven from. */
+const references = (await loadParameterManifests()).flatMap((manifest) => manifest.parameters
+  .filter((parameter) => parameter.domain_ref !== undefined)
+  .map((parameter) => {
+    const baseline = manifest.cases.find(({ id }) => id === (parameter.baseline ?? manifest.baseline));
+    if (baseline?.expect.kind !== 'accepted') throw new Error(`${manifest.endpoint.tool}: ${parameter.id} has no accepted baseline`);
+    return { label: `${manifest.endpoint.tool} ${parameter.id}`, manifest, parameter, expected: baseline.expect };
+  }));
+
+/** The label a reference claims for one invalid value: its own override, else the domain's. */
+function claimedLabel(parameter: Parameter, invalid: ParameterDomain['invalid'][number]): Label {
+  const override = parameter.rejected_by;
+  if (override === undefined) return invalid.rejected_by;
+  return override === 'adapter' ? 'adapter' : override[invalid.id] ?? invalid.rejected_by;
+}
+
+/**
+ * The baseline's literal driver arguments with one value put where the manifest says
+ * the parameter lands. A path through an array names its first member, as a derived
+ * rejection does, so every other member stays valid.
+ */
+function placed(args: readonly unknown[], destination: NonNullable<Parameter['driver']>, value: unknown): unknown[] {
+  const copy = structuredClone([...args]);
+  const { argument, path } = destination;
+  if (path.length === 0) {
+    copy[argument] = value;
+    return copy;
+  }
+  let node: unknown = copy[argument];
+  for (const part of path.slice(0, -1)) {
+    node = part === '*' ? (node as unknown[])[0] : (node as Record<string, unknown>)[part];
+  }
+  (node as Record<string, unknown>)[path.at(-1) ?? ''] = value;
+  return copy;
+}
+
+/**
+ * What the pinned driver does with the value at this reference: refuses it with its own
+ * validation error or by crashing, in either case before any request, or lets it reach
+ * the wire, which leaves the refusal to the adapter. The upstream reply is the
+ * baseline's own, so an accepted value can complete the call it was made for.
+ */
+async function observe(reference: (typeof references)[number], paths: Readonly<Record<string, string>>, value: unknown): Promise<Label> {
+  const { expected, parameter } = reference;
+  if (parameter.driver === null) throw new Error(`${reference.label} has no driver location`);
+  let requests = 0;
+  const reply = expected.upstream_response;
+  const client = new TestRailClient({
+    baseUrl: 'https://domains.testrail.io', email: 'user@example.com', apiKey: 'synthetic',
+    registerProcessHandlers: false, maxRetries: 0, enableCache: false,
+    dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
+    fetch: () => {
+      requests += 1;
+      return Promise.resolve(reply.kind === 'json'
+        ? new Response(JSON.stringify(reply.body), { headers: { 'content-type': 'application/json' } })
+        : new Response(reply.kind === 'text' ? reply.text : reply.utf8, {
+          headers: { 'content-type': reply.kind === 'text' ? 'text/plain' : 'application/octet-stream' },
+        }));
+    },
+  });
+  try {
+    const [group, name] = expected.driver.binding.split('.');
+    const module: unknown = Reflect.get(client, group ?? '');
+    const method: unknown = typeof module === 'object' && module !== null ? Reflect.get(module, name ?? '') : undefined;
+    if (typeof method !== 'function') throw new Error(`${reference.label}: no public driver method ${expected.driver.binding}`);
+    const args = placed(substituteTokens(expected.driver.arguments, paths), parameter.driver, value);
+    // Called inside an async function, so a synchronous throw is observed as a refusal too.
+    const error: unknown = await (async () => { await Reflect.apply(method, module, args); })()
+      .then(() => undefined, (reason: unknown) => reason);
+    if (requests > 0) return 'adapter';
+    if (error === undefined) throw new Error(`${reference.label}: the call neither failed nor reached the wire`);
+    return error instanceof TestRailValidationError ? 'driver' : 'driver_crash';
+  } finally { client.destroy(); }
+}
+
+describe('shared domains where they are used', () => {
+  it('finds every reference and its binding', () => {
+    expect(references.length).toBeGreaterThan(350);
+    expect(new Set(references.map(({ expected }) => expected.driver.binding)).size).toBeGreaterThan(100);
+  });
+
+  /*
+   * The case the issue measured. labels.deleteLabels checks a label list itself, and
+   * refuses a bare number with a stated validation error where the identifier-list
+   * domain's probe crashes. A reference there must relabel that one value and inherit
+   * the rest, which is what the record form is for.
+   */
+  it('relabels only the values a binding treats differently', async () => {
+    const manifest = (await loadParameterManifests()).find(({ endpoint }) => endpoint.tool === 'testrail_delete_labels');
+    const inline = manifest?.parameters.find(({ id }) => id === 'body.label_ids');
+    const baseline = manifest?.cases.find(({ id }) => id === 'representative-ids');
+    const domain = library.domains.case_ids;
+    if (!manifest || !inline || baseline?.expect.kind !== 'accepted' || !domain) throw new Error('Required delete_labels evidence is missing');
+    const reference = (rejectedBy?: Parameter['rejected_by']) => {
+      // The inline domain and requirements give way to the reference, as a manifest writes it.
+      const rest = Object.fromEntries(Object.entries(inline).filter(([key]) => key !== 'domain' && key !== 'requirements')) as
+        Omit<Parameter, 'domain' | 'requirements'>;
+      const parameter: Parameter = { ...rest, domain_ref: 'case_ids', ...(rejectedBy === undefined ? {} : { rejected_by: rejectedBy }) };
+      return { label: 'delete_labels body.label_ids', manifest, parameter, expected: baseline.expect as Extract<typeof baseline.expect, { kind: 'accepted' }> };
+    };
+    const observed = Object.fromEntries(await Promise.all(domain.invalid.map(async (invalid) =>
+      [invalid.id, await observe(reference(), {}, invalid.value)] as const)));
+    expect(observed).toEqual({
+      empty: 'driver', 'zero-member': 'driver', 'negative-member': 'driver', 'fractional-member': 'driver',
+      'string-member': 'driver', scalar: 'driver', 'above-safe-member': 'adapter',
+    });
+    const claimed = (rejectedBy?: Parameter['rejected_by']) => Object.fromEntries(domain.invalid.map((invalid) =>
+      [invalid.id, claimedLabel(reference(rejectedBy).parameter, invalid)]));
+    // Inheriting the probe's labels overstates nothing but misnames the scalar's refusal.
+    expect(claimed()).not.toEqual(observed);
+    expect(claimed()).toMatchObject({ scalar: 'driver_crash' });
+    expect(claimed({ scalar: 'driver' })).toEqual(observed);
+    expect(claimed('adapter')).not.toEqual(observed);
+  });
+
+  it.each(references.map((reference) => [reference.label, reference] as const))(
+    'holds %s to the labels its binding earns', async (_, reference) => {
+      const { manifest, parameter } = reference;
+      const domain = library.domains[parameter.domain_ref ?? ''];
+      if (domain === undefined) throw new Error(`${reference.label}: unknown domain`);
+      if (typeof parameter.rejected_by === 'object') {
+        // A relabel names only values the domain has, so none can silently lapse.
+        for (const id of Object.keys(parameter.rejected_by)) expect(domain.invalid.map((invalid) => invalid.id)).toContain(id);
+      }
+      const directory = manifest.files === undefined ? undefined : await mkdtemp(join(tmpdir(), 'testrail-mcp-domain-'));
+      try {
+        const paths = directory === undefined ? {} : await materializeFiles(manifest, directory);
+        for (const valid of domain.valid) {
+          expect(await observe(reference, paths, valid.value), `${valid.id} is accepted`).toBe('adapter');
+        }
+        for (const invalid of domain.invalid) {
+          expect(await observe(reference, paths, invalid.value), invalid.id).toBe(claimedLabel(parameter, invalid));
+        }
+      } finally {
+        if (directory !== undefined) await rm(directory, { recursive: true, force: true });
+      }
+    },
+  );
 });

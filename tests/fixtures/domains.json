@@ -451,7 +451,7 @@
       },
       "probe": {
         "binding": "cases.getCaseTitles",
-        "note": "The public title lookup takes the list positionally and validates it the way the bulk endpoints need, so it proves the domain without a payload. It is the query-side proof only: the bulk bodies that also reference this domain are forwarded unchecked, which each body reference records in its semantics, so their guarantee is the adapter's alone. Passing a bare number crashes the lookup rather than failing a stated check, which its own entry records."
+        "note": "The public title lookup takes the list positionally and validates it the way the bulk endpoints need, so it proves the domain without a payload. It is the query-side proof only: the bulk bodies that also reference this domain are forwarded unchecked, which each body reference records in its semantics and with rejected_by, so their guarantee is the adapter's alone. Passing a bare number crashes the lookup rather than failing a stated check, which its own entry records."
       },
       "domain": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 } },
       "semantics": "A non-empty list of case identifiers. Sent comma-joined as a query control by get_case_titles and as a JSON array in every bulk body.",

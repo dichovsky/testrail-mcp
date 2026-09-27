@@ -371,6 +371,7 @@
       "scope": "body",
       "requiredness": "optional",
       "domain_ref": "positive_id",
+      "rejected_by": "adapter",
       "semantics": "The global role to give the user. The driver forwards any number, so the boundary holds it to the identifier domain.",
       "driver": {
         "argument": 1,
