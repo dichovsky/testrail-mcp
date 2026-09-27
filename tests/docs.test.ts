@@ -16,7 +16,8 @@ import { BODY_TIMEOUT_MS, REQUEST_TIMEOUT_MS } from '../src/driver/configuration
  * documented 120-second timeout.
  */
 
-const read = async (path: string): Promise<string> => readFile(new URL(path, import.meta.url), 'utf8');
+// Windows checkouts may carry CRLF line endings; the checks read documents as LF.
+const read = async (path: string): Promise<string> => (await readFile(new URL(path, import.meta.url), 'utf8')).replace(/\r\n/gu, '\n');
 const readme = await read('../README.md');
 const clients = await read('../docs/client-compatibility.md');
 const contracts = await read('../docs/implementation-contracts.md');
