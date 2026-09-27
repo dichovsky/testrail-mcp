@@ -2547,6 +2547,151 @@
       }
     },
     {
+      "id": "entry-all-run-selected",
+      "input": {
+        "plan_id": 10,
+        "body": {
+          "include_all": true,
+          "runs": [
+            {
+              "include_all": false
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.include_all",
+          "requirements": [
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.runs[].include_all",
+          "requirements": [
+            "false-value"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "plans.addPlanEntry",
+          "arguments": [
+            10,
+            {
+              "include_all": true,
+              "runs": [
+                {
+                  "include_all": false
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_plan_entry/10",
+          "json": {
+            "include_all": true,
+            "runs": [
+              {
+                "include_all": false
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": "3933d74b-4282-44de-82ae-a6412808369d",
+            "suite_id": 1,
+            "name": "Browser test",
+            "description": null,
+            "include_all": true,
+            "config_ids": [
+              1,
+              5
+            ],
+            "runs": [
+              {
+                "id": 13,
+                "suite_id": 1,
+                "name": "Chrome, Windows 8",
+                "description": null,
+                "milestone_id": null,
+                "assignedto_id": null,
+                "include_all": true,
+                "is_completed": false,
+                "completed_on": null,
+                "config": "Chrome, Windows 8",
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "passed_count": 0,
+                "blocked_count": 0,
+                "untested_count": 8,
+                "retest_count": 0,
+                "failed_count": 0,
+                "project_id": 1,
+                "plan_id": 10,
+                "created_on": 1646058671,
+                "created_by": 1,
+                "refs": null,
+                "url": "https://example.testrail.io/index.php?/runs/view/13"
+              }
+            ],
+            "refs": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": "3933d74b-4282-44de-82ae-a6412808369d",
+            "suite_id": 1,
+            "name": "Browser test",
+            "description": null,
+            "include_all": true,
+            "config_ids": [
+              1,
+              5
+            ],
+            "runs": [
+              {
+                "id": 13,
+                "suite_id": 1,
+                "name": "Chrome, Windows 8",
+                "description": null,
+                "milestone_id": null,
+                "assignedto_id": null,
+                "include_all": true,
+                "is_completed": false,
+                "completed_on": null,
+                "config": "Chrome, Windows 8",
+                "config_ids": [
+                  1,
+                  5
+                ],
+                "passed_count": 0,
+                "blocked_count": 0,
+                "untested_count": 8,
+                "retest_count": 0,
+                "failed_count": 0,
+                "project_id": 1,
+                "plan_id": 10,
+                "created_on": 1646058671,
+                "created_by": 1,
+                "refs": null,
+                "url": "https://example.testrail.io/index.php?/runs/view/13"
+              }
+            ],
+            "refs": null
+          }
+        }
+      }
+    },
+    {
       "id": "missing-body",
       "input": {
         "plan_id": 10

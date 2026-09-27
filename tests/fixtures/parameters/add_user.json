@@ -1274,6 +1274,111 @@
       }
     },
     {
+      "id": "mixed-flags",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": "ada@example.com",
+          "is_active": true,
+          "is_admin": true,
+          "mfa_required": false,
+          "sso_enabled": false
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.is_active",
+          "requirements": [
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.is_admin",
+          "requirements": [
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body.mfa_required",
+          "requirements": [
+            "false-value"
+          ]
+        },
+        {
+          "parameter": "body.sso_enabled",
+          "requirements": [
+            "false-value"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.addUser",
+          "arguments": [
+            {
+              "name": "Ada",
+              "email": "ada@example.com",
+              "is_active": true,
+              "is_admin": true,
+              "mfa_required": false,
+              "sso_enabled": false
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_user",
+          "json": {
+            "name": "Ada",
+            "email": "ada@example.com",
+            "is_active": true,
+            "is_admin": true,
+            "mfa_required": false,
+            "sso_enabled": false
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        }
+      }
+    },
+    {
       "id": "missing-body",
       "input": {},
       "covers": [

@@ -1500,12 +1500,12 @@
             10
           ],
           "created_by": [
-            1,
-            2
+            7,
+            8
           ],
           "updated_by": [
-            2,
-            3
+            10,
+            11
           ],
           "label_id": [
             11,
@@ -1591,12 +1591,12 @@
                 10
               ],
               "createdBy": [
-                1,
-                2
+                7,
+                8
               ],
               "updatedBy": [
-                2,
-                3
+                10,
+                11
               ],
               "labelId": [
                 11,
@@ -1613,7 +1613,7 @@
         },
         "wire": {
           "method": "GET",
-          "endpoint": "get_cases/7&type_id=2%2C3&priority_id=3%2C4&template_id=1%2C2&milestone_id=9%2C10&created_by=1%2C2&updated_by=2%2C3&label_id=11%2C12&refs%5B%5D=REQ-1&refs%5B%5D=REQ%262&limit=50&offset=0"
+          "endpoint": "get_cases/7&type_id=2%2C3&priority_id=3%2C4&template_id=1%2C2&milestone_id=9%2C10&created_by=7%2C8&updated_by=10%2C11&label_id=11%2C12&refs%5B%5D=REQ-1&refs%5B%5D=REQ%262&limit=50&offset=0"
         },
         "upstream_response": {
           "kind": "json",
@@ -2580,12 +2580,12 @@
             10
           ],
           "created_by": [
-            1,
-            2
+            7,
+            8
           ],
           "updated_by": [
-            2,
-            3
+            10,
+            11
           ],
           "label_id": [
             11,
@@ -2674,12 +2674,12 @@
                 10
               ],
               "createdBy": [
-                1,
-                2
+                7,
+                8
               ],
               "updatedBy": [
-                2,
-                3
+                10,
+                11
               ],
               "labelId": [
                 11,
@@ -2698,7 +2698,7 @@
         },
         "wire": {
           "method": "GET",
-          "endpoint": "get_cases/7&type_id=2%2C3&priority_id=3%2C4&template_id=1%2C2&milestone_id=9%2C10&created_by=1%2C2&updated_by=2%2C3&label_id=11%2C12&refs%5B%5D=REQ-1&refs%5B%5D=REQ%262&limit=250&offset=0"
+          "endpoint": "get_cases/7&type_id=2%2C3&priority_id=3%2C4&template_id=1%2C2&milestone_id=9%2C10&created_by=7%2C8&updated_by=10%2C11&label_id=11%2C12&refs%5B%5D=REQ-1&refs%5B%5D=REQ%262&limit=250&offset=0"
         },
         "upstream_response": {
           "kind": "json",
