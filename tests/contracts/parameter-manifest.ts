@@ -397,7 +397,29 @@ const sharedDomains = await loadDomainLibrary();
 const sharedReleases = await loadDriverReleases();
 
 const driverSourcePrefix = 'https://github.com/dichovsky/testrail-api-client/blob/';
-const driverReference = /^[a-z]+:\/\/(?:[a-z0-9-]+\.)*(?:github\.com|githubusercontent\.com)\/dichovsky\/testrail-api-client(?:[/?#.]|$)/i;
+/**
+ * Whether a URL names the driver repository in any spelling GitHub would serve. It is
+ * parsed rather than matched as text, so an explicit port, a trailing-dot host, user
+ * information, letter case and percent-encoded path segments are all seen through.
+ */
+function citesDriver(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  const host = parsed.hostname.toLowerCase().replace(/\.$/u, '');
+  if (!/(?:^|\.)(?:github\.com|githubusercontent\.com)$/u.test(host)) return false;
+  const [owner, repository] = parsed.pathname.split('/').filter((segment) => segment !== '').map((segment) => {
+    try {
+      return decodeURIComponent(segment).toLowerCase();
+    } catch {
+      return segment.toLowerCase();
+    }
+  });
+  return owner === 'dichovsky' && (repository === 'testrail-api-client' || repository === 'testrail-api-client.git');
+}
 
 /**
  * Hold a manifest's driver provenance to the release ledger. A driver_commit that has
@@ -422,9 +444,9 @@ function auditProvenance(manifest: ParameterManifest, ledger: DriverReleases, fa
   const paths = new Set<string>();
   for (const source of manifest.sources) {
     if (!source.url.startsWith(pinned)) {
-      // Any other spelling of a driver link (raw, blame, tree, another host form or
+      // Any other spelling of a driver link (raw, blame, tree, another host, port or
       // letter case) would escape both the revision check and the evidence rule.
-      if (!source.url.startsWith(driverSourcePrefix) && driverReference.test(source.url)) {
+      if (!source.url.startsWith(driverSourcePrefix) && citesDriver(source.url)) {
         fail(`Source ${source.id} cites the driver outside a blob URL pinned at ${short(review.driver_commit)}`);
       }
       continue;

@@ -28,9 +28,15 @@ function blob(commit, path) {
 for (const release of ledger.releases) {
   const work = await mkdtemp(join(tmpdir(), 'driver-ledger-'));
   try {
-    const packed = JSON.parse(execFileSync(npm, ['pack', '--json', '--pack-destination', work, `@dichovsky/testrail-api-client@${release.version}`], {
+    const report = JSON.parse(execFileSync(npm, ['pack', '--json', '--pack-destination', work, `@dichovsky/testrail-api-client@${release.version}`], {
       encoding: 'utf8', shell: process.platform === 'win32',
-    }))[0];
+    }));
+    // npm 12 keys the JSON report by package name; npm 10/11 return an array.
+    const reports = Array.isArray(report) ? report : Object.values(report);
+    const packed = reports.length === 1 ? reports[0] : undefined;
+    if (packed?.name !== '@dichovsky/testrail-api-client' || packed.version !== release.version) {
+      throw new Error(`npm pack did not report exactly @dichovsky/testrail-api-client@${release.version}`);
+    }
     const tarball = join(work, packed.filename);
     const integrity = `sha512-${createHash('sha512').update(await readFile(tarball)).digest('base64')}`;
     if (integrity !== release.integrity) mismatches.push(`${release.version}: integrity ${integrity}`);

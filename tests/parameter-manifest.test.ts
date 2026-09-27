@@ -343,6 +343,12 @@ describe('driver provenance evidence', () => {
       `https://github.com/Dichovsky/testrail-api-client/blob/${stale}`,
       `http://github.com/dichovsky/testrail-api-client/blob/${stale}`,
       'https://github.com/dichovsky/testrail-api-client.git',
+      // Spellings a text match missed: each serves the same stale driver file.
+      `https://github.com:443/dichovsky/testrail-api-client/blob/${stale}`,
+      `https://github.com./dichovsky/testrail-api-client/blob/${stale}`,
+      `https://reviewer@github.com/dichovsky/testrail-api-client/blob/${stale}`,
+      `https://github.com/%64ichovsky/testrail-api-client/blob/${stale}`,
+      `https://codeload.github.com/dichovsky/testrail-api-client/tar.gz/${release700}`,
     ]) {
       const project = find('update_project');
       project.sources.push({ id: 'stale-link', url, supports: 'A driver link in another form.' });
