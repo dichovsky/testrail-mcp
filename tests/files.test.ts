@@ -1,3 +1,4 @@
+import { constants } from 'node:fs';
 import { mkdtemp, mkdir, open, readdir, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -461,7 +462,7 @@ describe('upload staging', () => {
     await area.dispose();
   });
 
-  it.skipIf(process.platform === 'win32')('refuses a final component swapped for a symlink before it is opened', async () => {
+  it('refuses a final component swapped for a symlink before it is opened', async () => {
     const area = await createStagingArea(staging);
     const path = await source('swap-to-link.txt', 'inside');
     const secret = join(outside, 'swap-secret.txt');
@@ -481,8 +482,13 @@ describe('upload staging', () => {
     await expect(stageUpload(path, { roots: [root], maxBytes: 1_024, stagingDirectory: area.directory }))
       .rejects.toMatchObject({ code: 'FILE_ACCESS_DENIED' });
     expect(swapped).toBe(true);
-    // O_NOFOLLOW itself refused the link, before the inode check could.
-    expect(refusedBy).toBe('ELOOP');
+    if (constants.O_NOFOLLOW === undefined) {
+      // Windows has no O_NOFOLLOW: the open follows the link, and the inode check refuses it.
+      expect(refusedBy).toBeUndefined();
+    } else {
+      // O_NOFOLLOW itself refused the link, before the inode check could.
+      expect(refusedBy).toBe('ELOOP');
+    }
     expect(await readdir(area.directory)).toEqual(['owner.json']);
     await area.dispose();
   });
