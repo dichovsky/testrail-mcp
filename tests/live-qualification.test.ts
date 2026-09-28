@@ -967,7 +967,6 @@ describe('the command line', () => {
 
   it.skipIf(process.platform === 'win32')('deletes the project when Ctrl-C at a terminal stops the runner and the server together', async () => {
     const out = join(base, 'interrupted', 'evidence.json');
-    const launched = standIn.requests.length;
     // Detached, the runner leads its own process group, as a terminal's foreground job does.
     const cli = spawn(process.execPath, [script('live-qualification.mjs'), '--create-qualification-project', '--out', out], {
       detached: true, stdio: ['ignore', 'ignore', 'pipe'], env: { PATH: process.env.PATH, HOME: process.env.HOME, ...standIn.environment },
@@ -975,7 +974,9 @@ describe('the command line', () => {
     let stderr = '';
     cli.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
     const exited = new Promise<number | null>((resolve) => { cli.once('exit', resolve); });
-    await vi.waitFor(() => { expect(standIn.requests.slice(launched).some(({ tool }) => tool === 'testrail_add_project')).toBe(true); }, { timeout: 60_000, interval: 200 });
+    // Once the runner has the project's answer, not merely once TestRail has the request: a
+    // server stopped in between leaves the project only possible, with no ID to delete.
+    await vi.waitFor(() => { expect(stderr).toMatch(/^pass {4}testrail_add_project$/mu); }, { timeout: 60_000, interval: 200 });
     const signalled = standIn.requests.length;
     // As Ctrl-C does: the signal goes to the whole group, the runner and the server it started.
     process.kill(-(cli.pid ?? 0), 'SIGINT');
@@ -989,14 +990,14 @@ describe('the command line', () => {
     const out = join(base, 'hung-up', 'evidence.json');
     // With its output gone, a crash would leave nothing to read but Node's own report.
     const reports = await mkdtemp(join(base, 'reports-'));
-    const launched = standIn.requests.length;
     const cli = spawn(process.execPath, ['--report-uncaught-exception', `--report-directory=${reports}`, script('live-qualification.mjs'), '--create-qualification-project', '--out', out], {
       detached: true, stdio: ['ignore', 'ignore', 'pipe'], env: { PATH: process.env.PATH, HOME: process.env.HOME, ...standIn.environment },
     });
     let said = '';
     cli.stderr?.on('data', (chunk: Buffer) => { said += chunk.toString(); });
     const exited = new Promise<number | null>((resolve) => { cli.once('exit', resolve); });
-    await vi.waitFor(() => { expect(standIn.requests.slice(launched).some(({ tool }) => tool === 'testrail_add_project')).toBe(true); }, { timeout: 60_000, interval: 200 });
+    // A closed terminal kills the server at once, so wait for the runner to have the project's answer.
+    await vi.waitFor(() => { expect(said).toMatch(/^pass {4}testrail_add_project$/mu); }, { timeout: 60_000, interval: 200 });
     const signalled = standIn.requests.length;
     // As a `| tee` that Ctrl-C stopped too: the output's reader is gone, then the signal arrives.
     cli.stderr?.destroy();
