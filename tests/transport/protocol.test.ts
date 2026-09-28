@@ -116,7 +116,9 @@ describe('protocol eras', () => {
     try {
       // Recorded from the connection rather than inferred from the SDK version.
       expect(session.client.getProtocolEra()).toBe('legacy');
-      expect(typeof session.client.getNegotiatedProtocolVersion()).toBe('string');
+      // The SDK client offers its latest legacy version, 2025-11-25, and the server
+      // accepts it rather than answering with an older one.
+      expect(session.client.getNegotiatedProtocolVersion()).toBe('2025-11-25');
       const { tools } = await session.client.listTools();
       expect(tools.map((tool) => tool.name)).toEqual(['testrail_get_project']);
     } finally { await session.close(); }
@@ -224,10 +226,38 @@ describe('tool calls', () => {
 });
 
 describe('server instructions', () => {
-  it('states the essential cross-tool rules within the first 512 characters', () => {
-    const opening = SERVER_INSTRUCTIONS.slice(0, 512);
-    for (const essential of ['permissions', '_mcp.pagination', 'custom_', 'write_outcome']) {
+  it('states the essential cross-tool rules in an opening paragraph that fits in 512 characters', () => {
+    // Hosts may truncate to 512 characters, so the whole opening paragraph must fit,
+    // ending at a sentence rather than mid-rule.
+    const opening = SERVER_INSTRUCTIONS.split('\n\n')[0] ?? '';
+    expect(opening.length).toBeLessThanOrEqual(512);
+    expect(opening.endsWith('.')).toBe(true);
+    // Whole sentences, so a paragraph that reversed or dropped one would fail. The
+    // expected text is the rule itself as docs/transport.md states it.
+    for (const essential of [
+      "Each tool is one TestRail API endpoint, run with the configured user's permissions.",
+      'Lists that take _mcp return one page by default (50 where a limit applies); never treat it as the whole dataset.',
+      '_mcp.pagination "all" fetches the rest within bounds, as far as TestRail\'s replies link on.',
+      "Results keep TestRail's field names.",
+      "A write's or report run's error has write_outcome: \"unknown\" may already be applied, so check before retrying; \"acknowledged\" was applied, so do not repeat it.",
+      'Never poll a report.',
+    ]) {
       expect(opening, essential).toContain(essential);
+    }
+  });
+
+  it('keeps the rest of the cross-tool rules, each as a whole sentence', () => {
+    for (const rule of [
+      'Results are {data, pagination, warnings}, and field names include custom_* fields.',
+      '"not_started" means nothing was sent.',
+      '"acknowledged" means TestRail accepted the change but its response could not be delivered.',
+      "The user's licence applies as well as their permissions.",
+      "Running a report generates it and may send the template's configured email.",
+      'Downloading an attachment writes a new local file every time and never overwrites one.',
+      'Uploads read a local path that must sit inside a configured directory.',
+      'A warnings entry means TestRail returned fields differing from the expected shape; the data is passed through unchanged and is still usable.',
+    ]) {
+      expect(SERVER_INSTRUCTIONS, rule).toContain(rule);
     }
   });
 
