@@ -25,7 +25,8 @@
  */
 import { randomBytes } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -275,8 +276,10 @@ export async function runQualification({
       const { data, message, writeOutcome, ...classified } = classify(result);
       const outcome = retries > 0 ? { ...classified, retries } : classified;
       // A write that may have reached TestRail may have created what the run cannot delete;
-      // one TestRail refused with a 4xx, or never received, did not.
-      const refused = outcome.http_status !== undefined && outcome.http_status >= 400 && outcome.http_status < 500;
+      // one TestRail refused with a 4xx, or never received, did not. A 408 is no refusal: the
+      // driver raises one itself when TestRail has not answered in time, and TestRail may
+      // still have acted.
+      const refused = outcome.http_status !== undefined && outcome.http_status >= 400 && outcome.http_status < 500 && outcome.http_status !== 408;
       if (step.unconfirmed !== undefined && outcome.status !== 'pass' && writeOutcome !== 'not_started' && !refused) c.residue(`possible ${step.unconfirmed}`);
       if (outcome.status === 'pass' && step.capture !== undefined) {
         try {
@@ -443,7 +446,7 @@ export function parseOptions(argv) {
   const server = values.command === undefined
     ? { command: process.execPath, args: [fileURLToPath(new URL('../dist/cli.js', import.meta.url))] }
     : { command: values.command, args: values.arg };
-  return { out: values.out, options, server };
+  return { out: values.out, options, server, ownServer: values.command === undefined };
 }
 
 /** Write the plan's upload files into a fresh directory. */
@@ -464,10 +467,33 @@ export function newStamp(now = new Date()) {
 /** Refuse, before anything touches TestRail, evidence that could never be written: an --out that is a directory or cannot be written. */
 async function checkOut(out) {
   await mkdir(dirname(out), { recursive: true });
-  if ((await stat(out).catch(() => undefined))?.isDirectory() === true) throw new Error(`--out ${out} is a directory; name the evidence file.`);
-  const probe = `${out}.${randomBytes(4).toString('hex')}.tmp`;
-  await writeFile(probe, '');
-  await rm(probe, { force: true });
+  const existing = await stat(out).catch(() => undefined);
+  if (existing?.isDirectory() === true) throw new Error(`--out ${out} is a directory; name the evidence file.`);
+  try {
+    if (existing === undefined) {
+      const probe = `${out}.${randomBytes(4).toString('hex')}.tmp`;
+      await writeFile(probe, '');
+      await rm(probe, { force: true });
+    } else {
+      // Opened for writing without truncating it, so a refusal leaves the file as it was.
+      await (await open(out, 'r+')).close();
+    }
+  } catch (error) {
+    throw new Error(`--out ${out} cannot be written: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+  }
+}
+
+const DRIVER = '@dichovsky/testrail-api-client';
+
+/** The driver installed beside the runner, which the server in this checkout loads; null if it cannot be read. */
+async function installedDriverVersion() {
+  try {
+    const entry = createRequire(import.meta.url).resolve(DRIVER);
+    const manifest = JSON.parse(await readFile(join(dirname(dirname(entry)), 'package.json'), 'utf8'));
+    return manifest.name === DRIVER && typeof manifest.version === 'string' ? manifest.version : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -479,7 +505,7 @@ export async function main({
   argv = process.argv.slice(2), env = process.env, connect = connectStdio, pacing = LIVE_PACING, log = (line) => { process.stderr.write(`${line}\n`); },
   signals = process,
 } = {}) {
-  const { out, options, server } = parseOptions(argv);
+  const { out, options, server, ownServer } = parseOptions(argv);
   const missing = REQUIRED_VARIABLES.filter((key) => (env[key] ?? '') === '');
   if (missing.length > 0) throw new Error(`Set ${missing.join(', ')} in the environment; the runner never takes credentials as arguments.`);
   // Before any request: a configured value that the evidence's own words contain would make
@@ -550,7 +576,6 @@ export async function main({
     // What cleanup did is said before anything else can fail: it names kinds and outcomes only.
     const residue = run.cleanup.residue.map(({ kind, count }) => `${String(count)} ${kind}`).join(', ');
     log(`Cleanup: project ${run.cleanup.project}, group ${run.cleanup.group}${residue === '' ? '' : `; left behind: ${residue}`}.`);
-    const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
     const evidence = buildEvidence({
       run,
       tools,
@@ -559,7 +584,8 @@ export async function main({
       server: {
         package_version: session.serverVersion ?? null,
         protocol: session.protocol ?? null,
-        driver_version: manifest.dependencies['@dichovsky/testrail-api-client'] ?? null,
+        // Another server's driver cannot be seen from here; its package version names the release.
+        driver_version: ownServer ? await installedDriverVersion() : null,
       },
     });
     const text = `${JSON.stringify(evidence, null, 2)}\n`;

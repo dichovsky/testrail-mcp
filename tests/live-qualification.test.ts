@@ -1,16 +1,16 @@
 import { execFile, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, readFile, rm, symlink } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { TestRailClient } from '@dichovsky/testrail-api-client';
+import { TestRailApiError, TestRailClient } from '@dichovsky/testrail-api-client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { loadConfiguration } from '../src/config/environment.js';
-import { ERROR_CODES } from '../src/contracts/errors.js';
-import { driverOptions } from '../src/driver/configuration.js';
+import { classifyError, ERROR_CODES } from '../src/contracts/errors.js';
+import { driverOptions, REQUEST_TIMEOUT_MS } from '../src/driver/configuration.js';
 import { operationRegistry } from '../src/operations/catalog.js';
 import type { Operation } from '../src/operations/registry.js';
 import { createRuntime } from '../src/runtime/invocation.js';
@@ -68,6 +68,7 @@ const { startFixtureTestRail } = (await import(new URL('../scripts/fixture-testr
   startFixtureTestRail: () => Promise<StandIn>;
 };
 const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
+const installedDriver = JSON.parse(await readFile(new URL('../node_modules/@dichovsky/testrail-api-client/package.json', import.meta.url), 'utf8')) as { version: string };
 // Windows checkouts may carry CRLF line endings.
 const guide = (await readFile(new URL('../docs/live-qualification.md', import.meta.url), 'utf8')).replace(/\r\n/gu, '\n');
 
@@ -406,6 +407,15 @@ describe('a full run against the stand-in', () => {
     expect(full.returned).toEqual(full.evidence);
   });
 
+  it('records the driver only for its own server, since the driver of one --command names cannot be seen', async () => {
+    // Refused credentials end each run at its first call.
+    const refuse: Parameters<typeof inProcess>[0] = (tool, input, real) => (tool === 'testrail_get_version' ? Promise.resolve(failure('AUTHENTICATION_FAILED', 401)) : real(tool, input));
+    const own = await qualify([], refuse);
+    expect(own.evidence.server).toEqual({ package_version: packageJson.version, protocol: null, driver_version: installedDriver.version });
+    const other = await qualify(['--command', 'testrail-mcp'], refuse);
+    expect(other.evidence.server).toEqual({ package_version: packageJson.version, protocol: null, driver_version: null });
+  });
+
   it('writes evidence with no credential, address or personal detail, and no TestRail data', () => {
     const { TESTRAIL_EMAIL: email = '', TESTRAIL_API_KEY: key = '' } = standIn.environment;
     for (const secret of [standIn.baseUrl, new URL(standIn.baseUrl).host, email, key, Buffer.from(`${email}:${key}`).toString('base64'),
@@ -605,6 +615,29 @@ describe('a run that cannot finish', () => {
     expect(unusable.evidence.cleanup.residue).toEqual([{ kind: 'possible project', count: 1 }]);
   });
 
+  it('lists what a write may have created when the driver\'s own deadline ends it, though its status is 408', async () => {
+    // The driver raises a 408 of its own when TestRail has not answered in time; TestRail may still have acted.
+    const context = { mutates: true, dispatched: true, acknowledged: false };
+    const deadline: ToolResult = { isError: true, structuredContent: { error: classifyError(new TestRailApiError(408, `Request timeout after ${String(REQUEST_TIMEOUT_MS)}ms`), context) } };
+    expect(deadline.structuredContent).toMatchObject({ error: { http_status: 408, write_outcome: 'unknown' } });
+    // TestRail creates the project, and its answer is lost.
+    const project = await qualify([], async (tool, input, real) => {
+      if (tool !== 'testrail_add_project') return real(tool, input);
+      await real(tool, input);
+      return deadline;
+    });
+    expect(project.evidence.cleanup).toEqual({ project: 'not_created', group: 'not_created', residue: [{ kind: 'possible project', count: 1 }] });
+    for (const [tool, kind] of [['testrail_add_group', 'possible group'], ['testrail_add_user', 'possible user'], ['testrail_add_case_field', 'possible case_field']]) {
+      const { evidence } = await qualify(FULL, (name, input, real) => (name === tool ? Promise.resolve(deadline) : real(name, input)));
+      expect(evidence.cleanup.residue, tool).toContainEqual({ kind, count: 1 });
+    }
+    // A 4xx TestRail sent is a refusal, and leaves nothing.
+    const refusal: ToolResult = { isError: true, structuredContent: { error: classifyError(new TestRailApiError(400, 'Bad Request', '{"error":"Field :name is required."}'), context) } };
+    expect(refusal.structuredContent).toMatchObject({ error: { http_status: 400, write_outcome: 'unknown' } });
+    const refused = await qualify([], (tool, input, real) => (tool === 'testrail_add_project' ? Promise.resolve(refusal) : real(tool, input)));
+    expect(refused.evidence.cleanup.residue).toEqual([]);
+  });
+
   it('stops at once when TestRail refuses the credentials', async () => {
     // Every other call would reach the stand-in, so any sent after the refusal shows.
     const { evidence, requests } = await qualify([], (tool, input, real) => (tool === 'testrail_get_version' ? Promise.resolve(failure('AUTHENTICATION_FAILED', 401)) : real(tool, input)));
@@ -662,6 +695,31 @@ describe('a run that cannot finish', () => {
     expect(() => runner.parseOptions(['--create-qualification-project', '--out', ''])).toThrow(/Name the evidence file with --out/u);
     expect(connect).not.toHaveBeenCalled();
     expect(standIn.requests.length).toBe(before);
+  });
+
+  it('checks an existing evidence file without changing it, so a run that ends early leaves it as it was', async () => {
+    const out = join(base, 'earlier.json');
+    await writeFile(out, 'earlier evidence\n');
+    const connect: Connect = () => Promise.reject(new Error('the server did not start'));
+    await expect(runner.main({ argv: ['--create-qualification-project', '--out', out], env: standIn.environment, connect, pacing: INSTANT, log: () => undefined }))
+      .rejects.toThrow(/the server did not start/u);
+    expect(await readFile(out, 'utf8')).toBe('earlier evidence\n');
+  });
+
+  // Root writes through a file's permissions, so there a read-only file is writable and nothing is refused.
+  it.skipIf(process.getuid?.() === 0)('refuses, before any request, an evidence file it cannot overwrite, and leaves it as it was', async () => {
+    const connect = vi.fn<Connect>();
+    const out = join(base, 'read-only.json');
+    await writeFile(out, 'earlier evidence\n');
+    await chmod(out, 0o444);
+    try {
+      await expect(runner.main({ argv: ['--create-qualification-project', '--out', out], env: standIn.environment, connect, pacing: INSTANT, log: () => undefined }))
+        .rejects.toThrow(/--out .* cannot be written/u);
+      expect(connect).not.toHaveBeenCalled();
+      expect(await readFile(out, 'utf8')).toBe('earlier evidence\n');
+    } finally {
+      await chmod(out, 0o644);
+    }
   });
 
   it('skips the existing group read, rather than blocking it, on an instance with no groups', async () => {

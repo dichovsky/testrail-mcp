@@ -17,7 +17,7 @@ A guard checks every write before it is sent. Each ID the write names, in the pa
 
 The last step deletes the project and everything in it. If the run stops early, because a call fails, the MCP session breaks or you press Ctrl-C, the runner still deletes the project, and the group when there is one, on the way out. Ctrl-C at a terminal stops the server as well as the runner, so the runner starts a fresh server to clean up through. A second Ctrl-C abandons that cleanup and names the project it leaves.
 
-TestRail's API cannot delete users or case fields. With `--instance-writes`, one inactive user and one case field stay behind, and the evidence lists them. When TestRail's answer to creating one is unknown, it lists it as possible. The user's name and the case field's label start with `testrail-mcp qualification`; the case field's system name is `tmq_<id>_f`, and the user's address ends in `@example.invalid`.
+TestRail's API cannot delete users or case fields. With `--instance-writes`, one inactive user and one case field stay behind, and the evidence lists them. When TestRail's answer to creating one is unknown, it lists it as possible, and so it does for the project and the group. A request the driver gave up waiting on counts as unknown, although its status is 408, since TestRail may still have acted on it. The user's name and the case field's label start with `testrail-mcp qualification`; the case field's system name is `tmq_<id>_f`, and the user's address ends in `@example.invalid`.
 
 ## Running it
 
@@ -47,7 +47,7 @@ TestRail's API cannot delete users or case fields. With `--instance-writes`, one
 | Option | Effect |
 | --- | --- |
 | `--create-qualification-project` | Required. Confirms that the run may create, use and delete a project. |
-| `--out <file>` | Required. Where the evidence goes; its directory is created if needed. A directory, or a path that cannot be written, is refused before anything is sent. |
+| `--out <file>` | Required. Where the evidence goes; its directory is created if needed. A directory, or a path that cannot be written, is refused before anything is sent. An existing file is checked without being changed. |
 | `--instance-writes` | Also run the writes outside the project. Disposable instances only. |
 | `--report-template-id <id>` | A single-project report template configured for the test. |
 | `--cross-project-report-template-id <id>` | A cross-project report template configured for the test. |
@@ -101,6 +101,8 @@ If any of them appears, it refuses to write the file.
 }
 ```
 
+`driver_version` is the driver installed beside the runner, which its own server loads. With `--command` it is `null`: the runner cannot see which driver another server loads, and `package_version` names the release, which pins one driver.
+
 `tests/live-qualification.test.ts` holds the runner offline. It checks that:
 - the plan calls every registered tool;
 - each step's scope matches the tool's effect;
@@ -116,7 +118,7 @@ It runs the whole plan through the registered tools and the real driver against 
 - a session that dies, after which cleanup deletes the project through a fresh one;
 - Ctrl-C, in-process and at a real terminal, after which cleanup deletes the project and the group;
 - a project or group that could not be deleted;
-- a group, user or case field whose creation's outcome is unknown;
+- a project, group, user or case field whose creation's outcome is unknown, including a request the driver timed out;
 - refused credentials;
 - a rate-limited call;
 - an instance with no groups;
@@ -125,5 +127,6 @@ It runs the whole plan through the registered tools and the real driver against 
 It also covers:
 - the pace against the server's rate limit, and what is repeated;
 - the tool statuses and exit codes;
-- the command line's refusals and a server that will not start;
+- the command line's refusals, including an evidence file it cannot overwrite, and a server that will not start;
+- the driver version, recorded only for the runner's own server;
 - the stdio connection to the built server.
