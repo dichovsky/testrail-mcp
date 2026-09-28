@@ -9,13 +9,13 @@ It exposes **133 tools, one per TestRail REST endpoint**, across all 28 API reso
 | Area | State |
 | --- | --- |
 | Endpoint tools | All 133 registered, each with a complete independent parameter manifest ([coverage reports](docs/coverage-reports.md)) |
-| Offline verification | Fixture contracts for every endpoint, both MCP protocol eras (legacy `initialize` and 2026-07-28), and the packed executable on Node 22 and 24 across Linux, macOS and Windows |
+| Offline verification | Fixture contracts for every endpoint, both MCP protocol eras (legacy `initialize` and 2026-07-28), and the packed executable on Node 24 across Linux, macOS and Windows |
 | Client qualification | Pending: [R02](https://github.com/dichovsky/testrail-mcp/issues/23) |
 | Live TestRail 10.7 qualification and npm release | Pending: [R03](https://github.com/dichovsky/testrail-mcp/issues/24). The package is **not yet published to npm** |
 
 ## Install
 
-Node 22.13 or later in the 22 series, or Node 24, is required. Other Node majors admitted by the package's engine range are best effort.
+Node 24 is tested. The package's engine range also admits Node 22.13 or later in the 22 series and later majors; those are untested and best effort.
 
 Until the first npm release, install from a packed checkout. `npm pack` prints the tarball's file name; install that file by name, since Windows shells do not expand a `*` wildcard:
 
@@ -93,7 +93,7 @@ npm run check
 4. runs every test;
 5. packs and installs the tarball into a clean directory, then drives the installed executable over MCP in both protocol eras against a local stand-in for TestRail.
 
-CI does the same on Node 22 and 24 across Linux, macOS and Windows, and publishes the [coverage reports](docs/coverage-reports.md) as artifacts. Source layout follows the [component boundaries](src/README.md).
+CI does the same on Node 24 across Linux, macOS and Windows, and publishes the [coverage reports](docs/coverage-reports.md) as artifacts. Source layout follows the [component boundaries](src/README.md).
 
 ## Documents
 
