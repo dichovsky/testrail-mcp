@@ -74,16 +74,27 @@ async function staging(): Promise<StagingArea> {
  * outlives the call, on the failing path as much as the succeeding one.
  */
 describe('T03 feature-file uploads through the transport', () => {
-  it('stages a file inside an allowed root, uploads its bytes and leaves nothing behind', async () => {
+  it.each(['testrail_add_bdd', 'testrail_update_bdd'])('%s says, and enforces, that the filename ends in .feature', (tool) => {
+    const registered = operation(tool);
+    expect(registered.description).toContain('The multipart filename must end in .feature.');
+    const shape = (registered.inputSchema as unknown as { shape: { filename: { safeParse: (value: unknown) => { success: boolean } } } }).shape;
+    expect(shape.filename.safeParse('login.feature').success).toBe(true);
+    expect(shape.filename.safeParse('login.txt').success).toBe(false);
+  });
+
+  it.each([
+    ['testrail_add_bdd', 'addBdd', { section_id: 188 }],
+    ['testrail_update_bdd', 'updateBdd', { case_id: 2133 }],
+  ] as const)('%s stages a file inside an allowed root, uploads its bytes and leaves nothing behind', async (tool, method, target) => {
     const calls: { body: unknown }[] = [];
     const area = await staging();
     const driver = client(() => Promise.resolve(new Response(JSON.stringify(CASE), { headers: { 'content-type': 'application/json' } })), calls);
-    const upload = vi.spyOn(driver.bdd, 'addBdd');
+    const upload = vi.spyOn(driver.bdd, method);
     const runtime = createRuntime({ client: driver, limits: configuration.limits });
     const source = join(roots, 'login.feature');
     try {
-      const result = await executeToolCall(operation('testrail_add_bdd'), {
-        section_id: 188, file_path: source, filename: 'login.feature', content_type: 'text/plain',
+      const result = await executeToolCall(operation(tool), {
+        ...target, file_path: source, filename: 'login.feature', content_type: 'text/plain',
       }, { runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory) });
 
       expect(result.isError).toBeUndefined();
@@ -101,7 +112,8 @@ describe('T03 feature-file uploads through the transport', () => {
       if (staged === undefined || !('path' in staged)) throw new Error('Expected the driver to receive a staged path');
       expect(staged.path.startsWith(area.directory)).toBe(true);
       expect(staged.path).not.toBe(source);
-      expect(staged.type).toBe('text/plain');
+      // Exactly a path and the caller's media type: no descriptor, nothing invented.
+      expect(staged).toStrictEqual({ path: staged.path, type: 'text/plain' });
       // The part carries the caller's filename and media type, and the file's bytes.
       expect(calls[0]?.body).toEqual([
         { name: 'attachment', filename: 'login.feature', content_type: 'text/plain', utf8: FEATURE },

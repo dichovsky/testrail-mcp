@@ -68,7 +68,8 @@ export async function stageUpload(
 
   /*
    * O_NOFOLLOW guards the final component against a symlink swapped in after the
-   * realpath above; it is unavailable on Windows, where containment carries the check.
+   * realpath above. It is unavailable on Windows, where only containment and the inode
+   * check below apply.
    *
    * O_NONBLOCK is what makes the regular-file check below reachable. Opening a FIFO
    * for reading blocks until a writer connects, and that happens before anything can
@@ -89,7 +90,10 @@ export async function stageUpload(
   };
 
   const target = join(options.stagingDirectory, randomUUID());
-  const disposeTarget = onceRemove(target);
+  // Armed only once the exclusive create below has made the target ours. A name that
+  // already exists belongs to someone else, and removing it on the way out would
+  // delete a file this call never created.
+  let disposeTarget: () => Promise<void> = () => Promise.resolve();
 
   try {
     // Inspect the handle rather than the path: this is the file actually opened.
@@ -97,8 +101,8 @@ export async function stageUpload(
     if (!opened.isFile()) throw new AdapterError('FILE_ACCESS_DENIED');
     if (opened.size > options.maxBytes) throw new AdapterError('FILE_TOO_LARGE');
 
-    // Where inode identity is meaningful, confirm the path still names the file the
-    // handle holds. Windows reports no usable inode, so this is skipped there.
+    // Where the platform reports an inode, confirm the path still names the file the
+    // handle holds. The check is skipped only when the inode reads as zero.
     if (opened.ino !== 0) {
       const named = await lstat(resolved).catch(() => null);
       if (named === null || named.ino !== opened.ino || named.dev !== opened.dev) {
@@ -107,6 +111,7 @@ export async function stageUpload(
     }
 
     const staged = await open(target, 'wx', 0o600);
+    disposeTarget = onceRemove(target);
     let bytes = 0;
     try {
       const buffer = Buffer.allocUnsafe(COPY_CHUNK);
@@ -115,11 +120,22 @@ export async function stageUpload(
         if (bytesRead === 0) break;
         bytes += bytesRead;
         if (bytes > options.maxBytes) throw new AdapterError('FILE_TOO_LARGE');
-        await staged.write(buffer, 0, bytesRead);
+        // A write may accept less than it was given; loop until the chunk is all written.
+        for (let offset = 0; offset < bytesRead;) {
+          const { bytesWritten } = await staged.write(buffer, offset, bytesRead - offset);
+          // A write that makes no progress would loop forever; treat it as a failure.
+          if (bytesWritten <= 0) throw new AdapterError('FILE_ACCESS_DENIED');
+          offset += bytesWritten;
+        }
       }
-    } finally {
+    } catch (error) {
       await staged.close().catch(() => undefined);
+      throw error;
     }
+    // Closed on success where a failure can still be seen: a write error some
+    // filesystems (NFS, for one) report only at close surfaces here, and a copy that
+    // failed must not be uploaded. Close is not fsync; durability is not the aim.
+    await staged.close();
 
     await closeSource();
     return Object.freeze({ path: target, bytes, dispose: disposeTarget });

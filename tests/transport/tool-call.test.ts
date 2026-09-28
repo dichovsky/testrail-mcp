@@ -166,6 +166,31 @@ describe('aggregate bounds above the configured limit', () => {
   );
 });
 
+describe('download diagnostics', () => {
+  it('logs a successful download without its local path', async () => {
+    const runtime = createRuntime({
+      client: driver(() => Promise.resolve(binary(new Uint8Array([1, 2, 3])))),
+      limits: configuration.limits,
+    });
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const result = await executeToolCall(getAttachment, { attachment_id: 9 }, { runtime, configuration });
+      const path = (result.structuredContent as { data: { file_path: string } }).data.file_path;
+      const lines = write.mock.calls.map(([chunk]) => String(chunk));
+      expect(lines).toHaveLength(1);
+      // The path goes to the caller in the result, never into diagnostics. Checked raw
+      // and JSON-escaped, since a Windows path's backslashes double in the log line.
+      for (const text of [path, base]) {
+        expect(lines[0]).not.toContain(text);
+        expect(lines[0]).not.toContain(JSON.stringify(text).slice(1, -1));
+      }
+    } finally {
+      write.mockRestore();
+      await runtime.shutdown();
+    }
+  });
+});
+
 describe('download identifiers', () => {
   it.each([
     ['numeric', 7],
@@ -240,6 +265,40 @@ describe('staged uploads', () => {
       await area.dispose();
     }
   }, 20_000);
+
+  it('disposes the staged copy and frees the slot when name resolution fails before any request', async () => {
+    const source = join(roots, 'dns-fails.txt');
+    await writeFile(source, 'approved content');
+    const area = await createStagingArea(base);
+    const fetch = vi.fn(() => Promise.resolve(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })));
+    const runtime = createRuntime({
+      client: new TestRailClient({
+        baseUrl: configuration.baseUrl, email: configuration.email, apiKey: configuration.apiKey,
+        registerProcessHandlers: false, maxRetries: 0,
+        dnsLookup: () => Promise.reject(Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' })),
+        fetch,
+      }),
+      limits: configuration.limits,
+    });
+    try {
+      const result = await executeToolCall(addAttachment, { case_id: 1, file_path: source, filename: 'dns.txt' }, {
+        runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory),
+      });
+      // Today's behaviour, pinned so any change is deliberate: the driver raises a
+      // validation error for the failed lookup, which maps to an internal fault with an
+      // unknown write outcome although nothing was sent. Whether it should is an open
+      // question on the F05 error contract.
+      expect(result.structuredContent).toEqual({
+        error: { code: 'INTERNAL_ERROR', message: 'The server failed to complete the call.', write_outcome: 'unknown' },
+      });
+      expect(fetch).not.toHaveBeenCalled();
+      await vi.waitFor(() => { expect(runtime.stats().active).toBe(0); });
+      expect(await readdir(area.directory)).toEqual(['owner.json']);
+    } finally {
+      await runtime.shutdown();
+      await area.dispose();
+    }
+  });
 
   /*
    * Cancellation stops the wait, not the request: the driver may still be reading the

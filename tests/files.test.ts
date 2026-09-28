@@ -1,18 +1,23 @@
-import { mkdtemp, mkdir, open, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
+import { constants } from 'node:fs';
+import { mkdtemp, mkdir, open, readdir, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { execFile, spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 // ESM exports are not configurable, so the module is spied as a whole and the real
 // implementation is imported separately for the wrappers below.
 vi.mock('node:fs/promises', { spy: true });
+vi.mock('node:crypto', { spy: true });
 const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
 const run = promisify(execFile);
 import { containedRealPath, isWithin } from '../src/files/containment.js';
 import { writeDownload } from '../src/files/download.js';
 import { createStagingArea, recoverAbandonedStaging, stageUpload } from '../src/files/staging.js';
+
+const WINDOWS = process.platform === 'win32';
 
 let base: string;
 let root: string;
@@ -33,7 +38,13 @@ beforeAll(async () => {
   for (const directory of [root, outside, staging, downloads]) await mkdir(directory);
 });
 
-afterEach(() => { vi.restoreAllMocks(); });
+afterEach(() => {
+  vi.restoreAllMocks();
+  // restoreAllMocks leaves a module spy's implementation in place, so a fake from one
+  // test would otherwise leak into the next and change what that test exercises.
+  // resetAllMocks returns every spied export of both mocked modules to the real one.
+  vi.resetAllMocks();
+});
 afterAll(async () => { await rm(base, { recursive: true, force: true }); });
 
 async function source(name: string, content: string): Promise<string> {
@@ -124,27 +135,46 @@ describe('upload staging', () => {
 
   it('enforces the byte limit while copying, not only from the initial size', async () => {
     const area = await createStagingArea(staging);
-    const path = await source('grower.txt', 'x'.repeat(100));
+    // Several 64 KiB chunks, so stopping during the copy and refusing only after it differ.
+    const path = await source('grower.txt', 'x'.repeat(200 * 1024));
+    const maxBytes = 64 * 1024;
+    let written = 0;
+    let opens = 0;
 
     // A file may grow between being measured and being read, so a stat-only check
     // can be beaten. Report a small size while the handle yields more.
     vi.mocked(open).mockImplementation(async (...args: Parameters<typeof actual.open>) => {
       const handle = await actual.open(...args);
-      const originalStat = handle.stat.bind(handle);
-      handle.stat = (async () => Object.assign(await originalStat(), { size: 10 })) as typeof handle.stat;
+      opens += 1;
+      if (opens === 1) {
+        const originalStat = handle.stat.bind(handle);
+        handle.stat = (async () => Object.assign(await originalStat(), { size: 10 })) as typeof handle.stat;
+      } else {
+        const originalWrite = handle.write.bind(handle) as (b: Buffer, o: number, l: number) => Promise<{ bytesWritten: number }>;
+        handle.write = (async (buffer: Buffer, offset: number, length: number) => {
+          const result = await originalWrite(buffer, offset, length);
+          written += result.bytesWritten;
+          return result;
+        }) as unknown as typeof handle.write;
+      }
       return handle;
     });
 
-    await expect(stageUpload(path, { roots: [root], maxBytes: 50, stagingDirectory: area.directory }))
+    await expect(stageUpload(path, { roots: [root], maxBytes, stagingDirectory: area.directory }))
       .rejects.toMatchObject({ code: 'FILE_TOO_LARGE' });
+    // The copy stopped at the limit rather than copying everything and refusing after.
+    expect(written).toBeLessThanOrEqual(maxBytes);
     await area.dispose();
   });
 
   it('rejects an oversized file by its measured size', async () => {
     const area = await createStagingArea(staging);
     const path = await source('big.txt', 'x'.repeat(500));
+    vi.mocked(open).mockClear();
     await expect(stageUpload(path, { roots: [root], maxBytes: 100, stagingDirectory: area.directory }))
       .rejects.toMatchObject({ code: 'FILE_TOO_LARGE' });
+    // Refused before a staged copy is opened, not by the copy loop.
+    expect(vi.mocked(open).mock.calls).toHaveLength(1);
     await area.dispose();
   });
 
@@ -182,7 +212,7 @@ describe('upload staging', () => {
     await area.dispose();
   });
 
-  it('leaves no staged file behind when staging fails', async () => {
+  it('leaves no staged file behind when refused by its measured size, before any copy', async () => {
     const area = await createStagingArea(staging);
     const path = await source('fails.txt', 'x'.repeat(500));
     await expect(stageUpload(path, { roots: [root], maxBytes: 100, stagingDirectory: area.directory }))
@@ -220,7 +250,251 @@ describe('upload staging', () => {
     await expect(staged.dispose()).resolves.toBeUndefined();
     await area.dispose();
   });
+
+  it('accepts a file of exactly the limit and refuses one byte more, before opening a staged copy', async () => {
+    const area = await createStagingArea(staging);
+    const exact = await stageUpload(await source('exact.txt', 'x'.repeat(64)), { roots: [root], maxBytes: 64, stagingDirectory: area.directory });
+    expect(exact.bytes).toBe(64);
+    vi.mocked(open).mockClear();
+    await expect(stageUpload(await source('over.txt', 'x'.repeat(65)), { roots: [root], maxBytes: 64, stagingDirectory: area.directory }))
+      .rejects.toMatchObject({ code: 'FILE_TOO_LARGE' });
+    // Refused by its measured size: only the source was opened, never a staged copy.
+    expect(vi.mocked(open).mock.calls).toHaveLength(1);
+    expect((await readdir(area.directory)).sort()).toEqual(['owner.json', exact.path.slice(area.directory.length + 1)].sort());
+    await area.dispose();
+  });
+
+  it('accepts a root configured through a symlink', async () => {
+    const area = await createStagingArea(staging);
+    const linkedRoot = join(base, 'linked-root');
+    await symlink(root, linkedRoot, 'dir');
+    const staged = await stageUpload(await source('via-link.txt', 'linked'), { roots: [linkedRoot], maxBytes: 1_024, stagingDirectory: area.directory });
+    expect(await readFile(staged.path, 'utf8')).toBe('linked');
+    await area.dispose();
+  });
+
+  it('never removes an existing file its staged name happens to collide with', async () => {
+    const area = await createStagingArea(staging);
+    const taken = '00000000-0000-4000-8000-000000000000';
+    await writeFile(join(area.directory, taken), 'someone else');
+    vi.mocked(randomUUID).mockReturnValueOnce(taken);
+    await expect(stageUpload(await source('collides.txt', 'mine'), { roots: [root], maxBytes: 1_024, stagingDirectory: area.directory }))
+      .rejects.toMatchObject({ code: 'FILE_ACCESS_DENIED' });
+    expect(await readFile(join(area.directory, taken), 'utf8')).toBe('someone else');
+    await area.dispose();
+  });
+
+  it('refuses a copy whose close fails, and leaves nothing staged', async () => {
+    const area = await createStagingArea(staging);
+    let opens = 0;
+    vi.mocked(open).mockImplementation(async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args);
+      opens += 1;
+      if (opens === 2) {
+        // The staged copy: a deferred write error surfaces only at close.
+        const originalClose = handle.close.bind(handle);
+        handle.close = async () => { await originalClose(); throw new Error('EIO'); };
+      }
+      return handle;
+    });
+    await expect(stageUpload(await source('close-fails.txt', 'content'), { roots: [root], maxBytes: 1_024, stagingDirectory: area.directory }))
+      .rejects.toMatchObject({ code: 'FILE_ACCESS_DENIED' });
+    expect(await readdir(area.directory)).toEqual(['owner.json']);
+    await area.dispose();
+  });
+
+  it('removes a partly written copy when a write fails mid-copy', async () => {
+    const area = await createStagingArea(staging);
+    let opens = 0;
+    vi.mocked(open).mockImplementation(async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args);
+      opens += 1;
+      if (opens === 2) {
+        const originalWrite = handle.write.bind(handle) as (...a: unknown[]) => Promise<unknown>;
+        let writes = 0;
+        handle.write = (async (...a: unknown[]) => {
+          writes += 1;
+          if (writes === 2) throw new Error('ENOSPC');
+          return originalWrite(...a);
+        }) as typeof handle.write;
+      }
+      return handle;
+    });
+    // Two chunks of 64 KiB, so the second write fails after the first reached the disk.
+    const path = await source('two-chunks.bin', 'y'.repeat(100 * 1024));
+    await expect(stageUpload(path, { roots: [root], maxBytes: 1_024 * 1_024, stagingDirectory: area.directory }))
+      .rejects.toMatchObject({ code: 'FILE_ACCESS_DENIED' });
+    expect(await readdir(area.directory)).toEqual(['owner.json']);
+    await area.dispose();
+  });
+
+  it('writes the whole chunk when a write accepts only part of it', async () => {
+    const area = await createStagingArea(staging);
+    let opens = 0;
+    vi.mocked(open).mockImplementation(async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args);
+      opens += 1;
+      if (opens === 2) {
+        const originalWrite = handle.write.bind(handle) as (b: Buffer, o: number, l: number) => Promise<{ bytesWritten: number }>;
+        // A short write: at most three bytes per call.
+        handle.write = ((buffer: Buffer, offset: number, length: number) => originalWrite(buffer, offset, Math.min(length, 3))) as unknown as typeof handle.write;
+      }
+      return handle;
+    });
+    const staged = await stageUpload(await source('short-writes.txt', 'abcdefghij'), { roots: [root], maxBytes: 1_024, stagingDirectory: area.directory });
+    expect(await readFile(staged.path, 'utf8')).toBe('abcdefghij');
+    await area.dispose();
+  });
+
+  it('refuses a copy whose write makes no progress, rather than looping', async () => {
+    const area = await createStagingArea(staging);
+    let opens = 0;
+    vi.mocked(open).mockImplementation(async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args);
+      opens += 1;
+      // Resolves on a later turn, so a loop that never ends still lets the timeout fire.
+      if (opens === 2) handle.write = (() => new Promise((resolve) => { setImmediate(() => { resolve({ bytesWritten: 0, buffer: Buffer.alloc(0) }); }); })) as unknown as typeof handle.write;
+      return handle;
+    });
+    await expect(stageUpload(await source('stuck.txt', 'content'), { roots: [root], maxBytes: 1_024, stagingDirectory: area.directory }))
+      .rejects.toMatchObject({ code: 'FILE_ACCESS_DENIED' });
+    expect(await readdir(area.directory)).toEqual(['owner.json']);
+    await area.dispose();
+  }, 5_000);
+
+  it('closes the source exactly once on each failure path', async () => {
+    const area = await createStagingArea(staging);
+    const closes: number[] = [];
+    const counting = (sizeLie?: number) => vi.mocked(open).mockImplementation(async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args);
+      const index = closes.push(0) - 1;
+      const originalClose = handle.close.bind(handle);
+      handle.close = async () => { closes[index] = (closes[index] ?? 0) + 1; return originalClose(); };
+      if (sizeLie !== undefined && index === 0) {
+        const originalStat = handle.stat.bind(handle);
+        handle.stat = (async () => Object.assign(await originalStat(), { size: sizeLie })) as typeof handle.stat;
+      }
+      return handle;
+    });
+    // Refused by its measured size: only the source is open, and it is closed once.
+    counting();
+    await expect(stageUpload(await source('closes-big.txt', 'x'.repeat(200)), { roots: [root], maxBytes: 100, stagingDirectory: area.directory }))
+      .rejects.toMatchObject({ code: 'FILE_TOO_LARGE' });
+    expect(closes).toEqual([1]);
+    // Grows past the limit while copying: the source and the staged copy, once each.
+    closes.length = 0;
+    counting(10);
+    await expect(stageUpload(await source('closes-grows.txt', 'x'.repeat(200)), { roots: [root], maxBytes: 100, stagingDirectory: area.directory }))
+      .rejects.toMatchObject({ code: 'FILE_TOO_LARGE' });
+    expect(closes).toEqual([1, 1]);
+    expect(await readdir(area.directory)).toEqual(['owner.json']);
+    await area.dispose();
+  });
+
+  /*
+   * Every failure leaves through one catch, which closes the source; a failure during
+   * the copy also closes the staged copy first. Counted per handle, in open order: the
+   * source, then the staged copy if one was opened.
+   */
+  it.each([
+    ['a staged-name collision', 'collision', [1]],
+    ['a failed write', 'write', [1, 1]],
+    ['a failed close of the copy', 'close', [1, 1]],
+    ['a write that makes no progress', 'stuck', [1, 1]],
+    // Windows cannot open a directory as a file, so nothing is opened to close there.
+    ...(WINDOWS ? [] : [['a non-regular source', 'directory', [1]]] as const),
+    // Windows refuses to replace a file that is open, so this race cannot be staged there.
+    ...(WINDOWS ? [] : [['a path that names another file once open', 'inode', [1]]] as const),
+  ] as const)('closes each handle exactly once on %s', async (_label, fault, expected) => {
+    const area = await createStagingArea(staging);
+    const path = fault === 'directory' ? join(root, 'closes-a-directory') : await source(`closes-${fault}.txt`, 'content');
+    if (fault === 'directory') await mkdir(path, { recursive: true });
+    const closes: number[] = [];
+    let swapped = false;
+    if (fault === 'collision') {
+      const taken = '33333333-3333-4333-8333-333333333333';
+      await writeFile(join(area.directory, taken), 'someone else');
+      vi.mocked(randomUUID).mockReturnValueOnce(taken);
+    }
+    vi.mocked(open).mockImplementation(async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args);
+      const index = closes.push(0) - 1;
+      const originalClose = handle.close.bind(handle);
+      handle.close = async () => {
+        closes[index] = (closes[index] ?? 0) + 1;
+        await originalClose();
+        if (fault === 'close' && index === 1) throw new Error('EIO');
+      };
+      if (fault === 'write' && index === 1) handle.write = () => Promise.reject(new Error('ENOSPC'));
+      if (fault === 'stuck' && index === 1) handle.write = (() => new Promise((resolve) => { setImmediate(() => { resolve({ bytesWritten: 0, buffer: Buffer.alloc(0) }); }); })) as unknown as typeof handle.write;
+      if (fault === 'inode' && index === 0) {
+        await writeFile(`${path}.new`, 'replacement');
+        await rename(`${path}.new`, path);
+        swapped = true;
+      }
+      return handle;
+    });
+    await expect(stageUpload(path, { roots: [root], maxBytes: 1_024, stagingDirectory: area.directory }))
+      .rejects.toMatchObject({ code: 'FILE_ACCESS_DENIED' });
+    expect(closes).toEqual(expected);
+    if (fault === 'inode') expect(swapped).toBe(true);
+    await area.dispose();
+  });
+
+  // Windows refuses to replace a file that is open, so this race cannot be staged there.
+  it.skipIf(WINDOWS)('refuses a source whose path names another file once it is open', async () => {
+    const area = await createStagingArea(staging);
+    const path = await source('replaced.txt', 'opened');
+    const replacement = await source('replacement.txt', 'replacement');
+    let swapped = false;
+    vi.mocked(open).mockImplementationOnce(async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args);
+      // Replace the file after it is opened: the handle and the path now disagree.
+      await rename(replacement, path);
+      swapped = true;
+      return handle;
+    });
+    await expect(stageUpload(path, { roots: [root], maxBytes: 1_024, stagingDirectory: area.directory }))
+      .rejects.toMatchObject({ code: 'FILE_ACCESS_DENIED' });
+    // A fixture failure inside open would also surface as FILE_ACCESS_DENIED.
+    expect(swapped).toBe(true);
+    expect(await readdir(area.directory)).toEqual(['owner.json']);
+    await area.dispose();
+  });
+
+  it('refuses a final component swapped for a symlink before it is opened', async () => {
+    const area = await createStagingArea(staging);
+    const path = await source('swap-to-link.txt', 'inside');
+    const secret = join(outside, 'swap-secret.txt');
+    await writeFile(secret, 'OUTSIDE SECRET');
+    let swapped = false;
+    let refusedBy: string | undefined;
+    vi.mocked(open).mockImplementationOnce(async (...args: Parameters<typeof actual.open>) => {
+      // Between containment and open, the approved file becomes a link out of the root.
+      await rm(path);
+      await symlink(secret, path);
+      swapped = true;
+      return actual.open(...args).catch((error: unknown) => {
+        refusedBy = (error as NodeJS.ErrnoException).code;
+        throw error;
+      });
+    });
+    await expect(stageUpload(path, { roots: [root], maxBytes: 1_024, stagingDirectory: area.directory }))
+      .rejects.toMatchObject({ code: 'FILE_ACCESS_DENIED' });
+    expect(swapped).toBe(true);
+    if (constants.O_NOFOLLOW === undefined) {
+      // Windows has no O_NOFOLLOW: the open follows the link, and the inode check refuses it.
+      expect(refusedBy).toBeUndefined();
+    } else {
+      // O_NOFOLLOW itself refused the link, before the inode check could.
+      expect(refusedBy).toBe('ELOOP');
+    }
+    expect(await readdir(area.directory)).toEqual(['owner.json']);
+    await area.dispose();
+  });
 });
+
+const DEAD_PID = 2_147_483_647;
 
 describe('abandoned staging recovery', () => {
   async function abandoned(parent: string, pid: number, name = `testrail-mcp-staging-${pid}-${Math.abs(pid)}`): Promise<string> {
@@ -234,8 +508,9 @@ describe('abandoned staging recovery', () => {
   it('removes only a directory whose recorded owner is provably gone', async () => {
     const parent = join(base, 'recovery-gone');
     await mkdir(parent);
-    // PID 2^22 is above every platform maximum, so it cannot be running.
-    const dead = await abandoned(parent, 4_194_303);
+    // 2^31 - 1: above any PID a supported platform hands out (Linux's pid_max tops out
+    // at 2^22), so it cannot be running.
+    const dead = await abandoned(parent, DEAD_PID);
     const alive = await abandoned(parent, process.pid, 'testrail-mcp-staging-self');
 
     expect(await recoverAbandonedStaging(parent)).toBe(1);
@@ -250,7 +525,7 @@ describe('abandoned staging recovery', () => {
     await mkdir(unmarked);
     const wrongMarker = join(parent, 'testrail-mcp-staging-wrong');
     await mkdir(wrongMarker);
-    await writeFile(join(wrongMarker, 'owner.json'), JSON.stringify({ marker: 'something-else', pid: 4_194_303 }));
+    await writeFile(join(wrongMarker, 'owner.json'), JSON.stringify({ marker: 'something-else', pid: DEAD_PID }));
     const corrupt = join(parent, 'testrail-mcp-staging-corrupt');
     await mkdir(corrupt);
     await writeFile(join(corrupt, 'owner.json'), 'not json');
@@ -263,12 +538,62 @@ describe('abandoned staging recovery', () => {
     }
   });
 
+  it('never removes staging owned by another live process, and removes it once that process is gone', async () => {
+    const parent = join(base, 'recovery-live');
+    await mkdir(parent);
+    const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+    const exited = new Promise((resolve) => { child.once('exit', resolve); });
+    try {
+      if (child.pid === undefined) throw new Error('child did not start');
+      const owned = await abandoned(parent, child.pid);
+      expect(await recoverAbandonedStaging(parent)).toBe(0);
+      await expect(stat(owned)).resolves.toBeDefined();
+      child.kill();
+      await exited;
+      expect(await recoverAbandonedStaging(parent)).toBe(1);
+      await expect(stat(owned)).rejects.toThrow();
+    } finally {
+      child.kill();
+    }
+  });
+
+  it.each(['EPERM', 'EINVAL'])('counts an owner whose liveness check fails with %s as alive', async (code) => {
+    const parent = join(base, `recovery-${code}`);
+    await mkdir(parent);
+    const directory = await abandoned(parent, DEAD_PID);
+    // Only ESRCH proves absence; EPERM means it exists under another user, and anything
+    // else is unknown.
+    vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error(code), { code }); });
+    expect(await recoverAbandonedStaging(parent)).toBe(0);
+    await expect(stat(directory)).resolves.toBeDefined();
+  });
+
+  it('ignores a directory without the staging prefix, even with a valid marker and a dead owner', async () => {
+    const parent = join(base, 'recovery-prefix');
+    await mkdir(parent);
+    const lookalike = await abandoned(parent, DEAD_PID, 'user-project');
+    expect(await recoverAbandonedStaging(parent)).toBe(0);
+    await expect(stat(lookalike)).resolves.toBeDefined();
+  });
+
+  it('gives each process its own directory, created exclusively', async () => {
+    const parent = join(base, 'staging-unique');
+    await mkdir(parent);
+    const [one, two] = await Promise.all([createStagingArea(parent), createStagingArea(parent)]);
+    expect(one.directory).not.toBe(two.directory);
+    // The same name twice must fail rather than share a directory.
+    vi.mocked(randomUUID).mockReturnValue('11111111-1111-4111-8111-111111111111');
+    const first = await createStagingArea(parent);
+    await expect(createStagingArea(parent)).rejects.toThrow();
+    for (const area of [one, two, first]) await area.dispose();
+  });
+
   it('never inspects or removes completed downloads', async () => {
     const parent = join(base, 'recovery-downloads');
     await mkdir(parent);
     const completed = join(parent, 'completed.bin');
     await writeFile(completed, 'user data');
-    await abandoned(parent, 4_194_303);
+    await abandoned(parent, DEAD_PID);
 
     expect(await recoverAbandonedStaging(parent)).toBe(1);
     expect(await readFile(completed, 'utf8')).toBe('user data');
@@ -282,7 +607,7 @@ describe('attachment downloads', () => {
     });
     expect(result.attachment_id).toBe(42);
     expect(result.bytes).toBe(7);
-    expect(typeof result.file_path).toBe('string');
+    expect(isAbsolute(result.file_path)).toBe(true);
     expect(await readFile(result.file_path, 'utf8')).toBe('payload');
     expect(result.file_path.endsWith('.bin')).toBe(true);
     // No original name or media type is invented: the driver returns only bytes.
@@ -300,6 +625,43 @@ describe('attachment downloads', () => {
     vi.mocked(open).mockClear();
     await writeDownload(new Uint8Array([1]), { directory: downloads, maxBytes: 16, attachmentId: 1 });
     expect(vi.mocked(open).mock.calls.map((call) => call[1])).toEqual(['wx']);
+  });
+
+  it('never overwrites a file its generated name collides with', async () => {
+    const directory = join(base, 'download-collision');
+    await mkdir(directory);
+    const taken = '22222222-2222-4222-8222-222222222222';
+    await writeFile(join(directory, `${taken}.bin`), 'original');
+    vi.mocked(randomUUID).mockReturnValueOnce(taken);
+    await expect(writeDownload(new Uint8Array([1, 2]), { directory, maxBytes: 16, attachmentId: 1 }))
+      .rejects.toMatchObject({ code: 'FILE_ACCESS_DENIED' });
+    expect(await readFile(join(directory, `${taken}.bin`), 'utf8')).toBe('original');
+    expect(await readdir(directory)).toEqual([`${taken}.bin`]);
+  });
+
+  it('writes concurrent downloads to distinct, intact files', async () => {
+    const directory = join(base, 'download-concurrent');
+    await mkdir(directory);
+    const results = await Promise.all(Array.from({ length: 25 }, (_value, index) =>
+      writeDownload(new TextEncoder().encode(`content-${index}`), { directory, maxBytes: 64, attachmentId: index })));
+    expect(new Set(results.map(({ file_path: path }) => path)).size).toBe(25);
+    for (const [index, result] of results.entries()) expect(await readFile(result.file_path, 'utf8')).toBe(`content-${index}`);
+  });
+
+  it('reports the exact byte count, for multi-byte text and large binary content', async () => {
+    const text = await writeDownload(new TextEncoder().encode('é✓'), { directory: downloads, maxBytes: 16, attachmentId: 1 });
+    expect(text.bytes).toBe(5);
+    const binary = new Uint8Array(200_003).map((_value, index) => (index * 7919) % 256);
+    const large = await writeDownload(binary, { directory: downloads, maxBytes: 1_000_000, attachmentId: 2 });
+    expect(large.bytes).toBe(200_003);
+    expect((await stat(large.file_path)).size).toBe(200_003);
+    expect(Buffer.compare(await readFile(large.file_path), Buffer.from(binary))).toBe(0);
+  });
+
+  it('accepts content of exactly the limit and refuses one byte more', async () => {
+    await expect(writeDownload(new Uint8Array(100), { directory: downloads, maxBytes: 100, attachmentId: 1 })).resolves.toMatchObject({ bytes: 100 });
+    await expect(writeDownload(new Uint8Array(101), { directory: downloads, maxBytes: 100, attachmentId: 1 }))
+      .rejects.toMatchObject({ code: 'FILE_TOO_LARGE' });
   });
 
   it('rejects content over the configured file limit', async () => {
