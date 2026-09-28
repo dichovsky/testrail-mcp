@@ -342,6 +342,8 @@ describe('the complete-result budget through a tool', () => {
  * schema or a reply that goes missing. Every call runs through a registered tool.
  */
 describe('F05 result evidence through registered tools', () => {
+  // A string as it appears inside serialized JSON (backslashes escaped on Windows).
+  const asJson = (text: string) => JSON.stringify(text).slice(1, -1);
   type Result = { isError?: boolean; structuredContent?: unknown };
   const payloadOf = (result: Result) => result.structuredContent as { data?: unknown; warnings?: unknown; error?: Record<string, unknown> };
   const withEntity = (operation: Operation, entitySchema: z.ZodType) =>
@@ -350,7 +352,7 @@ describe('F05 result evidence through registered tools', () => {
   it('gives two different drifting operations running at once their own exact counts, and a later drift its own', async () => {
     let release: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => { release = resolve; });
-    const { client } = driver(configuration, async (url) => {
+    const { client, fetch } = driver(configuration, async (url) => {
       await gate;
       if (/get_project\/1$/u.test(url)) return json({ a: 'x' });
       if (/get_project\/2$/u.test(url)) return json({ a: 'x', b: 'y' });
@@ -364,6 +366,8 @@ describe('F05 result evidence through registered tools', () => {
         executeToolCall(one, { project_id: 1 }, { runtime, configuration }),
         executeToolCall(three, { suite_id: 3 }, { runtime, configuration }),
       ];
+      // Both requests are in flight before either reply is released.
+      await vi.waitFor(() => { expect(fetch).toHaveBeenCalledTimes(2); });
       release();
       const [first, second] = await Promise.all(pending);
       expect(payloadOf(first!).warnings).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
@@ -523,7 +527,7 @@ describe('F05 result evidence through registered tools', () => {
         const event = JSON.parse(line) as Record<string, unknown>;
         expect(event.event).toBe('tool_call');
         expect(Object.keys(event).filter((key) => !allowed.has(key))).toEqual([]);
-        for (const leaked of [marker, 'SECRET-9d2', 'internal.example.test', '/Users/someone', 'data-marker-3b8e', outside, configuration.baseUrl, new URL(configuration.baseUrl).host, configuration.apiKey]) {
+        for (const leaked of [marker, 'SECRET-9d2', 'internal.example.test', '/Users/someone', 'data-marker-3b8e', outside, asJson(outside), configuration.baseUrl, new URL(configuration.baseUrl).host, configuration.apiKey]) {
           expect(line).not.toContain(leaked);
         }
       }
@@ -543,7 +547,8 @@ describe('F05 result evidence through registered tools', () => {
       });
       expect(payloadOf(result).error).toMatchObject({ code: 'FILE_ACCESS_DENIED', write_outcome: 'not_started' });
       expect(JSON.stringify(result)).not.toContain('outside-path-marker-51a0');
-      expect(JSON.stringify(result)).not.toContain(tmpdir());
+      // As serialized: on Windows every backslash is escaped, so the raw path could never match.
+      expect(JSON.stringify(result)).not.toContain(asJson(tmpdir()));
     } finally { await runtime.shutdown(); }
   });
 });
