@@ -137,18 +137,41 @@ export interface StartOptions {
 }
 
 /**
- * How long to wait, once shut down, before forcing the process to exit. The drain is
- * bounded, but a call it gave up on can still hold driver timers of its own, such as a
- * 15-second request timeout, and those would keep the process alive. The timer is
- * unreferenced, so a process with nothing left running exits by itself first.
+ * How long to wait, once shut down and stdout has flushed, before forcing the process
+ * to exit. The drain is bounded, but a call it gave up on can still hold driver timers
+ * of its own, such as a 15-second request timeout, and those would keep the process
+ * alive. The timer is unreferenced, so a process with nothing left running exits by
+ * itself first.
  */
 export const EXIT_GRACE_MS = 250;
 
-/** Exit once the grace has passed, unless the process has already exited by itself. */
-export function exitAfterGrace(exit: () => void = () => { process.exit(); }): NodeJS.Timeout {
-  const timer = setTimeout(exit, EXIT_GRACE_MS);
-  timer.unref();
-  return timer;
+/** Call back once everything already written to stdout has been handed to the host. */
+function stdoutFlushed(done: () => void): void {
+  // Writes complete in order, so an empty write's callback runs after every earlier
+  // one. It runs with an error too (a closed pipe), and that must still let us exit.
+  try {
+    process.stdout.write('', () => { done(); });
+  } catch {
+    done();
+  }
+}
+
+/**
+ * Exit once stdout has flushed and the grace has passed, unless the process has already
+ * exited by itself. Exiting earlier would cut off responses a slow host has not read
+ * yet: process.exit drops whatever stdout still holds.
+ */
+export function exitAfterGrace(
+  exit: () => void = () => { process.exit(); },
+  flushed: (done: () => void) => void = stdoutFlushed,
+): Promise<NodeJS.Timeout> {
+  return new Promise((resolve) => {
+    flushed(() => {
+      const timer = setTimeout(exit, EXIT_GRACE_MS);
+      timer.unref();
+      resolve(timer);
+    });
+  });
 }
 
 /**
@@ -213,7 +236,7 @@ export async function startServer(
     // cleanup once however the host ends the session. The signal handlers stay
     // installed: with `once`, a second SIGINT or SIGTERM during the drain would take
     // the default action and kill the process before the client is destroyed.
-    const stop = (): void => { void shutdown().then(() => { exitAfterGrace(); }); };
+    const stop = (): void => { void shutdown().then(() => exitAfterGrace()); };
     process.on('SIGINT', stop);
     process.on('SIGTERM', stop);
     process.stdin.once('end', stop);

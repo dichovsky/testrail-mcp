@@ -277,11 +277,13 @@ describe('a shutdown step that fails', () => {
 });
 
 describe('the forced exit after shutdown', () => {
+  const flushedAtOnce = (done: () => void): void => { done(); };
+
   it('fires after the grace and not before', () => {
     vi.useFakeTimers();
     try {
       const exit = vi.fn();
-      exitAfterGrace(exit);
+      void exitAfterGrace(exit, flushedAtOnce);
       vi.advanceTimersByTime(EXIT_GRACE_MS - 1);
       expect(exit).not.toHaveBeenCalled();
       vi.advanceTimersByTime(1);
@@ -289,13 +291,37 @@ describe('the forced exit after shutdown', () => {
     } finally { vi.useRealTimers(); }
   });
 
-  it('never keeps the process alive by itself', () => {
+  it('waits for stdout to flush before the grace starts', () => {
+    vi.useFakeTimers();
+    try {
+      const exit = vi.fn();
+      let flush: () => void = () => undefined;
+      void exitAfterGrace(exit, (done) => { flush = done; });
+      // A host still reading a large response: however long it takes, nothing is cut off.
+      vi.advanceTimersByTime(60_000);
+      expect(exit).not.toHaveBeenCalled();
+      flush();
+      vi.advanceTimersByTime(EXIT_GRACE_MS - 1);
+      expect(exit).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(exit).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('never keeps the process alive by itself', async () => {
     const exit = vi.fn();
-    const timer = exitAfterGrace(exit);
+    const timer = await exitAfterGrace(exit, flushedAtOnce);
     try {
       // An idle process exits on its own first; only lingering work lets this fire.
       expect(timer.hasRef()).toBe(false);
     } finally { clearTimeout(timer); }
     expect(EXIT_GRACE_MS).toBe(250);
+  });
+
+  it('flushes the real stdout by default', async () => {
+    const exit = vi.fn();
+    const timer = await exitAfterGrace(exit);
+    clearTimeout(timer);
+    expect(exit).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -363,6 +363,49 @@ describe('packaged server shutdown after a staging failure', () => {
       session.child.kill('SIGKILL');
       await testRail.close();
       await rm(base, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
+describe('stdin closure with a slow reader', () => {
+  /*
+   * The host closes stdin while large responses are still waiting in the pipe, and
+   * reads them only later. The forced exit must not cut them off. The reader is a
+   * shell, not this process: a Node parent that pauses a child's stdout loses what the
+   * child had not yet flushed when it exits, whatever the child does.
+   */
+  it.skipIf(process.platform === 'win32')('delivers every response before exiting', async () => {
+    const received = join(directory, 'slow-reader.jsonl');
+    const inherited = Object.fromEntries(
+      Object.entries(process.env).filter(([name]) => !name.toUpperCase().startsWith('TESTRAIL')),
+    );
+    const child = spawn('sh', ['-c', `"$NODE" "$CLI" | { sleep 3; cat > "$OUT"; }`], {
+      stdio: ['pipe', 'ignore', 'pipe'],
+      env: {
+        ...inherited,
+        NODE: process.execPath, CLI: cli, OUT: received,
+        TESTRAIL_BASE_URL: 'https://lifecycle.testrail.io',
+        TESTRAIL_EMAIL: 'user@example.com',
+        TESTRAIL_API_KEY: 'synthetic-secret-must-not-appear',
+        TESTRAIL_MCP_UPLOAD_ROOTS: '[]',
+        TESTRAIL_MCP_DOWNLOAD_DIR: directory,
+      },
+    });
+    const exited = new Promise<number | null>((resolve) => { child.on('close', (code) => { resolve(code); }); });
+    try {
+      child.stdin.write(OPENING);
+      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
+      // Two catalog listings: together far more than a pipe buffer holds.
+      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' })}\n`);
+      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/list' })}\n`);
+      // Close stdin once the responses are written but long before the reader starts.
+      await new Promise((resolve) => { setTimeout(resolve, 1_000); });
+      child.stdin.end();
+      expect(await exited).toBe(0);
+      const lines = (await readFile(received, 'utf8')).split('\n').filter((line) => line !== '');
+      expect(lines.map((line) => (JSON.parse(line) as { id?: number }).id)).toEqual([1, 2, 3]);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     }
   }, 30_000);
 });
