@@ -4,14 +4,16 @@
  *
  * It answers every route in the operation inventory with that endpoint's reply from its
  * hand-authored parameter manifest, so a real MCP client can drive the real installed
- * server end to end. Reserved IDs and flags add the cases the client scenarios need:
- * errors, drift, unusable replies, slow replies, large results and multi-page lists.
+ * server end to end. Reserved path IDs and flags add the cases the client scenarios need:
+ * errors, drift, unusable replies, slow replies and pages, large results and multi-page
+ * lists. docs/client-compatibility.md says which routes each reserved ID applies to.
  *
  * It is a development harness. It is not part of the published package, and it adds no
  * option to the server: the server reaches it through its ordinary configuration with
  * TESTRAIL_ALLOW_INSECURE and TESTRAIL_ALLOW_PRIVATE_HOSTS set for the loopback address.
  * Its credentials are synthetic and it never logs the authorization header.
  */
+import { realpathSync } from 'node:fs';
 import { appendFile, readdir, readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
@@ -27,7 +29,7 @@ export const RESERVED = Object.freeze({
   drift: 990001,
   unusable: 990002,
   slow: 990020,
-  stalled: 990070,
+  slowPages: 990045,
   rejected: 990400,
   unauthenticated: 990401,
   forbidden: 990403,
@@ -37,7 +39,18 @@ export const RESERVED = Object.freeze({
   oversized: 990901,
 });
 
-const DELAYS_MS = Object.freeze({ [RESERVED.slow]: 20_000, [RESERVED.stalled]: 70_000 });
+/**
+ * Twenty seconds outlasts the driver's 15-second request timeout. Fourteen stays just
+ * under it, so a complete read of 14-second pages passes its 45-second budget on the
+ * fourth page.
+ */
+export const DELAYS_MS = Object.freeze({ [RESERVED.slow]: 20_000, [RESERVED.slowPages]: 14_000 });
+/** How many pages a slow-pages list spans, whatever page size is asked for. */
+export const SLOW_PAGES = 10;
+/** A list read with a page size holds 50 items a page: TestRail's default page. */
+const CONTROLLED_PAGE = 50;
+/** A list that chooses its own pages serves two items a page. */
+const RESPONSE_DRIVEN_PAGE = 2;
 const LARGE_BYTES = 700 * 1024;
 const OVERSIZED_BYTES = 3 * 1024 * 1024;
 const PREFIX = '/index.php?/api/v2/';
@@ -68,10 +81,25 @@ async function loadRoutes() {
     const manifest = JSON.parse(await readFile(new URL(name, directory), 'utf8'));
     manifests.set(manifest.endpoint.tool, manifest);
   }
-  return inventory.operations.map(({ tool, http_method: method, route, pagination }) => {
+  // A paged list whose fixture replies with a bare array, the legacy form, is served as a
+  // page envelope under the collection key its resource's other lists use, so it can span
+  // pages like the rest.
+  const envelopeKeys = new Map();
+  for (const { tool, resource } of inventory.operations) {
+    const accepted = manifests.get(tool)?.cases.find(({ expect }) => expect.kind === 'accepted');
+    const found = accepted?.expect.upstream_response.kind === 'json' ? envelopeOf(accepted.expect.upstream_response.body) : undefined;
+    if (found !== undefined && !envelopeKeys.has(resource)) envelopeKeys.set(resource, collectionKey(found.envelope));
+  }
+  return inventory.operations.map(({ tool, http_method: method, route, pagination, resource }) => {
     const manifest = manifests.get(tool);
     const accepted = manifest?.cases.find(({ expect }) => expect.kind === 'accepted');
     if (accepted === undefined) throw new Error(`${tool}: no accepted fixture to answer with`);
+    let reply = accepted.expect.upstream_response;
+    if (pagination.kind !== 'none' && reply.kind === 'json' && Array.isArray(reply.body) && envelopeOf(reply.body) === undefined) {
+      const key = envelopeKeys.get(resource);
+      if (key === undefined) throw new Error(`${tool}: no page envelope to serve its list in`);
+      reply = { kind: 'json', body: { offset: 0, limit: reply.body.length, size: reply.body.length, _links: { next: null, prev: null }, [key]: reply.body } };
+    }
     // The inventory's route, and any other path the fixtures show the driver sending for the
     // tool, such as get_users/{project_id} when a project is given.
     const shapes = new Set([route.replace(/\{[a-z_]+\}/gu, '{}')]);
@@ -79,7 +107,7 @@ async function loadRoutes() {
       if (expect.kind === 'accepted' && expect.wire !== undefined) shapes.add(expect.wire.endpoint.split('&')[0].replace(/\/\d+(?=\/|$)/gu, '/{}'));
     }
     const patterns = [...shapes].map((shape) => new RegExp(`^${shape.replaceAll('{}', '([^/&]+)')}$`, 'u'));
-    return { tool, method, route, patterns, paged: pagination.kind !== 'none', reply: accepted.expect.upstream_response };
+    return { tool, method, route, patterns, kind: pagination.kind, reply };
   });
 }
 
@@ -92,11 +120,14 @@ function controlsOf(query) {
   return controls;
 }
 
-/** The same entity with one known text field turned into a number: usable drift. */
+/**
+ * The same entity with every top-level text turned into a number and every number into
+ * text: still an object, so usable, but no longer the shape any checked field expects.
+ */
 function drifted(entity) {
   if (!isRecord(entity)) return entity;
-  const key = Object.keys(entity).find((name) => name !== 'id' && typeof entity[name] === 'string');
-  return key === undefined ? { ...entity, id: String(entity.id ?? '') } : { ...entity, [key]: 42 };
+  return Object.fromEntries(Object.entries(entity).map(([key, value]) => [key,
+    typeof value === 'string' ? 42 : typeof value === 'number' ? String(value) : value]));
 }
 
 function withDrift(reply) {
@@ -116,21 +147,34 @@ function renumbered(entity, id) {
   return isRecord(entity) && typeof entity.id === 'number' ? { ...entity, id } : entity;
 }
 
-/** The entity with its first text field padded so it serializes to about `bytes`. */
+/** The entity with its first text, at any depth, padded so it serializes to about `bytes`. */
 function padded(entity, bytes) {
-  if (!isRecord(entity)) return entity;
-  const key = Object.keys(entity).find((name) => name !== 'id' && typeof entity[name] === 'string');
-  const size = Buffer.byteLength(JSON.stringify(entity));
-  const room = Math.max(0, bytes - size);
-  return key === undefined ? entity : { ...entity, [key]: `${entity[key]}${'x'.repeat(room)}` };
+  const room = Math.max(0, bytes - Buffer.byteLength(JSON.stringify(entity)));
+  let done = false;
+  const pad = (value, key) => {
+    if (done) return value;
+    if (typeof value === 'string' && key !== 'id') {
+      done = true;
+      return `${value}${'x'.repeat(room)}`;
+    }
+    if (Array.isArray(value)) return value.map((item) => pad(item));
+    if (isRecord(value)) return Object.fromEntries(Object.entries(value).map(([inner, item]) => [inner, pad(item, inner)]));
+    return value;
+  };
+  return pad(entity);
 }
 
-function page(reply, path, controls, pages, sized) {
+/**
+ * One page of a generated list. The list has a fixed length whatever page size is asked
+ * for, as a real one does: `pages` pages of 50 for a list read with a page size, and of 2
+ * for one that chooses its own pages. A slow-pages list spans ten pages of any size.
+ */
+function page(reply, path, controls, { kind, pages, sized, slow }) {
   const found = envelopeOf(reply);
   if (found === undefined) return reply;
   const key = collectionKey(found.envelope);
   const template = found.envelope[key][0];
-  const limit = Number(controls.get('limit') ?? 2);
+  const limit = kind === 'response_driven' ? RESPONSE_DRIVEN_PAGE : Number(controls.get('limit') ?? 250);
   const offset = Number(controls.get('offset') ?? 0);
   let items;
   let total;
@@ -139,7 +183,7 @@ function page(reply, path, controls, pages, sized) {
     total = Math.max(1, Math.min(limit, 50));
     items = Array.from({ length: total }, (_, index) => padded(renumbered(template, 800_000 + index), Math.floor(sized / total)));
   } else {
-    total = limit * pages;
+    total = slow ? limit * SLOW_PAGES : (kind === 'response_driven' ? RESPONSE_DRIVEN_PAGE : CONTROLLED_PAGE) * pages;
     items = Array.from({ length: Math.max(0, Math.min(limit, total - offset)) }, (_, index) =>
       renumbered(template, 700_000 + offset + index));
   }
@@ -176,11 +220,21 @@ const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms).unref()
 /**
  * Start the stand-in. `pages` sets how many pages every paged list spans; `delayScale`
  * shortens the reserved delays for tests; `log`, when set, receives one JSON line per
- * request with its method, endpoint and status, never its credentials.
+ * request, written when its reply is ready: its method, endpoint and status, and whether
+ * the client had already gone, never its credentials. A log write that fails once the
+ * stand-in is serving still sends the reply, then calls `onLogError` with the error.
  */
-export async function startFixtureTestRail({ port = 0, host = '127.0.0.1', pages = 1, delayScale = 1, log } = {}) {
+export async function startFixtureTestRail({ port = 0, host = '127.0.0.1', pages = 1, delayScale = 1, log, onLogError = () => undefined } = {}) {
   const routes = await loadRoutes();
   const requests = [];
+  // A log that cannot be written is refused now, not discovered on the first request.
+  if (log !== undefined) {
+    try {
+      await appendFile(log, '');
+    } catch (error) {
+      throw new Error(`Cannot write the request log ${log}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    }
+  }
 
   const server = createServer((request, response) => {
     const chunks = [];
@@ -221,20 +275,29 @@ export async function startFixtureTestRail({ port = 0, host = '127.0.0.1', pages
           reply = route.reply;
           if (reply.kind === 'json') {
             let body = reply.body;
-            if (route.paged) {
+            if (route.kind !== 'none') {
               const controls = controlsOf(query);
               const sized = reserved === RESERVED.large ? LARGE_BYTES : reserved === RESERVED.oversized ? OVERSIZED_BYTES : undefined;
-              body = page(body, path, controls, pages, sized);
+              body = page(body, path, controls, { kind: route.kind, pages, sized, slow: reserved === RESERVED.slowPages });
             }
             if (reserved === RESERVED.drift) body = withDrift(body);
             reply = json(body);
           }
         }
         const entry = { method: request.method, endpoint: path + (query.length === 0 ? '' : `&${query.join('&')}`),
-          tool: route?.tool ?? null, status, authorized: typeof request.headers.authorization === 'string', bytes: Buffer.concat(chunks).length };
+          tool: route?.tool ?? null, status, authorized: typeof request.headers.authorization === 'string', bytes: Buffer.concat(chunks).length,
+          // A client that gave up, such as the driver at its request timeout, never gets the status.
+          abandoned: response.destroyed };
         requests.push(entry);
-        if (log !== undefined) await appendFile(log, `${JSON.stringify(entry)}\n`);
+        let logFailure;
+        if (log !== undefined) await appendFile(log, `${JSON.stringify(entry)}\n`).catch((error) => { logFailure = error; });
         if (!response.destroyed) send(response, status, reply);
+        // The reply goes out as the route gives it; the failure is reported once it has, or
+        // once the client has gone.
+        if (logFailure !== undefined) {
+          if (response.destroyed) onLogError(logFailure);
+          else response.once('close', () => { onLogError(logFailure); });
+        }
       })().catch(() => {
         if (!response.headersSent) response.writeHead(500, { 'content-type': 'application/json' });
         response.end(JSON.stringify({ error: 'stand-in failure' }));
@@ -279,8 +342,16 @@ async function main() {
   const pages = Number(values.pages);
   const delayScale = Number(values['delay-scale']);
   if (!Number.isSafeInteger(pages) || pages < 1 || !(delayScale >= 0)) throw new Error('--pages must be a positive integer and --delay-scale a non-negative number');
+  let stopping = false;
+  // A request log that stops taking lines is no longer evidence: say so and stop.
+  const onLogError = (error) => {
+    if (stopping) return;
+    stopping = true;
+    process.stderr.write(`Cannot write the request log ${String(values.log)}: ${error instanceof Error ? error.message : String(error)}. Stopping.\n`);
+    void standIn.close().then(() => process.exit(1));
+  };
   const standIn = await startFixtureTestRail({
-    port: Number(values.port), host: values.host, pages, delayScale, ...(values.log === undefined ? {} : { log: values.log }),
+    port: Number(values.port), host: values.host, pages, delayScale, onLogError, ...(values.log === undefined ? {} : { log: values.log }),
   });
   if (values.json) {
     process.stdout.write(`${JSON.stringify({ baseUrl: standIn.baseUrl, environment: standIn.environment, reserved: RESERVED })}\n`);
@@ -298,12 +369,17 @@ async function main() {
       '',
     ].join('\n'));
   }
-  const stop = () => { void standIn.close().then(() => process.exit(0)); };
+  const stop = () => {
+    if (stopping) return;
+    stopping = true;
+    void standIn.close().then(() => process.exit(0));
+  };
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
 }
 
-if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
+// Compared through the real path, so a clone under a symlinked directory still starts.
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
   main().catch((error) => {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exit(1);
