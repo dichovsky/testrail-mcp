@@ -102,5 +102,5 @@ CI does the same on Node 22 and 24 across Linux, macOS and Windows, and publishe
 - [Registry authoring](docs/registry-authoring.md) and [parameter fixtures](docs/parameter-manifest.md)
 - [Startup configuration](docs/startup-configuration.md), [runtime lifetime](docs/runtime-lifetime.md), [results and errors](docs/results-and-errors.md), [pagination](docs/pagination.md), [local files](docs/local-files.md) and [stdio transport](docs/transport.md)
 - [Driver qualification](docs/driver-qualification.md) and [client configuration and verification](docs/client-compatibility.md)
-- [Releases and compatibility policy](docs/release.md) and [changelog](CHANGELOG.md)
+- [Releases and compatibility policy](docs/release.md), [changelog](CHANGELOG.md) and [live TestRail qualification](docs/live-qualification.md)
 - [Domain glossary](CONTEXT.md), [design decision](docs/adr/0001-endpoint-tools.md) and [research sources](docs/research-notes.md)
