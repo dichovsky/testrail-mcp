@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TestRailClient } from '@dichovsky/testrail-api-client';
-import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
+import { Client, InMemoryTransport, ProtocolError, ProtocolErrorCode } from '@modelcontextprotocol/client';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -219,8 +219,8 @@ describe('tool calls', () => {
     const session = await connect(() => Promise.resolve(json({})));
     try {
       // A malformed request is a protocol fault; a failed operation is a tool error.
-      await expect(session.client.callTool({ name: 'testrail_not_a_tool', arguments: {} }))
-        .rejects.toThrow();
+      const error: unknown = await session.client.callTool({ name: 'testrail_not_a_tool', arguments: {} }).then(() => undefined, (reason: unknown) => reason);
+      expect(ProtocolError.isInstance(error) && error.code).toBe(ProtocolErrorCode.InvalidParams);
     } finally { await session.close(); }
   });
 });

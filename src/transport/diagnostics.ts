@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { WriteOutcome } from '../contracts/errors.js';
 
 export type EventCode =
   | 'server_started' | 'server_stopping' | 'server_stopped'
@@ -10,6 +11,12 @@ export interface DiagnosticFields {
   readonly outcome?: 'success' | 'error';
   /** A code from the fixed error taxonomy, never a driver message. */
   readonly code?: string;
+  /**
+   * Whether a failed write reached TestRail. It is repeated here because the result that
+   * carries it may never be delivered: a write still pending when the server shuts down
+   * ends with its connection, and this line is then the only record of it.
+   */
+  readonly write_outcome?: WriteOutcome;
   readonly duration_ms?: number;
   readonly warnings?: number;
   readonly tools?: number;

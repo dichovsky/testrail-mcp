@@ -57,8 +57,15 @@ function rejectedKey(options: TestRailConfig): ConfigurationKey | undefined {
   return undefined; // A field this adapter fixes was rejected: not an operator error.
 }
 
-export function createConfiguredDriver(configuration: Configuration): TestRailClient {
-  const options = driverOptions(configuration);
+/**
+ * Test-only transport seams. They reach the driver only through the composition root's
+ * options, which the CLI never sets: no environment variable or tool argument can
+ * supply a function, so production always uses the real network and resolver.
+ */
+export type DriverSeams = Pick<TestRailConfig, 'fetch' | 'dnsLookup'>;
+
+export function createConfiguredDriver(configuration: Configuration, seams: DriverSeams = {}): TestRailClient {
+  const options = { ...driverOptions(configuration), ...seams };
   try {
     return new TestRailClient(options);
   } catch (error) {
@@ -77,9 +84,10 @@ export function createConfiguredDriver(configuration: Configuration): TestRailCl
  * Apply the driver's URL network policy at configuration load. The private/loopback
  * host and protocol rules live in the driver's constructor and are not exported, so
  * this is the only way to enforce them without duplicating them here. The probe client
- * registers no process handlers and issues no request; it is discarded immediately, so
- * it never becomes a second credential identity.
+ * registers no process handlers and issues no request, and it is destroyed at once:
+ * the driver keeps every live client in a process-wide set with its credential, so an
+ * undestroyed probe would stay a second credential identity for the process lifetime.
  */
 export function assertDriverConfiguration(configuration: Configuration): void {
-  createConfiguredDriver(configuration);
+  createConfiguredDriver(configuration).destroy();
 }
