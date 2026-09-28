@@ -236,7 +236,7 @@ describe('server instructions', () => {
     // expected text is the rule itself as docs/transport.md states it.
     for (const essential of [
       "Each tool is one TestRail API endpoint, run with the configured user's permissions.",
-      'Lists return one page by default (50 where a limit applies); never treat it as the whole dataset.',
+      'Lists that take _mcp return one page by default (50 where a limit applies); never treat it as the whole dataset.',
       '_mcp.pagination "all" fetches the rest within bounds, as far as TestRail\'s replies link on.',
       "Results keep TestRail's field names.",
       "A write's or report run's error has write_outcome: \"unknown\" may already be applied, so check before retrying; \"acknowledged\" was applied, so do not repeat it.",

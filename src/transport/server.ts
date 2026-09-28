@@ -16,7 +16,7 @@ import { executeToolCall } from './tool-call.js';
  * characters, so the first paragraph fits within them on its own and holds every rule
  * that prevents harm; the whole stays under 2 KiB.
  */
-export const SERVER_INSTRUCTIONS = `Each tool is one TestRail API endpoint, run with the configured user's permissions. Lists return one page by default (50 where a limit applies); never treat it as the whole dataset. _mcp.pagination "all" fetches the rest within bounds, as far as TestRail's replies link on. Results keep TestRail's field names. A write's or report run's error has write_outcome: "unknown" may already be applied, so check before retrying; "acknowledged" was applied, so do not repeat it. Never poll a report.
+export const SERVER_INSTRUCTIONS = `Each tool is one TestRail API endpoint, run with the configured user's permissions. Lists that take _mcp return one page by default (50 where a limit applies); never treat it as the whole dataset. _mcp.pagination "all" fetches the rest within bounds, as far as TestRail's replies link on. Results keep TestRail's field names. A write's or report run's error has write_outcome: "unknown" may already be applied, so check before retrying; "acknowledged" was applied, so do not repeat it. Never poll a report.
 
 Results are {data, pagination, warnings}, and field names include custom_* fields. "not_started" means nothing was sent. "acknowledged" means TestRail accepted the change but its response could not be delivered. The user's licence applies as well as their permissions.
 

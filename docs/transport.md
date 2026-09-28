@@ -12,7 +12,7 @@ Registration contacts nothing, so discovery makes no TestRail request and repeat
 
 The instructions' first paragraph fits in 512 characters and ends at a sentence, because hosts may truncate there. It holds every rule that prevents harm:
 - the user's permissions apply;
-- a list returns one page by default (50 where a limit applies), never the whole dataset;
+- a list that takes `_mcp` (a paged list) returns one page by default (50 where a limit applies), never the whole dataset; the other lists take no paging control and return what TestRail returns;
 - `all` fetches the rest within bounds, only as far as TestRail's replies link on;
 - field names are kept;
 - a write's or report run's error carries `write_outcome`: `unknown` may already be applied, so check before retrying, and `acknowledged` was applied, so do not repeat it;
@@ -66,6 +66,7 @@ Configuration is loaded before any transport exists, so a misconfigured server n
 - A legacy session negotiates `2025-11-25`, lists 133 tools, and returns an `INVALID_ARGUMENT` tool error for a bad argument.
 - It answers `resources/list` and `prompts/list` with `-32601`, and a malformed `tools/call` or an unknown tool with `-32602`.
 - An id-bearing invalid message gets no reply.
+- A call that succeeds and one that TestRail fails each log one `tool_call` event, and neither call's argument appears anywhere on stderr.
 - It exits 0 on stdin closure, and every stdout line, read after the streams close, is a JSON-RPC message.
 - The discover-then-initialize session is described above.
 

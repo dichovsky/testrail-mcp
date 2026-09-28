@@ -19,14 +19,23 @@ const cli = fileURLToPath(new URL('../../dist/cli.js', import.meta.url));
 let directory: string;
 let upstream: Server;
 let requests = 0;
+// Distinctive argument values: neither may ever reach stderr from the built executable.
+const SUCCEEDING_CANARY = 'argument-canary-ok-5c1e';
+const FAILING_CANARY = 'argument-canary-fail-5c1e';
 
 beforeAll(async () => {
   directory = await mkdtemp(join(tmpdir(), 'testrail-mcp-serving-process-'));
   // A loopback stand-in for TestRail: every request gets one project.
-  upstream = createServer((_request, response) => {
+  upstream = createServer((request, response) => {
     requests += 1;
-    response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ id: 1, name: 'Project' }));
+    let body = '';
+    request.on('data', (chunk: Buffer) => { body += chunk.toString('utf8'); });
+    request.on('end', () => {
+      // A request carrying the failure canary gets a server error; anything else succeeds.
+      const failed = body.includes(FAILING_CANARY);
+      response.writeHead(failed ? 500 : 200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify(failed ? { error: 'Internal error' } : { id: 1, name: 'Project' }));
+    });
   });
   await new Promise<void>((resolve) => { upstream.listen(0, '127.0.0.1', resolve); });
 });
@@ -127,6 +136,13 @@ describe('a legacy session over raw stdio against the built executable', () => {
       expect(refused.result?.isError).toBe(true);
       expect(refused.result?.structuredContent).toMatchObject({ error: { code: 'INVALID_ARGUMENT' } });
 
+      // A call that succeeds and one that TestRail fails, each carrying an argument that
+      // must stay out of every diagnostic.
+      session.send({ jsonrpc: '2.0', id: 11, method: 'tools/call', params: { name: 'testrail_add_project', arguments: { body: { name: SUCCEEDING_CANARY } } } });
+      session.send({ jsonrpc: '2.0', id: 12, method: 'tools/call', params: { name: 'testrail_add_project', arguments: { body: { name: FAILING_CANARY } } } });
+      expect((await session.reply(11)).result?.isError).toBeFalsy();
+      expect((await session.reply(12)).result?.structuredContent).toMatchObject({ error: { code: 'UPSTREAM_ERROR' } });
+
       // Protocol errors, with the codes JSON-RPC and MCP assign: no such method, and
       // invalid parameters for a malformed call or an unknown tool.
       session.send({ jsonrpc: '2.0', id: 4, method: 'resources/list' });
@@ -156,6 +172,11 @@ describe('a legacy session over raw stdio against the built executable', () => {
       expect(await session.end()).toBe(0);
       expectProtocolOnly(session.lines());
       expect(session.err()).not.toContain('synthetic-secret-must-not-appear');
+      // Both calls were logged, and neither argument appears anywhere on stderr.
+      const events = session.err().split('\n').filter((line) => line.includes('"tool_call"') && line.includes('testrail_add_project'));
+      expect(events.map((line) => (JSON.parse(line) as { outcome?: string }).outcome).sort()).toEqual(['error', 'success']);
+      expect(session.err()).not.toContain(SUCCEEDING_CANARY);
+      expect(session.err()).not.toContain(FAILING_CANARY);
     } finally { session.kill(); }
   }, 30_000);
 });
