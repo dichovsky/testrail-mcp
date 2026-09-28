@@ -21,6 +21,14 @@
 /** Names start with this, so an operator can find anything a run left behind. */
 export const QUALIFICATION_PREFIX = 'testrail-mcp qualification';
 
+/** A step with nothing to act on in this instance, such as a group read where there are no groups. */
+export class NotApplicable extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'NotApplicable';
+  }
+}
+
 const TEXT = { filename: 'qualification.txt', content_type: 'text/plain' };
 const FEATURE = { filename: 'qualification.feature', content_type: 'text/plain' };
 
@@ -70,9 +78,16 @@ export const PLAN = [
   { tool: 'get_roles', scope: 'read', input: () => ({}) },
   {
     tool: 'get_groups', scope: 'read', input: () => ({}),
-    capture: (data, c) => { const [first] = ids(data); if (first !== undefined) c.set('existing_group', first); },
+    capture: (data, c) => { c.set('existing_group', ids(data)[0] ?? null); },
   },
-  { tool: 'get_group', label: 'existing group', scope: 'read', input: (c) => ({ group_id: c.value('existing_group') }) },
+  {
+    tool: 'get_group', label: 'existing group', scope: 'read',
+    input: (c) => {
+      const group = c.value('existing_group');
+      if (group === null) throw new NotApplicable('the instance has no group to read');
+      return { group_id: group };
+    },
+  },
   { tool: 'get_case_fields', scope: 'read', input: () => ({}) },
   { tool: 'get_case_types', scope: 'read', input: () => ({}) },
   { tool: 'get_case_statuses', scope: 'read', input: () => ({}) },
@@ -414,13 +429,17 @@ export const PLAN = [
   { tool: 'update_group', scope: 'instance', requires: 'instanceWrites', input: (c) => ({ group_id: c.id('group'), body: { name: c.name('group, updated') } }) },
   { tool: 'delete_group', scope: 'instance', requires: 'instanceWrites', input: (c) => ({ group_id: c.id('group') }), capture: (_data, c) => { c.gone('group'); } },
   {
-    tool: 'add_user', scope: 'instance', requires: 'instanceWrites',
+    tool: 'add_user', scope: 'instance', requires: 'instanceWrites', unconfirmed: 'user',
     input: (c) => ({ body: { name: c.name('user'), email: c.email(), is_active: false, email_notifications: false } }),
-    capture: (data, c) => { c.residue('user'); c.own('user', idOf(data)); },
+    capture: (data, c) => {
+      const id = idOf(data);
+      c.residue('user');
+      c.own('user', id);
+    },
   },
   { tool: 'update_user', scope: 'instance', requires: 'instanceWrites', input: (c) => ({ user_id: c.id('user'), body: { name: c.name('user, updated') } }) },
   {
-    tool: 'add_case_field', scope: 'instance', requires: 'instanceWrites',
+    tool: 'add_case_field', scope: 'instance', requires: 'instanceWrites', unconfirmed: 'case_field',
     input: (c) => ({ body: {
       type: 'String', name: c.short('f').replaceAll('-', '_'), label: c.name('field'), include_all: false,
       configs: [{ context: { is_global: false, project_ids: [c.id('project')] }, options: { is_required: false } }],

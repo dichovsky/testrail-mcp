@@ -1,11 +1,12 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { TestRailClient } from '@dichovsky/testrail-api-client';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { loadConfiguration } from '../src/config/environment.js';
 import { ERROR_CODES } from '../src/contracts/errors.js';
@@ -24,25 +25,40 @@ import { executeToolCall } from '../src/transport/tool-call.js';
  */
 
 type Scope = 'read' | 'own' | 'instance' | 'report';
-interface PlanStep { tool: string; label?: string; scope: Scope; requires?: string }
+interface Context { own: (kind: string, id: unknown, name?: string) => unknown; id: (name: string) => unknown; gone: (name: string) => void }
+interface PlanStep {
+  tool: string; label?: string; scope: Scope; requires?: string; unconfirmed?: string;
+  input?: (c: Context) => unknown; capture?: (data: unknown, c: Context) => void;
+}
 interface ToolResult { isError?: boolean; structuredContent?: unknown }
 type Call = (tool: string, input: unknown) => Promise<ToolResult>;
 type Environment = Record<string, string | undefined>;
 interface Session { call: Call; serverVersion?: string | undefined; protocol?: string | undefined; close: () => Promise<void> }
 interface Pacing { minIntervalMs: number; retryDelayMs: number; attempts: number }
 interface LedgerLike { add: (kind: string, id: unknown) => void }
+interface StepRecord { tool: string; label: string | null; status: string; code?: string; reason?: string; retries?: number }
+interface Run { steps: StepRecord[]; cleanup: { project: string; group: string; residue: { kind: string; count: number }[] }; stopped: string | null }
+type Connect = (server: { command: string; args: string[]; env: Environment }) => Promise<Session>;
 interface Runner {
   PLAN: PlanStep[];
+  TARGET_KINDS: Record<string, string>;
+  LIVE_PACING: Pacing;
   Ledger: new () => LedgerLike;
   GuardRefusal: new (message: string) => Error;
   guard: (step: Pick<PlanStep, 'tool' | 'scope'>, input: unknown, ledger: LedgerLike) => void;
   targetsOf: (tool: string, input: unknown) => { key: string; kind: string; id: unknown }[];
-  assertSanitized: (text: string, secrets: (string | undefined)[]) => void;
+  toolStatus: (steps: { status: string }[]) => string;
+  exitCode: (evidence: { summary: { fail: number }; cleanup: { project: string; group: string }; stopped: string | null }) => number;
+  pacedCaller: (call: Call, pacing: Pacing) => (tool: string, input: unknown) => Promise<{ result: ToolResult; retries: number }>;
+  parseOptions: (argv: string[]) => { out: string; server: { command: string; args: string[] } };
+  runQualification: (options: {
+    call: Call; plan?: PlanStep[]; options?: Record<string, unknown>; stamp: string; uploads: Record<string, unknown>; pacing?: Pacing;
+    shouldStop?: () => string | undefined; reconnect?: () => Promise<Call>;
+  }) => Promise<Run>;
   main: (options: {
-    argv: string[]; env: Environment; pacing?: Pacing; log?: (line: string) => void;
-    connect?: (server: { command: string; args: string[]; env: Environment }) => Promise<Session>;
+    argv: string[]; env: Environment; pacing?: Pacing; log?: (line: string) => void; connect?: Connect; signals?: EventEmitter;
   }) => Promise<unknown>;
-  connectStdio: (server: { command: string; args: string[]; env: Environment }) => Promise<Session>;
+  connectStdio: Connect;
 }
 interface StandIn { baseUrl: string; environment: Record<string, string>; requests: { method: string; endpoint: string; tool: string | null }[]; close: () => Promise<void> }
 
@@ -77,6 +93,7 @@ const evidenceSchema = z.strictObject({
   testrail_version: z.string().min(1).nullable(),
   server: z.strictObject({ package_version: z.string().nullable(), protocol: z.string().nullable(), driver_version: z.string().nullable() }),
   options: z.strictObject({ instance_writes: z.boolean(), report_template: z.boolean(), cross_project_report_template: z.boolean() }),
+  stopped: z.string().min(1).nullable(),
   summary: z.strictObject({ pass: count, not_run: count, blocked: count, fail: count }),
   tools: z.record(z.string(), z.strictObject({ status: z.enum(STATUSES), steps: z.array(stepSchema).min(1) })),
   cleanup: z.strictObject({
@@ -132,14 +149,15 @@ function inProcess(inject?: (tool: string, input: unknown, real: Call) => Promis
 }
 
 let runs = 0;
-async function qualify(flags: string[], inject?: Parameters<typeof inProcess>[0]) {
+async function qualify(flags: string[], inject?: Parameters<typeof inProcess>[0], { connect, signals }: { connect?: Connect; signals?: EventEmitter } = {}) {
   // Each run writes into a directory that does not exist yet.
   const out = join(base, `run-${String(runs += 1)}`, 'evidence.json');
   const log: string[] = [];
   const before = standIn.requests.length;
   const evidence = await runner.main({
     argv: ['--create-qualification-project', '--out', out, ...flags],
-    env: standIn.environment, connect: inProcess(inject), pacing: INSTANT, log: (line) => { log.push(line); },
+    env: standIn.environment, connect: connect ?? inProcess(inject), pacing: INSTANT, log: (line) => { log.push(line); },
+    ...(signals === undefined ? {} : { signals }),
   });
   const text = await readFile(out, 'utf8');
   return { evidence: evidenceSchema.parse(JSON.parse(text)), returned: evidence, text, log, requests: standIn.requests.slice(before) };
@@ -223,6 +241,150 @@ describe('the ownership guard', () => {
   });
 });
 
+describe('the guard\'s view of every argument', () => {
+  /** The entity kind each target argument names, written here rather than read from the runner. */
+  const KINDS: Record<string, string> = {
+    project_id: 'project', project_ids: 'project', assigned_projects: 'project', suite_id: 'suite', section_id: 'section',
+    case_id: 'case', case_ids: 'case', run_id: 'run', test_id: 'test', test_ids: 'test', result_id: 'result', plan_id: 'plan',
+    entry_id: 'entry', milestone_id: 'milestone', config_group_id: 'config_group', config_id: 'config', config_ids: 'config',
+    label_id: 'label', label_ids: 'label', labels: 'label', shared_step_id: 'shared_step', dataset_id: 'dataset',
+    variable_id: 'variable', attachment_id: 'attachment', group_id: 'group', group_ids: 'group', user_id: 'user',
+  };
+  /** Arguments that pick among the instance's settings or people, and change nothing they name. */
+  const REFERENCES = ['assignedto_id', 'created_by', 'default_role_id', 'priority_id', 'report_template_id', 'role_id', 'status_id', 'template_id', 'template_ids', 'type_id', 'updated_by', 'user_ids'];
+  /** Lists whose items carry IDs the guard checks, and the parent or neighbour of a section or milestone. */
+  const CONTAINERS = ['groups', 'users'];
+  const RELATIVE = ['after_id', 'parent_id'];
+
+  it('knows the kind of every target argument', () => {
+    expect(runner.TARGET_KINDS).toEqual(KINDS);
+    for (const [key, kind] of Object.entries(KINDS)) {
+      expect(runner.targetsOf('testrail_update_anything', { body: { [key]: [7] } }), key).toEqual([{ key, kind, id: 7 }]);
+      const created = new runner.Ledger();
+      expect(() => { runner.guard({ tool: 'update_anything', scope: 'instance' }, { [key]: 7 }, created); }, key).toThrow(runner.GuardRefusal);
+      created.add(kind, 7);
+      expect(() => { runner.guard({ tool: 'update_anything', scope: 'instance' }, { [key]: 7 }, created); }, key).not.toThrow();
+    }
+  });
+
+  it('accounts for every ID-like argument any tool accepts', () => {
+    const names = new Set<string>();
+    const visit = (node: unknown) => {
+      if (Array.isArray(node)) { node.forEach(visit); return; }
+      if (node === null || typeof node !== 'object') return;
+      const { properties } = node as { properties?: Record<string, unknown> };
+      if (properties !== undefined) for (const name of Object.keys(properties)) names.add(name);
+      Object.values(node).forEach(visit);
+    };
+    for (const { tool } of operationRegistry.entries) visit(z.toJSONSchema(registered(tool).inputSchema as z.ZodType, { unrepresentable: 'any', io: 'input' }));
+    const idLike = [...names].filter((name) => /_(?:id|ids|by)$/u.test(name) || ['labels', 'assigned_projects', 'groups', 'users'].includes(name));
+    const known = new Set([...Object.keys(KINDS), ...REFERENCES, ...CONTAINERS, ...RELATIVE]);
+    expect(idLike.filter((name) => !known.has(name))).toEqual([]);
+    // And each list names something a tool really takes.
+    expect([...known].filter((name) => !names.has(name))).toEqual([]);
+  });
+
+  it('refuses, inside a run, a write to anything the run did not create, and never sends it', async () => {
+    const sent: string[] = [];
+    const call: Call = (tool) => {
+      sent.push(tool);
+      return Promise.resolve({ structuredContent: { data: { id: 5 } } });
+    };
+    const plan: PlanStep[] = [
+      { tool: 'add_project', scope: 'own', input: () => ({ body: { name: 'p' } }), capture: (data, c) => { c.own('project', (data as { id: number }).id); } },
+      { tool: 'update_project', scope: 'own', input: () => ({ project_id: 99, body: {} }) },
+      { tool: 'delete_group', scope: 'instance', input: () => ({ group_id: 5 }) },
+      { tool: 'delete_project', scope: 'own', input: (c) => ({ project_id: c.id('project') }), capture: (_data, c) => { c.gone('project'); } },
+    ];
+    const run = await runner.runQualification({ call, plan, stamp: 's', uploads: {}, pacing: INSTANT });
+    expect(sent).toEqual(['testrail_add_project', 'testrail_delete_project']);
+    expect(run.steps.map(({ tool, status, reason }) => `${tool} ${status}${reason === undefined ? '' : `: ${reason}`}`)).toEqual([
+      'testrail_add_project pass',
+      'testrail_update_project not_run: refused by the guard: testrail_update_project: project_id 99 is not a project this run created',
+      'testrail_delete_group not_run: refused by the guard: testrail_delete_group: group_id 5 is not a group this run created',
+      'testrail_delete_project pass',
+    ]);
+  });
+});
+
+describe('the pace, and what is repeated', () => {
+  it('keeps under the server\'s request rate, and waits out its window before repeating', async () => {
+    const { rateLimiter } = driverOptions(await loadConfiguration({ ...standIn.environment, TESTRAIL_MCP_UPLOAD_ROOTS: '[]', TESTRAIL_MCP_DOWNLOAD_DIR: base }));
+    const { maxRequests = 0, windowMs = 0 } = rateLimiter ?? {};
+    expect(runner.LIVE_PACING.minIntervalMs).toBeGreaterThanOrEqual(windowMs / maxRequests);
+    expect(runner.LIVE_PACING.retryDelayMs).toBeGreaterThan(windowMs);
+    expect(runner.LIVE_PACING.attempts).toBeGreaterThanOrEqual(2);
+    expect(runner.LIVE_PACING.attempts).toBeLessThanOrEqual(5);
+  });
+
+  it('spaces calls, and repeats a rate-limited call, and only that, after the delay', async () => {
+    const at: number[] = [];
+    let answers: ToolResult[] = [];
+    const paced = runner.pacedCaller(() => {
+      at.push(performance.now());
+      return Promise.resolve(answers.shift() ?? { structuredContent: { data: {} } });
+    }, { minIntervalMs: 40, retryDelayMs: 80, attempts: 3 });
+    await paced('a', {});
+    await paced('b', {});
+    expect((at[1] ?? 0) - (at[0] ?? 0)).toBeGreaterThanOrEqual(35);
+    answers = [failure('RATE_LIMITED'), { structuredContent: { data: {} } }];
+    at.length = 0;
+    expect(await paced('c', {})).toMatchObject({ retries: 1 });
+    expect((at[1] ?? 0) - (at[0] ?? 0)).toBeGreaterThanOrEqual(75);
+    // A write whose outcome is unknown is never repeated.
+    answers = [{ isError: true, structuredContent: { error: { code: 'TIMEOUT', write_outcome: 'unknown' } } }];
+    at.length = 0;
+    expect(await paced('d', {})).toMatchObject({ retries: 0 });
+    expect(at).toHaveLength(1);
+    // A call still rate-limited after every attempt is given up.
+    answers = [failure('RATE_LIMITED'), failure('RATE_LIMITED'), failure('RATE_LIMITED'), { structuredContent: { data: {} } }];
+    at.length = 0;
+    const limited = await runner.pacedCaller(() => {
+      at.push(performance.now());
+      return Promise.resolve(answers.shift() ?? { structuredContent: { data: {} } });
+    }, INSTANT)('e', {});
+    expect(limited).toMatchObject({ retries: 2, result: { structuredContent: { error: { code: 'RATE_LIMITED' } } } });
+    expect(at).toHaveLength(3);
+  });
+
+  it('runs at the live pace unless told otherwise', async () => {
+    const at: number[] = [];
+    const connect: Connect = () => Promise.resolve({
+      call: (tool) => {
+        at.push(performance.now());
+        if (at.length > 3) return Promise.reject(new Error('Not connected'));
+        return Promise.resolve({ structuredContent: { data: tool === 'testrail_get_current_user' ? { id: 1, email: 'x@example.invalid' } : { version: '10.7' } } });
+      },
+      serverVersion: undefined, protocol: undefined, close: () => Promise.resolve(),
+    });
+    await runner.main({ argv: ['--create-qualification-project', '--out', join(base, 'paced.json')], env: standIn.environment, connect, log: () => undefined });
+    for (let index = 1; index < at.length; index += 1) expect((at[index] ?? 0) - (at[index - 1] ?? 0)).toBeGreaterThanOrEqual(runner.LIVE_PACING.minIntervalMs - 50);
+  }, 20_000);
+});
+
+describe('statuses and exit codes', () => {
+  it('gives a tool its worst step, except that a pass outranks steps not run', () => {
+    const of = (...statuses: string[]) => runner.toolStatus(statuses.map((status) => ({ status })));
+    expect(of('pass', 'fail')).toBe('fail');
+    expect(of('fail', 'pass')).toBe('fail');
+    expect(of('pass', 'blocked')).toBe('blocked');
+    expect(of('blocked', 'fail')).toBe('fail');
+    expect(of('not_run', 'blocked')).toBe('blocked');
+    expect(of('pass', 'not_run')).toBe('pass');
+    expect(of('not_run')).toBe('not_run');
+  });
+
+  it('fails a run with a failed tool, anything left behind, or a stop before the end', () => {
+    const evidence = (fail: number, project: string, group: string, stopped: string | null) => ({ summary: { fail }, cleanup: { project, group }, stopped });
+    expect(runner.exitCode(evidence(0, 'deleted', 'not_created', null))).toBe(0);
+    expect(runner.exitCode(evidence(0, 'deleted_in_cleanup', 'deleted', null))).toBe(0);
+    expect(runner.exitCode(evidence(1, 'deleted', 'not_created', null))).toBe(1);
+    expect(runner.exitCode(evidence(0, 'left_behind', 'not_created', null))).toBe(1);
+    expect(runner.exitCode(evidence(0, 'deleted', 'left_behind', null))).toBe(1);
+    expect(runner.exitCode(evidence(0, 'deleted_in_cleanup', 'not_created', 'interrupted'))).toBe(1);
+  });
+});
+
 describe('a full run against the stand-in', () => {
   let full: Awaited<ReturnType<typeof qualify>>;
   beforeAll(async () => { full = await qualify(FULL); });
@@ -252,6 +414,11 @@ describe('a full run against the stand-in', () => {
       expect(full.text).not.toContain(secret);
       expect(full.log.join('\n')).not.toContain(key);
     }
+  });
+
+  it('runs to the end, which is a successful run', () => {
+    expect(full.evidence.stopped).toBeNull();
+    expect(runner.exitCode(full.evidence)).toBe(0);
   });
 
   it('sends every write to an entity the run created, in order, and reports each step', () => {
@@ -288,9 +455,9 @@ describe('a run that cannot finish', () => {
     expect(evidence.cleanup).toEqual({ project: 'not_created', group: 'not_created', residue: [] });
   });
 
-  it('marks a missing licence as blocked, not failed', async () => {
+  it('marks a missing licence as blocked, not failed, with its code and HTTP status', async () => {
     const { evidence } = await qualify([], (tool, input, real) => (tool === 'testrail_add_dataset' ? Promise.resolve(failure('LICENSE_REQUIRED', 403)) : real(tool, input)));
-    expect(evidence.tools.testrail_add_dataset?.status).toBe('blocked');
+    expect(evidence.tools.testrail_add_dataset).toEqual({ status: 'blocked', steps: [{ label: null, status: 'blocked', code: 'LICENSE_REQUIRED', http_status: 403, warnings: [] }] });
     expect(evidence.tools.testrail_get_dataset?.steps[0]).toMatchObject({ status: 'blocked', reason: 'needs the dataset an earlier step did not provide' });
     expect(evidence.summary.fail).toBe(0);
   });
@@ -307,7 +474,117 @@ describe('a run that cannot finish', () => {
     expect(evidence.tools.testrail_add_run?.steps[0]).toMatchObject({ status: 'fail', reason: 'the call failed: the connection closed' });
     expect(evidence.tools.testrail_close_run?.steps[0]).toMatchObject({ status: 'not_run', reason: 'the MCP session failed' });
     expect(evidence.cleanup.project).toBe('deleted_in_cleanup');
+    expect(evidence.stopped).toBe('the MCP session failed');
+    expect(runner.exitCode(evidence)).toBe(1);
     expect(requests.at(-1)?.tool).toBe('testrail_delete_project');
+  });
+
+  /** A session that stops answering after `tool`, as when its server has exited; later sessions work. */
+  const dyingAfter = (tool: string, onDeath: () => void = () => undefined): Connect => {
+    let opened = 0;
+    return async (server) => {
+      opened += 1;
+      const session = await inProcess()(server);
+      if (opened > 1) return session;
+      let dead = false;
+      return {
+        ...session,
+        call: async (name, input) => {
+          if (dead) throw new Error('Not connected');
+          const result = await session.call(name, input);
+          if (name === tool) {
+            dead = true;
+            onDeath();
+          }
+          return result;
+        },
+      };
+    };
+  };
+
+  it('cleans up through a fresh session when the session dies part-way', async () => {
+    const { evidence, requests, log } = await qualify([], undefined, { connect: dyingAfter('testrail_add_run') });
+    expect(stepsOf(evidence).filter(({ status }) => status === 'fail').map(({ reason }) => reason)).toEqual(['the call failed: Not connected']);
+    expect(evidence.tools.testrail_close_run?.steps[0]).toMatchObject({ status: 'not_run', reason: 'the MCP session failed' });
+    expect(evidence.cleanup).toEqual({ project: 'deleted_in_cleanup', group: 'not_created', residue: [] });
+    expect(requests.at(-1)?.tool).toBe('testrail_delete_project');
+    expect(log).toContain('The session to the server has ended; starting a fresh one to clean up.');
+  });
+
+  it('stops at Ctrl-C, which ends the server too, and still deletes the project and the group', async () => {
+    const signals = new EventEmitter();
+    let signalled = 0;
+    // Ctrl-C at a terminal reaches the server as well as the runner, so the session dies with it.
+    const { evidence, log } = await qualify(FULL, undefined, {
+      signals,
+      connect: dyingAfter('testrail_add_group', () => {
+        signalled = standIn.requests.length;
+        signals.emit('SIGINT');
+      }),
+    });
+    const requests = standIn.requests.slice(signalled);
+    expect(evidence.stopped).toBe('interrupted');
+    expect(evidence.tools.testrail_update_group?.steps[0]).toMatchObject({ status: 'not_run', reason: 'interrupted' });
+    expect(evidence.cleanup).toEqual({ project: 'deleted_in_cleanup', group: 'deleted_in_cleanup', residue: [] });
+    const deletes = requests.filter(({ method, tool }) => method === 'POST' && tool?.startsWith('testrail_delete_') === true).map(({ tool }) => tool);
+    expect(deletes).toEqual(['testrail_delete_project', 'testrail_delete_group']);
+    expect(log[log.findIndex((line) => line.startsWith('Stopping:'))]).toBe('Stopping: the qualification project will be deleted. Press Ctrl-C again to abandon that cleanup.');
+    expect(signals.listenerCount('SIGINT')).toBe(0);
+    expect(runner.exitCode(evidence)).toBe(1);
+  });
+
+  it('marks the step Ctrl-C cut short as not run, not failed', async () => {
+    const signals = new EventEmitter();
+    const { evidence } = await qualify([], (tool, input, real) => {
+      if (tool !== 'testrail_add_case') return real(tool, input);
+      signals.emit('SIGINT');
+      return Promise.reject(new Error('Connection closed'));
+    }, { signals });
+    expect(evidence.tools.testrail_add_case?.steps[0]).toMatchObject({ status: 'not_run', reason: 'interrupted during the call' });
+    expect(evidence.cleanup.project).toBe('deleted_in_cleanup');
+  });
+
+  it('reports a project, or a group, it could not delete even through a fresh session', async () => {
+    const refusing = await qualify([], (tool, input, real) => (tool === 'testrail_delete_project' ? Promise.reject(new Error('Not connected')) : real(tool, input)));
+    expect(refusing.evidence.cleanup).toEqual({ project: 'left_behind', group: 'not_created', residue: [{ kind: 'project', count: 1 }] });
+    expect(refusing.log).toContain('The session to the server has ended; starting a fresh one to clean up.');
+    const denied = await qualify(FULL, (tool, input, real) => (tool === 'testrail_delete_group' ? Promise.resolve(failure('PERMISSION_DENIED', 403)) : real(tool, input)));
+    expect(denied.evidence.cleanup).toEqual({ project: 'deleted', group: 'left_behind', residue: [{ kind: 'user', count: 1 }, { kind: 'case_field', count: 1 }, { kind: 'group', count: 1 }] });
+    expect(runner.exitCode(denied.evidence)).toBe(1);
+  });
+
+  it('lists a group, user or case field that may exist when its creation\'s outcome is unknown', async () => {
+    const unknown: ToolResult = { isError: true, structuredContent: { error: { code: 'TIMEOUT', message: 'Synthetic.', write_outcome: 'unknown' } } };
+    for (const [tool, kind] of [['testrail_add_group', 'possible group'], ['testrail_add_user', 'possible user'], ['testrail_add_case_field', 'possible case_field']]) {
+      const { evidence } = await qualify(FULL, (name, input, real) => (name === tool ? Promise.resolve(unknown) : real(name, input)));
+      expect(evidence.cleanup.residue, tool).toContainEqual({ kind, count: 1 });
+    }
+    // A server error, and a session lost mid-call, leave the same doubt.
+    const failed = await qualify(FULL, (name, input, real) => (name === 'testrail_add_group' ? Promise.resolve(failure('UPSTREAM_ERROR', 500)) : real(name, input)));
+    expect(failed.evidence.cleanup.residue).toContainEqual({ kind: 'possible group', count: 1 });
+    let lost = false;
+    const dropped = await qualify(FULL, (name, input, real) => {
+      if (name === 'testrail_add_user' && !lost) {
+        lost = true;
+        return Promise.reject(new Error('the connection closed'));
+      }
+      return real(name, input);
+    });
+    expect(dropped.evidence.cleanup.residue).toContainEqual({ kind: 'possible user', count: 1 });
+  });
+
+  it('still cleans up when the runner itself throws part-way', async () => {
+    const calls: string[] = [];
+    const plan: PlanStep[] = [
+      { tool: 'add_project', scope: 'own', input: () => ({ body: { name: 'p' } }), capture: (data, c) => { c.own('project', (data as { id: number }).id); } },
+      { tool: 'get_project', scope: 'read', input: () => { throw new TypeError('a bug in the plan'); } },
+    ];
+    const call: Call = (tool) => {
+      calls.push(tool);
+      return Promise.resolve({ structuredContent: { data: { id: 5 } } });
+    };
+    await expect(runner.runQualification({ call, plan, stamp: 's', uploads: {}, pacing: INSTANT })).rejects.toThrow(/a bug in the plan/u);
+    expect(calls).toEqual(['testrail_add_project', 'testrail_delete_project']);
   });
 
   it('reports a project it could not delete as left behind', async () => {
@@ -329,7 +606,8 @@ describe('a run that cannot finish', () => {
   });
 
   it('stops at once when TestRail refuses the credentials', async () => {
-    const { evidence, requests } = await qualify([], (tool) => Promise.resolve(failure(tool === 'testrail_get_version' ? 'AUTHENTICATION_FAILED' : 'INTERNAL_ERROR')));
+    // Every other call would reach the stand-in, so any sent after the refusal shows.
+    const { evidence, requests } = await qualify([], (tool, input, real) => (tool === 'testrail_get_version' ? Promise.resolve(failure('AUTHENTICATION_FAILED', 401)) : real(tool, input)));
     expect(evidence.tools.testrail_get_version?.steps[0]).toMatchObject({ status: 'fail', code: 'AUTHENTICATION_FAILED' });
     const rest = stepsOf(evidence).filter(({ tool }) => tool !== 'testrail_get_version');
     expect(new Set(rest.map(({ status, reason }) => `${status}: ${String(reason)}`))).toEqual(new Set(['not_run: TestRail refused the credentials']));
@@ -342,20 +620,77 @@ describe('a run that cannot finish', () => {
     expect(evidence.tools.testrail_get_run?.steps).toEqual([{ label: null, status: 'pass', retries: 1, warnings: [] }]);
   });
 
-  it('refuses to write evidence that would carry the TestRail address', async () => {
-    const out = join(base, 'refused.json');
-    await expect(runner.main({
-      argv: ['--create-qualification-project', '--out', out], env: standIn.environment, pacing: INSTANT, log: () => undefined,
-      connect: inProcess((tool, input, real) => (tool === 'testrail_get_version'
-        ? Promise.resolve({ structuredContent: { data: { version: `10.7 at ${new URL(standIn.baseUrl).host}` } } })
-        : real(tool, input))),
-    })).rejects.toThrow(/the evidence would carry 1 configured or personal value\(s\); it was not written/u);
-    await expect(readFile(out)).rejects.toMatchObject({ code: 'ENOENT' });
+  /** A run whose TestRail version reply carries `echo`, as a message quoting the instance might. */
+  const echoing = async (echo: string, env: Environment = standIn.environment) => {
+    const out = join(base, `echo-${String(runs += 1)}.json`);
+    const log: string[] = [];
+    const settled = await runner.main({
+      argv: ['--create-qualification-project', '--out', out], env, pacing: INSTANT, log: (line) => { log.push(line); },
+      // The server always reaches the stand-in, whatever address the evidence is checked against.
+      connect: async (server) => inProcess((tool, input, real) => (tool === 'testrail_get_version'
+        ? Promise.resolve({ structuredContent: { data: { version: `10.7 ${echo}` } } })
+        : real(tool, input)))({ ...server, env: { ...server.env, ...standIn.environment } }),
+    }).then(() => 'written', (error: unknown) => (error instanceof Error ? error.message : String(error)));
+    return { settled, log, written: await readFile(out, 'utf8').then(() => true, () => false) };
+  };
+
+  it('refuses to write evidence that would carry the address, the host, the identity, the key, the credential or the signed-in address', async () => {
+    const { TESTRAIL_BASE_URL: url = '', TESTRAIL_EMAIL: email = '', TESTRAIL_API_KEY: key = '' } = standIn.environment;
+    const values = [url, new URL(url).host, new URL(url).hostname, email, key, Buffer.from(`${email}:${key}`).toString('base64'), 'ada@example.com'];
+    for (const value of values) {
+      const { settled, written, log } = await echoing(`at ${value}`);
+      expect(settled, value).toMatch(/the evidence would carry \d+ configured or personal value\(s\); it was not written/u);
+      expect(written, value).toBe(false);
+      // What cleanup did is still said.
+      expect(log, value).toContain('Cleanup: project deleted, group not_created.');
+    }
+  });
+
+  it('checks a host as a whole name, so a one-word host does not refuse every run', async () => {
+    const env = { ...standIn.environment, TESTRAIL_BASE_URL: 'https://testrail' };
+    expect(await echoing('ok', env)).toMatchObject({ settled: 'written', written: true });
+    expect(await echoing('on testrail today', env)).toMatchObject({ written: false });
+  });
+
+  it('refuses, before any request, a configuration its evidence could never be checked against, and an unusable --out', async () => {
+    const connect = vi.fn<Connect>();
+    const before = standIn.requests.length;
+    const attempt = (env: Environment, out: string) => runner.main({ argv: ['--create-qualification-project', '--out', out], env, connect, pacing: INSTANT, log: () => undefined });
+    // An API key that is also a word the evidence always contains.
+    await expect(attempt({ ...standIn.environment, TESTRAIL_API_KEY: 'pass' }, join(base, 'never-1.json'))).rejects.toThrow(/appears in the evidence's own words.*Nothing was sent to TestRail/u);
+    await expect(attempt(standIn.environment, base)).rejects.toThrow(/is a directory/u);
+    expect(() => runner.parseOptions(['--create-qualification-project', '--out', ''])).toThrow(/Name the evidence file with --out/u);
+    expect(connect).not.toHaveBeenCalled();
+    expect(standIn.requests.length).toBe(before);
+  });
+
+  it('skips the existing group read, rather than blocking it, on an instance with no groups', async () => {
+    const { evidence } = await qualify(FULL, (tool, input, real) => (tool === 'testrail_get_groups' ? Promise.resolve({ structuredContent: { data: [] } }) : real(tool, input)));
+    expect(evidence.tools.testrail_get_group).toEqual({ status: 'pass', steps: [
+      { label: 'existing group', status: 'not_run', reason: 'the instance has no group to read', warnings: [] },
+      { label: 'own group', status: 'pass', warnings: [] },
+    ] });
   });
 });
 
 describe('the operator guide', () => {
   const row = (start: string): string => guide.split('\n').find((line) => line.startsWith(start)) ?? '';
+
+  it('rehearses with every option, so every tool passes against the stand-in', () => {
+    expect(guide).toContain('--instance-writes --report-template-id 1 --cross-project-report-template-id 2');
+  });
+
+  it('says how to find what a run leaves behind', () => {
+    const user = runner.PLAN.find(({ tool }) => tool === 'add_user');
+    const field = runner.PLAN.find(({ tool }) => tool === 'add_case_field');
+    const context = { name: (suffix: string) => `testrail-mcp qualification STAMP ${suffix}`, email: () => 'x@example.invalid', short: (tag: string) => `tmq-abcdef-${tag}`, id: () => 1 };
+    const userBody = (user?.input?.(context as unknown as Context) as { body: { name: string; email: string } }).body;
+    const fieldBody = (field?.input?.(context as unknown as Context) as { body: { name: string; label: string } }).body;
+    expect(userBody.name.startsWith('testrail-mcp qualification')).toBe(true);
+    expect(fieldBody.label.startsWith('testrail-mcp qualification')).toBe(true);
+    expect(fieldBody.name).toBe('tmq_abcdef_f');
+    expect(guide).toContain('The user\'s name and the case field\'s label start with `testrail-mcp qualification`; the case field\'s system name is `tmq_<id>_f`, and the user\'s address ends in `@example.invalid`.');
+  });
 
   it('names exactly the plan\'s writes outside the project', () => {
     const named = [...row('| Writes outside the project |').matchAll(/`([a-z_]+)`/gu)].map(([, tool]) => tool).sort();
@@ -396,6 +731,38 @@ describe('the command line', () => {
     const { stderr } = await refused.catch((error: unknown) => error as { stderr: string });
     expect(stderr).not.toMatch(/secret-host|secret-person/u);
   });
+
+  it('takes a server argument that starts with a dash as --arg=', () => {
+    expect(runner.parseOptions(['--create-qualification-project', '--out', 'x.json', '--command', 'npx', '--arg=-y', '--arg', 'pkg']).server).toEqual({ command: 'npx', args: ['-y', 'pkg'] });
+    expect(guide).toContain('`--arg=-y`');
+  });
+
+  it('says why a server that will not start did not', async () => {
+    await expect(runner.connectStdio({
+      command: process.execPath, args: [fileURLToPath(new URL('../dist/cli.js', import.meta.url))],
+      env: { PATH: process.env.PATH, TESTRAIL_BASE_URL: 'http://127.0.0.1:9', TESTRAIL_EMAIL: 'nobody@example.invalid', TESTRAIL_API_KEY: 'synthetic-key' },
+    })).rejects.toThrow(/^The server did not start: .*TESTRAIL_BASE_URL/u);
+  }, 30_000);
+
+  it.skipIf(process.platform === 'win32')('deletes the project when Ctrl-C at a terminal stops the runner and the server together', async () => {
+    const out = join(base, 'interrupted', 'evidence.json');
+    const launched = standIn.requests.length;
+    // Detached, the runner leads its own process group, as a terminal's foreground job does.
+    const cli = spawn(process.execPath, [script('live-qualification.mjs'), '--create-qualification-project', '--out', out], {
+      detached: true, stdio: ['ignore', 'ignore', 'pipe'], env: { PATH: process.env.PATH, HOME: process.env.HOME, ...standIn.environment },
+    });
+    let stderr = '';
+    cli.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+    const exited = new Promise<number | null>((resolve) => { cli.once('exit', resolve); });
+    await vi.waitFor(() => { expect(standIn.requests.slice(launched).some(({ tool }) => tool === 'testrail_add_project')).toBe(true); }, { timeout: 60_000, interval: 200 });
+    const signalled = standIn.requests.length;
+    // As Ctrl-C does: the signal goes to the whole group, the runner and the server it started.
+    process.kill(-(cli.pid ?? 0), 'SIGINT');
+    expect(await exited).toBe(1);
+    expect(standIn.requests.slice(signalled).map(({ method, tool }) => `${method} ${String(tool)}`)).toContain('POST testrail_delete_project');
+    expect(evidenceSchema.parse(JSON.parse(await readFile(out, 'utf8')))).toMatchObject({ stopped: 'interrupted', cleanup: { project: 'deleted_in_cleanup' } });
+    expect(stderr).toContain('The session to the server has ended; starting a fresh one to clean up.');
+  }, 120_000);
 
   it('drives the built server over stdio', async () => {
     const downloads = await mkdtemp(join(base, 'downloads-'));

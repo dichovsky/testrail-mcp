@@ -25,12 +25,12 @@
  */
 import { randomBytes } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { PLAN, QUALIFICATION_PREFIX, UPLOADS } from './live-plan.mjs';
+import { NotApplicable, PLAN, QUALIFICATION_PREFIX, UPLOADS } from './live-plan.mjs';
 
 export { PLAN };
 
@@ -196,7 +196,8 @@ export const LIVE_PACING = Object.freeze({ minIntervalMs: 700, retryDelayMs: 61_
 
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
-function pacedCaller(call, { minIntervalMs, retryDelayMs, attempts }) {
+/** Call at most once every `minIntervalMs`, and repeat a rate-limited call, and only that, up to `attempts` times. */
+export function pacedCaller(call, { minIntervalMs, retryDelayMs, attempts }) {
   let last = 0;
   return async (tool, input) => {
     for (let attempt = 1; ; attempt += 1) {
@@ -212,10 +213,12 @@ function pacedCaller(call, { minIntervalMs, retryDelayMs, attempts }) {
 
 /**
  * Run the plan through `call(tool, input)`, which returns an MCP tool result. Returns one
- * record per step and what cleanup did. `shouldStop` is polled between steps.
+ * record per step and what cleanup did. `shouldStop` is polled between steps. When a
+ * cleanup call cannot reach the server, because the session broke or Ctrl-C stopped the
+ * server too, `reconnect` gives a fresh `call` to clean up through.
  */
 export async function runQualification({
-  call, plan = PLAN, options = {}, stamp, uploads, pacing = LIVE_PACING, onStep = () => undefined, shouldStop = () => undefined,
+  call, plan = PLAN, options = {}, stamp, uploads, pacing = LIVE_PACING, onStep = () => undefined, shouldStop = () => undefined, reconnect,
 }) {
   const invoke = pacedCaller(call, pacing);
   const ledger = new Ledger();
@@ -246,6 +249,7 @@ export async function runQualification({
       } catch (error) {
         if (error instanceof MissingDependency) record(step, { status: 'blocked', reason: error.message });
         else if (error instanceof GuardRefusal) record(step, { status: 'not_run', reason: `refused by the guard: ${error.message}` });
+        else if (error instanceof NotApplicable) record(step, { status: 'not_run', reason: error.message });
         else throw error;
         continue;
       }
@@ -254,9 +258,17 @@ export async function runQualification({
       try {
         ({ result, retries } = await invoke(`${TOOL_PREFIX}${step.tool}`, input));
       } catch (error) {
+        if (step.unconfirmed !== undefined) c.residue(`possible ${step.unconfirmed}`);
+        // Ctrl-C reaches the server too, which ends the call in flight: the step was cut
+        // short, not failed.
+        const interrupted = shouldStop();
+        if (interrupted !== undefined) {
+          stopped = interrupted;
+          record(step, { status: 'not_run', reason: `${interrupted} during the call` });
+          continue;
+        }
         // The server or the connection failed, not the tool: nothing further can be trusted.
         stopped = 'the MCP session failed';
-        if (step.unconfirmed !== undefined) c.residue(`possible ${step.unconfirmed}`);
         record(step, { status: 'fail', reason: `the call failed: ${error instanceof Error ? error.message : String(error)}` });
         continue;
       }
@@ -279,6 +291,19 @@ export async function runQualification({
       record(step, message === undefined ? outcome : { ...outcome, message });
     }
   } finally {
+    // Clean up through the session while it answers; once it cannot, through a fresh one.
+    let cleaner = invoke;
+    let fresh = false;
+    const clean = async (tool, input) => {
+      try {
+        return (await cleaner(tool, input)).result;
+      } catch (error) {
+        if (fresh || reconnect === undefined) throw error;
+        fresh = true;
+        cleaner = pacedCaller(await reconnect(), pacing);
+        return (await cleaner(tool, input)).result;
+      }
+    };
     for (const [kind, tool, key] of [['project', 'delete_project', 'project_id'], ['group', 'delete_group', 'group_id']]) {
       const entry = c.named.get(kind);
       if (entry === undefined) continue;
@@ -287,7 +312,7 @@ export async function runQualification({
         continue;
       }
       try {
-        const { status } = classify((await invoke(`${TOOL_PREFIX}${tool}`, { [key]: entry.id })).result);
+        const { status } = classify(await clean(`${TOOL_PREFIX}${tool}`, { [key]: entry.id }));
         cleanup[kind] = status === 'pass' ? 'deleted_in_cleanup' : 'left_behind';
       } catch {
         cleanup[kind] = 'left_behind';
@@ -298,7 +323,9 @@ export async function runQualification({
   for (const kind of ['project', 'group']) if (cleanup[kind] === 'left_behind') residue.push({ kind, count: 1 });
   // The signed-in user's address is kept only to prove the evidence does not carry it.
   const personal = [c.values.get('current_user_email')].filter((value) => typeof value === 'string');
-  return { steps, cleanup: { ...cleanup, residue }, testrailVersion: c.values.get('testrail_version') ?? null, personal };
+  return {
+    steps, cleanup: { ...cleanup, residue }, stopped: stopped ?? null, testrailVersion: c.values.get('testrail_version') ?? null, personal,
+  };
 }
 
 const RANK = ['pass', 'not_run', 'blocked', 'fail'];
@@ -333,29 +360,48 @@ export function buildEvidence({ run, tools, options, testedOn, server }) {
       report_template: options.reportTemplateId !== undefined,
       cross_project_report_template: options.crossProjectReportTemplateId !== undefined,
     },
+    // Why the run stopped before its end, or null when it ran to the end.
+    stopped: run.stopped ?? null,
     summary,
     tools: byTool,
     cleanup: run.cleanup,
   };
 }
 
-/** The evidence must name none of these: the address, its host, the identity or the key. */
-export function assertSanitized(text, secrets) {
-  const found = secrets.filter((secret) => typeof secret === 'string' && secret.length >= 4 && text.includes(secret));
+/** A failed tool, anything left behind that should have been deleted, or a run cut short is a failed run. */
+export function exitCode(evidence) {
+  const leftBehind = evidence.cleanup.project === 'left_behind' || evidence.cleanup.group === 'left_behind';
+  return evidence.summary.fail > 0 || leftBehind || evidence.stopped !== null ? 1 : 0;
+}
+
+/** Whether `text` names `value` whole, not as part of a longer name: a host `testrail` is not in `testrail_add_case`. */
+function namesWhole(text, value) {
+  return new RegExp(`(?<![A-Za-z0-9_.-])${value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}(?![A-Za-z0-9_-]|\\.[A-Za-z0-9])`, 'u').test(text);
+}
+
+/**
+ * The evidence must name none of these: the address, the identity, the key or the Basic
+ * credential anywhere, and the host as a whole name.
+ */
+export function assertSanitized(text, { exact = [], whole = [] }) {
+  const usable = (secret) => typeof secret === 'string' && secret.length >= 4;
+  const found = [...exact.filter((secret) => usable(secret) && text.includes(secret)), ...whole.filter((secret) => usable(secret) && namesWhole(text, secret))];
   if (found.length > 0) throw new Error(`the evidence would carry ${String(found.length)} configured or personal value(s); it was not written`);
 }
 
 export function secretsOf(env, extra = []) {
-  const secrets = [env.TESTRAIL_BASE_URL, env.TESTRAIL_EMAIL, env.TESTRAIL_API_KEY, ...extra];
+  const exact = [env.TESTRAIL_BASE_URL, env.TESTRAIL_EMAIL, env.TESTRAIL_API_KEY, ...extra];
+  const whole = [];
   try {
-    secrets.push(new URL(env.TESTRAIL_BASE_URL).host);
+    const { host, hostname } = new URL(env.TESTRAIL_BASE_URL);
+    whole.push(host, hostname);
   } catch {
     // An unusable address is reported by the server itself.
   }
   if (env.TESTRAIL_EMAIL !== undefined && env.TESTRAIL_API_KEY !== undefined) {
-    secrets.push(Buffer.from(`${env.TESTRAIL_EMAIL}:${env.TESTRAIL_API_KEY}`).toString('base64'));
+    exact.push(Buffer.from(`${env.TESTRAIL_EMAIL}:${env.TESTRAIL_API_KEY}`).toString('base64'));
   }
-  return secrets;
+  return { exact, whole };
 }
 
 /** Call a tool over an MCP client session. */
@@ -388,7 +434,7 @@ export function parseOptions(argv) {
     },
   });
   if (!values['create-qualification-project']) throw new Error(`The run creates, uses and deletes a TestRail project; pass --create-qualification-project to confirm.\n${USAGE}`);
-  if (values.out === undefined) throw new Error(`Name the evidence file with --out.\n${USAGE}`);
+  if (values.out === undefined || values.out === '') throw new Error(`Name the evidence file with --out.\n${USAGE}`);
   const options = { instanceWrites: values['instance-writes'] };
   const report = positiveInteger(values['report-template-id'], '--report-template-id');
   const crossProject = positiveInteger(values['cross-project-report-template-id'], '--cross-project-report-template-id');
@@ -415,6 +461,15 @@ export function newStamp(now = new Date()) {
   return `${now.toISOString().replace(/[-:]/gu, '').replace(/\.\d+Z$/u, 'z').toLowerCase()}-${randomBytes(3).toString('hex')}`;
 }
 
+/** Refuse, before anything touches TestRail, evidence that could never be written: an --out that is a directory or cannot be written. */
+async function checkOut(out) {
+  await mkdir(dirname(out), { recursive: true });
+  if ((await stat(out).catch(() => undefined))?.isDirectory() === true) throw new Error(`--out ${out} is a directory; name the evidence file.`);
+  const probe = `${out}.${randomBytes(4).toString('hex')}.tmp`;
+  await writeFile(probe, '');
+  await rm(probe, { force: true });
+}
+
 /**
  * The whole run: check the environment, start the server over stdio, run the plan and
  * write the evidence. `connect` is replaceable so the offline test can drive the same
@@ -422,16 +477,44 @@ export function newStamp(now = new Date()) {
  */
 export async function main({
   argv = process.argv.slice(2), env = process.env, connect = connectStdio, pacing = LIVE_PACING, log = (line) => { process.stderr.write(`${line}\n`); },
+  signals = process,
 } = {}) {
   const { out, options, server } = parseOptions(argv);
   const missing = REQUIRED_VARIABLES.filter((key) => (env[key] ?? '') === '');
   if (missing.length > 0) throw new Error(`Set ${missing.join(', ')} in the environment; the runner never takes credentials as arguments.`);
-  // Make the evidence's directory now, so a finished run is never lost to a missing folder.
-  await mkdir(dirname(out), { recursive: true });
+  // Before any request: a configured value that the evidence's own words contain would make
+  // every run's evidence unwritable, and a finished run is never lost to an unusable --out.
+  const tools = new Set(PLAN.map(({ tool }) => `${TOOL_PREFIX}${tool}`));
+  const blank = buildEvidence({
+    run: {
+      steps: PLAN.map((step) => ({ tool: `${TOOL_PREFIX}${step.tool}`, label: step.label ?? null, status: 'not_run', reason: 'interrupted' })),
+      cleanup: { project: 'left_behind', group: 'left_behind', residue: [] }, stopped: 'interrupted', testrailVersion: null,
+    },
+    tools, options, testedOn: '2000-01-01', server: { package_version: null, protocol: null, driver_version: null },
+  });
+  try {
+    assertSanitized(JSON.stringify(blank), secretsOf(env));
+  } catch {
+    throw new Error('A configured TestRail value appears in the evidence\'s own words, such as its tool names or statuses, so the evidence could not be checked. Nothing was sent to TestRail.');
+  }
+  await checkOut(out);
   const work = await mkdtemp(join(tmpdir(), 'testrail-mcp-live-'));
   let stop;
-  const onSignal = () => { stop = 'interrupted'; };
-  process.once('SIGINT', onSignal);
+  let projectName;
+  // The first Ctrl-C stops the run after the current step and deletes the project; a second
+  // abandons that cleanup.
+  const onSignal = () => {
+    if (stop === undefined) {
+      stop = 'interrupted';
+      log('Stopping: the qualification project will be deleted. Press Ctrl-C again to abandon that cleanup.');
+      return;
+    }
+    log(`Cleanup abandoned: ${projectName ?? 'the qualification project'} may be left behind.`);
+    process.exit(1);
+  };
+  signals.on('SIGINT', onSignal);
+  signals.on('SIGTERM', onSignal);
+  const sessions = [];
   try {
     const uploadRoot = join(work, 'uploads');
     const downloadDirectory = join(work, 'downloads');
@@ -439,25 +522,38 @@ export async function main({
     const uploads = await prepareUploads(uploadRoot);
     const serverEnv = { ...env, TESTRAIL_MCP_UPLOAD_ROOTS: JSON.stringify([uploadRoot]), TESTRAIL_MCP_DOWNLOAD_DIR: downloadDirectory };
     delete serverEnv.NODE_OPTIONS;
-    const session = await connect({ ...server, env: serverEnv });
+    const open = async () => {
+      const opened = await connect({ ...server, env: serverEnv });
+      sessions.push(opened);
+      return opened;
+    };
+    const session = await open();
     const stamp = newStamp();
-    log(`Qualification project: ${QUALIFICATION_PREFIX} ${stamp} project`);
+    projectName = `${QUALIFICATION_PREFIX} ${stamp} project`;
+    log(`Qualification project: ${projectName}`);
     let run;
     try {
       run = await runQualification({
         call: session.call, options, stamp, uploads, pacing, shouldStop: () => stop,
+        reconnect: async () => {
+          log('The session to the server has ended; starting a fresh one to clean up.');
+          return (await open()).call;
+        },
         onStep: ({ tool, label, status, code, reason, message }) => {
           const detail = [code, reason, message].filter((part) => part !== undefined).join(': ');
           log(`${status.padEnd(7)} ${tool}${label === null ? '' : ` (${label})`}${detail === '' ? '' : ` ${detail}`}`);
         },
       });
     } finally {
-      await session.close();
+      await Promise.all(sessions.map(async (opened) => { await opened.close().catch(() => undefined); }));
     }
+    // What cleanup did is said before anything else can fail: it names kinds and outcomes only.
+    const residue = run.cleanup.residue.map(({ kind, count }) => `${String(count)} ${kind}`).join(', ');
+    log(`Cleanup: project ${run.cleanup.project}, group ${run.cleanup.group}${residue === '' ? '' : `; left behind: ${residue}`}.`);
     const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
     const evidence = buildEvidence({
       run,
-      tools: new Set(PLAN.map(({ tool }) => `${TOOL_PREFIX}${tool}`)),
+      tools,
       options,
       testedOn: new Date().toISOString().slice(0, 10),
       server: {
@@ -469,21 +565,30 @@ export async function main({
     const text = `${JSON.stringify(evidence, null, 2)}\n`;
     assertSanitized(text, secretsOf(env, run.personal));
     await writeFile(out, text);
-    log(`Evidence written to ${out}: ${Object.entries(evidence.summary).map(([status, count]) => `${String(count)} ${status}`).join(', ')}.`);
-    log(`Cleanup: project ${evidence.cleanup.project}, group ${evidence.cleanup.group}${evidence.cleanup.residue.length === 0 ? '' : `; left behind: ${evidence.cleanup.residue.map(({ kind, count }) => `${String(count)} ${kind}`).join(', ')}`}.`);
+    log(`Evidence written to ${out}: ${Object.entries(evidence.summary).map(([status, count]) => `${String(count)} ${status}`).join(', ')}${evidence.stopped === null ? '' : `; stopped early: ${evidence.stopped}`}.`);
     return evidence;
   } finally {
-    process.removeListener('SIGINT', onSignal);
+    signals.removeListener('SIGINT', onSignal);
+    signals.removeListener('SIGTERM', onSignal);
     await rm(work, { recursive: true, force: true });
   }
 }
 
-/** Start the server's executable and open an MCP session to it. */
+/** Start the server's executable and open an MCP session to it; a server that will not start says why. */
 export async function connectStdio({ command, args, env }) {
   const { Client } = await import('@modelcontextprotocol/client');
   const { StdioClientTransport } = await import('@modelcontextprotocol/client/stdio');
   const client = new Client({ name: 'testrail-mcp-live-qualification', version: '1.0.0' });
-  await client.connect(new StdioClientTransport({ command, args, env, stderr: 'ignore' }));
+  const transport = new StdioClientTransport({ command, args, env, stderr: 'pipe' });
+  // The server's diagnostics name no values; the last few kilobytes are kept to explain a failed start.
+  let diagnostics = '';
+  transport.stderr?.on('data', (chunk) => { diagnostics = `${diagnostics}${String(chunk)}`.slice(-8_192); });
+  try {
+    await client.connect(transport);
+  } catch (error) {
+    const reason = diagnostics.trim().split('\n').at(-1);
+    throw new Error(`The server did not start: ${reason === undefined || reason === '' ? (error instanceof Error ? error.message : String(error)) : reason}`, { cause: error });
+  }
   return {
     call: mcpCaller(client),
     serverVersion: client.getServerVersion()?.version,
@@ -495,8 +600,8 @@ export async function connectStdio({ command, args, env }) {
 // Compared through the real path, so a clone under a symlinked directory still runs.
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
   main().then(
-    // A failed tool or a project left behind is a failed run; a blocked tool is recorded, not failed.
-    (evidence) => { process.exitCode = evidence.summary.fail > 0 || evidence.cleanup.project === 'left_behind' ? 1 : 0; },
+    // A blocked tool is recorded, not failed.
+    (evidence) => { process.exitCode = exitCode(evidence); },
     (error) => { process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`); process.exitCode = 2; },
   );
 }
