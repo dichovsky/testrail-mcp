@@ -106,7 +106,6 @@ jobs:
     # trusted publisher configuration names it.
     environment: npm-release
     permissions:
-      contents: read
       id-token: write
 
     steps:

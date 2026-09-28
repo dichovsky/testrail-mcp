@@ -39,16 +39,16 @@ function npm(args, cwd) {
 }
 
 /** A field of a registry version, or undefined when the version or the field is absent. */
-function viewField(spec, field) {
+export function viewField(spec, field) {
   let output;
   try {
     output = npm(['view', spec, field, '--json', '--prefer-online'], tmpdir()).trim();
   } catch (error) {
-    // A package the registry does not show yet: its first version is still arriving.
+    // A version the registry does not show yet, which npm reports as E404: it is still arriving.
     if (error instanceof Error && /\bE404\b/u.test(error.message)) return undefined;
     throw error;
   }
-  // npm prints nothing, and succeeds, when a version or a field is missing.
+  // npm prints nothing, and succeeds, when the version exists without the field.
   return output === '' ? undefined : JSON.parse(output);
 }
 

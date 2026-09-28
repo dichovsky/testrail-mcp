@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { chmod, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,26 +29,40 @@ const lockfile = JSON.parse(await read('../package-lock.json')) as { packages: R
 const script = (name: string): string => fileURLToPath(new URL(`../scripts/${name}`, import.meta.url));
 const projectRoot = fileURLToPath(new URL('..', import.meta.url));
 
-interface Registry { checkRegistry: (options: { spec: string; integrity?: string; requireProvenance?: boolean; view: (spec: string, field: string) => unknown; waits: number[] }) => Promise<void> }
-const { checkRegistry } = (await import(new URL('../scripts/verify-published.mjs', import.meta.url).href)) as Registry;
+interface Registry {
+  checkRegistry: (options: { spec: string; integrity?: string; requireProvenance?: boolean; view: (spec: string, field: string) => unknown; waits: number[] }) => Promise<void>;
+  viewField: (spec: string, field: string) => unknown;
+}
+const { checkRegistry, viewField } = (await import(new URL('../scripts/verify-published.mjs', import.meta.url).href)) as Registry;
 
-/** The lines of one job, from its key to the next job or the end. */
+/** The lines of one job, from its key to the next key at a job's indent or less, comments aside. */
 function job(workflow: string, name: string): string {
   const lines = workflow.split('\n');
   const start = lines.indexOf(`  ${name}:`);
   if (start === -1) return '';
-  const end = lines.findIndex((line, index) => index > start && /^ {2}[a-z-]+:$/u.test(line));
+  const end = lines.findIndex((line, index) => index > start && /^ {0,2}[^\s#]/u.test(line));
   return lines.slice(start, end === -1 ? undefined : end).join('\n');
 }
 
-/** The entries of the `permissions:` block at an indent, or undefined when there is none. */
+/** The keys a block sets at an indent, in order. */
+const keys = (block: string, indent: number): string[] =>
+  [...block.matchAll(new RegExp(`^ {${String(indent)}}([^\\s#-][^:]*):`, 'gmu'))].map(([, key]) => key ?? '');
+
+/**
+ * What the `permissions:` key at an indent grants, as written: an inline value such as
+ * `write-all` whole, or each entry of the block. Undefined when there is no such key.
+ */
 function permissions(block: string, indent: number): string[] | undefined {
+  const key = `${' '.repeat(indent)}permissions:`;
   const lines = block.split('\n');
-  const start = lines.indexOf(`${' '.repeat(indent)}permissions:`);
+  const start = lines.findIndex((line) => line.startsWith(key));
   if (start === -1) return undefined;
+  const inline = (lines[start] ?? '').slice(key.length).trim();
+  if (inline !== '') return [inline];
   const entries: string[] = [];
   for (const line of lines.slice(start + 1)) {
-    if (!new RegExp(`^ {${String(indent + 2)}}[a-z-]+: `, 'u').test(line)) break;
+    if (/^\s*(?:#.*)?$/u.test(line)) continue;
+    if (!line.startsWith(' '.repeat(indent + 1))) break;
     entries.push(line.trim());
   }
   return entries;
@@ -58,7 +72,7 @@ function permissions(block: string, indent: number): string[] | undefined {
 const JOBS: Record<string, string[] | undefined> = {
   verify: undefined,
   build: undefined,
-  publish: ['contents: read', 'id-token: write'],
+  publish: ['id-token: write'],
   'verify-published': undefined,
   release: ['contents: write'],
 };
@@ -71,10 +85,11 @@ describe('the release workflow', () => {
 
   it('gives each job only the permissions it needs, and the environment to the publish job alone', () => {
     expect(permissions(release, 0)).toEqual(['contents: read']);
-    const jobs = [...release.slice(release.indexOf('\njobs:\n')).matchAll(/^ {2}([a-z-]+):$/gmu)].map(([, name]) => name);
-    expect(jobs).toEqual(Object.keys(JOBS));
+    expect(keys(release.slice(release.indexOf('\njobs:\n')), 2)).toEqual(Object.keys(JOBS));
     for (const [name, granted] of Object.entries(JOBS)) expect(permissions(job(release, name), 4), name).toEqual(granted);
-    expect([...release.matchAll(/^ {4}environment: (.+)$/gmu)].map(([, name]) => name)).toEqual(['npm-release']);
+    // Nowhere else, in any form: the workflow's grant and the two jobs' own are all there are.
+    expect(release.match(/permissions\s*:/gu)).toHaveLength(3);
+    expect(Object.keys(JOBS).filter((name) => keys(job(release, name), 4).includes('environment'))).toEqual(['publish']);
     expect(job(release, 'publish')).toMatch(/^ {4}environment: npm-release$/mu);
   });
 
@@ -89,10 +104,42 @@ describe('the release workflow', () => {
   it('publishes through trusted publishing with provenance, never a stored token, and runs no package code while it can', () => {
     expect(release).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN|secrets\./u);
     const publish = job(release, 'publish');
-    expect(publish).toContain('npm publish "./$TARBALL" --access public --provenance --ignore-scripts');
-    // The job that can mint an npm token checks out nothing, installs nothing and runs no script.
-    expect(publish).not.toMatch(/actions\/checkout|npm ci|npm install|scripts\//u);
-    expect(publish.match(/npm publish/gu)).toHaveLength(1);
+    expect(publish).toContain("registry-url: 'https://registry.npmjs.org'");
+    /*
+     * The job that can mint an npm token does exactly this and nothing else: it fetches the
+     * built files, sets up Node, checks npm's version and publishes. It checks out, installs
+     * and runs no package code. Changing what it runs means changing this list.
+     */
+    expect(keys(publish, 4)).toEqual(['name', 'needs', 'runs-on', 'timeout-minutes', 'environment', 'permissions', 'steps']);
+    const steps = publish.slice(publish.indexOf('\n    steps:\n')).split(/\n {6}- /u).slice(1);
+    expect(steps.map((step) => /^name: (.+)$/mu.exec(step)?.[1])).toEqual([
+      'Fetch the release files', 'Set up Node.js', 'Require an npm that supports trusted publishing', 'Publish the packed tarball, with provenance, once',
+    ]);
+    expect(steps.map((step) => /^ {8}uses: ([^@\s]+)@/mu.exec(step)?.[1])).toEqual(['actions/download-artifact', 'actions/setup-node', undefined, undefined]);
+    expect(steps.map((step) => [/^([^\s:]+):/u.exec(step)?.[1], ...keys(step, 8)])).toEqual([
+      ['name', 'uses', 'with'], ['name', 'uses', 'with'], ['name', 'run'], ['name', 'env', 'run'],
+    ]);
+    expect(steps.map((step) => /^ {8}env:\n((?: {10}.*\n)*)/mu.exec(`${step}\n`)?.[1]?.split('\n').map((line) => line.trim()).filter(Boolean))).toEqual([
+      undefined, undefined, undefined,
+      ['TARBALL: ${{ needs.build.outputs.tarball }}', 'INTEGRITY: ${{ needs.build.outputs.integrity }}', 'VERSION: ${{ needs.build.outputs.version }}'],
+    ]);
+    const scripts = steps.map((step) => {
+      const [, inline = '', block = ''] = /^ {8}run: (.*)\n((?: {10}.*\n| *\n)*)/mu.exec(`${step}\n`) ?? [];
+      return [inline, ...block.split('\n')].map((line) => line.trim()).filter((line) => !['', '|', '>', '>-'].includes(line));
+    });
+    expect(scripts).toEqual([
+      [],
+      [],
+      [`node -e "const [a,b,c]=process.argv[1].split('.').map(Number); if (a<11||(a===11&&(b<5||(b===5&&c<1)))) { console.error('npm '+process.argv[1]+' is older than 11.5.1'); process.exit(1); }" "$(npm --version)"`],
+      [
+        'served="$(npm view "@dichovsky/testrail-mcp@$VERSION" dist.integrity 2>/dev/null || true)"',
+        'if [ -n "$served" ]; then',
+        'if [ "$served" = "$INTEGRITY" ]; then echo "$VERSION is already published from this tarball."; exit 0; fi',
+        'echo "::error::$VERSION is already published from a different tarball."; exit 1',
+        'fi',
+        'npm publish "./$TARBALL" --access public --provenance --ignore-scripts',
+      ],
+    ]);
   });
 
   it('builds the notes, tarball and inventory before publishing, and checks the published package before the release', () => {
@@ -122,8 +169,21 @@ describe('the release workflow', () => {
     if (step === undefined) throw new Error('no publish step');
     const base = await mkdtemp(join(tmpdir(), 'testrail-mcp-publish-'));
     try {
-      // An npm stand-in: `view` prints what the registry serves; `publish` is recorded.
-      await writeFile(join(base, 'npm'), '#!/bin/sh\nif [ "$1" = view ]; then printf "%s" "$SERVED"; exit 0; fi\necho "$@" >> "$PUBLISHED"\n');
+      /*
+       * An npm stand-in that answers only the one lookup the step should make: the integrity
+       * the registry serves, or E404 for a version it does not have. `publish` is recorded;
+       * anything else fails.
+       */
+      await writeFile(join(base, 'npm'), [
+        '#!/bin/sh',
+        'if [ "$*" = "view @dichovsky/testrail-mcp@1.0.0 dist.integrity" ]; then',
+        '  if [ -z "$SERVED" ]; then echo "npm error code E404" >&2; exit 1; fi',
+        '  printf "%s\\n" "$SERVED"; exit 0',
+        'fi',
+        'if [ "$1" = publish ]; then echo "$@" >> "$PUBLISHED"; exit 0; fi',
+        'echo "unexpected npm $*" >&2; exit 1',
+        '',
+      ].join('\n'));
       await chmod(join(base, 'npm'), 0o755);
       const publishes = async (served: string) => {
         const published = join(base, `published-${String(Math.random()).slice(2)}`);
@@ -202,10 +262,12 @@ describe('the release notes', () => {
     await expect(notes('v2.0.0', dated, '1.0.0', join(link, 'release-notes.mjs'))).rejects.toMatchObject({ stderr: expect.stringMatching(/does not match/u) as unknown });
   });
 
-  /** What CI requires of the version and changelog, so that the version pull request can pass. */
+  /**
+   * What CI requires of a version and its changelog: for a release version, the notes the
+   * release will carry; for a dev build, an undated next release.
+   */
   const readiness = async (version: string, log: string): Promise<void> => {
     if (/^\d+\.\d+\.\d+$/u.test(version)) {
-      // A release version: the notes the release will carry must come out of the changelog.
       await notes(`v${version}`, log, version);
       return;
     }
@@ -213,11 +275,19 @@ describe('the release notes', () => {
     expect(log).toMatch(/^## \[\d+\.\d+\.\d+\] - Unreleased$/mu);
   };
 
-  it('holds the repository to what its version needs: a dated section for a release, an undated next release for a dev build', async () => {
+  it('holds the repository to what its version needs', async () => {
     await readiness(packageJson.version, changelog);
-    // The checklist's version pull request: the version set and its section dated.
-    await readiness('1.0.0', changelog.replace('## [1.0.0] - Unreleased', '## [1.0.0] - 2026-10-01'));
-    await expect(readiness('1.0.0', changelog)).rejects.toMatchObject({ stderr: expect.stringMatching(/must be dated/u) as unknown });
+  });
+
+  it('lets the checklist\'s version pull request pass, and refuses one that leaves its section undated', async () => {
+    const planned = '# Changelog\n\n## [1.0.0] - Unreleased\n\n### Added\n\n- One.\n';
+    const released = planned.replace('Unreleased', '2026-10-01');
+    await readiness('1.0.0-dev.0', planned);
+    await readiness('1.0.0', released);
+    await expect(readiness('1.0.0', planned)).rejects.toMatchObject({ stderr: expect.stringMatching(/must be dated/u) as unknown });
+    // After the release, the next dev build opens the next section.
+    await readiness('1.1.0-dev.0', `# Changelog\n\n## [1.1.0] - Unreleased\n\n- Next.\n${released.slice('# Changelog\n'.length)}`);
+    await expect(readiness('1.1.0-dev.0', released)).rejects.toThrow();
   });
 });
 
@@ -247,10 +317,41 @@ describe('the registry checks', () => {
   });
 
   it('refuses a different tarball, and a version without an attestation, at once', async () => {
-    await expect(check([{ 'dist.integrity': 'sha512-other', 'dist.attestations': { provenance: {} } }])).rejects.toThrow(/serves a different tarball/u);
+    const other = registry([{ 'dist.integrity': 'sha512-other', 'dist.attestations': { provenance: {} } }]);
+    await expect(checkRegistry({ spec: 's', integrity: INTEGRITY, requireProvenance: true, view: other.view, waits: [0, 0, 0] })).rejects.toThrow(/serves a different tarball/u);
+    expect(other.reads()).toBe(1);
     const bare = registry([{ 'dist.integrity': INTEGRITY }]);
     await expect(checkRegistry({ spec: 's', integrity: INTEGRITY, requireProvenance: true, view: bare.view, waits: [0, 0, 0] })).rejects.toThrow(/no provenance attestation/u);
     expect(bare.reads()).toBe(1);
+  });
+
+  it('reads a field through npm: a missing version or field as nothing, any other failure as an error', async () => {
+    const base = await mkdtemp(join(tmpdir(), 'testrail-mcp-view-'));
+    const saved = process.env.npm_execpath;
+    // An npm stand-in, run as npm's own entry point is: this Node with the script.
+    const npmAs = async (name: string, body: string) => {
+      await mkdir(join(base, name));
+      await writeFile(join(base, name, 'npm-cli.js'), body);
+      process.env.npm_execpath = join(base, name, 'npm-cli.js');
+    };
+    try {
+      const args = join(base, 'args.json');
+      await npmAs('served', `require('fs').writeFileSync(${JSON.stringify(args)}, JSON.stringify(process.argv.slice(2))); process.stdout.write('"sha512-served"\\n');`);
+      expect(viewField('@dichovsky/testrail-mcp@1.0.0', 'dist.integrity')).toBe('sha512-served');
+      expect(JSON.parse(await readFile(args, 'utf8'))).toEqual(['view', '@dichovsky/testrail-mcp@1.0.0', 'dist.integrity', '--json', '--prefer-online']);
+      // As npm reports a version it does not have: E404, and a failure.
+      await npmAs('missing-version', `process.stdout.write('{"error":{"code":"E404"}}\\n'); process.stderr.write('npm error code E404\\n'); process.exit(1);`);
+      expect(viewField('@dichovsky/testrail-mcp@1.0.0', 'dist.integrity')).toBeUndefined();
+      // And a field the version lacks: nothing, and success.
+      await npmAs('missing-field', '');
+      expect(viewField('@dichovsky/testrail-mcp@1.0.0', 'dist.attestations')).toBeUndefined();
+      await npmAs('refused', `process.stderr.write('npm error code E403\\n'); process.exit(1);`);
+      expect(() => viewField('@dichovsky/testrail-mcp@1.0.0', 'dist.integrity')).toThrow(/npm view failed[\s\S]*E403/u);
+    } finally {
+      if (saved === undefined) delete process.env.npm_execpath;
+      else process.env.npm_execpath = saved;
+      await rm(base, { recursive: true, force: true });
+    }
   });
 });
 
