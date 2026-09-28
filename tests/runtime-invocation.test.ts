@@ -131,6 +131,23 @@ describe('runtime admission and invocation', () => {
     await runtime.shutdown();
   });
 
+  it('runs adapter cleanup only after settlement, not when an aggregate rejects at its own deadline', async () => {
+    const upstream = gatedFetch();
+    const runtime = createRuntime({ client: client(upstream.fetch), limits: DEFAULT_LIMITS });
+    // Stands in for disposing a staged upload: it must not run while the request that
+    // may still be reading the file is in flight.
+    const cleanup = vi.fn(() => Promise.resolve());
+    await expect(runtime.invoke((instance) => instance.projects.getAllProjects({ maxDurationMs: 50 }), { cleanup }))
+      .rejects.toThrow(/maxDurationMs|deadline exceeded/iu);
+    await settle(30);
+    expect(cleanup).not.toHaveBeenCalled();
+    expect(runtime.stats().active).toBe(1);
+    upstream.releaseAll();
+    await waitFor(() => runtime.stats().active === 0, 'slot released');
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    await runtime.shutdown();
+  });
+
   it('reports TIMEOUT when the response wait expires but keeps the slot until settlement', async () => {
     const upstream = gatedFetch();
     const watchdog = manualDelay();

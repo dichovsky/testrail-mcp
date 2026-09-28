@@ -89,7 +89,10 @@ export async function stageUpload(
   };
 
   const target = join(options.stagingDirectory, randomUUID());
-  const disposeTarget = onceRemove(target);
+  // Armed only once the exclusive create below has made the target ours. A name that
+  // already exists belongs to someone else, and removing it on the way out would
+  // delete a file this call never created.
+  let disposeTarget: () => Promise<void> = () => Promise.resolve();
 
   try {
     // Inspect the handle rather than the path: this is the file actually opened.
@@ -107,6 +110,7 @@ export async function stageUpload(
     }
 
     const staged = await open(target, 'wx', 0o600);
+    disposeTarget = onceRemove(target);
     let bytes = 0;
     try {
       const buffer = Buffer.allocUnsafe(COPY_CHUNK);
@@ -115,11 +119,21 @@ export async function stageUpload(
         if (bytesRead === 0) break;
         bytes += bytesRead;
         if (bytes > options.maxBytes) throw new AdapterError('FILE_TOO_LARGE');
-        await staged.write(buffer, 0, bytesRead);
+        // A write may accept less than it was given; loop until the chunk is all written.
+        for (let offset = 0; offset < bytesRead;) {
+          const { bytesWritten } = await staged.write(buffer, offset, bytesRead - offset);
+          // A write that makes no progress would loop forever; treat it as a failure.
+          if (bytesWritten <= 0) throw new AdapterError('FILE_ACCESS_DENIED');
+          offset += bytesWritten;
+        }
       }
-    } finally {
+    } catch (error) {
       await staged.close().catch(() => undefined);
+      throw error;
     }
+    // Closed on success where a failure can still be seen: a deferred write error
+    // surfaces here, and a copy that did not reach the disk must not be uploaded.
+    await staged.close();
 
     await closeSource();
     return Object.freeze({ path: target, bytes, dispose: disposeTarget });
