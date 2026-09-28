@@ -104,9 +104,17 @@ describe('endpoint input domains', () => {
       { file_path: '/tmp/file', filename: '.', content_type: 'text/plain' },
       { file_path: '/tmp/file', filename: '..', content_type: 'text/plain' },
       { file_path: '/tmp/file', filename: 'file\n', content_type: 'text/plain' },
+      // DEL and the C1 control range, not only the C0 controls.
+      { file_path: '/tmp/file', filename: 'file\u007f', content_type: 'text/plain' },
+      { file_path: '/tmp/file', filename: 'file\u0085', content_type: 'text/plain' },
+      { file_path: '/tmp/file', filename: 'file\u009f', content_type: 'text/plain' },
       { file_path: '/tmp/file', filename: 'file', content_type: 'text/plain\n' },
       { file_path: '/tmp/file', filename: 'file', content_type: 'text/plain\r\nx-test: value' },
       { file_path: '/tmp/file', filename: 'file', content_type: 'text/plain; charset="utf\u0000-8"' },
+      // DEL and the C1 range in a media type too, in the type and in a quoted value.
+      { file_path: '/tmp/file', filename: 'file', content_type: 'text/plain\u007f' },
+      { file_path: '/tmp/file', filename: 'file', content_type: 'text/pla\u0085in' },
+      { file_path: '/tmp/file', filename: 'file', content_type: 'text/plain; a="x\u009f"' },
       { file_path: '/tmp/file', filename: 'file', content_type: 'text' },
       { file_path: '/tmp/file', filename: 'file', content_type: '/plain' },
       { file_path: '/tmp/file', filename: 'file', content_type: 'text/plain; bad' },
@@ -394,6 +402,11 @@ describe('structural page/all input discrimination', () => {
       { project_id: 1, query: { offset: 0 }, _mcp: { pagination: 'all' } },
       { project_id: 1, _mcp: { pagination: 'page', max_items: 1 } },
       { project_id: 1, _mcp: { pagination: 'page', page_size: 1 } },
+      // Every aggregate-only control, not just the first two: page mode would ignore it.
+      { project_id: 1, _mcp: { pagination: 'page', start_offset: 0 } },
+      { project_id: 1, _mcp: { pagination: 'page', max_pages: 1 } },
+      { project_id: 1, _mcp: { pagination: 'page', max_bytes: 1 } },
+      { project_id: 1, _mcp: { pagination: 'page', max_duration_ms: 1 } },
       { project_id: 1, _mcp: { pagination: 'all', max_items: 1001 } },
       { project_id: 1, _mcp: { pagination: 'all', max_pages: 0 } },
       { project_id: 1, _mcp: { pagination: 'all', max_bytes: 1.5 } },
@@ -411,6 +424,8 @@ describe('structural page/all input discrimination', () => {
       { query: { limit: 1 } }, { query: { offset: 0 } },
       { _mcp: { pagination: 'all', page_size: 1 } }, { _mcp: { pagination: 'all', start_offset: 0 } },
       { _mcp: { pagination: 'all', next: 'https://example.test/' } },
+      { _mcp: { pagination: 'page', max_items: 1 } }, { _mcp: { pagination: 'page', max_pages: 1 } },
+      { _mcp: { pagination: 'page', max_bytes: 1 } }, { _mcp: { pagination: 'page', max_duration_ms: 1 } },
     ]);
   });
 

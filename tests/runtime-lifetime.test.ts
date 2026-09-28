@@ -140,6 +140,12 @@ function call(runtime: Runtime, operation: Operation, input: unknown, stagingDir
 const SLOTS = 4;
 /** An aggregate whose own deadline passes long before anything is released. */
 const allProjects = { _mcp: { pagination: 'all', max_duration_ms: 20 } };
+/*
+ * Four aggregates must each reach the network before their deadline, or the driver stops
+ * them before any request and they hold no slot. The deadline is real time, so 20 ms is
+ * too little on a slow runner: a macOS CI run once dispatched one of four in time.
+ */
+const allProjectsForFour = { _mcp: { pagination: 'all', max_duration_ms: 1_000 } };
 /** How the driver's aggregate deadline reaches a caller: a bound, never the watchdog's TIMEOUT. */
 const DURATION_STOP = { code: 'PAGINATION_LIMIT', reason: 'max_duration' };
 
@@ -189,7 +195,7 @@ describe('capacity after the driver aggregate deadline', () => {
     });
     try {
       // The watchdog is never fired: every rejection here is the driver's own deadline.
-      const results = await Promise.all(Array.from({ length: SLOTS }, () => call(runtime, getProjects, allProjects)));
+      const results = await Promise.all(Array.from({ length: SLOTS }, () => call(runtime, getProjects, allProjectsForFour)));
       expect(upstream.calls).toBe(SLOTS);
       for (const result of results) expect(error(result)).toMatchObject(DURATION_STOP);
 
@@ -315,7 +321,7 @@ describe('deferred DNS', () => {
       limits: configuration.limits, delay: manualDelay().delay,
     });
     try {
-      const results = await Promise.all(Array.from({ length: SLOTS }, () => call(runtime, getProjects, allProjects)));
+      const results = await Promise.all(Array.from({ length: SLOTS }, () => call(runtime, getProjects, allProjectsForFour)));
       for (const result of results) expect(error(result)).toMatchObject(DURATION_STOP);
       expect(lookups.calls).toBe(SLOTS);
       expect(lookups.settled).toBe(0);

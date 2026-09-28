@@ -156,6 +156,38 @@ describe('page metadata', () => {
     expect(Object.hasOwn(meta, 'limit')).toBe(false);
   });
 
+  it('describes an empty terminal page as finished, without inventing a continuation', () => {
+    expect(pageMetadata(envelope({ items: [], size: 0, offset: 50, limit: 50 }), { responseDriven: false })).toEqual({
+      mode: 'page', source: 'envelope', returned: 0, has_more: false, manual_continuation: false, next_action: 'none',
+      limit: 50, offset: 50, driver: { size: 0, links: { next: null, prev: null } },
+    });
+  });
+
+  it('reports an empty page that still links on, and refuses a link that stays where it is', () => {
+    const stuck = pageMetadata(
+      envelope({ items: [], size: 0, offset: 50, _links: { next: '/api/v2/get_cases/1&offset=50', prev: null } }),
+      { responseDriven: false },
+    );
+    // More is claimed, but replaying the same offset proves nothing, so no step is offered.
+    expect(stuck).toMatchObject({ returned: 0, has_more: true, manual_continuation: false, next_action: 'none' });
+    expect(stuck.next_offset).toBeUndefined();
+    const onward = pageMetadata(
+      envelope({ items: [], size: 0, offset: 50, _links: { next: '/api/v2/get_cases/1&offset=100', prev: null } }),
+      { responseDriven: false },
+    );
+    expect(onward).toMatchObject({ returned: 0, has_more: true, manual_continuation: true, next_action: 'page', next_offset: 100 });
+  });
+
+  it('takes next_offset from the validated link, not from the page arithmetic', () => {
+    // Three items at offset 0 with a limit of 50; the link skips ahead to 10. Neither
+    // offset + returned (3) nor offset + limit (50) is the answer.
+    const meta = pageMetadata(
+      envelope({ items: [1, 2, 3], offset: 0, limit: 50, _links: { next: '/api/v2/get_cases/1&limit=3&offset=10', prev: null } }),
+      { responseDriven: false },
+    );
+    expect(meta.next_offset).toBe(10);
+  });
+
   it('preserves driver links as data rather than fetch authority', () => {
     const links = { next: 'https://x.testrail.io/n?offset=3&limit=3', prev: 'https://x.testrail.io/p?offset=0' };
     const meta = pageMetadata(envelope({ _links: links }), { responseDriven: false });
