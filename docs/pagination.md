@@ -49,6 +49,8 @@ Mutation-checked: dropping the advance/overlap requirement, reporting the driver
 - a controlled list taking the link's limit, or falling back to the driver's default page size;
 - an empty page ending the aggregate;
 - a malformed offset, or an unexpected page offset, reported with the wrong reason;
-- aggregate bytes counted in UTF-16 code units. The held first page in this suite's duration test is stopped sometimes by the driver's own deadline check and sometimes by one of its request timers, and both must come back as `max_duration`. A fault in recognising the timer spellings therefore fails it only in some runs; `tests/runtime-lifetime.test.ts` forces each spelling by freezing the clock and fails every time.
+- aggregate bytes counted in UTF-16 code units.
+
+The held first page in this suite's duration test is stopped sometimes by the driver's own deadline check and sometimes by one of its request timers, and both must come back as `max_duration`. A fault in recognising the timer spellings therefore fails it only in some runs; `tests/runtime-lifetime.test.ts` forces each spelling by freezing the clock and fails every time.
 
 Two of those checks were earned the hard way. An early mutation that did *not* fail showed a hand-rolled splitter was reimplementing `URLSearchParams`, which replaced it. Review then found the remaining parser read only `url.search`, while the shape TestRail actually emits has no `?` — so it was internally consistent, tested against a fixture that TestRail never sends, and would have returned no continuation in production.
