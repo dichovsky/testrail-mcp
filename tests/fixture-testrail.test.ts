@@ -6,9 +6,10 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { TestRailClient } from '@dichovsky/testrail-api-client';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../src/config/environment.js';
-import { driverOptions } from '../src/driver/configuration.js';
+import { DEFAULT_LIMITS } from '../src/config/limits.js';
+import { driverOptions, REQUEST_TIMEOUT_MS } from '../src/driver/configuration.js';
 import { operationRegistry } from '../src/operations/catalog.js';
 import type { Operation } from '../src/operations/registry.js';
 import { createRuntime, type Runtime } from '../src/runtime/invocation.js';
@@ -39,27 +40,32 @@ const script = fileURLToPath(new URL('../scripts/fixture-testrail.mjs', import.m
 
 /**
  * What each reserved ID must produce, written here rather than read from the stand-in:
- * the stand-in's table and the guide's are both held to it.
+ * the stand-in's table and the guide's are both held to it. `reply` starts the guide's
+ * stand-in reply, `routes` names the routes it covers, and `outcome` lists what the
+ * guide's outcome must say.
  */
 const EXPECTED = [
-  { id: 990404, name: 'notFound', code: 'NOT_FOUND' },
-  { id: 990400, name: 'rejected', code: 'UPSTREAM_ERROR', http: 400 },
-  { id: 990401, name: 'unauthenticated', code: 'AUTHENTICATION_FAILED' },
-  { id: 990403, name: 'forbidden', code: 'PERMISSION_DENIED' },
-  { id: 990500, name: 'failed', code: 'UPSTREAM_ERROR', http: 500 },
-  { id: 990001, name: 'drift', code: 'SCHEMA_DRIFT' },
-  { id: 990002, name: 'unusable', code: 'INVALID_RESPONSE' },
-  { id: 990020, name: 'slow', code: 'UPSTREAM_ERROR', http: 408 },
-  { id: 990045, name: 'slowPages', code: 'PAGINATION_LIMIT' },
-  { id: 990900, name: 'large', code: undefined },
-  { id: 990901, name: 'oversized', code: 'RESPONSE_TOO_LARGE' },
+  { id: 990404, name: 'notFound', code: 'NOT_FOUND', reply: '404', routes: 'pathId', outcome: ['`NOT_FOUND`'] },
+  { id: 990400, name: 'rejected', code: 'UPSTREAM_ERROR', http: 400, reply: '400', routes: 'pathId', outcome: ['`UPSTREAM_ERROR`', '`http_status` 400'] },
+  { id: 990401, name: 'unauthenticated', code: 'AUTHENTICATION_FAILED', reply: '401', routes: 'pathId', outcome: ['`AUTHENTICATION_FAILED`'] },
+  { id: 990403, name: 'forbidden', code: 'PERMISSION_DENIED', reply: '403', routes: 'pathId', outcome: ['`PERMISSION_DENIED`'] },
+  { id: 990500, name: 'failed', code: 'UPSTREAM_ERROR', http: 500, reply: '500', routes: 'sideEffects', outcome: ['`UPSTREAM_ERROR`', '`http_status` 500', '`write_outcome: "unknown"`'] },
+  { id: 990001, name: 'drift', code: 'SCHEMA_DRIFT', reply: 'The entity', routes: 'driftable', outcome: ['`SCHEMA_DRIFT`'] },
+  { id: 990002, name: 'unusable', code: 'INVALID_RESPONSE', reply: 'A JSON string', routes: 'jsonReads', outcome: ['`INVALID_RESPONSE`'] },
+  { id: 990020, name: 'slow', code: 'UPSTREAM_ERROR', http: 408, reply: 'The reply after 20 seconds', routes: 'any', outcome: ['`UPSTREAM_ERROR`', '`http_status` 408', '`BUSY`'] },
+  { id: 990045, name: 'slowPages', code: 'PAGINATION_LIMIT', reply: 'Each reply after 14 seconds, and a paged list of ten pages', routes: 'any', outcome: ['`PAGINATION_LIMIT`', '`max_duration`'] },
+  { id: 990900, name: 'large', code: undefined, reply: 'A single list page of about 700 KB', routes: 'paged', outcome: ['within the default budgets'] },
+  { id: 990901, name: 'oversized', code: 'RESPONSE_TOO_LARGE', reply: 'A single list page of about 3 MB', routes: 'paged', outcome: ['`RESPONSE_TOO_LARGE`', '`PAGINATION_LIMIT`', '`max_bytes`'] },
 ] as const;
 const ID = Object.fromEntries(EXPECTED.map(({ name, id }) => [name, id])) as Record<(typeof EXPECTED)[number]['name'], number>;
 
 interface Started { baseUrl: string; environment: Record<string, string>; reserved: Record<string, number> }
-interface StandIn { baseUrl: string; environment: Record<string, string>; close: () => Promise<void> }
-const { startFixtureTestRail } = (await import(new URL('../scripts/fixture-testrail.mjs', import.meta.url).href)) as {
-  startFixtureTestRail: (options: { delayScale?: number; log?: string }) => Promise<StandIn>;
+interface Logged { method: string; endpoint: string; tool: string | null; status: number; authorized: boolean; bytes: number; abandoned: boolean }
+interface StandIn { baseUrl: string; environment: Record<string, string>; requests: Logged[]; close: () => Promise<void> }
+const { startFixtureTestRail, DELAYS_MS, SLOW_PAGES } = (await import(new URL('../scripts/fixture-testrail.mjs', import.meta.url).href)) as {
+  startFixtureTestRail: (options: { delayScale?: number; log?: string; onLogError?: (error: unknown) => void }) => Promise<StandIn>;
+  DELAYS_MS: Record<number, number>;
+  SLOW_PAGES: number;
 };
 
 let child: ChildProcess;
@@ -126,16 +132,24 @@ const payload = (result: { structuredContent?: unknown }) => result.structuredCo
   error?: { code: string; write_outcome?: string; http_status?: number; reason?: string };
 };
 
-/** The tool's accepted fixture input, with its first path ID set to `id`, and its files made. */
-async function inputWith(tool: string, id: number): Promise<unknown> {
-  const operation = inventory.operations.find((candidate) => candidate.tool === tool);
-  const param = /\{([a-z_]+)\}/u.exec(operation?.route ?? '')?.[1];
-  if (param === undefined) throw new Error(`${tool} has no path ID`);
+/** The names of a route's numeric path IDs, in path order. A plan entry's ID is a GUID. */
+const pathIds = (tool: string): string[] =>
+  [...(inventory.operations.find((candidate) => candidate.tool === tool)?.route ?? '').matchAll(/\{([a-z_]+)\}/gu)]
+    .map(([, name = '']) => name).filter((name) => name !== 'entry_id');
+
+/** The tool's accepted fixture input, with the path ID in `slot` set to `id`, and its files made. */
+async function inputWith(tool: string, id: number, slot = 0): Promise<unknown> {
+  const param = pathIds(tool)[slot];
+  if (param === undefined) throw new Error(`${tool} has no path ID ${String(slot)}`);
   const paths = await materializeFiles(manifestFor(tool), join(base, 'uploads'));
   const input = structuredClone(substituteTokens(acceptedFor(tool).input, paths)) as Record<string, unknown>;
-  input[param] = param === 'entry_id' ? String(id) : id;
+  input[param] = id;
   return input;
 }
+
+/** Each route with each of its numeric path IDs: a reserved ID works in any of them. */
+const slots = (routes: { tool: string }[]): [string, string, number][] =>
+  routes.flatMap(({ tool }) => pathIds(tool).map((param, slot): [string, string, number] => [tool, param, slot]));
 
 const replyKind = (tool: string) => acceptedFor(tool).expect.upstream_response.kind;
 const withPathId = inventory.operations.filter(({ route }) => route.includes('{'));
@@ -146,61 +160,99 @@ const jsonReads = reads.filter(({ tool }) => replyKind(tool) === 'json');
 const driftable = jsonReads.filter(({ tool }) => tool !== 'testrail_get_bdds');
 const pagedWithPathId = withPathId.filter(({ pagination }) => pagination.kind !== 'none');
 const paged = inventory.operations.filter(({ pagination }) => pagination.kind !== 'none');
+// The routes that change TestRail or start a report: every write, and the two report runs.
+const sideEffects = withPathId.filter(({ tool }) => registered(tool).effects.testRail !== 'read');
+const reportRuns = sideEffects.filter(({ http_method: method }) => method === 'GET');
+
+/** How the guide names each set of routes, counted from the inventory. */
+const ROUTES = {
+  pathId: `the ${String(withPathId.length)} routes that take a path ID`,
+  sideEffects: `the ${String(sideEffects.length)} among them that change TestRail or start a report: ${String(writes.length)} writes and ${String(reportRuns.length)} report runs`,
+  driftable: `the ${String(driftable.length)} GET routes that return JSON records`,
+  jsonReads: `all ${String(jsonReads.length)} GET routes that return JSON`,
+  any: 'any route with a path ID',
+  paged: `the ${String(pagedWithPathId.length)} paged lists that take a path ID`,
+} as const;
 
 describe('the stand-in\'s reserved IDs', () => {
-  it('are the IDs the guide documents, with the outcomes it names', () => {
+  it('are the IDs the guide documents, each with its reply, its routes and the outcome it names', () => {
     expect(started.reserved).toEqual(ID);
-    const rows = [...guide.matchAll(/^\| `(99\d{4})` \|.*\| ([^|]*) \|$/gmu)].map(([, id = '', outcome = '']) => [Number(id), outcome] as const);
-    expect(rows.map(([id]) => id).sort()).toEqual(EXPECTED.map(({ id }) => id).sort());
-    for (const { id, code } of EXPECTED) {
-      const outcome = rows.find(([candidate]) => candidate === id)?.[1] ?? '';
-      if (code !== undefined) expect(outcome, String(id)).toContain(`\`${code}\``);
+    expect(inventory.operations).toHaveLength(133);
+    expect(sideEffects.length).toBe(writes.length + reportRuns.length);
+    expect(guide).toContain(`Reserved IDs work as any numeric path ID of ${ROUTES.pathId}.`);
+    const rows = new Map([...guide.matchAll(/^\| `(99\d{4})` \|(.*)\|$/gmu)].map(([, id = '', cells = '']) => [Number(id), cells.split('|').map((cell) => cell.trim())]));
+    expect([...rows.keys()].sort()).toEqual(EXPECTED.map(({ id }) => id).sort());
+    for (const { id, reply, routes, outcome } of EXPECTED) {
+      const [replyCell = '', routesCell = '', outcomeCell = ''] = rows.get(id) ?? [];
+      expect(replyCell.startsWith(reply), `${String(id)} reply: ${replyCell}`).toBe(true);
+      expect(routesCell.startsWith(ROUTES[routes]), `${String(id)} routes: ${routesCell}`).toBe(true);
+      for (const fragment of outcome) expect(outcomeCell, `${String(id)} outcome`).toContain(fragment);
     }
   });
 
-  it('are counted in the guide as the routes each one applies to', () => {
-    expect(inventory.operations).toHaveLength(133);
-    expect(guide).toContain(`the ${String(withPathId.length)} routes that take a path ID`);
-    expect(guide).toContain(`the ${String(writes.length)} writes among them`);
-    expect(guide).toContain(`the ${String(driftable.length)} reads that return JSON records`);
-    expect(guide).toContain(`all ${String(jsonReads.length)} reads that return JSON`);
-    expect(guide).toContain(`the ${String(pagedWithPathId.length)} paged lists that take a path ID`);
-  });
-
-  it.each(withPathId.map(({ tool }) => [tool]))('turn %s into each error, with no data', async (tool) => {
+  it.each(slots(withPathId))('turn %s into each error through its %s, with no data', async (tool, _param, slot) => {
     for (const expected of EXPECTED.filter(({ name: candidate }) => ['notFound', 'rejected', 'unauthenticated', 'forbidden'].includes(candidate))) {
-      const result = await call(tool, await inputWith(tool, ID[expected.name]));
+      const result = await call(tool, await inputWith(tool, ID[expected.name], slot));
       const status = 'http' in expected ? { http_status: expected.http } : {};
       expect(payload(result).error, `${tool} ${expected.name}`).toMatchObject({ code: expected.code, ...status });
       expect(payload(result)).not.toHaveProperty('data');
     }
   });
 
-  it.each(writes.map(({ tool }) => [tool]))('fails %s as UPSTREAM_ERROR of unknown outcome on a 500', async (tool) => {
-    const result = await call(tool, await inputWith(tool, ID.failed));
+  it.each(slots(sideEffects))('fails %s through its %s as UPSTREAM_ERROR of unknown outcome on a 500', async (tool, _param, slot) => {
+    const result = await call(tool, await inputWith(tool, ID.failed, slot));
     expect(payload(result).error).toMatchObject({ code: 'UPSTREAM_ERROR', write_outcome: 'unknown', http_status: 500 });
   });
 
-  it.each(driftable.map(({ tool }) => [tool]))('drifts %s: the data, with a SCHEMA_DRIFT warning', async (tool) => {
-    const result = await call(tool, await inputWith(tool, ID.drift));
+  it.each(slots(driftable))('drifts %s through its %s: the data, with a SCHEMA_DRIFT warning', async (tool, _param, slot) => {
+    const result = await call(tool, await inputWith(tool, ID.drift, slot));
     expect(result.isError, JSON.stringify(payload(result).error)).toBeUndefined();
     expect(payload(result).warnings?.map(({ code }) => code)).toContain('SCHEMA_DRIFT');
     expect(payload(result).data).toBeDefined();
   });
 
-  it.each(jsonReads.map(({ tool }) => [tool]))('makes %s unusable: INVALID_RESPONSE with no data', async (tool) => {
-    const result = await call(tool, await inputWith(tool, ID.unusable));
+  it.each(slots(jsonReads))('makes %s unusable through its %s: INVALID_RESPONSE with no data', async (tool, _param, slot) => {
+    const result = await call(tool, await inputWith(tool, ID.unusable, slot));
     expect(payload(result).error?.code).toBe('INVALID_RESPONSE');
     expect(payload(result)).not.toHaveProperty('data');
   });
 
-  it.each(pagedWithPathId.map(({ tool }) => [tool]))('sizes %s: a large page within the budgets, an oversized one refused whole', async (tool) => {
-    const large = await call(tool, await inputWith(tool, ID.large));
-    expect(large.isError, JSON.stringify(payload(large).error)).toBeUndefined();
-    expect(Buffer.byteLength(JSON.stringify(payload(large).data))).toBeGreaterThan(500 * 1024);
-    const oversized = await call(tool, await inputWith(tool, ID.oversized));
+  it.each(slots(pagedWithPathId))('sizes %s through its %s: a large result within the budgets; an oversized one refused whole', async (tool, _param, slot) => {
+    const all = (input: unknown) => ({ ...(input as object), _mcp: { pagination: 'all' } });
+    for (const input of [await inputWith(tool, ID.large, slot), all(await inputWith(tool, ID.large, slot))]) {
+      const large = await call(tool, input);
+      expect(large.isError, JSON.stringify(payload(large).error)).toBeUndefined();
+      expect(Buffer.byteLength(JSON.stringify(payload(large).data))).toBeGreaterThan(500 * 1024);
+    }
+    // A page is refused as too large; "all" stops at its byte budget first.
+    const oversized = await call(tool, await inputWith(tool, ID.oversized, slot));
     expect(payload(oversized).error?.code).toBe('RESPONSE_TOO_LARGE');
     expect(payload(oversized)).not.toHaveProperty('data');
+    const oversizedAll = await call(tool, all(await inputWith(tool, ID.oversized, slot)));
+    expect(payload(oversizedAll).error).toMatchObject({ code: 'PAGINATION_LIMIT', reason: 'max_bytes' });
+    expect(payload(oversizedAll)).not.toHaveProperty('data');
+  });
+
+  it('holds each delay where the driver\'s limits give the outcome the guide names', async () => {
+    // The guide's numbers, written here: a 20-second reply, and ten pages of 14 seconds.
+    expect(DELAYS_MS).toEqual({ [ID.slow]: 20_000, [ID.slowPages]: 14_000 });
+    expect(SLOW_PAGES).toBe(10);
+    const slow = DELAYS_MS[ID.slow] ?? 0;
+    const slowPage = DELAYS_MS[ID.slowPages] ?? Infinity;
+    // A 20-second reply outlasts the request timeout; a 14-second page does not.
+    expect(slow).toBeGreaterThan(REQUEST_TIMEOUT_MS);
+    expect(slowPage).toBeLessThan(REQUEST_TIMEOUT_MS);
+    // "all" passes the 45-second budget on the fourth page, well before the last.
+    const budget = DEFAULT_LIMITS.max_all_duration_ms;
+    expect(3 * slowPage).toBeLessThan(budget);
+    expect(4 * slowPage).toBeGreaterThan(budget);
+    // And the list really spans ten pages, of any size.
+    for (const size of [1, 7]) {
+      const last = await call('testrail_get_cases', { project_id: ID.slowPages, query: { limit: size, offset: 9 * size } });
+      expect(payload(last).pagination, `size ${String(size)}`).toMatchObject({ returned: size, has_more: false });
+      const before = await call('testrail_get_cases', { project_id: ID.slowPages, query: { limit: size, offset: 8 * size } });
+      expect(payload(before).pagination, `size ${String(size)}`).toMatchObject({ returned: size, has_more: true });
+    }
   });
 
   it('delays a slow reply, and each page of a slow-pages list, by the scaled delay', async () => {
@@ -293,11 +345,15 @@ describe('the fixture stand-in serves the whole catalog', () => {
     if (kind === 'none' && driven.kind === 'json') expect(payload(result).data).toEqual(driven.value);
     if (kind !== 'none') {
       // A generated page repeats the fixture's first item under new IDs.
-      const items = payload(result).data as Record<string, unknown>[];
+      const withoutId = (item: unknown) => Object.fromEntries(Object.entries(item as object).filter(([key]) => key !== 'id'));
+      const first = driven.kind === 'json' ? (driven.value as { items?: unknown[] }).items?.[0] : undefined;
+      expect(first, 'the fixture\'s first item').toBeDefined();
+      const items = payload(result).data as unknown[];
       expect(items.length).toBeGreaterThan(0);
-      const withoutId = items.map((item) => JSON.stringify(Object.fromEntries(Object.entries(item).filter(([key]) => key !== 'id'))));
-      expect(new Set(withoutId).size).toBe(1);
+      for (const item of items) expect(withoutId(item)).toEqual(withoutId(first));
     }
+    // A download holds exactly the fixture's bytes.
+    if (driven.kind === 'binary') expect(await readFile((payload(result).data as { file_path: string }).file_path, 'utf8')).toBe(driven.utf8);
   });
 });
 
@@ -329,14 +385,59 @@ describe('the stand-in\'s paged lists', () => {
     }
   });
 
-  it('logs every request without credentials', async () => {
+  it('logs every request, with its method, endpoint and status, without credentials', async () => {
     const text = await readFile(log, 'utf8');
     const entries = text.trim().split('\n').map((line) => JSON.parse(line) as Record<string, unknown>);
     expect(entries.length).toBeGreaterThan(133);
     expect(entries.every(({ authorized }) => authorized === true)).toBe(true);
+    for (const entry of entries) expect(Object.keys(entry).sort()).toEqual(['abandoned', 'authorized', 'bytes', 'endpoint', 'method', 'status', 'tool']);
+    expect(entries).toContainEqual(expect.objectContaining({ method: 'GET', endpoint: `get_project/${String(ID.notFound)}`, tool: 'testrail_get_project', status: 404, abandoned: false }));
+    expect(entries).toContainEqual(expect.objectContaining({ method: 'POST', endpoint: `add_case/${String(ID.failed)}`, tool: 'testrail_add_case', status: 500, abandoned: false }));
     for (const secret of ['fixture-api-key', 'fixture@example.invalid', 'Basic ', Buffer.from('fixture@example.invalid:fixture-api-key').toString('base64')]) {
       expect(text).not.toContain(secret);
     }
+  });
+
+  it('logs a request whose client gave up before the reply as abandoned', async () => {
+    const scaled = await startFixtureTestRail({ delayScale: 0.01 });
+    try {
+      const endpoint = `${scaled.baseUrl}/index.php?/api/v2/get_project/`;
+      await expect(fetch(`${endpoint}${String(ID.slow)}`, { signal: AbortSignal.timeout(50) })).rejects.toThrow();
+      await (await fetch(`${endpoint}1`)).arrayBuffer();
+      await vi.waitFor(() => { expect(scaled.requests).toHaveLength(2); }, { timeout: 5_000 });
+      expect(scaled.requests.map(({ endpoint: path, status, abandoned }) => [path, status, abandoned])).toEqual(expect.arrayContaining([
+        [`get_project/${String(ID.slow)}`, 200, true],
+        ['get_project/1', 200, false],
+      ]));
+    } finally {
+      await scaled.close();
+    }
+  });
+
+  it.skipIf(process.platform !== 'linux')('still answers when a log write fails once serving, then stops and says why', async () => {
+    // /dev/full takes the empty write the start check makes, and refuses every line.
+    const failures: unknown[] = [];
+    const inProcess = await startFixtureTestRail({ log: '/dev/full', onLogError: (error) => { failures.push(error); } });
+    const upstream = acceptedFor('testrail_get_project').expect.upstream_response;
+    try {
+      const response = await fetch(`${inProcess.baseUrl}/index.php?/api/v2/get_project/1`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(upstream.kind === 'json' ? upstream.body : undefined);
+      await vi.waitFor(() => { expect(failures).toHaveLength(1); });
+      expect(failures[0]).toMatchObject({ code: 'ENOSPC' });
+    } finally {
+      await inProcess.close();
+    }
+    const cli = spawn(process.execPath, [script, '--json', '--log', '/dev/full'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stderr = '';
+    cli.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+    const exited = new Promise<number | null>((resolve) => { cli.once('exit', resolve); });
+    const line = await new Promise<string>((resolve) => { createInterface({ input: cli.stdout ?? process.stdin }).once('line', resolve); });
+    const answered = await fetch(`${(JSON.parse(line) as Started).baseUrl}/index.php?/api/v2/get_project/1`);
+    expect(answered.status).toBe(200);
+    await answered.arrayBuffer();
+    expect(await exited).toBe(1);
+    expect(stderr).toContain('Cannot write the request log /dev/full');
   });
 
   it('refuses a request log it cannot write, before serving', async () => {

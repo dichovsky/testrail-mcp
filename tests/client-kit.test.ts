@@ -106,6 +106,8 @@ function unsupported(record: ClientRecord): string[] {
     }).filter(([, value]) => value !== null && value !== undefined);
     for (const [field] of stated) problems.push(`nothing ran but ${field} is stated`);
     if (settings.variables.length > 0) problems.push('nothing ran but variables are stated');
+    if (record.limitations.length > 0) problems.push('nothing ran but limitations are stated');
+    for (const [id, { notes }] of scenarios) if (notes !== null) problems.push(`nothing ran but ${id} has notes`);
     return problems;
   }
   // Even a blocked surface says when, who and which client.
@@ -132,20 +134,32 @@ function unsupported(record: ClientRecord): string[] {
 
 /** Hash fields are the one place a long run of letters and digits belongs. */
 const HASH_FIELDS = new Set(['server.tarball_integrity', 'catalog.sorted_names_sha256']);
+/** A web link is evidence. It is checked for a credential of its own, apart from the text around it. */
+const LINK = /\bhttps?:\/\/[^\s)\]>"'`]+/gu;
+const LINK_CREDENTIAL = /^https?:\/\/[^/?#\s]*@|[?&#](?:access_token|api_?key|key|password|sig|signature|token)=/iu;
 const LEAKS: [string, RegExp][] = [
-  ['a credential header', /\b(?:basic|bearer)\s+[A-Za-z0-9+/=._-]{8,}|\bauthorization\s*[:=]/iu],
+  // A header value, not the word: "Basic discovery works" is prose.
+  ['a credential header', /\b(?:[Bb]asic|BASIC|[Bb]earer|BEARER)\s+(?=[A-Za-z0-9+/=._-]*(?:\d|[+/=]|[a-z][A-Za-z0-9+/=._-]*[A-Z]))[A-Za-z0-9+/=._-]{8,}|\b(?:[Aa]uthorization|AUTHORIZATION)\s*[:=]\s*(?:[Bb]asic|BASIC|[Bb]earer|BEARER|[Tt]oken|TOKEN)\b/u],
   ['an email address', /[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}\b/u],
-  ['a local path', /(?:^|[\s"'(=])(?:\/(?:home|Users|root|tmp|private|var|opt|mnt|srv)\/|~\/)|(?<![A-Za-z])[A-Za-z]:(?:\\|\/(?!\/))/u],
-  ['a key-like token', /\b(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{24,}\b/u],
+  // An absolute path of two or more segments, a home-relative one, a home variable, a
+  // drive, a network share or a file link. A relative path, a package spec or "and/or" is not.
+  ['a local path', /(?<![\w@.~$%+-])\/[\w.@+-]+\/|~[\w.-]*\/|\$HOME\b|\$\{HOME\}|%(?:USERPROFILE|HOMEDRIVE|HOMEPATH)%|(?<![A-Za-z])[A-Za-z]:(?:\\|\/(?!\/))|\\\\[\w.$-]+\\|\bfile:/iu],
+  ['a variable value', /\bTESTRAIL_[A-Z_]+\s*=\s*\S/u],
+  // A long run of letters and digits; the same run in mixed case with separators, as a
+  // secret split by / . - _ is; and the prefixes of common service tokens.
+  ['a key-like token', /\b(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{20,}\b|(?<![\w+/=.-])(?=[\w+/=.-]*\d)(?=[\w+/=.-]*[a-z])(?=[\w+/=.-]*[A-Z])[\w+/=.-]{20,}|\b(?:gh[oprsu]_|github_pat_|[rs]k_(?:live|test)_|xox[abeprs]-|AKIA)[\w-]{10,}/u],
 ];
 
-/** Every text in a record that looks like a credential, an email address or a local path. */
+/** Every text in a record that looks like a credential, an email address, a local path or a secret. */
 function leaks(record: unknown): string[] {
   const found: string[] = [];
   const visit = (value: unknown, path: string) => {
     if (typeof value === 'string') {
       if (HASH_FIELDS.has(path)) return;
-      for (const [kind, pattern] of LEAKS) if (pattern.test(value)) found.push(`${path} holds ${kind}`);
+      const links = value.match(LINK) ?? [];
+      if (links.some((link) => LINK_CREDENTIAL.test(link))) found.push(`${path} holds a credential in a link`);
+      const text = value.replace(LINK, '<link>');
+      for (const [kind, pattern] of LEAKS) if (pattern.test(text)) found.push(`${path} holds ${kind}`);
     } else if (Array.isArray(value)) {
       value.forEach((item, index) => { visit(item, `${path}[${String(index)}]`); });
     } else if (typeof value === 'object' && value !== null) {
@@ -179,8 +193,8 @@ describe('the C03 corpus', () => {
       const lower = prompt.toLowerCase();
       const bare = tool.replace(/^testrail_/u, '');
       // Identifier-like argument names only: a prompt may say "comment" or "name" as plain
-      // words. The tool's name counts in any spelling: snake, spaced or camel case.
-      return [tool, bare, bare.replaceAll('_', ' '), camel(bare), 'testrail_', ...keys(input).filter((key) => key.includes('_')).flatMap((key) => [key, camel(key)])]
+      // words. The tool's name counts in any spelling: snake, spaced, kebab or camel case.
+      return [tool, bare, bare.replaceAll('_', ' '), bare.replaceAll('_', '-'), camel(bare), 'testrail_', ...keys(input).filter((key) => key.includes('_')).flatMap((key) => [key, camel(key)])]
         .filter((name) => lower.includes(name.toLowerCase()))
         .map((name) => `${id}: ${name}`);
     });
@@ -191,8 +205,11 @@ describe('the C03 corpus', () => {
     const leaves = (value: unknown, path: string): [string, unknown][] => typeof value === 'object' && value !== null
       ? Object.entries(value).flatMap(([key, inner]) => leaves(inner, path === '' ? key : `${path}.${key}`))
       : [[path, value]];
+    // As a whole value: 4 is not stated by "group 14", nor 1 by "build 2.1".
+    const stated = (prompt: string, value: unknown) =>
+      new RegExp(`(?<![\\w.])${String(value).replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}(?![\\w]|\\.\\w)`, 'u').test(prompt);
     const unstated = corpus.tasks.flatMap(({ id, prompt, arguments: input }) => leaves(input, '')
-      .filter(([, value]) => !prompt.includes(String(value)))
+      .filter(([, value]) => !stated(prompt, value))
       .map(([path, value]) => `${id}: ${path} = ${JSON.stringify(value)}`));
     expect(unstated).toEqual([]);
   });
@@ -253,6 +270,7 @@ describe('the client evidence records', () => {
 
   it.each<[string, (record: ClientRecord) => void, string]>([
     ['a pass without evidence', (record) => { record.scenarios.C01 = { status: 'pass', evidence: null, notes: null }; }, 'C01 is pass without evidence'],
+    ['a failure without evidence', (record) => { record.scenarios.C02 = { status: 'fail', evidence: null, notes: 'It listed 120 tools.' }; }, 'C02 is fail without evidence'],
     ['a failure without notes', (record) => { record.scenarios.C02 = { status: 'fail', evidence: 'a log', notes: null }; }, 'C02 is fail without notes saying why'],
     ['a block without notes', (record) => { record.scenarios.C02 = { status: 'blocked', evidence: null, notes: null }; }, 'C02 is blocked without notes saying why'],
     ['evidence for a scenario not run', (record) => { record.scenarios.C02 = { status: 'not_run', evidence: 'a log', notes: null }; }, 'C02 is not_run but cites evidence'],
@@ -267,18 +285,60 @@ describe('the client evidence records', () => {
     ['a record of nothing run that states a provenance', (record) => {
       record.scenarios.C01 = { status: 'not_run', evidence: null, notes: null };
     }, 'nothing ran but provenance is stated'],
+    ['a record of nothing run that states variables', (record) => {
+      record.scenarios.C01 = { status: 'not_run', evidence: null, notes: null };
+    }, 'nothing ran but variables are stated'],
+    ['a record of nothing run that states limitations', (record) => {
+      record.scenarios.C01 = { status: 'not_run', evidence: null, notes: null };
+      record.limitations = ['All twelve scenarios passed.'];
+    }, 'nothing ran but limitations are stated'],
+    ['a record of nothing run with notes on a scenario', (record) => {
+      record.scenarios.C01 = { status: 'not_run', evidence: null, notes: 'Passed: 133 tools listed.' };
+    }, 'nothing ran but C01 has notes'],
   ])('refuse %s', (_label, change, problem) => {
     expect(refusal(change)).toContain(problem);
+  });
+
+  it('hold variable names only: the TESTRAIL_ variables and MCP_PROTOCOL_NEGOTIATION, never a value', () => {
+    const withVariables = (variables: string[]) => {
+      const record = complete();
+      record.settings.variables = variables;
+      return recordSchema.safeParse(record).success;
+    };
+    expect(withVariables(['TESTRAIL_BASE_URL', 'TESTRAIL_ALLOW_INSECURE', 'MCP_PROTOCOL_NEGOTIATION'])).toBe(true);
+    for (const variables of [['TESTRAIL_API_KEY=abc'], ['HOME'], ['TESTRAIL_BASE_URL', 'MCP_PROTOCOL_NEGOTIATION=auto'], ['testrail_base_url']]) {
+      expect(withVariables(variables), variables.join()).toBe(false);
+    }
   });
 
   it('carry no credential, email address, local path or key-like token', () => {
     expect(records.flatMap(({ slug, record }) => leaks(record).map((leak) => `${slug}: ${leak}`))).toEqual([]);
     const notes = (text: string): string[] => leaks({ notes: text });
-    for (const text of ['/tmp/uploads', '~/testrail-downloads', 'C:\\Users\\me', 'D:/work', 'a@example.com', 'Authorization: x', 'Basic dXNlcjpwYXNzd29yZA==', 'AbC123dEf456GhI789jKl012']) {
+    // Service-token samples are joined here, so no whole fake token sits in the source for
+    // a secret scanner to take for a real one.
+    const sample = (...parts: string[]) => parts.join('_');
+    for (const text of [
+      // Credentials and addresses.
+      'a@example.com', 'Authorization: Basic dXNlcjpwYXNzd29yZA==', 'Basic dXNlcjpwYXNzd29yZA==', 'Bearer eyJhbGciOiJIUzI1NiJ9',
+      'https://user:secret@example.test/runs/1', 'https://example.test/runs/1?token=abc',
+      // Local paths, in any setting.
+      '/tmp/uploads', '~/testrail-downloads', '~/.codex/config.toml', 'C:\\Users\\me', 'D:/work', '/usr/local/bin/testrail-mcp', '/Volumes/Work/uploads',
+      '/workspace/igor/downloads', '$HOME/testrail-uploads', 'Log saved in `/home/igor/copilot.log`', 'file:///home/igor/evidence/c01.log',
+      'log:/home/igor/c01.log', 'see [/Users/igor/c01.log]', 'uploads root \\\\fileserver\\igor\\uploads',
+      // Variable values and secrets.
+      'TESTRAIL_API_KEY=fixture-api-key', 'TESTRAIL_BASE_URL=http://127.0.0.1:37453',
+      'AbC123dEf456GhI789jKl012', 'key 0123456789abcdef0123', `token ${sample('ghp', 'AbC123dEf456GhI789jKl012mNo345pQr678')}`,
+      sample('github', 'pat', '11ABCDEFG0123456789', 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJ'), sample('sk', 'live', '51H8AbC123dEf456GhI789jKl0'),
+      'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', 'Xy12.Ab34/Cd56-Ef78.Gh90/Ij12',
+    ]) {
       expect(notes(text), text).not.toEqual([]);
     }
-    // Links, package specs and version strings are evidence, not leaks.
-    for (const text of ['https://github.com/dichovsky/testrail-mcp/actions/runs/1', '@dichovsky/testrail-api-client@7.2.0', 'testrail-mcp@0.1.0-dev.0', 'codex-cli 0.149.0']) {
+    // Links, package specs, repository paths, version strings and plain words are evidence, not leaks.
+    for (const text of [
+      'https://github.com/dichovsky/testrail-mcp/actions/runs/1', '@dichovsky/testrail-api-client@7.2.0', 'testrail-mcp@0.1.0-dev.0', 'codex-cli 0.149.0',
+      'tests/fixtures/clients/c03-corpus.json', 'MCP_PROTOCOL_NEGOTIATION=auto', 'C01/C02 read/write', 'testrail_get_history_for_case',
+      'Basic discovery works; all 133 names found.', 'Basic Authentication is refused', 'Host asked for authorization: approved each write',
+    ]) {
       expect(notes(text), text).toEqual([]);
     }
     expect(leaks({ server: { tarball_integrity: `sha512-${'A1'.repeat(43)}==` }, catalog: { sorted_names_sha256: EXPECTED_HASH } })).toEqual([]);

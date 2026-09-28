@@ -43,9 +43,9 @@ export const RESERVED = Object.freeze({
  * under it, so a complete read of 14-second pages passes its 45-second budget on the
  * fourth page.
  */
-const DELAYS_MS = Object.freeze({ [RESERVED.slow]: 20_000, [RESERVED.slowPages]: 14_000 });
+export const DELAYS_MS = Object.freeze({ [RESERVED.slow]: 20_000, [RESERVED.slowPages]: 14_000 });
 /** How many pages a slow-pages list spans, whatever page size is asked for. */
-const SLOW_PAGES = 10;
+export const SLOW_PAGES = 10;
 /** A list read with a page size holds 50 items a page: TestRail's default page. */
 const CONTROLLED_PAGE = 50;
 /** A list that chooses its own pages serves two items a page. */
@@ -219,9 +219,11 @@ const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms).unref()
 /**
  * Start the stand-in. `pages` sets how many pages every paged list spans; `delayScale`
  * shortens the reserved delays for tests; `log`, when set, receives one JSON line per
- * request with its method, endpoint and status, never its credentials.
+ * request, written when its reply is ready: its method, endpoint and status, and whether
+ * the client had already gone, never its credentials. A log write that fails once the
+ * stand-in is serving still sends the reply, then calls `onLogError` with the error.
  */
-export async function startFixtureTestRail({ port = 0, host = '127.0.0.1', pages = 1, delayScale = 1, log } = {}) {
+export async function startFixtureTestRail({ port = 0, host = '127.0.0.1', pages = 1, delayScale = 1, log, onLogError = () => undefined } = {}) {
   const routes = await loadRoutes();
   const requests = [];
   // A log that cannot be written is refused now, not discovered on the first request.
@@ -282,11 +284,18 @@ export async function startFixtureTestRail({ port = 0, host = '127.0.0.1', pages
           }
         }
         const entry = { method: request.method, endpoint: path + (query.length === 0 ? '' : `&${query.join('&')}`),
-          tool: route?.tool ?? null, status, authorized: typeof request.headers.authorization === 'string', bytes: Buffer.concat(chunks).length };
+          tool: route?.tool ?? null, status, authorized: typeof request.headers.authorization === 'string', bytes: Buffer.concat(chunks).length,
+          // A client that gave up, such as the driver at its request timeout, never gets the status.
+          abandoned: response.destroyed };
         requests.push(entry);
-        // A log write that fails later still leaves the reply as the route gives it.
-        if (log !== undefined) await appendFile(log, `${JSON.stringify(entry)}\n`).catch(() => undefined);
+        let logFailure;
+        if (log !== undefined) await appendFile(log, `${JSON.stringify(entry)}\n`).catch((error) => { logFailure = error; });
         if (!response.destroyed) send(response, status, reply);
+        // The reply goes out as the route gives it; the failure is reported once it has.
+        if (logFailure !== undefined) {
+          if (response.writableFinished || response.destroyed) onLogError(logFailure);
+          else response.once('finish', () => { onLogError(logFailure); });
+        }
       })().catch(() => {
         if (!response.headersSent) response.writeHead(500, { 'content-type': 'application/json' });
         response.end(JSON.stringify({ error: 'stand-in failure' }));
@@ -331,8 +340,16 @@ async function main() {
   const pages = Number(values.pages);
   const delayScale = Number(values['delay-scale']);
   if (!Number.isSafeInteger(pages) || pages < 1 || !(delayScale >= 0)) throw new Error('--pages must be a positive integer and --delay-scale a non-negative number');
+  let stopping = false;
+  // A request log that stops taking lines is no longer evidence: say so and stop.
+  const onLogError = (error) => {
+    if (stopping) return;
+    stopping = true;
+    process.stderr.write(`Cannot write the request log ${String(values.log)}: ${error instanceof Error ? error.message : String(error)}. Stopping.\n`);
+    void standIn.close().then(() => process.exit(1));
+  };
   const standIn = await startFixtureTestRail({
-    port: Number(values.port), host: values.host, pages, delayScale, ...(values.log === undefined ? {} : { log: values.log }),
+    port: Number(values.port), host: values.host, pages, delayScale, onLogError, ...(values.log === undefined ? {} : { log: values.log }),
   });
   if (values.json) {
     process.stdout.write(`${JSON.stringify({ baseUrl: standIn.baseUrl, environment: standIn.environment, reserved: RESERVED })}\n`);
@@ -350,7 +367,11 @@ async function main() {
       '',
     ].join('\n'));
   }
-  const stop = () => { void standIn.close().then(() => process.exit(0)); };
+  const stop = () => {
+    if (stopping) return;
+    stopping = true;
+    void standIn.close().then(() => process.exit(0));
+  };
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
 }
