@@ -8,17 +8,19 @@
  * - that the installed executable serves all 133 tools over MCP in both protocol eras,
  *   against the loopback stand-in used by the package check.
  * The source is a registry spec such as @dichovsky/testrail-mcp@1.0.0, or a local tarball
- * path, which is how the test exercises it without a registry.
+ * path, which is how the test exercises the install and MCP checks without a registry.
+ * The integrity and provenance checks read the registry, so they refuse a tarball source.
  *
  *   node scripts/verify-published.mjs <spec-or-tarball> --version 1.0.0 [--integrity sha512-...] [--require-provenance]
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { npmCommand } from './npm-command.mjs';
 import { verifyProtocol } from './package-protocol.mjs';
 
 const NAME = '@dichovsky/testrail-mcp';
@@ -26,43 +28,66 @@ const root = new URL('../', import.meta.url);
 const cleanEnvironment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^TESTRAIL/iu.test(key)));
 
 function npm(args, cwd) {
-  const npmExecutable = process.env.npm_execpath;
-  const [command, prefix] = npmExecutable === undefined ? ['npm', []] : [process.execPath, [npmExecutable]];
+  const [command, prefix] = npmCommand();
   const result = spawnSync(command, [...prefix, ...args], {
     cwd, env: cleanEnvironment, encoding: 'utf8', timeout: 180_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
-    shell: npmExecutable === undefined && process.platform === 'win32',
   });
   if (result.error || result.status !== 0) {
-    throw new Error(`npm ${args[0]} failed (exit ${result.status}).\n${[result.error?.message, result.stderr].filter(Boolean).join('\n').slice(0, 4000)}`);
+    throw new Error(`npm ${args[0]} failed (exit ${String(result.status)}).\n${[result.error?.message, result.stderr].filter(Boolean).join('\n').slice(0, 4000)}`);
   }
   return result.stdout;
 }
 
-/** The registry can lag a publish by some seconds; retry a read a few times before failing. */
-async function eventually(read) {
-  let last;
-  for (const wait of [0, 5_000, 10_000, 20_000, 40_000]) {
-    if (wait > 0) await new Promise((resolve) => { setTimeout(resolve, wait); });
-    try { return read(); } catch (error) { last = error; }
+/** A field of a registry version, or undefined when the version or the field is absent. */
+function viewField(spec, field) {
+  let output;
+  try {
+    output = npm(['view', spec, field, '--json', '--prefer-online'], tmpdir()).trim();
+  } catch (error) {
+    // A package the registry does not show yet: its first version is still arriving.
+    if (error instanceof Error && /\bE404\b/u.test(error.message)) return undefined;
+    throw error;
   }
-  throw last;
+  // npm prints nothing, and succeeds, when a version or a field is missing.
+  return output === '' ? undefined : JSON.parse(output);
+}
+
+const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+/**
+ * The registry checks. The registry can take some seconds to show a new version, so only
+ * its absence is retried; once the version is there, a different tarball or a missing
+ * attestation fails at once.
+ */
+export async function checkRegistry({ spec, integrity, requireProvenance = false, view = viewField, waits = [0, 5_000, 10_000, 20_000, 40_000] }) {
+  let served;
+  for (const wait of waits) {
+    if (wait > 0) await sleep(wait);
+    served = view(spec, 'dist.integrity');
+    if (served !== undefined) break;
+  }
+  if (served === undefined) throw new Error(`The registry does not serve ${spec}.`);
+  if (integrity !== undefined) assert.equal(served, integrity, 'The registry serves a different tarball from the one this release built.');
+  if (requireProvenance) {
+    const attestations = view(spec, 'dist.attestations');
+    assert.ok(typeof attestations === 'object' && attestations !== null && attestations.provenance !== undefined, 'The published version has no provenance attestation.');
+  }
 }
 
 export async function verifyPublished({ source, version, integrity, requireProvenance = false }) {
+  const tarball = source.endsWith('.tgz');
+  if (tarball && (integrity !== undefined || requireProvenance)) {
+    throw new Error('--integrity and --require-provenance read the registry; give a registry spec, not a tarball.');
+  }
+  // A tarball path is the caller's, not the scratch directory's.
+  const target = tarball ? resolve(source) : source;
   const directory = mkdtempSync(join(tmpdir(), 'testrail-mcp-published-'));
   try {
-    const registry = !source.endsWith('.tgz');
-    if (registry && integrity !== undefined) {
-      const served = await eventually(() => JSON.parse(npm(['view', source, 'dist.integrity', '--json'], directory)));
-      assert.equal(served, integrity, 'The registry serves a different tarball from the one this release built.');
-    }
-    if (registry && requireProvenance) {
-      const attestations = await eventually(() => JSON.parse(npm(['view', source, 'dist.attestations', '--json'], directory)));
-      assert.ok(attestations && typeof attestations === 'object' && attestations.provenance, 'The published version has no provenance attestation.');
-    }
+    if (!tarball) await checkRegistry({ spec: source, integrity, requireProvenance });
     const prefix = join(directory, 'install');
     mkdirSync(prefix);
-    await eventually(() => npm(['install', '--prefix', prefix, '--ignore-scripts', '--no-audit', '--no-fund', source], directory));
+    // Online, so a registry spec is resolved from the registry rather than a cached index.
+    npm(['install', '--prefix', prefix, '--ignore-scripts', '--no-audit', '--no-fund', ...(tarball ? [] : ['--prefer-online']), target], directory);
     const installed = join(prefix, 'node_modules', '@dichovsky', 'testrail-mcp');
     const manifest = JSON.parse(readFileSync(join(installed, 'package.json'), 'utf8'));
     assert.equal(manifest.name, NAME);
@@ -83,7 +108,8 @@ export async function verifyPublished({ source, version, integrity, requireProve
   }
 }
 
-if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
+// Compared through the real path, so a symlinked invocation still runs the check.
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: { version: { type: 'string' }, integrity: { type: 'string' }, 'require-provenance': { type: 'boolean', default: false } },

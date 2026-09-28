@@ -6,6 +6,7 @@
  *
  *   node scripts/release-notes.mjs v1.0.0 [--changelog CHANGELOG.md] [--package package.json]
  */
+import { realpathSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -24,7 +25,8 @@ export function releaseNotes(changelog, version) {
   return `${body}\n`;
 }
 
-if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
+// Compared through the real path, so a symlinked invocation still runs the gate.
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
   const root = new URL('../', import.meta.url);
   const { values, positionals } = parseArgs({
     allowPositionals: true,
