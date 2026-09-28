@@ -512,17 +512,18 @@ describe('F05 result evidence through registered tools', () => {
         runtime, configuration, stagingDirectory: () => Promise.resolve(base),
       });
       const lines = write.mock.calls.map(([chunk]) => String(chunk));
-      // One event per call, in call order, each carrying only its fixed code.
+      // One event per call, in call order, each carrying only its fixed code and, for a
+      // write's error, whether it may have been applied.
       expect(lines.map((line) => {
-        const { tool, outcome, code } = JSON.parse(line) as Record<string, unknown>;
-        return [tool, outcome, code];
+        const { tool, outcome, code, write_outcome } = JSON.parse(line) as Record<string, unknown>;
+        return [tool, outcome, code, write_outcome];
       })).toEqual([
-        ['testrail_add_project', 'error', 'UPSTREAM_ERROR'],
-        ['testrail_get_project', 'success', undefined],
-        ['testrail_add_attachment_to_case', 'error', 'FILE_ACCESS_DENIED'],
+        ['testrail_add_project', 'error', 'UPSTREAM_ERROR', 'unknown'],
+        ['testrail_get_project', 'success', undefined, undefined],
+        ['testrail_add_attachment_to_case', 'error', 'FILE_ACCESS_DENIED', 'not_started'],
       ]);
       // Only these fields may ever appear.
-      const allowed = new Set(['event', 'correlation', 'tool', 'outcome', 'code', 'duration_ms', 'warnings']);
+      const allowed = new Set(['event', 'correlation', 'tool', 'outcome', 'code', 'duration_ms', 'warnings', 'write_outcome']);
       for (const line of lines) {
         const event = JSON.parse(line) as Record<string, unknown>;
         expect(event.event).toBe('tool_call');
