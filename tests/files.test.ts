@@ -16,6 +16,8 @@ import { containedRealPath, isWithin } from '../src/files/containment.js';
 import { writeDownload } from '../src/files/download.js';
 import { createStagingArea, recoverAbandonedStaging, stageUpload } from '../src/files/staging.js';
 
+const WINDOWS = process.platform === 'win32';
+
 let base: string;
 let root: string;
 let outside: string;
@@ -381,7 +383,8 @@ describe('upload staging', () => {
     ['a staged-name collision', 'collision', [1]],
     ['a failed write', 'write', [1, 1]],
     ['a failed close of the copy', 'close', [1, 1]],
-    ['a path that names another file once open', 'inode', [1]],
+    // Windows refuses to replace a file that is open, so this race cannot be staged there.
+    ...(WINDOWS ? [] : [['a path that names another file once open', 'inode', [1]]] as const),
   ] as const)('closes each handle exactly once on %s', async (_label, fault, expected) => {
     const area = await createStagingArea(staging);
     const path = await source(`closes-${fault}.txt`, 'content');
@@ -416,7 +419,8 @@ describe('upload staging', () => {
     await area.dispose();
   });
 
-  it('refuses a source whose path names another file once it is open', async () => {
+  // Windows refuses to replace a file that is open, so this race cannot be staged there.
+  it.skipIf(WINDOWS)('refuses a source whose path names another file once it is open', async () => {
     const area = await createStagingArea(staging);
     const path = await source('replaced.txt', 'opened');
     const replacement = await source('replacement.txt', 'replacement');
