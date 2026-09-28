@@ -131,8 +131,9 @@ export async function stageUpload(
       await staged.close().catch(() => undefined);
       throw error;
     }
-    // Closed on success where a failure can still be seen: a deferred write error
-    // surfaces here, and a copy that did not reach the disk must not be uploaded.
+    // Closed on success where a failure can still be seen: a write error some
+    // filesystems (NFS, for one) report only at close surfaces here, and a copy that
+    // failed must not be uploaded. Close is not fsync; durability is not the aim.
     await staged.close();
 
     await closeSource();

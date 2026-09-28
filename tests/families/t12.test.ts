@@ -666,7 +666,7 @@ describe('T12 uploads', () => {
       expect(file?.path.startsWith(env.staging.directory)).toBe(true);
       expect(file?.path).not.toBe(env.source);
       // Exactly a path and the caller's media type: no descriptor, nothing invented.
-      expect(file).toEqual({ path: file?.path, type: 'Text/Plain' });
+      expect(file).toStrictEqual({ path: file?.path, type: 'Text/Plain' });
       await runtime.shutdown();
       expect(await readdir(env.staging.directory)).toEqual(['owner.json']);
     } finally { await runtime.shutdown(); await env.staging.dispose(); }

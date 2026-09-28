@@ -113,7 +113,7 @@ describe('T03 feature-file uploads through the transport', () => {
       expect(staged.path.startsWith(area.directory)).toBe(true);
       expect(staged.path).not.toBe(source);
       // Exactly a path and the caller's media type: no descriptor, nothing invented.
-      expect(staged).toEqual({ path: staged.path, type: 'text/plain' });
+      expect(staged).toStrictEqual({ path: staged.path, type: 'text/plain' });
       // The part carries the caller's filename and media type, and the file's bytes.
       expect(calls[0]?.body).toEqual([
         { name: 'attachment', filename: 'login.feature', content_type: 'text/plain', utf8: FEATURE },

@@ -178,9 +178,12 @@ describe('download diagnostics', () => {
       const path = (result.structuredContent as { data: { file_path: string } }).data.file_path;
       const lines = write.mock.calls.map(([chunk]) => String(chunk));
       expect(lines).toHaveLength(1);
-      // The path goes to the caller in the result, never into diagnostics.
-      expect(lines[0]).not.toContain(path);
-      expect(lines[0]).not.toContain(base);
+      // The path goes to the caller in the result, never into diagnostics. Checked raw
+      // and JSON-escaped, since a Windows path's backslashes double in the log line.
+      for (const text of [path, base]) {
+        expect(lines[0]).not.toContain(text);
+        expect(lines[0]).not.toContain(JSON.stringify(text).slice(1, -1));
+      }
     } finally {
       write.mockRestore();
       await runtime.shutdown();
@@ -281,7 +284,13 @@ describe('staged uploads', () => {
       const result = await executeToolCall(addAttachment, { case_id: 1, file_path: source, filename: 'dns.txt' }, {
         runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory),
       });
-      expect(result.isError).toBe(true);
+      // Today's behaviour, pinned so any change is deliberate: the driver raises a
+      // validation error for the failed lookup, which maps to an internal fault with an
+      // unknown write outcome although nothing was sent. Whether it should is an open
+      // question on the F05 error contract.
+      expect(result.structuredContent).toEqual({
+        error: { code: 'INTERNAL_ERROR', message: 'The server failed to complete the call.', write_outcome: 'unknown' },
+      });
       expect(fetch).not.toHaveBeenCalled();
       await vi.waitFor(() => { expect(runtime.stats().active).toBe(0); });
       expect(await readdir(area.directory)).toEqual(['owner.json']);

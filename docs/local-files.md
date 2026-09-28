@@ -22,7 +22,7 @@ Validating a path and then handing that same path to the driver leaves a window 
 
 The size limit is enforced **while copying**, not from the initial `stat`, because a file can grow after it is measured. The staged copy is created exclusively with restrictive permissions inside a private per-process directory. If its generated name already exists the copy is refused, and the existing file is left alone: cleanup is armed only once the exclusive create has made the name ours. The copy is closed before it is handed over, and a failed close refuses it, since a deferred write error means the bytes may not have reached the disk. The driver receives a path — never an adapter-owned descriptor, whose ownership is hard to guarantee across early DNS failures and platform fallbacks.
 
-Where inode identity is meaningful, the opened handle is checked against the path it came from after opening, so a file replaced once it is open is caught. `O_NOFOLLOW` refuses a final component swapped for a symlink before the open, where the platform provides the flag. Neither closes every window. A regular file swapped in between resolution and open is read, and so is an intermediate directory replaced by a symlink, because `O_NOFOLLOW` guards only the last component. Those are races a process running as the same user would have to win, which this layer does not claim to prevent. On Windows the flag does not exist, and the inode check runs only if the platform reports one.
+Where inode identity is meaningful, the opened handle is checked against the path it came from after opening, so a file replaced once it is open is caught. `O_NOFOLLOW` refuses a final component swapped for a symlink before the open (the open fails with `ELOOP`), where the platform provides the flag. Neither closes every window. A regular file swapped in between resolution and open is read, and so is an intermediate directory replaced by a symlink, because `O_NOFOLLOW` guards only the last component. Those are races a process running as the same user would have to win, which this layer does not claim to prevent. On Windows the flag does not exist, and the inode check runs only if the platform reports one.
 
 The source is opened non-blocking, and that is what makes the regular-file check reachable at all. Opening a FIFO for reading blocks until a writer connects — before anything can observe the file type — so a caller naming a pipe inside an allowed root would hold a libuv worker indefinitely. Four such calls exhaust the default threadpool and stall every other async operation in the process, not merely this tool. A named pipe is an ordinary artifact that can sit innocently under a directory an operator points a root at, so this needs no hostile local process. `O_NONBLOCK` is a no-op for regular files, so nothing else changes.
 
@@ -46,13 +46,13 @@ Repeating a download creates another distinct retained file. That local additive
 - component-versus-prefix containment, traversal, symlink escape and symlink-within-root, and a root configured through a symlink;
 - non-regular sources, source replacement after staging, a file replaced once it is open, a final component swapped for a symlink before the open, and a file that lies about its size;
 - the exact size limit, and one byte over it refused before a staged copy is opened;
-- a staged-name collision that leaves the existing file alone, a failed close, a failed, a short and a zero-progress write, and source-close counting on success and on each failure path;
+- a staged-name collision that leaves the existing file alone, a failed close, a failed, a short and a zero-progress write, and handle-close counting, per handle, on success and on each failure path;
 - idempotent disposal;
 - recovery's refusals: no prefix, no marker, the wrong marker, a corrupt marker, a live owner in another process, and a liveness check failing with `EPERM` or anything but `ESRCH`;
 - a unique, exclusively created staging directory;
 - downloads: a forced name collision, 25 concurrent writes, exact byte counts for multi-byte text and large binary content, the exact size limit, and cleanup on write and close failure.
 
-Each test starts from the real `node:fs/promises`, since a module spy's fake is reset between tests.
+Each test starts from the real `node:fs/promises` and `node:crypto`: every spied export is reset after each test, since a module spy's fake would otherwise leak into the next one.
 
 Mutation-checked: string-prefix containment, skipping `realpath`, forwarding the source path instead of copying, trusting the initial size, opening downloads with `w` instead of `wx`, and ignoring the ownership marker each fail a test. The F07 acceptance audit added more, listed in its PR.
 

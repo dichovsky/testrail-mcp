@@ -39,8 +39,8 @@ afterEach(() => {
   vi.restoreAllMocks();
   // restoreAllMocks leaves a module spy's implementation in place, so a fake from one
   // test would otherwise leak into the next and change what that test exercises.
-  vi.mocked(open).mockReset();
-  vi.mocked(randomUUID).mockReset();
+  // resetAllMocks returns every spied export of both mocked modules to the real one.
+  vi.resetAllMocks();
 });
 afterAll(async () => { await rm(base, { recursive: true, force: true }); });
 
@@ -151,8 +151,11 @@ describe('upload staging', () => {
   it('rejects an oversized file by its measured size', async () => {
     const area = await createStagingArea(staging);
     const path = await source('big.txt', 'x'.repeat(500));
+    vi.mocked(open).mockClear();
     await expect(stageUpload(path, { roots: [root], maxBytes: 100, stagingDirectory: area.directory }))
       .rejects.toMatchObject({ code: 'FILE_TOO_LARGE' });
+    // Refused before a staged copy is opened, not by the copy loop.
+    expect(vi.mocked(open).mock.calls).toHaveLength(1);
     await area.dispose();
   });
 
@@ -369,18 +372,66 @@ describe('upload staging', () => {
     await area.dispose();
   });
 
-  it('refuses a source whose path names another file once it is open', async () => {
+  /*
+   * Every failure leaves through one catch, which closes the source; a failure during
+   * the copy also closes the staged copy first. Counted per handle, in open order: the
+   * source, then the staged copy if one was opened.
+   */
+  it.each([
+    ['a staged-name collision', 'collision', [1]],
+    ['a failed write', 'write', [1, 1]],
+    ['a failed close of the copy', 'close', [1, 1]],
+    ['a path that names another file once open', 'inode', [1]],
+  ] as const)('closes each handle exactly once on %s', async (_label, fault, expected) => {
     const area = await createStagingArea(staging);
-    const path = await source('replaced.txt', 'opened');
-    const replacement = await source('replacement.txt', 'replacement');
-    vi.mocked(open).mockImplementationOnce(async (...args: Parameters<typeof actual.open>) => {
+    const path = await source(`closes-${fault}.txt`, 'content');
+    const closes: number[] = [];
+    let swapped = false;
+    if (fault === 'collision') {
+      const taken = '33333333-3333-4333-8333-333333333333';
+      await writeFile(join(area.directory, taken), 'someone else');
+      vi.mocked(randomUUID).mockReturnValueOnce(taken);
+    }
+    vi.mocked(open).mockImplementation(async (...args: Parameters<typeof actual.open>) => {
       const handle = await actual.open(...args);
-      // Replace the file after it is opened: the handle and the path now disagree.
-      await rename(replacement, path);
+      const index = closes.push(0) - 1;
+      const originalClose = handle.close.bind(handle);
+      handle.close = async () => {
+        closes[index] = (closes[index] ?? 0) + 1;
+        await originalClose();
+        if (fault === 'close' && index === 1) throw new Error('EIO');
+      };
+      if (fault === 'write' && index === 1) handle.write = () => Promise.reject(new Error('ENOSPC'));
+      if (fault === 'inode' && index === 0) {
+        await writeFile(`${path}.new`, 'replacement');
+        await rename(`${path}.new`, path);
+        swapped = true;
+      }
       return handle;
     });
     await expect(stageUpload(path, { roots: [root], maxBytes: 1_024, stagingDirectory: area.directory }))
       .rejects.toMatchObject({ code: 'FILE_ACCESS_DENIED' });
+    expect(closes).toEqual(expected);
+    if (fault === 'inode') expect(swapped).toBe(true);
+    await area.dispose();
+  });
+
+  it('refuses a source whose path names another file once it is open', async () => {
+    const area = await createStagingArea(staging);
+    const path = await source('replaced.txt', 'opened');
+    const replacement = await source('replacement.txt', 'replacement');
+    let swapped = false;
+    vi.mocked(open).mockImplementationOnce(async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args);
+      // Replace the file after it is opened: the handle and the path now disagree.
+      await rename(replacement, path);
+      swapped = true;
+      return handle;
+    });
+    await expect(stageUpload(path, { roots: [root], maxBytes: 1_024, stagingDirectory: area.directory }))
+      .rejects.toMatchObject({ code: 'FILE_ACCESS_DENIED' });
+    // A fixture failure inside open would also surface as FILE_ACCESS_DENIED.
+    expect(swapped).toBe(true);
     expect(await readdir(area.directory)).toEqual(['owner.json']);
     await area.dispose();
   });
@@ -390,14 +441,23 @@ describe('upload staging', () => {
     const path = await source('swap-to-link.txt', 'inside');
     const secret = join(outside, 'swap-secret.txt');
     await writeFile(secret, 'OUTSIDE SECRET');
+    let swapped = false;
+    let refusedBy: string | undefined;
     vi.mocked(open).mockImplementationOnce(async (...args: Parameters<typeof actual.open>) => {
       // Between containment and open, the approved file becomes a link out of the root.
       await rm(path);
       await symlink(secret, path);
-      return actual.open(...args);
+      swapped = true;
+      return actual.open(...args).catch((error: unknown) => {
+        refusedBy = (error as NodeJS.ErrnoException).code;
+        throw error;
+      });
     });
     await expect(stageUpload(path, { roots: [root], maxBytes: 1_024, stagingDirectory: area.directory }))
       .rejects.toMatchObject({ code: 'FILE_ACCESS_DENIED' });
+    expect(swapped).toBe(true);
+    // O_NOFOLLOW itself refused the link, before the inode check could.
+    expect(refusedBy).toBe('ELOOP');
     expect(await readdir(area.directory)).toEqual(['owner.json']);
     await area.dispose();
   });
