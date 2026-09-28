@@ -1,3 +1,4 @@
+import { getEventListeners } from 'node:events';
 import { TestRailClient } from '@dichovsky/testrail-api-client';
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_LIMITS } from '../src/config/limits.js';
@@ -277,5 +278,76 @@ describe('runtime admission and invocation', () => {
     upstream.releaseAll();
     expect(await stuck).toBeInstanceOf(RuntimeError);
     await settle(30);
+  });
+
+  it('stops admission before draining, and destroys only after in-flight work settles', async () => {
+    const upstream = gatedFetch();
+    const drain = manualDelay();
+    const instance = client(upstream.fetch);
+    const destroy = vi.spyOn(instance, 'destroy');
+    const runtime = createRuntime({ client: instance, limits: DEFAULT_LIMITS, delay: drain.delay });
+
+    const inflight = runtime.invoke((target) => target.projects.getProject(1));
+    await waitFor(() => upstream.calls === 1, 'the in-flight request');
+    const shutdown = runtime.shutdown();
+
+    // Admission is already closed while the drain is still waiting.
+    expect(runtime.stats().accepting).toBe(false);
+    await expect(runtime.invoke((target) => target.projects.getProject(2))).rejects.toMatchObject({ code: 'BUSY' });
+    expect(upstream.calls).toBe(1);
+    await settle();
+    // The drain waits for the call; it does not destroy the client under it.
+    expect(destroy).not.toHaveBeenCalled();
+
+    upstream.releaseAll();
+    await expect(inflight).resolves.toMatchObject({ id: 1 });
+    await shutdown;
+    expect(destroy).toHaveBeenCalledTimes(1);
+    // It finished on the call settling, not on the drain window expiring.
+    expect(drain.pending.find(({ ms }) => ms === 5_000)?.cancelled).toBe(true);
+  });
+
+  it('leaves no timer, listener or retained slot behind across many calls of every outcome', async () => {
+    const upstream = gatedFetch();
+    const timers = manualDelay();
+    const runtime = createRuntime({ client: client(upstream.fetch), limits: DEFAULT_LIMITS, delay: timers.delay });
+    const signals: AbortSignal[] = [];
+    const signal = () => { const controller = new AbortController(); signals.push(controller.signal); return controller; };
+
+    for (let round = 0; round < 10; round += 1) {
+      // Success.
+      const ok = runtime.invoke((target) => target.projects.getProject(1), { signal: signal().signal });
+      await waitFor(() => upstream.calls === round * 3 + 1, 'the successful request');
+      upstream.releaseAll();
+      await ok;
+      // Watchdog expiry, then late settlement.
+      const late = runtime.invoke((target) => target.projects.getProject(2), { signal: signal().signal });
+      await waitFor(() => upstream.calls === round * 3 + 2, 'the timed-out request');
+      timers.fireAll();
+      await expect(late).rejects.toMatchObject({ code: 'TIMEOUT' });
+      upstream.releaseAll();
+      // Mid-flight cancellation, then late settlement.
+      const controller = signal();
+      const cancelled = runtime.invoke((target) => target.projects.getProject(3), { signal: controller.signal });
+      await waitFor(() => upstream.calls === round * 3 + 3, 'the cancelled request');
+      controller.abort();
+      await expect(cancelled).rejects.toMatchObject({ code: 'CANCELLED' });
+      upstream.releaseAll();
+      // Refused before dispatch.
+      await expect(runtime.invoke((target) => target.projects.getProject(4), { signal: AbortSignal.abort() }))
+        .rejects.toMatchObject({ code: 'CANCELLED' });
+      await waitFor(() => runtime.stats().active === 0, 'every slot released');
+    }
+
+    // One 60-second watchdog per dispatched call, and every one cleared once its call
+    // answered, fired or not: none is left armed to hold a timer for a minute.
+    expect(timers.pending.map(({ ms, cancelled }) => ({ ms, cancelled })))
+      .toEqual(Array.from({ length: 30 }, () => ({ ms: 60_000, cancelled: true })));
+    // No call left its abort listener on the caller's signal.
+    expect(signals.map((entry) => getEventListeners(entry, 'abort').length)).toEqual(signals.map(() => 0));
+    // With nothing retained, shutdown has nothing to drain and arms no drain window.
+    const before = timers.pending.length;
+    await runtime.shutdown();
+    expect(timers.pending.slice(before)).toEqual([]);
   });
 });

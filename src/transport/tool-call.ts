@@ -261,6 +261,7 @@ export async function executeToolCall(
     logEvent('tool_call', {
       correlation, tool: operation.tool, outcome: 'error',
       code: safe.code, duration_ms: Date.now() - started,
+      ...(safe.write_outcome === undefined ? {} : { write_outcome: safe.write_outcome }),
     });
     return errorResult(safe);
   }

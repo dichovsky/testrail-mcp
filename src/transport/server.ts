@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio, type StdioServerHandle } from '@modelcontextprotocol/server/stdio';
 import { loadConfiguration, type Configuration, type Environment } from '../config/environment.js';
-import { createConfiguredDriver } from '../driver/configuration.js';
+import { createConfiguredDriver, type DriverSeams } from '../driver/configuration.js';
 import { createStagingArea, recoverAbandonedStaging } from '../files/staging.js';
 import { operationRegistry } from '../operations/catalog.js';
 import type { Operation, OperationRegistry } from '../operations/registry.js';
@@ -126,6 +126,54 @@ export interface StartedServer {
   readonly shutdown: () => Promise<void>;
 }
 
+export interface StartOptions {
+  readonly registry?: OperationRegistry;
+  /** Own SIGINT, SIGTERM and stdin closure, and exit once shut down. The CLI does. */
+  readonly registerSignals?: boolean;
+  /** Test-only: the driver's fetch and resolver. The CLI never sets it. */
+  readonly driver?: DriverSeams;
+  /** Test-only: the stdio entry, so a test can reach this composition without real stdio. */
+  readonly serve?: typeof serveStdio;
+}
+
+/**
+ * How long to wait, once shut down and stdout has flushed, before forcing the process
+ * to exit. The drain is bounded, but a call it gave up on can still hold driver timers
+ * of its own, such as a 15-second request timeout, and those would keep the process
+ * alive. The timer is unreferenced, so a process with nothing left running exits by
+ * itself first.
+ */
+export const EXIT_GRACE_MS = 250;
+
+/** Call back once everything already written to stdout has been handed to the host. */
+function stdoutFlushed(done: () => void): void {
+  // Writes complete in order, so an empty write's callback runs after every earlier
+  // one. It runs with an error too (a closed pipe), and that must still let us exit.
+  try {
+    process.stdout.write('', () => { done(); });
+  } catch {
+    done();
+  }
+}
+
+/**
+ * Exit once stdout has flushed and the grace has passed, unless the process has already
+ * exited by itself. Exiting earlier would cut off responses a slow host has not read
+ * yet: process.exit drops whatever stdout still holds.
+ */
+export function exitAfterGrace(
+  exit: () => void = () => { process.exit(); },
+  flushed: (done: () => void) => void = stdoutFlushed,
+): Promise<NodeJS.Timeout> {
+  return new Promise((resolve) => {
+    flushed(() => {
+      const timer = setTimeout(exit, EXIT_GRACE_MS);
+      timer.unref();
+      resolve(timer);
+    });
+  });
+}
+
 /**
  * Compose configuration, driver, runtime and transport, and own their lifetimes.
  *
@@ -134,25 +182,30 @@ export interface StartedServer {
  */
 export async function startServer(
   environment: Environment,
-  options: { readonly registry?: OperationRegistry; readonly registerSignals?: boolean } = {},
+  options: StartOptions = {},
 ): Promise<StartedServer> {
   const configuration = await loadConfiguration(environment);
 
   const removed = await recoverAbandonedStaging(tmpdir());
   if (removed > 0) logEvent('staging_recovered', { removed });
 
-  const client = createConfiguredDriver(configuration);
+  const client = createConfiguredDriver(configuration, options.driver);
   const runtime = createRuntime({ client, limits: configuration.limits });
   const registry = options.registry ?? operationRegistry;
 
   // Created on first upload so a server that never uploads leaves no directory behind.
   let staging: Promise<{ directory: string; dispose: () => Promise<void> }> | undefined;
   const stagingArea = (): Promise<{ directory: string; dispose: () => Promise<void> }> => {
-    staging ??= createStagingArea(tmpdir());
+    // A failure is forgotten, so the next upload tries again rather than inheriting it,
+    // and shutdown never awaits a staging area that was never created.
+    staging ??= createStagingArea(tmpdir()).catch((error: unknown) => {
+      staging = undefined;
+      throw error;
+    });
     return staging;
   };
 
-  const handle = serveStdio(
+  const handle = (options.serve ?? serveStdio)(
     () => buildServer({
       configuration, runtime, registry,
       stagingDirectory: async () => (await stagingArea()).directory,
@@ -160,23 +213,32 @@ export async function startServer(
     { onerror: (error: Error) => { logEvent('transport_error', { code: error.name }); } },
   );
 
-  let stopped = false;
-  const shutdown = async (): Promise<void> => {
-    if (stopped) return;
-    stopped = true;
-    logEvent('server_stopping');
-    await handle.close().catch(() => undefined);
-    await runtime.shutdown();
-    if (staging !== undefined) await (await staging).dispose();
-    logEvent('server_stopped');
+  // Every caller shares one shutdown, so a second request waits for the first to
+  // finish rather than returning early and letting the process exit mid-drain.
+  let stopping: Promise<void> | undefined;
+  const shutdown = (): Promise<void> => {
+    // No step may reject: a rejected shutdown would reach the process as an unhandled
+    // rejection, printing a raw error with local paths on stderr and exiting 1 before
+    // the stop is logged or the forced exit is scheduled. A staging directory left
+    // behind is removed by the next start's recovery.
+    stopping ??= (async () => {
+      logEvent('server_stopping');
+      await handle.close().catch(() => undefined);
+      await runtime.shutdown().catch(() => undefined);
+      await staging?.then((area) => area.dispose()).catch(() => undefined);
+      logEvent('server_stopped');
+    })();
+    return stopping;
   };
 
   if (options.registerSignals !== false) {
     // The driver registers none of its own, so the composition root coordinates
-    // cleanup once however the host ends the session.
-    const stop = (): void => { void shutdown(); };
-    process.once('SIGINT', stop);
-    process.once('SIGTERM', stop);
+    // cleanup once however the host ends the session. The signal handlers stay
+    // installed: with `once`, a second SIGINT or SIGTERM during the drain would take
+    // the default action and kill the process before the client is destroyed.
+    const stop = (): void => { void shutdown().then(() => exitAfterGrace()); };
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
     process.stdin.once('end', stop);
     process.stdin.once('close', stop);
   }
