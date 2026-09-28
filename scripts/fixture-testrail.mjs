@@ -13,6 +13,7 @@
  * TESTRAIL_ALLOW_INSECURE and TESTRAIL_ALLOW_PRIVATE_HOSTS set for the loopback address.
  * Its credentials are synthetic and it never logs the authorization header.
  */
+import { realpathSync } from 'node:fs';
 import { appendFile, readdir, readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
@@ -291,10 +292,11 @@ export async function startFixtureTestRail({ port = 0, host = '127.0.0.1', pages
         let logFailure;
         if (log !== undefined) await appendFile(log, `${JSON.stringify(entry)}\n`).catch((error) => { logFailure = error; });
         if (!response.destroyed) send(response, status, reply);
-        // The reply goes out as the route gives it; the failure is reported once it has.
+        // The reply goes out as the route gives it; the failure is reported once it has, or
+        // once the client has gone.
         if (logFailure !== undefined) {
-          if (response.writableFinished || response.destroyed) onLogError(logFailure);
-          else response.once('finish', () => { onLogError(logFailure); });
+          if (response.destroyed) onLogError(logFailure);
+          else response.once('close', () => { onLogError(logFailure); });
         }
       })().catch(() => {
         if (!response.headersSent) response.writeHead(500, { 'content-type': 'application/json' });
@@ -376,7 +378,8 @@ async function main() {
   process.once('SIGTERM', stop);
 }
 
-if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
+// Compared through the real path, so a clone under a symlinked directory still starts.
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
   main().catch((error) => {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exit(1);

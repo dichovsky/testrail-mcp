@@ -8,6 +8,7 @@
  *   node scripts/catalog-hash.mjs [--command testrail-mcp] [--arg ...]
  */
 import { createHash } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -59,7 +60,8 @@ export async function listCatalog({ command, args = [] }) {
   }
 }
 
-if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
+// Compared through the real path, so a clone under a symlinked directory still runs.
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
   const { values } = parseArgs({ options: { command: { type: 'string', default: 'testrail-mcp' }, arg: { type: 'string', multiple: true, default: [] } } });
   listCatalog({ command: values.command, args: values.arg }).then(
     (result) => { process.stdout.write(`${JSON.stringify(result, null, 2)}\n`); },

@@ -1,6 +1,8 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readdir, readFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
@@ -134,21 +136,49 @@ function unsupported(record: ClientRecord): string[] {
 
 /** Hash fields are the one place a long run of letters and digits belongs. */
 const HASH_FIELDS = new Set(['server.tarball_integrity', 'catalog.sorted_names_sha256']);
-/** A web link is evidence. It is checked for a credential of its own, apart from the text around it. */
+/** A web link is evidence, checked apart from the text around it. */
 const LINK = /\bhttps?:\/\/[^\s)\]>"'`]+/gu;
-const LINK_CREDENTIAL = /^https?:\/\/[^/?#\s]*@|[?&#](?:access_token|api_?key|key|password|sig|signature|token)=/iu;
-const LEAKS: [string, RegExp][] = [
-  // A header value, not the word: "Basic discovery works" is prose.
-  ['a credential header', /\b(?:[Bb]asic|BASIC|[Bb]earer|BEARER)\s+(?=[A-Za-z0-9+/=._-]*(?:\d|[+/=]|[a-z][A-Za-z0-9+/=._-]*[A-Z]))[A-Za-z0-9+/=._-]{8,}|\b(?:[Aa]uthorization|AUTHORIZATION)\s*[:=]\s*(?:[Bb]asic|BASIC|[Bb]earer|BEARER|[Tt]oken|TOKEN)\b/u],
-  ['an email address', /[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}\b/u],
-  // An absolute path of two or more segments, a home-relative one, a home variable, a
-  // drive, a network share or a file link. A relative path, a package spec or "and/or" is not.
-  ['a local path', /(?<![\w@.~$%+-])\/[\w.@+-]+\/|~[\w.-]*\/|\$HOME\b|\$\{HOME\}|%(?:USERPROFILE|HOMEDRIVE|HOMEPATH)%|(?<![A-Za-z])[A-Za-z]:(?:\\|\/(?!\/))|\\\\[\w.$-]+\\|\bfile:/iu],
-  ['a variable value', /\bTESTRAIL_[A-Z_]+\s*=\s*\S/u],
-  // A long run of letters and digits; the same run in mixed case with separators, as a
-  // secret split by / . - _ is; and the prefixes of common service tokens.
-  ['a key-like token', /\b(?=[A-Za-z0-9]*\d)(?=[A-Za-z0-9]*[A-Za-z])[A-Za-z0-9]{20,}\b|(?<![\w+/=.-])(?=[\w+/=.-]*\d)(?=[\w+/=.-]*[a-z])(?=[\w+/=.-]*[A-Z])[\w+/=.-]{20,}|\b(?:gh[oprsu]_|github_pat_|[rs]k_(?:live|test)_|xox[abeprs]-|AKIA)[\w-]{10,}/u],
+/** A credential in a link: user information, or a parameter that carries a secret. */
+const LINK_CREDENTIAL = /^https?:\/\/[^/?#\s]*@|[?&#;](?:access[_-]?token|api[_-]?key|apikey|auth|client[_-]?secret|credentials?|jwt|key|password|private[_-]?token|secret|sig|signature|token|x-amz-[a-z-]+)=/iu;
+/** A TestRail API path in prose, such as GET /index.php?/api/v2/get_case/42, is not a local path. */
+const API_PATH = /(?:\/?index\.php\?)?\/api\/v2\/[\w/&=.?-]*/gu;
+const EMAIL = /[\w.+-]+@[\w-]+(?:\.[\w-]+)*\.[A-Za-z]{2,}\b/u;
+/** The pieces of an ordinary name: words, camel case, numbers, and IDs such as C01 or R02. */
+const NATURAL = /^(?:(?:[A-Z]?[a-z]+)+\d*|[A-Z]+\d*|\d+[a-z]*)$/u;
+const SERVICE_TOKEN = /\b(?:gh[oprsu]_|github_pat_|glpat-|[rs]k_(?:live|test)_|xox[abeprs]-|AKIA)[\w-]{10,}/u;
+
+/**
+ * A secret-like run: 20 or more letters, digits and / . - _ + =, with a letter and a
+ * digit, that is neither a commit SHA or SHA-256 digest nor built from the pieces of an
+ * ordinary name, as a file path, a version or a run ID is; or a service token.
+ */
+const keyLike = {
+  test: (text: string): boolean => SERVICE_TOKEN.test(text) || [...text.matchAll(/(?<![\w+/=.-])[\w+/=.-]{20,}/gu)].some(([run]) =>
+    /\d/u.test(run) && /[A-Za-z]/u.test(run)
+    && !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u.test(run)
+    && !run.split(/[/._+=-]+/u).filter(Boolean).every((piece) => NATURAL.test(piece))),
+};
+
+const LEAKS: [string, { test: (text: string) => boolean }][] = [
+  // A header value, not the word: "Basic discovery works" and "Basic 133-tool discovery" are prose.
+  ['a credential header', /\b(?:[Bb]asic|BASIC|[Bb]earer|BEARER)\s+(?=[A-Za-z0-9+/=._-]*\d)(?=[A-Za-z0-9+/=._-]*[a-z])(?=[A-Za-z0-9+/=._-]*[A-Z])[A-Za-z0-9+/=._-]{12,}|\b(?:[Aa]uthorization|AUTHORIZATION)\s*[:=]\s*(?:[Bb]asic|BASIC|[Bb]earer|BEARER|[Tt]oken|TOKEN)\b/u],
+  ['an email address', EMAIL],
+  // An absolute path, a home-relative one, a home or user-directory variable, a drive, a
+  // network share or a file link. A relative path, a package spec or "and/or" is not.
+  ['a local path', /(?<![\w@.~$%+-])\/[\w.@+-]+\/|(?<![\w@.~$%+-])\/(?:home|Users|root|tmp|private|var|opt|mnt|srv|Volumes|workspace|data)\b|~[\w.-]*\/|~[a-z_][\w.-]*\b|\$HOME\b|\$\{HOME\}|\$env:\w+|\$XDG_\w+|%[A-Za-z_]+%[\\/]|(?<![A-Za-z])[A-Za-z]:(?:\\|\/(?!\/))|\\\\[\w.$-]+\\|\bfile:/iu],
+  // In any form: NAME=value, NAME: value, or a pasted "NAME": "value" map. A ${NAME} reference is not a value.
+  ['a variable value', /\bTESTRAIL_[A-Z_]+"?\s*[:=]\s*(?!"?\$\{)\S/u],
+  ['a key-like token', keyLike],
 ];
+
+/** Whether a link carries a credential: in its user information or parameters, or as a token or address in its path or query. */
+function linkLeaks(link: string): boolean {
+  if (LINK_CREDENTIAL.test(link)) return true;
+  const [, host = '', rest = ''] = /^https?:\/\/([^/?#]*)(.*)$/u.exec(link) ?? [];
+  // A GitHub path names repositories, branches, commits and runs; elsewhere a path can carry a token.
+  const checked = /(?:^|\.)github\.com$/iu.test(host) ? rest.replace(/^[^?#]*/u, '') : rest;
+  return keyLike.test(checked) || EMAIL.test(checked);
+}
 
 /** Every text in a record that looks like a credential, an email address, a local path or a secret. */
 function leaks(record: unknown): string[] {
@@ -156,9 +186,8 @@ function leaks(record: unknown): string[] {
   const visit = (value: unknown, path: string) => {
     if (typeof value === 'string') {
       if (HASH_FIELDS.has(path)) return;
-      const links = value.match(LINK) ?? [];
-      if (links.some((link) => LINK_CREDENTIAL.test(link))) found.push(`${path} holds a credential in a link`);
-      const text = value.replace(LINK, '<link>');
+      if ((value.match(LINK) ?? []).some(linkLeaks)) found.push(`${path} holds a credential in a link`);
+      const text = value.replace(LINK, '<link>').replace(API_PATH, '<api>');
       for (const [kind, pattern] of LEAKS) if (pattern.test(text)) found.push(`${path} holds ${kind}`);
     } else if (Array.isArray(value)) {
       value.forEach((item, index) => { visit(item, `${path}[${String(index)}]`); });
@@ -266,7 +295,14 @@ describe('the client evidence records', () => {
     Object.assign(blocked.client, { version: '1.0.67', os: 'Linux' });
     expect(unsupported(blocked)).toEqual([]);
     expect(refusal((record) => { record.settings.negotiated_revisions.auto = 'unsupported'; })).toEqual([]);
+    // Only Claude Code records an auto negotiation.
+    expect(refusal((record) => { record.surface = 'Codex CLI'; delete record.settings.negotiated_revisions.auto; })).toEqual([]);
   });
+
+  /** C01 blocked, and nothing passed or failed. */
+  const blocked = (record: ClientRecord) => { record.scenarios.C01 = { status: 'blocked', evidence: null, notes: 'No supported model on this account.' }; };
+  /** Nothing run at all. */
+  const nothing = (record: ClientRecord) => { record.scenarios.C01 = { status: 'not_run', evidence: null, notes: null }; };
 
   it.each<[string, (record: ClientRecord) => void, string]>([
     ['a pass without evidence', (record) => { record.scenarios.C01 = { status: 'pass', evidence: null, notes: null }; }, 'C01 is pass without evidence'],
@@ -282,14 +318,25 @@ describe('the client evidence records', () => {
     ['a C01 pass with the right count and a wrong hash', (record) => { record.catalog.sorted_names_sha256 = '0'.repeat(64); }, 'C01 passes without the full 133-tool catalog and its hash'],
     ['a C01 pass with a short catalog', (record) => { record.catalog.count = names.length - 1; }, 'C01 passes without the full 133-tool catalog and its hash'],
     ['an attempt with no tester', (record) => { record.tester = null; }, 'a scenario was attempted but tester is not recorded'],
-    ['a record of nothing run that states a provenance', (record) => {
-      record.scenarios.C01 = { status: 'not_run', evidence: null, notes: null };
-    }, 'nothing ran but provenance is stated'],
-    ['a record of nothing run that states variables', (record) => {
-      record.scenarios.C01 = { status: 'not_run', evidence: null, notes: null };
-    }, 'nothing ran but variables are stated'],
+    ['a blocked surface with no test date', (record) => { blocked(record); record.tested_on = null; }, 'a scenario was attempted but tested_on is not recorded'],
+    ['a blocked surface with no tester', (record) => { blocked(record); record.tester = null; }, 'a scenario was attempted but tester is not recorded'],
+    ['a blocked surface with no client version', (record) => { blocked(record); record.client.version = null; }, 'a scenario was attempted but client.version is not recorded'],
+    ['a blocked surface with no OS', (record) => { blocked(record); record.client.os = null; }, 'a scenario was attempted but client.os is not recorded'],
+    ['a pass with no Node version', (record) => { record.client.node = null; }, 'a scenario passed or failed but client.node is not recorded'],
+    ['a pass with no provider', (record) => { record.client.provider = null; }, 'a scenario passed or failed but client.provider is not recorded'],
+    ['a pass with no package version', (record) => { record.server.package_version = null; }, 'a scenario passed or failed but server.package_version is not recorded'],
+    ['a pass with no tarball integrity', (record) => { record.server.tarball_integrity = null; }, 'a scenario passed or failed but server.tarball_integrity is not recorded'],
+    ['a pass with no driver version', (record) => { record.server.driver_version = null; }, 'a scenario passed or failed but server.driver_version is not recorded'],
+    ['a pass with no discovery mode', (record) => { record.settings.discovery_mode = null; }, 'a scenario passed or failed but settings.discovery_mode is not recorded'],
+    ['a record of nothing run that states a client version', (record) => { nothing(record); }, 'nothing ran but version is stated'],
+    ['a record of nothing run that states a package version', (record) => { nothing(record); }, 'nothing ran but package_version is stated'],
+    ['a record of nothing run that states a negotiated revision', (record) => { nothing(record); }, 'nothing ran but default is stated'],
+    ['a record of nothing run that states a catalog', (record) => { nothing(record); }, 'nothing ran but count is stated'],
+    ['a record of nothing run that states a test date', (record) => { nothing(record); }, 'nothing ran but tested_on is stated'],
+    ['a record of nothing run that states a provenance', (record) => { nothing(record); }, 'nothing ran but provenance is stated'],
+    ['a record of nothing run that states variables', (record) => { nothing(record); }, 'nothing ran but variables are stated'],
     ['a record of nothing run that states limitations', (record) => {
-      record.scenarios.C01 = { status: 'not_run', evidence: null, notes: null };
+      nothing(record);
       record.limitations = ['All twelve scenarios passed.'];
     }, 'nothing ran but limitations are stated'],
     ['a record of nothing run with notes on a scenario', (record) => {
@@ -329,7 +376,18 @@ describe('the client evidence records', () => {
       'TESTRAIL_API_KEY=fixture-api-key', 'TESTRAIL_BASE_URL=http://127.0.0.1:37453',
       'AbC123dEf456GhI789jKl012', 'key 0123456789abcdef0123', `token ${sample('ghp', 'AbC123dEf456GhI789jKl012mNo345pQr678')}`,
       sample('github', 'pat', '11ABCDEFG0123456789', 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJ'), sample('sk', 'live', '51H8AbC123dEf456GhI789jKl0'),
-      'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', 'Xy12.Ab34/Cd56-Ef78.Gh90/Ij12',
+      'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', 'Q5jxjqNNMnbQ0HrCW3ga-cVdgyZLF2Q6jX8Wt1Q2f', ['glpat', 'abcdefghij0123456789'].join('-'),
+      // Variable values in any form.
+      'TESTRAIL_API_KEY: abc123secret', '"TESTRAIL_API_KEY": "abc123secret"', '"env": { "TESTRAIL_BASE_URL": "https://acme.testrail.io" }',
+      // Home and user-directory variables, and bare local roots.
+      '${HOME}/uploads', '%USERPROFILE%\\uploads', '%APPDATA%\\Claude\\logs\\mcp.log', '$env:USERPROFILE\\testrail-uploads',
+      '$XDG_CONFIG_HOME/copilot/mcp-config.json', '~igor', 'uploads went to /tmp',
+      // Links that carry a credential, in a parameter, a path or a query.
+      'https://private-user-images.githubusercontent.com/1/2-a.png?jwt=eyJhbGciOiJIUzI1NiJ9',
+      'https://bucket.s3.amazonaws.com/x.png?X-Amz-Signature=abc&X-Amz-Credential=def', 'https://gitlab.example.test/x?private_token=abc',
+      'https://example.test/x?api-key=abc', 'https://example.test/x?access-token=abc', 'https://example.test/x?auth=abc', 'https://example.test/x?password=abc',
+      'https://example.test/x?sig=abc', 'https://example.test/x?key=abc', 'https://example.test/x?email=ada@example.com',
+      ['https://hooks', 'slack', 'com/services/T000/B000/AbC123dEf456GhI789jKl012'].join('.'),
     ]) {
       expect(notes(text), text).not.toEqual([]);
     }
@@ -338,6 +396,15 @@ describe('the client evidence records', () => {
       'https://github.com/dichovsky/testrail-mcp/actions/runs/1', '@dichovsky/testrail-api-client@7.2.0', 'testrail-mcp@0.1.0-dev.0', 'codex-cli 0.149.0',
       'tests/fixtures/clients/c03-corpus.json', 'MCP_PROTOCOL_NEGOTIATION=auto', 'C01/C02 read/write', 'testrail_get_history_for_case',
       'Basic discovery works; all 133 names found.', 'Basic Authentication is refused', 'Host asked for authorization: approved each write',
+      'Basic 133-tool discovery works.', 'Basic toolSearch was left at its default.', 'Basic deferTools auto worked.',
+      // Evidence files named after their scenario, and TestRail API paths.
+      'docs/evidence/clients/claude-code/C01-catalog.txt', 'docs/evidence/clients/C01.log', 'evidence/C01-codex-cli.log', './docs/issues/R02.md',
+      'Screenshot-2026-10-01.png', 'GET /index.php?/api/v2/get_case/42', '/api/v2/add_case/990500',
+      // A commit SHA and the catalog hash quoted in notes.
+      'commit 3ccde21e8f0a4a9b2c7d6e5f4a3b2c1d0e9f8a7b', `The catalog hash ${EXPECTED_HASH} matched the guide.`,
+      // GitHub and package links, whatever their path holds; a variable referenced, not set.
+      'https://github.com/dichovsky/testrail-mcp/tree/claude/fervent-davinci-y0v90v', 'https://github.com/dichovsky/testrail-mcp/pull/84#issuecomment-5874717208',
+      'https://www.npmjs.com/package/@dichovsky/testrail-mcp/v/1.0.0', '"TESTRAIL_API_KEY": "${TESTRAIL_API_KEY}"',
     ]) {
       expect(notes(text), text).toEqual([]);
     }
@@ -378,5 +445,16 @@ describe('the catalog helper', () => {
     });
     // Each era really negotiated its own revision.
     expect(report.eras.legacy?.protocol).not.toBe('2026-07-28');
-  }, 30_000);
+    // Run through a symlinked path, as from a clone under /tmp on macOS, it reports the same.
+    if (process.platform !== 'win32') {
+      const base = await mkdtemp(join(tmpdir(), 'testrail-mcp-catalog-'));
+      try {
+        await symlink(fileURLToPath(new URL('../scripts/', import.meta.url)), join(base, 'scripts'));
+        const linked = await promisify(execFile)(process.execPath, [join(base, 'scripts', 'catalog-hash.mjs'), '--command', process.execPath, '--arg', cli]);
+        expect(JSON.parse(linked.stdout)).toEqual(report);
+      } finally {
+        await rm(base, { recursive: true, force: true });
+      }
+    }
+  }, 60_000);
 });
