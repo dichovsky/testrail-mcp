@@ -104,9 +104,17 @@ describe('endpoint input domains', () => {
       { file_path: '/tmp/file', filename: '.', content_type: 'text/plain' },
       { file_path: '/tmp/file', filename: '..', content_type: 'text/plain' },
       { file_path: '/tmp/file', filename: 'file\n', content_type: 'text/plain' },
+      // DEL and the C1 control range, not only the C0 controls.
+      { file_path: '/tmp/file', filename: 'file\u007f', content_type: 'text/plain' },
+      { file_path: '/tmp/file', filename: 'file\u0085', content_type: 'text/plain' },
+      { file_path: '/tmp/file', filename: 'file\u009f', content_type: 'text/plain' },
       { file_path: '/tmp/file', filename: 'file', content_type: 'text/plain\n' },
       { file_path: '/tmp/file', filename: 'file', content_type: 'text/plain\r\nx-test: value' },
       { file_path: '/tmp/file', filename: 'file', content_type: 'text/plain; charset="utf\u0000-8"' },
+      // DEL and the C1 range in a media type too, in the type and in a quoted value.
+      { file_path: '/tmp/file', filename: 'file', content_type: 'text/plain\u007f' },
+      { file_path: '/tmp/file', filename: 'file', content_type: 'text/pla\u0085in' },
+      { file_path: '/tmp/file', filename: 'file', content_type: 'text/plain; a="x\u009f"' },
       { file_path: '/tmp/file', filename: 'file', content_type: 'text' },
       { file_path: '/tmp/file', filename: 'file', content_type: '/plain' },
       { file_path: '/tmp/file', filename: 'file', content_type: 'text/plain; bad' },

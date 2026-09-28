@@ -665,8 +665,27 @@ describe('T12 uploads', () => {
         typeof argument === 'object' && argument !== null && 'path' in argument);
       expect(file?.path.startsWith(env.staging.directory)).toBe(true);
       expect(file?.path).not.toBe(env.source);
+      // Exactly a path and the caller's media type: no descriptor, nothing invented.
+      expect(file).toStrictEqual({ path: file?.path, type: 'Text/Plain' });
       await runtime.shutdown();
       expect(await readdir(env.staging.directory)).toEqual(['owner.json']);
+    } finally { await runtime.shutdown(); await env.staging.dispose(); }
+  });
+
+  it.each(UPLOADS)('%s invents no media type when the caller names none', async (tool, ids, _route, method) => {
+    const env = await environment();
+    const fetch = vi.fn().mockImplementation(() => Promise.resolve(json({ attachment_id: 443 })));
+    const driver = driverFor(env.configuration, fetch);
+    const invoked = vi.spyOn(driver.attachments, method);
+    const runtime = createRuntime({ client: driver, limits: env.configuration.limits });
+    try {
+      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED }, {
+        runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory),
+      });
+      expect(result.isError).toBeUndefined();
+      const file = invoked.mock.calls[0]?.find((argument): argument is { path: string } =>
+        typeof argument === 'object' && argument !== null && 'path' in argument);
+      expect(Object.keys(file ?? {})).toEqual(['path']);
     } finally { await runtime.shutdown(); await env.staging.dispose(); }
   });
 
