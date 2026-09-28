@@ -16,9 +16,9 @@ import { executeToolCall } from './tool-call.js';
  * characters, so the first paragraph fits within them on its own and holds every rule
  * that prevents harm; the whole stays under 2 KiB.
  */
-export const SERVER_INSTRUCTIONS = `Each tool is one TestRail API endpoint, called as the configured user with that user's permissions. Lists return one page of 50: set _mcp.pagination to "all" for a bounded complete fetch, and never treat one page as the whole dataset. Results are {data, pagination, warnings} with TestRail's field names, custom_* included. Errors carry a code and a write_outcome: "unknown" means the write may already be applied, so check before retrying it. Never call a report repeatedly to poll.
+export const SERVER_INSTRUCTIONS = `Each tool is one TestRail API endpoint, called as the configured user with that user's permissions. Lists return one page of 50 by default: set _mcp.pagination to "all" for a bounded complete fetch, and never treat one page as the whole dataset. Results are {data, pagination, warnings} with TestRail's field names. Errors carry a code; a write's error also has write_outcome, and "unknown" means it may already be applied, so check before retrying it. Never call a report repeatedly to poll.
 
-"not_started" means nothing was sent. "acknowledged" means TestRail accepted the change but its response could not be delivered, so do not repeat the write to see its output. The user's licence applies as well as their permissions.
+"not_started" means nothing was sent. "acknowledged" means TestRail accepted the change but its response could not be delivered, so do not repeat the write to see its output. Field names include custom_* fields. The user's licence applies as well as their permissions.
 
 Running a report generates it and may send the template's configured email. Downloading an attachment writes a new local file every time and never overwrites one. Uploads read a local path that must sit inside a configured directory.
 

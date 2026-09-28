@@ -232,9 +232,13 @@ describe('server instructions', () => {
     const opening = SERVER_INSTRUCTIONS.split('\n\n')[0] ?? '';
     expect(opening.length).toBeLessThanOrEqual(512);
     expect(opening.endsWith('.')).toBe(true);
+    // Whole rules, so a paragraph that reversed one ("poll", "do not check") would fail.
     for (const essential of [
-      'permissions', '_mcp.pagination', 'never treat one page as the whole dataset', 'custom_',
-      'write_outcome', '"unknown"', 'check before retrying', 'poll',
+      "called as the configured user with that user's permissions",
+      'Lists return one page of 50 by default',
+      'set _mcp.pagination to "all" for a bounded complete fetch, and never treat one page as the whole dataset',
+      "a write's error also has write_outcome, and \"unknown\" means it may already be applied, so check before retrying it",
+      'Never call a report repeatedly to poll.',
     ]) {
       expect(opening, essential).toContain(essential);
     }
@@ -242,7 +246,7 @@ describe('server instructions', () => {
 
   it('keeps the rest of the cross-tool rules', () => {
     for (const rule of [
-      '"not_started" means nothing was sent', '"acknowledged"', 'licence', 'configured email',
+      '"not_started" means nothing was sent', '"acknowledged"', 'custom_* fields', 'licence', 'configured email',
       'new local file every time', 'inside a configured directory', 'A warnings entry',
     ]) {
       expect(SERVER_INSTRUCTIONS, rule).toContain(rule);

@@ -99,19 +99,24 @@ describe('the advertised catalog', () => {
     } finally { await session.close(); }
   });
 
-  it('keeps a successful call\'s arguments out of its diagnostic', async () => {
+  it.each([
+    ['a successful', 200, 'success'],
+    ['a failed', 500, 'error'],
+  ] as const)('keeps %s call\'s arguments out of every diagnostic', async (_label, status, outcome) => {
     const canary = 'canary-7f3a';
     const session = await connect('legacy', () => Promise.resolve(new Response(JSON.stringify({ id: 9, name: canary }), {
-      status: 200, headers: { 'content-type': 'application/json' },
+      status, headers: { 'content-type': 'application/json' },
     })));
     const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     try {
       const result = await session.client.callTool({ name: 'testrail_add_project', arguments: { body: { name: canary } } });
-      expect(result.isError).toBeFalsy();
-      const lines = write.mock.calls.map(([chunk]) => String(chunk)).filter((line) => line.includes('"tool_call"'));
-      expect(lines).toHaveLength(1);
-      expect(lines[0]).not.toContain(canary);
-      expect(JSON.parse(lines[0] ?? '{}')).toMatchObject({ event: 'tool_call', tool: 'testrail_add_project', outcome: 'success' });
+      expect(Boolean(result.isError)).toBe(outcome === 'error');
+      const chunks = write.mock.calls.map(([chunk]) => String(chunk));
+      // Not only the tool_call line: no stderr output at all may carry the argument.
+      for (const chunk of chunks) expect(chunk).not.toContain(canary);
+      const events = chunks.filter((line) => line.includes('"tool_call"'));
+      expect(events).toHaveLength(1);
+      expect(JSON.parse(events[0] ?? '{}')).toMatchObject({ event: 'tool_call', tool: 'testrail_add_project', outcome });
     } finally {
       write.mockRestore();
       await session.close();
@@ -131,8 +136,8 @@ describe('what the serving layer is built from', () => {
   it('runs no network service of its own: nothing in src imports an HTTP or socket server', async () => {
     const offending: string[] = [];
     for (const [file, source] of await sources('')) {
-      for (const [, specifier] of source.matchAll(/(?:from\s+|import\s*\(?\s*|require\(\s*)['"]([^'"]+)['"]/gu)) {
-        if (specifier !== undefined && /^(?:node:)?(?:http|https|http2|net)$|modelcontextprotocol\/[^'"]*http/u.test(specifier)) {
+      for (const [, specifier] of source.matchAll(/(?:from\s+|import\s*\(?\s*|require\(\s*)['"`]([^'"`]+)['"`]/gu)) {
+        if (specifier !== undefined && /^(?:node:)?(?:http|https|http2|net|tls|dgram|cluster)$|modelcontextprotocol\/[^'"`]*http/u.test(specifier)) {
           offending.push(`${file}: ${specifier}`);
         }
       }

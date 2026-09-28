@@ -4,7 +4,7 @@
 
 ## The driver lives outside the factory
 
-`serveStdio(factory)` pins one server instance per connection, and the factory can run more than once during an opening when an era falls back. So the factory only constructs an `McpServer` and registers the catalog; configuration, driver and runtime are created once in `startServer` and closed over. A second server instance therefore cannot mean a second credential, a second rate budget, or a disposal that tears down state another instance is using. `tests/transport/serving-process.test.ts` holds this on the fallback path. It replays the SDK client's own modern `server/discover` probe to the packaged executable, then falls back to a legacy `initialize`, so the server is built twice on one connection. A real call afterwards still reaches TestRail. The two-connection case is held by the F03 audit's composition tests (#76).
+`serveStdio(factory)` pins one server instance per connection, and the factory can run more than once during an opening when an era falls back. So the factory only constructs an `McpServer` and registers the catalog; configuration, driver and runtime are created once in `startServer` and closed over. A second server instance therefore cannot mean a second credential, a second rate budget, or a disposal that tears down state another instance is using. `tests/transport/serving-process.test.ts` holds part of this. It replays the SDK client's own modern `server/discover` probe to the built executable, then sends a legacy `initialize`, so `serveStdio` discards the probe's server and calls the factory again on one connection. A real call afterwards still reaches TestRail, so discarding a server does not dispose the shared runtime. That the factory builds no second driver or budget is held by the F03 audit's composition tests (#76).
 
 Registration contacts nothing, so discovery makes no TestRail request and repeated discovery is byte-identical within a connection. Tools are listed in name order (`localeCompare` in English), the same in every process.
 
@@ -12,12 +12,12 @@ Registration contacts nothing, so discovery makes no TestRail request and repeat
 
 The instructions' first paragraph fits in 512 characters and ends at a sentence, because hosts may truncate there. It holds every rule that prevents harm:
 - the user's permissions apply;
-- one page is not the whole dataset;
+- one page of 50 is only the default and never the whole dataset;
 - field names are kept;
-- an `unknown` write may already be applied, so check before retrying;
+- a write's error carries `write_outcome`, and an `unknown` write may already be applied, so check before retrying;
 - a report is never polled.
 
-The rest adds `not_started` and `acknowledged`, the licence, report emails, download and upload behaviour, and warnings. The whole stays under 2 KiB.
+The rest adds `not_started` and `acknowledged`, `custom_*` fields, the licence, report emails, download and upload behaviour, and warnings. Tests assert each rule as a whole sentence, so reversing one fails. The whole stays under 2 KiB.
 
 ## The advertised schema is the reviewed one
 
@@ -59,14 +59,14 @@ Configuration is loaded before any transport exists, so a misconfigured server n
 
 `npm run test:package` drives the **packaged executable**: the tarball npm packs, installed into a clean directory. `scripts/package-protocol.mjs` runs three sessions against it, each with its own TestRail stand-in on the loopback interface: a legacy `initialize` session, one pinned to 2026-07-28, and one the SDK's own stdio transport negotiates automatically. The era each session negotiated is read from the connection. Every session must list exactly the 133 inventory tools, twice identically and without contacting TestRail, with the client's response cache bypassed so each listing reaches the server; serve `testrail_get_project` with one request carrying the configured Basic credential; refuse a string ID as `INVALID_ARGUMENT` without a request; and answer an unknown tool with the protocol's invalid-params error and keep serving. The server runs with Node's process warnings silenced, so every stderr line must be one of its JSON diagnostic events, the startup event among them, and neither the API key, the Basic credential, the email nor the TestRail address may appear there. The first two sessions run over a transport that records every byte the server writes to stdout, so they also require every stdout line, a final unterminated one included, to be a complete JSON-RPC message (a request, a notification, or a response with a result or an error) and free of those values, the shutdown event on stderr, and the server to exit with code 0 within 10 seconds of stdin closing; a server that has to be killed fails. The automatic session's pipes and process belong to the SDK, so its raw stdout and exit are left to the other two. A failure names the session and the step under way and ends with the server's stderr; the recorded sessions also report the exit status.
 
-`tests/transport/serving.test.ts` connects a real client to the production catalog in both eras. Each of the 133 tools must be advertised with its registered schema (the 24 top-level `anyOf` inputs included), description (under 2 KiB) and annotations, in name order, without contacting TestRail. The server must offer tools only, with `listChanged: false` and no resources or prompts, and a successful call's arguments must stay out of its diagnostic. Two source scans hold that nothing in `src/` imports an HTTP or socket server, and that transport code names no tool and imports no endpoint family.
+`tests/transport/serving.test.ts` connects a real client to the production catalog in both eras. Each of the 133 tools must be advertised with its registered schema (the 24 top-level `anyOf` inputs included), description (under 2 KiB) and annotations, in name order, without contacting TestRail. The server must offer tools only, with `listChanged: false` and no resources or prompts, and a successful or failed call's arguments must stay out of every stderr line. Two source scans hold that nothing in `src/` imports an HTTP or socket server, and that transport code names no tool and imports no endpoint family.
 
-`tests/transport/serving-process.test.ts` drives the packaged executable over raw stdio:
+`tests/transport/serving-process.test.ts` drives the built executable, `dist/cli.js`, over raw stdio:
 - A legacy session negotiates `2025-11-25`, lists 133 tools, and returns an `INVALID_ARGUMENT` tool error for a bad argument.
 - It answers `resources/list` and `prompts/list` with `-32601`, and a malformed `tools/call` or an unknown tool with `-32602`.
 - An id-bearing invalid message gets no reply.
-- It exits 0 on stdin closure with every stdout line a JSON-RPC message.
-- The fallback session is described above.
+- It exits 0 on stdin closure, and every stdout line, read after the streams close, is a JSON-RPC message.
+- The discover-then-initialize session is described above.
 
 `tests/transport/cancellation.test.ts` sends `notifications/cancelled` from a real client, in both eras, for registered tools that have already reached TestRail. The handler's signal aborts and the call ends `CANCELLED`, a write with `write_outcome: "unknown"`. The SDK then suppresses the response, so the client gets nothing for that id: neither the result nor the upstream reply that arrives later. The slot stays owned until that reply settles, the late reply raises no unhandled rejection, and the connection keeps serving. Because nothing is written back, the test wraps the pipeline to read the result the handler produced. Mutation-checked: not passing the handler's signal, and never recording dispatch, each fail it.
 
