@@ -257,7 +257,7 @@ describe('every paged list through the tool-call path', () => {
       const payload = structured(result);
       // One-item pages stop max_items and max_pages at the same point, so only the reason
       // shows which bound did it.
-      expect(payload.error).toMatchObject({ code: 'PAGINATION_LIMIT', reason: REASON.max_items });
+      expect(payload.error).toMatchObject({ code: 'PAGINATION_LIMIT', reason: REASON.max_items, pages_fetched: 1, items_fetched: 1 });
       expect(payload).not.toHaveProperty('data');
       // A read reports nothing about a write.
       expect(payload.error).not.toHaveProperty('write_outcome');
@@ -300,8 +300,202 @@ describe('each aggregate bound through a controlled and a response-driven list',
     try {
       const input = { ...allFixture(manifest).input, _mcp: { ...(allFixture(manifest).input._mcp as object), max_duration_ms: 5 } };
       const result = await executeToolCall(registered(tool), input, { runtime, configuration });
-      expect(structured(result).error).toMatchObject({ code: 'PAGINATION_LIMIT', reason: REASON.max_duration_ms });
+      const error = structured(result).error as Record<string, unknown>;
+      expect(error).toMatchObject({ code: 'PAGINATION_LIMIT', reason: REASON.max_duration_ms });
+      // Stopped by the driver's deadline check, the helper supplies its counts: nothing
+      // was fetched (dist/pagination.js, the fetch's catch). Stopped by a request timer,
+      // it supplies none and none are added. Either way nothing else is reported.
+      expect(Object.keys(error).filter((key) => !['code', 'message', 'reason', 'pages_fetched', 'items_fetched'].includes(key))).toEqual([]);
+      if ('pages_fetched' in error) expect([error.pages_fetched, error.items_fetched]).toEqual([0, 0]);
       expect(structured(result)).not.toHaveProperty('data');
+    } finally { await runtime.shutdown(); }
+  });
+});
+
+/*
+ * F06 boundaries and continuation through the tool-call path. Every expected value
+ * comes from the driver source at the pinned commit (dist/pagination.js,
+ * collectAllPages). After every page the aggregate checks its items, then its UTF-8
+ * serialized item bytes, with `>`; only when a continuation follows does it check
+ * pages, items and bytes with `>=`, so max_pages never applies to the last page. It
+ * rebuilds each request from its own prepared endpoint, taking the link's offset, and
+ * its limit only on a response-driven list; a controlled list keeps its page size.
+ */
+describe('F06 boundaries and continuation through the tools', () => {
+  const both = [
+    ['testrail_get_projects', 'projects'],
+    ['testrail_get_groups', 'groups'],
+  ] as const;
+
+  /** Serve replies chosen by the request's offset control (absent means the first page). */
+  function serve(pages: Readonly<Record<string, unknown>>) {
+    const urls: string[] = [];
+    const fetch = vi.fn((target: unknown) => {
+      const url = typeof target === 'string' ? target : target instanceof URL ? target.href : (target as Request).url;
+      urls.push(url);
+      const body = pages[control(url, 'offset') ?? '0'];
+      if (body === undefined) throw new Error(`unexpected request ${url}`);
+      return Promise.resolve(new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } }));
+    });
+    return { fetch, urls };
+  }
+
+  function items(tool: string, key: string): [Record<string, unknown>, Record<string, unknown>] {
+    // A multi-byte name, so a byte bound measured in UTF-16 code units rather than UTF-8
+    // bytes misses the exact boundary.
+    const first = { ...sampleItem(manifestFor(tool), key), name: 'é✓😀' };
+    return [first, another(first)];
+  }
+
+  /** The driver's own byte measure of a page's items. */
+  const bytes = (page: unknown[]) => Buffer.byteLength(JSON.stringify(page), 'utf8');
+
+  function linked(key: string, token: string, first: unknown, second: unknown, next = `/api/v2/${token}&limit=1&offset=1`) {
+    return {
+      '0': { offset: 0, limit: 1, size: 1, _links: { next, prev: null }, [key]: [first] },
+      '1': { offset: 1, limit: 1, size: 1, _links: { next: null, prev: null }, [key]: [second] },
+    };
+  }
+
+  async function all(tool: string, extra: Record<string, unknown>, fetch: ReturnType<typeof vi.fn>, query?: object) {
+    const runtime = runtimeFor(fetch);
+    try {
+      return structured(await executeToolCall(registered(tool), {
+        ...allFixture(manifestFor(tool)).input,
+        ...(query === undefined ? {} : { query }),
+        _mcp: { pagination: 'all', ...extra },
+      }, { runtime, configuration }));
+    } finally { await runtime.shutdown(); }
+  }
+
+  it.each(both)('%s succeeds with every bound set exactly at what the list needs', async (tool, key) => {
+    const [first, second] = items(tool, key);
+    const token = tool.replace('testrail_', '');
+    const exact = bytes([first]) + bytes([second]);
+    for (const bound of [{ max_items: 2 }, { max_pages: 2 }, { max_bytes: exact }]) {
+      const server = serve(linked(key, token, first, second));
+      const payload = await all(tool, bound, server.fetch);
+      expect(payload.error, JSON.stringify(bound)).toBeUndefined();
+      expect(payload.data).toEqual([first, second]);
+    }
+    // One byte less, and the last page passes the bound: nothing is returned.
+    const server = serve(linked(key, token, first, second));
+    const over = await all(tool, { max_bytes: exact - 1 }, server.fetch);
+    expect(over.error).toMatchObject({ code: 'PAGINATION_LIMIT', reason: 'max_bytes', pages_fetched: 2, items_fetched: 2 });
+    expect(over).not.toHaveProperty('data');
+  });
+
+  it.each(both)('%s refuses a single last page that already passes max_items or max_bytes', async (tool, key) => {
+    const [first, second] = items(tool, key);
+    const lone = { '0': { offset: 0, limit: 2, size: 2, _links: { next: null, prev: null }, [key]: [first, second] } };
+    const byItems = await all(tool, { max_items: 1 }, serve(lone).fetch);
+    expect(byItems.error).toMatchObject({ code: 'PAGINATION_LIMIT', reason: 'max_items', pages_fetched: 1, items_fetched: 2 });
+    expect(byItems).not.toHaveProperty('data');
+    const byBytes = await all(tool, { max_bytes: bytes([first, second]) - 1 }, serve(lone).fetch);
+    expect(byBytes.error).toMatchObject({ code: 'PAGINATION_LIMIT', reason: 'max_bytes', pages_fetched: 1, items_fetched: 2 });
+    expect(byBytes).not.toHaveProperty('data');
+  });
+
+  it.each(both)('%s stops before another page once max_bytes is exactly spent', async (tool, key) => {
+    const [first, second] = items(tool, key);
+    const server = serve(linked(key, tool.replace('testrail_', ''), first, second));
+    const payload = await all(tool, { max_bytes: bytes([first]) }, server.fetch);
+    expect(payload.error).toMatchObject({ code: 'PAGINATION_LIMIT', reason: 'max_bytes', pages_fetched: 1, items_fetched: 1 });
+    expect(payload).not.toHaveProperty('data');
+    expect(server.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(both.flatMap(([tool, key]) => [
+    [tool, 'a malformed offset', key, `/api/v2/${tool.replace('testrail_', '')}&offset=abc`, 'invalid_continuation'],
+    [tool, 'an offset that does not advance', key, `/api/v2/${tool.replace('testrail_', '')}&limit=1&offset=0`, 'non_progress'],
+  ] as const))('%s fails an aggregate whose continuation has %s as INVALID_RESPONSE', async (tool, _label, key, next, reason) => {
+    const [first, second] = items(tool, key);
+    const server = serve(linked(key, tool.replace('testrail_', ''), first, second, next));
+    const payload = await all(tool, {}, server.fetch);
+    expect(payload.error).toMatchObject({ code: 'INVALID_RESPONSE', reason });
+    expect(payload.error).not.toHaveProperty('write_outcome');
+    expect(payload).not.toHaveProperty('data');
+    expect(server.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(both.flatMap(([tool, key]) => [
+    [tool, 'another endpoint and filter', key, '/api/v2/get_cases/999&suite_id=7&limit=1&offset=1'],
+    [tool, 'another host', key, 'https://attacker.example/index.php?/api/v2/get_users&limit=1&offset=1'],
+  ] as const))('%s follows a link naming %s only for its offset', async (tool, _label, key, next) => {
+    const [first, second] = items(tool, key);
+    const server = serve(linked(key, tool.replace('testrail_', ''), first, second, next));
+    const controlled = tool === 'testrail_get_projects';
+    // A stated page size, so a driver falling back to its own default is caught.
+    const payload = await all(tool, controlled ? { page_size: 3 } : {}, server.fetch, controlled ? { is_completed: true } : undefined);
+    expect(payload.data).toEqual([first, second]);
+    expect(server.urls).toHaveLength(2);
+    const [one, two] = server.urls.map((url) => new URL(url));
+    // Same host and endpoint as the first request, the caller's filter kept, nothing
+    // the link encoded beyond its offset.
+    expect(two?.host).toBe(new URL(configuration.baseUrl).host);
+    expect(two?.search.replace(/&(?:limit|offset)=\d+/gu, '')).toBe(one?.search.replace(/&(?:limit|offset)=\d+/gu, ''));
+    expect(control(server.urls[1], 'offset')).toBe('1');
+    // A controlled list keeps the caller's page size on every request; a response-driven
+    // list takes the link's limit, here 1.
+    expect(control(server.urls[1], 'limit')).toBe(controlled ? '3' : '1');
+    expect(server.urls[1]).not.toMatch(/suite_id|get_cases|get_users|attacker/u);
+    if (controlled) expect(server.urls[1]).toMatch(/[?&]is_completed=1(?:&|$)/u);
+  });
+
+  it.each(both)('%s describes an empty last page in page mode, and pages past an empty page in all mode', async (tool, key) => {
+    const [first] = items(tool, key);
+    const token = tool.replace('testrail_', '');
+    const empty = { '0': { offset: 0, limit: 50, size: 0, _links: { next: null, prev: null }, [key]: [] } };
+    const runtime = runtimeFor(serve(empty).fetch);
+    try {
+      const page = structured(await executeToolCall(registered(tool), pageFixture(manifestFor(tool)).input, { runtime, configuration }));
+      expect(page.data).toEqual([]);
+      expect(page.pagination).toEqual({
+        mode: 'page', source: 'envelope', returned: 0, has_more: false, manual_continuation: false, next_action: 'none',
+        limit: 50, offset: 0, driver: { size: 0, links: { next: null, prev: null } },
+      });
+    } finally { await runtime.shutdown(); }
+    // An empty page that links on still advances (the link's offset is past the page), so
+    // the aggregate follows it and returns what the next page holds.
+    const onward = serve({
+      '0': { offset: 0, limit: 1, size: 0, _links: { next: `/api/v2/${token}&limit=1&offset=1`, prev: null }, [key]: [] },
+      '1': { offset: 1, limit: 1, size: 1, _links: { next: null, prev: null }, [key]: [first] },
+    });
+    const payload = await all(tool, {}, onward.fetch);
+    expect(payload.data).toEqual([first]);
+    expect(onward.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(both)('%s fails an aggregate whose page answers an offset it was not asked for, as invalid_page', async (tool, key) => {
+    const [first] = items(tool, key);
+    // The driver expects the page at the offset it asked for (0) and refuses any other.
+    const server = serve({ '0': { offset: 5, limit: 1, size: 1, _links: { next: null, prev: null }, [key]: [first] } });
+    const payload = await all(tool, {}, server.fetch);
+    expect(payload.error).toMatchObject({ code: 'INVALID_RESPONSE', reason: 'invalid_page' });
+    expect(payload).not.toHaveProperty('data');
+  });
+
+  it('reports the start offset the caller asked for, and starts there', async () => {
+    const [first, second] = items('testrail_get_projects', 'projects');
+    const server = serve(linked('projects', 'get_projects', first, second));
+    const payload = await all('testrail_get_projects', { start_offset: 1 }, server.fetch);
+    expect(control(server.urls[0], 'offset')).toBe('1');
+    expect(payload.data).toEqual([second]);
+    expect(payload.pagination).toEqual({ mode: 'all', returned: 1, complete: true, start_offset: 1 });
+  });
+
+  it('holds an aggregate to the complete-result budget, refusing it whole', async () => {
+    const [first, second] = items('testrail_get_projects', 'projects');
+    const big = { ...second, name: 'x'.repeat(300) };
+    const server = serve(linked('projects', 'get_projects', first, big));
+    const runtime = runtimeFor(server.fetch);
+    try {
+      const result = await executeToolCall(registered('testrail_get_projects'), { _mcp: { pagination: 'all' } }, {
+        runtime, configuration: { ...configuration, limits: { ...configuration.limits, max_result_bytes: 400 } },
+      });
+      expect(structured(result).error).toMatchObject({ code: 'RESPONSE_TOO_LARGE' });
+      expect(structured(result)).not.toHaveProperty('data');
+      expect(server.fetch).toHaveBeenCalledTimes(2);
     } finally { await runtime.shutdown(); }
   });
 });
