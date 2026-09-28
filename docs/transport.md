@@ -4,9 +4,20 @@
 
 ## The driver lives outside the factory
 
-`serveStdio(factory)` pins one server instance per connection, and the factory can run more than once during an opening when an era falls back. So the factory only constructs an `McpServer` and registers the catalog; configuration, driver and runtime are created once in `startServer` and closed over. A second server instance therefore cannot mean a second credential, a second rate budget, or a disposal that tears down state another instance is using.
+`serveStdio(factory)` pins one server instance per connection, and the factory can run more than once during an opening when an era falls back. So the factory only constructs an `McpServer` and registers the catalog; configuration, driver and runtime are created once in `startServer` and closed over. A second server instance therefore cannot mean a second credential, a second rate budget, or a disposal that tears down state another instance is using. `tests/transport/serving-process.test.ts` holds this on the fallback path. It replays the SDK client's own modern `server/discover` probe to the packaged executable, then falls back to a legacy `initialize`, so the server is built twice on one connection. A real call afterwards still reaches TestRail. The two-connection case is held by the F03 audit's composition tests (#76).
 
-Registration contacts nothing, so discovery makes no TestRail request and repeated discovery is byte-identical within a connection.
+Registration contacts nothing, so discovery makes no TestRail request and repeated discovery is byte-identical within a connection. Tools are listed in name order (`localeCompare` in English), the same in every process.
+
+## Server instructions
+
+The instructions' first paragraph fits in 512 characters and ends at a sentence, because hosts may truncate there. It holds every rule that prevents harm:
+- the user's permissions apply;
+- one page is not the whole dataset;
+- field names are kept;
+- an `unknown` write may already be applied, so check before retrying;
+- a report is never polled.
+
+The rest adds `not_started` and `acknowledged`, the licence, report emails, download and upload behaviour, and warnings. The whole stays under 2 KiB.
 
 ## The advertised schema is the reviewed one
 
@@ -30,13 +41,13 @@ A download's file is written inside the driver callback the runtime tracks, not 
 
 Standard output carries protocol messages only. Diagnostics are one JSON object per line on stderr, restricted to fixed event codes, tool names, a correlation id, durations and counts. Tool results legitimately contain TestRail data and local file paths; diagnostics must not, so they accept no arguments, bodies or paths at all.
 
-Configuration is loaded before any transport exists, so a misconfigured server never emits a protocol message it cannot honour; it names the offending key on stderr, writes nothing to stdout, and exits non-zero. Shutdown is idempotent and runs once for whichever of stdin closure, `SIGINT` or `SIGTERM` arrives first: it stops admission, closes the connection, drains the runtime and disposes staging.
+Configuration is loaded before any transport exists, so a misconfigured server never emits a protocol message it cannot honour; it names the offending key on stderr, writes nothing to stdout, and exits non-zero. Shutdown is idempotent and runs once for whichever of stdin closure, `SIGINT` or `SIGTERM` arrives first: it stops admission, closes the connection, drains the runtime and disposes staging. On `main`, only stdin closure is tested here. Signal handling, including a second signal during the drain, is fixed and tested by the F03 audit (#76).
 
 ## Three behaviours recorded rather than claimed
 
 **Cross-era key ordering.** The two eras serialize an advertised schema's keys in a different order — legacy emits `$schema` first, modern emits it after `required` — while carrying identical keys and values. Catalogs are therefore compared structurally across eras, and byte-for-byte only within one era, where determinism does hold.
 
-**Malformed lines get no reply.** The contract says malformed protocol messages stay protocol errors. The SDK's stdio transport drops a line it cannot parse without emitting `-32700` and without an error callback, and there is no id to answer. Emitting one would mean replacing the transport to correct a host-side fault, which is disproportionate. A test pins the observed behaviour — the line is skipped and the connection keeps serving — so a future SDK change surfaces here rather than inside a release claim. R01 should record this as evidence rather than assert the contract sentence unqualified.
+**Malformed lines, and invalid messages, get no reply.** The contract says malformed protocol messages stay protocol errors. The SDK's stdio transport drops a line it cannot parse without emitting `-32700` and without an error callback, and there is no id to answer. Emitting one would mean replacing the transport to correct a host-side fault, which is disproportionate. A test pins the observed behaviour — the line is skipped and the connection keeps serving — so a future SDK change surfaces here rather than inside a release claim. The same holds for valid JSON that is not a valid JSON-RPC message, even with an id (`{"jsonrpc":"2.0","id":9}`). JSON-RPC 2.0 asks for `-32600`, but the SDK's transport drops it and reports it through `onerror`. The server logs only the error's name, as a `transport_error` event, and keeps serving (`tests/transport/serving-process.test.ts`). R01 should record this as evidence rather than assert the contract sentence unqualified.
 
 **A cancelled request id 0 is not cancelled.** The SDK's server drops a `notifications/cancelled` whose `requestId` is falsy (`if (!notification.params.requestId) return;`), so it treats id 0 as naming no request. A legacy connection spends id 0 on `initialize`, which is never cancelled. A 2026-07-28 client opens with a string-id discover probe, so its first ordinary request gets id 0. If that request is a tool call, cancelling it never reaches the handler: the call runs to completion and its reply is written anyway. Hosts list tools before calling one, so this needs an unusual client. It is an SDK fault, not worth replacing the protocol layer for, and a test pins it so an SDK upgrade surfaces here.
 
@@ -47,6 +58,15 @@ Configuration is loaded before any transport exists, so a misconfigured server n
 `tests/transport/lifecycle.test.ts` drives the **built executable**, `dist/cli.js`, as a child process: stdout is parsed line by line and every line must be a protocol message, diagnostics appear on stderr with no configured value, stdin closure exits zero, an unknown method returns `-32601`, and a malformed line is skipped without ending the session.
 
 `npm run test:package` drives the **packaged executable**: the tarball npm packs, installed into a clean directory. `scripts/package-protocol.mjs` runs three sessions against it, each with its own TestRail stand-in on the loopback interface: a legacy `initialize` session, one pinned to 2026-07-28, and one the SDK's own stdio transport negotiates automatically. The era each session negotiated is read from the connection. Every session must list exactly the 133 inventory tools, twice identically and without contacting TestRail, with the client's response cache bypassed so each listing reaches the server; serve `testrail_get_project` with one request carrying the configured Basic credential; refuse a string ID as `INVALID_ARGUMENT` without a request; and answer an unknown tool with the protocol's invalid-params error and keep serving. The server runs with Node's process warnings silenced, so every stderr line must be one of its JSON diagnostic events, the startup event among them, and neither the API key, the Basic credential, the email nor the TestRail address may appear there. The first two sessions run over a transport that records every byte the server writes to stdout, so they also require every stdout line, a final unterminated one included, to be a complete JSON-RPC message (a request, a notification, or a response with a result or an error) and free of those values, the shutdown event on stderr, and the server to exit with code 0 within 10 seconds of stdin closing; a server that has to be killed fails. The automatic session's pipes and process belong to the SDK, so its raw stdout and exit are left to the other two. A failure names the session and the step under way and ends with the server's stderr; the recorded sessions also report the exit status.
+
+`tests/transport/serving.test.ts` connects a real client to the production catalog in both eras. Each of the 133 tools must be advertised with its registered schema (the 24 top-level `anyOf` inputs included), description (under 2 KiB) and annotations, in name order, without contacting TestRail. The server must offer tools only, with `listChanged: false` and no resources or prompts, and a successful call's arguments must stay out of its diagnostic. Two source scans hold that nothing in `src/` imports an HTTP or socket server, and that transport code names no tool and imports no endpoint family.
+
+`tests/transport/serving-process.test.ts` drives the packaged executable over raw stdio:
+- A legacy session negotiates `2025-11-25`, lists 133 tools, and returns an `INVALID_ARGUMENT` tool error for a bad argument.
+- It answers `resources/list` and `prompts/list` with `-32601`, and a malformed `tools/call` or an unknown tool with `-32602`.
+- An id-bearing invalid message gets no reply.
+- It exits 0 on stdin closure with every stdout line a JSON-RPC message.
+- The fallback session is described above.
 
 `tests/transport/cancellation.test.ts` sends `notifications/cancelled` from a real client, in both eras, for registered tools that have already reached TestRail. The handler's signal aborts and the call ends `CANCELLED`, a write with `write_outcome: "unknown"`. The SDK then suppresses the response, so the client gets nothing for that id: neither the result nor the upstream reply that arrives later. The slot stays owned until that reply settles, the late reply raises no unhandled rejection, and the connection keeps serving. Because nothing is written back, the test wraps the pipeline to read the result the handler produced. Mutation-checked: not passing the handler's signal, and never recording dispatch, each fail it.
 
@@ -66,4 +86,4 @@ A third fault surfaced while writing the test for the second: the reserved uploa
 
 ## Not in this layer
 
-Endpoint registrations (T01–T12) and their parameter manifests. The protocol and tool-call suites above use a synthetic operation where one entry shows what the transport does with all 133; the cancellation suite uses the production catalog.
+Endpoint registrations (T01–T12) and their parameter manifests. The protocol and tool-call suites above use a synthetic operation; the serving and cancellation suites use the production catalog.

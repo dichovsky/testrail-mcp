@@ -116,7 +116,9 @@ describe('protocol eras', () => {
     try {
       // Recorded from the connection rather than inferred from the SDK version.
       expect(session.client.getProtocolEra()).toBe('legacy');
-      expect(typeof session.client.getNegotiatedProtocolVersion()).toBe('string');
+      // The SDK client offers its latest legacy version, 2025-11-25, and the server
+      // accepts it rather than answering with an older one.
+      expect(session.client.getNegotiatedProtocolVersion()).toBe('2025-11-25');
       const { tools } = await session.client.listTools();
       expect(tools.map((tool) => tool.name)).toEqual(['testrail_get_project']);
     } finally { await session.close(); }
@@ -224,10 +226,26 @@ describe('tool calls', () => {
 });
 
 describe('server instructions', () => {
-  it('states the essential cross-tool rules within the first 512 characters', () => {
-    const opening = SERVER_INSTRUCTIONS.slice(0, 512);
-    for (const essential of ['permissions', '_mcp.pagination', 'custom_', 'write_outcome']) {
+  it('states the essential cross-tool rules in an opening paragraph that fits in 512 characters', () => {
+    // Hosts may truncate to 512 characters, so the whole opening paragraph must fit,
+    // ending at a sentence rather than mid-rule.
+    const opening = SERVER_INSTRUCTIONS.split('\n\n')[0] ?? '';
+    expect(opening.length).toBeLessThanOrEqual(512);
+    expect(opening.endsWith('.')).toBe(true);
+    for (const essential of [
+      'permissions', '_mcp.pagination', 'never treat one page as the whole dataset', 'custom_',
+      'write_outcome', '"unknown"', 'check before retrying', 'poll',
+    ]) {
       expect(opening, essential).toContain(essential);
+    }
+  });
+
+  it('keeps the rest of the cross-tool rules', () => {
+    for (const rule of [
+      '"not_started" means nothing was sent', '"acknowledged"', 'licence', 'configured email',
+      'new local file every time', 'inside a configured directory', 'A warnings entry',
+    ]) {
+      expect(SERVER_INSTRUCTIONS, rule).toContain(rule);
     }
   });
 

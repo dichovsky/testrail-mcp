@@ -12,14 +12,15 @@ import { logEvent } from './diagnostics.js';
 import { executeToolCall } from './tool-call.js';
 
 /**
- * Cross-tool rules a model needs before its first call. The essentials are in the
- * first 512 characters because hosts may truncate; the whole stays under 2 KiB.
+ * Cross-tool rules a model needs before its first call. Hosts may truncate to 512
+ * characters, so the first paragraph fits within them on its own and holds every rule
+ * that prevents harm; the whole stays under 2 KiB.
  */
-export const SERVER_INSTRUCTIONS = `Each tool is one TestRail API endpoint, called as the configured TestRail user, so that user's permissions and licence still apply. Lists return one page of 50 by default: set _mcp.pagination to "all" for a bounded complete fetch, and never treat one page as the whole dataset. Results are {data, pagination, warnings} keeping TestRail's own field names, including custom_* fields. Errors carry a fixed code, and write_outcome says whether a change reached TestRail.
+export const SERVER_INSTRUCTIONS = `Each tool is one TestRail API endpoint, called as the configured user with that user's permissions. Lists return one page of 50: set _mcp.pagination to "all" for a bounded complete fetch, and never treat one page as the whole dataset. Results are {data, pagination, warnings} with TestRail's field names, custom_* included. Errors carry a code and a write_outcome: "unknown" means the write may already be applied, so check before retrying it. Never call a report repeatedly to poll.
 
-A write whose outcome is "unknown" may already have been applied: check before retrying it. "not_started" means nothing was sent. "acknowledged" means TestRail accepted the change but its response could not be delivered, so do not repeat the write to see its output.
+"not_started" means nothing was sent. "acknowledged" means TestRail accepted the change but its response could not be delivered, so do not repeat the write to see its output. The user's licence applies as well as their permissions.
 
-Running a report generates it and may send the template's configured email, so never call one repeatedly to poll. Downloading an attachment writes a new local file every time and never overwrites one. Uploads read a local path that must sit inside a configured directory.
+Running a report generates it and may send the template's configured email. Downloading an attachment writes a new local file every time and never overwrites one. Uploads read a local path that must sit inside a configured directory.
 
 A warnings entry means TestRail returned fields differing from the expected shape; the data is passed through unchanged and is still usable.`;
 
