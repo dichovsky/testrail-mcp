@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { chmod, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -987,20 +987,33 @@ describe('the command line', () => {
 
   it.skipIf(process.platform === 'win32')('still deletes the project when the terminal closes and nothing reads its output any more', async () => {
     const out = join(base, 'hung-up', 'evidence.json');
+    // With its output gone, a crash would leave nothing to read but Node's own report.
+    const reports = await mkdtemp(join(base, 'reports-'));
     const launched = standIn.requests.length;
-    const cli = spawn(process.execPath, [script('live-qualification.mjs'), '--create-qualification-project', '--out', out], {
+    const cli = spawn(process.execPath, ['--report-uncaught-exception', `--report-directory=${reports}`, script('live-qualification.mjs'), '--create-qualification-project', '--out', out], {
       detached: true, stdio: ['ignore', 'ignore', 'pipe'], env: { PATH: process.env.PATH, HOME: process.env.HOME, ...standIn.environment },
     });
-    cli.stderr?.resume();
+    let said = '';
+    cli.stderr?.on('data', (chunk: Buffer) => { said += chunk.toString(); });
     const exited = new Promise<number | null>((resolve) => { cli.once('exit', resolve); });
     await vi.waitFor(() => { expect(standIn.requests.slice(launched).some(({ tool }) => tool === 'testrail_add_project')).toBe(true); }, { timeout: 60_000, interval: 200 });
     const signalled = standIn.requests.length;
     // As a `| tee` that Ctrl-C stopped too: the output's reader is gone, then the signal arrives.
     cli.stderr?.destroy();
     process.kill(-(cli.pid ?? 0), 'SIGHUP');
-    expect(await exited).toBe(1);
-    expect(standIn.requests.slice(signalled).map(({ method, tool }) => `${method} ${String(tool)}`)).toContain('POST testrail_delete_project');
-    expect(evidenceSchema.parse(JSON.parse(await readFile(out, 'utf8')))).toMatchObject({ stopped: 'interrupted', cleanup: { project: 'deleted_in_cleanup' } });
+    const code = await exited;
+    const after = standIn.requests.slice(signalled).map(({ method, tool }) => `${method} ${String(tool)}`);
+    const evidence = await readFile(out, 'utf8').catch(() => undefined);
+    const [report] = await readdir(reports);
+    // Should it fail, everything the run left behind to explain why.
+    const context = JSON.stringify({
+      code, after, cleanup: evidence === undefined ? 'no evidence' : (JSON.parse(evidence) as { cleanup: unknown }).cleanup,
+      crash: report === undefined ? null : (JSON.parse(await readFile(join(reports, report), 'utf8')) as { javascriptStack?: unknown }).javascriptStack,
+      said: said.trim().split('\n').slice(-3),
+    });
+    expect(code, context).toBe(1);
+    expect(after, context).toContain('POST testrail_delete_project');
+    expect(evidenceSchema.parse(JSON.parse(evidence ?? 'null'))).toMatchObject({ stopped: 'interrupted', cleanup: { project: 'deleted_in_cleanup' } });
   }, 120_000);
 
   it('drives the built server over stdio', async () => {
