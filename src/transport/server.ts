@@ -16,9 +16,9 @@ import { executeToolCall } from './tool-call.js';
  * characters, so the first paragraph fits within them on its own and holds every rule
  * that prevents harm; the whole stays under 2 KiB.
  */
-export const SERVER_INSTRUCTIONS = `Each tool is one TestRail API endpoint, called as the configured user with that user's permissions. Lists return one page of 50 by default: set _mcp.pagination to "all" for a bounded complete fetch, and never treat one page as the whole dataset. Results are {data, pagination, warnings} with TestRail's field names. Errors carry a code; a write's error also has write_outcome, and "unknown" means it may already be applied, so check before retrying it. Never call a report repeatedly to poll.
+export const SERVER_INSTRUCTIONS = `Each tool is one TestRail API endpoint, run with the configured user's permissions. Lists return one page by default (50 where a limit applies); never treat it as the whole dataset. _mcp.pagination "all" fetches the rest within bounds, as far as TestRail's replies link on. Results keep TestRail's field names. A write's or report run's error has write_outcome: "unknown" may already be applied, so check before retrying; "acknowledged" was applied, so do not repeat it. Never poll a report.
 
-"not_started" means nothing was sent. "acknowledged" means TestRail accepted the change but its response could not be delivered, so do not repeat the write to see its output. Field names include custom_* fields. The user's licence applies as well as their permissions.
+Results are {data, pagination, warnings}, and field names include custom_* fields. "not_started" means nothing was sent. "acknowledged" means TestRail accepted the change but its response could not be delivered. The user's licence applies as well as their permissions.
 
 Running a report generates it and may send the template's configured email. Downloading an attachment writes a new local file every time and never overwrites one. Uploads read a local path that must sit inside a configured directory.
 

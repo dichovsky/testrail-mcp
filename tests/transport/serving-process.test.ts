@@ -55,6 +55,8 @@ function launch() {
   });
   let out = '';
   let err = '';
+  // A child that dies early must not turn later writes into an unhandled EPIPE.
+  child.stdin.on('error', () => undefined);
   child.stdout.on('data', (chunk: Buffer) => { out += chunk.toString('utf8'); });
   child.stderr.on('data', (chunk: Buffer) => { err += chunk.toString('utf8'); });
   // 'close', not 'exit': it fires only after the child's stdio streams have ended, so
@@ -86,6 +88,8 @@ function launch() {
     replies, lines, until,
     err: () => err,
     end: async () => { child.stdin.end(); return exited; },
+    // Last resort in finally: a server that never exits must not hold the test open.
+    kill: () => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); },
   };
 }
 
@@ -152,8 +156,8 @@ describe('a legacy session over raw stdio against the built executable', () => {
       expect(await session.end()).toBe(0);
       expectProtocolOnly(session.lines());
       expect(session.err()).not.toContain('synthetic-secret-must-not-appear');
-    } finally { await session.end(); }
-  });
+    } finally { session.kill(); }
+  }, 30_000);
 });
 
 describe('an initialize after a modern discover probe', () => {
@@ -198,6 +202,6 @@ describe('an initialize after a modern discover probe', () => {
 
       expect(await session.end()).toBe(0);
       expectProtocolOnly(session.lines());
-    } finally { await session.end(); }
+    } finally { session.kill(); }
   }, 30_000);
 });

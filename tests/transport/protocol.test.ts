@@ -232,22 +232,30 @@ describe('server instructions', () => {
     const opening = SERVER_INSTRUCTIONS.split('\n\n')[0] ?? '';
     expect(opening.length).toBeLessThanOrEqual(512);
     expect(opening.endsWith('.')).toBe(true);
-    // Whole rules, so a paragraph that reversed one ("poll", "do not check") would fail.
+    // Whole sentences, so a paragraph that reversed or dropped one would fail. The
+    // expected text is the rule itself as docs/transport.md states it.
     for (const essential of [
-      "called as the configured user with that user's permissions",
-      'Lists return one page of 50 by default',
-      'set _mcp.pagination to "all" for a bounded complete fetch, and never treat one page as the whole dataset',
-      "a write's error also has write_outcome, and \"unknown\" means it may already be applied, so check before retrying it",
-      'Never call a report repeatedly to poll.',
+      "Each tool is one TestRail API endpoint, run with the configured user's permissions.",
+      'Lists return one page by default (50 where a limit applies); never treat it as the whole dataset.',
+      '_mcp.pagination "all" fetches the rest within bounds, as far as TestRail\'s replies link on.',
+      "Results keep TestRail's field names.",
+      "A write's or report run's error has write_outcome: \"unknown\" may already be applied, so check before retrying; \"acknowledged\" was applied, so do not repeat it.",
+      'Never poll a report.',
     ]) {
       expect(opening, essential).toContain(essential);
     }
   });
 
-  it('keeps the rest of the cross-tool rules', () => {
+  it('keeps the rest of the cross-tool rules, each as a whole sentence', () => {
     for (const rule of [
-      '"not_started" means nothing was sent', '"acknowledged"', 'custom_* fields', 'licence', 'configured email',
-      'new local file every time', 'inside a configured directory', 'A warnings entry',
+      'Results are {data, pagination, warnings}, and field names include custom_* fields.',
+      '"not_started" means nothing was sent.',
+      '"acknowledged" means TestRail accepted the change but its response could not be delivered.',
+      "The user's licence applies as well as their permissions.",
+      "Running a report generates it and may send the template's configured email.",
+      'Downloading an attachment writes a new local file every time and never overwrites one.',
+      'Uploads read a local path that must sit inside a configured directory.',
+      'A warnings entry means TestRail returned fields differing from the expected shape; the data is passed through unchanged and is still usable.',
     ]) {
       expect(SERVER_INSTRUCTIONS, rule).toContain(rule);
     }

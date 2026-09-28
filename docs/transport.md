@@ -4,7 +4,7 @@
 
 ## The driver lives outside the factory
 
-`serveStdio(factory)` pins one server instance per connection, and the factory can run more than once during an opening when an era falls back. So the factory only constructs an `McpServer` and registers the catalog; configuration, driver and runtime are created once in `startServer` and closed over. A second server instance therefore cannot mean a second credential, a second rate budget, or a disposal that tears down state another instance is using. `tests/transport/serving-process.test.ts` holds part of this. It replays the SDK client's own modern `server/discover` probe to the built executable, then sends a legacy `initialize`, so `serveStdio` discards the probe's server and calls the factory again on one connection. A real call afterwards still reaches TestRail, so discarding a server does not dispose the shared runtime. That the factory builds no second driver or budget is held by the F03 audit's composition tests (#76).
+`serveStdio(factory)` pins one server instance per connection, and the factory can run more than once during an opening when an era falls back. So the factory only constructs an `McpServer` and registers the catalog; configuration, driver and runtime are created once in `startServer` and closed over. A second server instance therefore cannot mean a second credential, a second rate budget, or a disposal that tears down state another instance is using. `tests/transport/serving-process.test.ts` holds part of this. It replays the SDK client's own modern `server/discover` probe to the built executable, then sends a legacy `initialize`, so `serveStdio` discards the probe's server and calls the factory again on one connection. A real call afterwards still reaches TestRail, so discarding a server does not dispose the shared runtime. That the factory builds no second driver or budget is held by the F03 audit's composition tests (#76), once that merges.
 
 Registration contacts nothing, so discovery makes no TestRail request and repeated discovery is byte-identical within a connection. Tools are listed in name order (`localeCompare` in English), the same in every process.
 
@@ -12,12 +12,13 @@ Registration contacts nothing, so discovery makes no TestRail request and repeat
 
 The instructions' first paragraph fits in 512 characters and ends at a sentence, because hosts may truncate there. It holds every rule that prevents harm:
 - the user's permissions apply;
-- one page of 50 is only the default and never the whole dataset;
+- a list returns one page by default (50 where a limit applies), never the whole dataset;
+- `all` fetches the rest within bounds, only as far as TestRail's replies link on;
 - field names are kept;
-- a write's error carries `write_outcome`, and an `unknown` write may already be applied, so check before retrying;
+- a write's or report run's error carries `write_outcome`: `unknown` may already be applied, so check before retrying, and `acknowledged` was applied, so do not repeat it;
 - a report is never polled.
 
-The rest adds `not_started` and `acknowledged`, `custom_*` fields, the licence, report emails, download and upload behaviour, and warnings. Tests assert each rule as a whole sentence, so reversing one fails. The whole stays under 2 KiB.
+The rest adds the result wrapper and `custom_*` fields, `not_started`, what `acknowledged` means, the licence, report emails, and download, upload and warning behaviour. Tests assert every rule as a whole sentence, so reversing or dropping one fails. The whole stays under 2 KiB.
 
 ## The advertised schema is the reviewed one
 
@@ -41,7 +42,7 @@ A download's file is written inside the driver callback the runtime tracks, not 
 
 Standard output carries protocol messages only. Diagnostics are one JSON object per line on stderr, restricted to fixed event codes, tool names, a correlation id, durations and counts. Tool results legitimately contain TestRail data and local file paths; diagnostics must not, so they accept no arguments, bodies or paths at all.
 
-Configuration is loaded before any transport exists, so a misconfigured server never emits a protocol message it cannot honour; it names the offending key on stderr, writes nothing to stdout, and exits non-zero. Shutdown is idempotent and runs once for whichever of stdin closure, `SIGINT` or `SIGTERM` arrives first: it stops admission, closes the connection, drains the runtime and disposes staging. On `main`, only stdin closure is tested here. Signal handling, including a second signal during the drain, is fixed and tested by the F03 audit (#76).
+Configuration is loaded before any transport exists, so a misconfigured server never emits a protocol message it cannot honour; it names the offending key on stderr, writes nothing to stdout, and exits non-zero. Shutdown is idempotent and runs once for whichever of stdin closure, `SIGINT` or `SIGTERM` arrives first: it stops admission, closes the connection, drains the runtime and disposes staging. Until the F03 audit (#76) merges, only stdin closure is tested. #76 fixes and tests signal handling, including a second signal during the drain, on POSIX: Windows delivers no signal to a child process.
 
 ## Three behaviours recorded rather than claimed
 
