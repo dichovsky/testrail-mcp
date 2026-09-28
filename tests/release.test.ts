@@ -145,7 +145,7 @@ describe('the release workflow', () => {
   it('builds the notes, tarball and inventory before publishing, and checks the published package before the release', () => {
     const verify = job(release, 'verify');
     expect(verify).toContain('os: [ubuntu-latest, macos-latest, windows-latest]');
-    expect(verify).toContain("node: ['22', '24']");
+    expect(verify).toContain("node: ['24']");
     expect(verify).toContain('run: npm run check');
     const build = job(release, 'build');
     const order = ['scripts/release-notes.mjs "$GITHUB_REF_NAME"', 'npm pack --json', 'scripts/release-sbom.mjs', 'actions/upload-artifact'].map((step) => build.indexOf(step));

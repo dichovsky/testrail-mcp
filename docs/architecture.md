@@ -16,7 +16,7 @@ The first release targets TestRail **10.7.0**. Older TestRail versions are suppo
 
 ## Runtime and component boundaries
 
-Use TypeScript compiled to ESM, with Node engines `^22.13.0 || >=24`. Run the release test matrix on Node 22 and 24; an engine range that admits another Node version is not a claim that it has been certified. The planned npm package is `@dichovsky/testrail-mcp`, exposing the `testrail-mcp` executable.
+Use TypeScript compiled to ESM, with Node engines `^22.13.0 || >=24`. Run the release test matrix on Node 24; an engine range that admits another Node version is not a claim that it has been certified. The planned npm package is `@dichovsky/testrail-mcp`, exposing the `testrail-mcp` executable.
 
 Use the official `@modelcontextprotocol/server` SDK pinned to **2.0.0**, with `@modelcontextprotocol/client` **2.0.0** for protocol tests. Host the server through `serveStdio(factory)` and retain its default legacy compatibility. Test both the earlier initialization flow and MCP 2026-07-28 discovery; do not assume that a required client uses the modern revision by default. The [released stdio entry point](https://raw.githubusercontent.com/modelcontextprotocol/typescript-sdk/@modelcontextprotocol%2Fserver@2.0.0/packages/server/src/server/serveStdio.ts) supports both.
 
@@ -172,7 +172,7 @@ Release acceptance requires:
 - Passing deterministic contracts for every endpoint, including administrative and destructive operations against synthetic upstream fixtures.
 - Passing pagination, field-preservation, response-structure, attachment containment/lifetime, budget, cancellation, and indeterminate-outcome tests.
 - A published, exactly pinned driver release containing the required network and report-execution fixes and public operation-settlement API, followed by rerun integration tests.
-- Passing Node 22/24 checks and recorded results for each required client surface with the complete catalog.
+- Passing Node 24 checks and recorded results for each required client surface with the complete catalog.
 - A packed npm executable, configuration examples, sanitized diagnostics, and documented TestRail/version/permission limitations that match verified behavior.
 
 Do not turn unavailable live infrastructure or an untested client into a passing result. TestRail permissions and licenses can limit live smoke coverage; distinguish that coverage from the exhaustive fixture-based adapter contract tests. No live production writes are necessary to verify destructive endpoint mappings.
