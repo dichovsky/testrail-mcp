@@ -68,7 +68,8 @@ export async function stageUpload(
 
   /*
    * O_NOFOLLOW guards the final component against a symlink swapped in after the
-   * realpath above; it is unavailable on Windows, where containment carries the check.
+   * realpath above. It is unavailable on Windows, where only containment and the inode
+   * check below apply.
    *
    * O_NONBLOCK is what makes the regular-file check below reachable. Opening a FIFO
    * for reading blocks until a writer connects, and that happens before anything can
@@ -100,8 +101,8 @@ export async function stageUpload(
     if (!opened.isFile()) throw new AdapterError('FILE_ACCESS_DENIED');
     if (opened.size > options.maxBytes) throw new AdapterError('FILE_TOO_LARGE');
 
-    // Where inode identity is meaningful, confirm the path still names the file the
-    // handle holds. Windows reports no usable inode, so this is skipped there.
+    // Where the platform reports an inode, confirm the path still names the file the
+    // handle holds. The check is skipped only when the inode reads as zero.
     if (opened.ino !== 0) {
       const named = await lstat(resolved).catch(() => null);
       if (named === null || named.ino !== opened.ino || named.dev !== opened.dev) {

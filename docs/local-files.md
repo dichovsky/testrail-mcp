@@ -46,7 +46,7 @@ Repeating a download creates another distinct retained file. That local additive
 - component-versus-prefix containment, traversal, symlink escape and symlink-within-root, and a root configured through a symlink;
 - non-regular sources, source replacement after staging, a file replaced once it is open, a final component swapped for a symlink before the open, and a file that lies about its size;
 - the exact size limit, and one byte over it refused before a staged copy is opened;
-- a staged-name collision that leaves the existing file alone, a failed close, a failed, a short and a zero-progress write, and handle-close counting, per handle, on success and on each failure path;
+- a staged-name collision that leaves the existing file alone, a failed close, a failed, a short and a zero-progress write, and handle-close counting, per handle, on success and on each failure path (the inode and non-regular cases are skipped on Windows, which cannot stage them);
 - idempotent disposal;
 - recovery's refusals: no prefix, no marker, the wrong marker, a corrupt marker, a live owner in another process, and a liveness check failing with `EPERM` or anything but `ESRCH`;
 - a unique, exclusively created staging directory;

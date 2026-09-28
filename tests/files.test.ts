@@ -134,19 +134,35 @@ describe('upload staging', () => {
 
   it('enforces the byte limit while copying, not only from the initial size', async () => {
     const area = await createStagingArea(staging);
-    const path = await source('grower.txt', 'x'.repeat(100));
+    // Several 64 KiB chunks, so stopping during the copy and refusing only after it differ.
+    const path = await source('grower.txt', 'x'.repeat(200 * 1024));
+    const maxBytes = 64 * 1024;
+    let written = 0;
+    let opens = 0;
 
     // A file may grow between being measured and being read, so a stat-only check
     // can be beaten. Report a small size while the handle yields more.
     vi.mocked(open).mockImplementation(async (...args: Parameters<typeof actual.open>) => {
       const handle = await actual.open(...args);
-      const originalStat = handle.stat.bind(handle);
-      handle.stat = (async () => Object.assign(await originalStat(), { size: 10 })) as typeof handle.stat;
+      opens += 1;
+      if (opens === 1) {
+        const originalStat = handle.stat.bind(handle);
+        handle.stat = (async () => Object.assign(await originalStat(), { size: 10 })) as typeof handle.stat;
+      } else {
+        const originalWrite = handle.write.bind(handle) as (b: Buffer, o: number, l: number) => Promise<{ bytesWritten: number }>;
+        handle.write = (async (buffer: Buffer, offset: number, length: number) => {
+          const result = await originalWrite(buffer, offset, length);
+          written += result.bytesWritten;
+          return result;
+        }) as unknown as typeof handle.write;
+      }
       return handle;
     });
 
-    await expect(stageUpload(path, { roots: [root], maxBytes: 50, stagingDirectory: area.directory }))
+    await expect(stageUpload(path, { roots: [root], maxBytes, stagingDirectory: area.directory }))
       .rejects.toMatchObject({ code: 'FILE_TOO_LARGE' });
+    // The copy stopped at the limit rather than copying everything and refusing after.
+    expect(written).toBeLessThanOrEqual(maxBytes);
     await area.dispose();
   });
 
@@ -195,7 +211,7 @@ describe('upload staging', () => {
     await area.dispose();
   });
 
-  it('leaves no staged file behind when staging fails', async () => {
+  it('leaves no staged file behind when refused by its measured size, before any copy', async () => {
     const area = await createStagingArea(staging);
     const path = await source('fails.txt', 'x'.repeat(500));
     await expect(stageUpload(path, { roots: [root], maxBytes: 100, stagingDirectory: area.directory }))
@@ -383,11 +399,15 @@ describe('upload staging', () => {
     ['a staged-name collision', 'collision', [1]],
     ['a failed write', 'write', [1, 1]],
     ['a failed close of the copy', 'close', [1, 1]],
+    ['a write that makes no progress', 'stuck', [1, 1]],
+    // Windows cannot open a directory as a file, so nothing is opened to close there.
+    ...(WINDOWS ? [] : [['a non-regular source', 'directory', [1]]] as const),
     // Windows refuses to replace a file that is open, so this race cannot be staged there.
     ...(WINDOWS ? [] : [['a path that names another file once open', 'inode', [1]]] as const),
   ] as const)('closes each handle exactly once on %s', async (_label, fault, expected) => {
     const area = await createStagingArea(staging);
-    const path = await source(`closes-${fault}.txt`, 'content');
+    const path = fault === 'directory' ? join(root, 'closes-a-directory') : await source(`closes-${fault}.txt`, 'content');
+    if (fault === 'directory') await mkdir(path, { recursive: true });
     const closes: number[] = [];
     let swapped = false;
     if (fault === 'collision') {
@@ -405,6 +425,7 @@ describe('upload staging', () => {
         if (fault === 'close' && index === 1) throw new Error('EIO');
       };
       if (fault === 'write' && index === 1) handle.write = () => Promise.reject(new Error('ENOSPC'));
+      if (fault === 'stuck' && index === 1) handle.write = (() => new Promise((resolve) => { setImmediate(() => { resolve({ bytesWritten: 0, buffer: Buffer.alloc(0) }); }); })) as unknown as typeof handle.write;
       if (fault === 'inode' && index === 0) {
         await writeFile(`${path}.new`, 'replacement');
         await rename(`${path}.new`, path);
