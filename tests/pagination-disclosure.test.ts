@@ -17,10 +17,19 @@ const inventory = (JSON.parse(await readFile(new URL('../docs/operation-inventor
 
 /*
  * Two unpaged endpoints whose summaries warn that TestRail documents no limit or offset
- * for them, and what happens if it pages anyway. That warning is the only paging wording
- * an unpaged tool may carry.
+ * for them, and what happens if it pages anyway. These exact sentences are the only
+ * paging wording an unpaged tool may carry; the rest of each description is held to the
+ * same rule as every other unpaged tool.
  */
-const DISCLAIMS_PAGING: ReadonlySet<string> = new Set(['testrail_get_attachments_for_plan_entry', 'testrail_get_attachments_for_test']);
+const PAGING_WARNINGS: Readonly<Record<string, readonly string[]>> = {
+  testrail_get_attachments_for_plan_entry: [
+    'TestRail documents no limit or offset here and a bare array as the reply; if it sends a paged envelope instead, only the attachments in that one reply are returned, with no sign that more exist, because the driver method returns the list alone.',
+  ],
+  testrail_get_attachments_for_test: [
+    'TestRail documents no limit or offset for this endpoint, yet gives its reply the format of get_attachments_for_case, which is paged.',
+    'If TestRail pages it, only the attachments in that one reply are returned, with no sign that more exist, because the driver method returns the list alone.',
+  ],
+};
 
 const CONTROLLED = 'Returns one page by default. Use _mcp.pagination="all" for bounded remaining matches.';
 const RESPONSE_DRIVEN = 'Returns the server-selected first page by default; manual continuation is unavailable. Use _mcp.pagination="all" for bounded complete retrieval.';
@@ -45,7 +54,12 @@ describe('paging disclosure in tool descriptions', () => {
     // above says nothing about pages, offsets, continuations or cursors.
     if (kind === 'none') {
       expect(text).not.toMatch(/_mcp|pagination=|page by default/u);
-      if (!DISCLAIMS_PAGING.has(tool)) expect(text).not.toMatch(/\bpag(?:e|es|ed|ing|ination)\b|\boffset\b|continuation|cursor/iu);
+      let rest = text;
+      for (const warning of PAGING_WARNINGS[tool] ?? []) {
+        expect(rest).toContain(warning);
+        rest = rest.replace(warning, '');
+      }
+      expect(rest).not.toMatch(/\bpag(?:e|in)|\boffset\b|continuation|cursor/iu);
     }
   });
 

@@ -341,7 +341,9 @@ describe('F06 boundaries and continuation through the tools', () => {
   }
 
   function items(tool: string, key: string): [Record<string, unknown>, Record<string, unknown>] {
-    const first = sampleItem(manifestFor(tool), key);
+    // A multi-byte name, so a byte bound measured in UTF-16 code units rather than UTF-8
+    // bytes misses the exact boundary.
+    const first = { ...sampleItem(manifestFor(tool), key), name: 'é✓😀' };
     return [first, another(first)];
   }
 
@@ -423,7 +425,8 @@ describe('F06 boundaries and continuation through the tools', () => {
     const [first, second] = items(tool, key);
     const server = serve(linked(key, tool.replace('testrail_', ''), first, second, next));
     const controlled = tool === 'testrail_get_projects';
-    const payload = await all(tool, {}, server.fetch, controlled ? { is_completed: true } : undefined);
+    // A stated page size, so a driver falling back to its own default is caught.
+    const payload = await all(tool, controlled ? { page_size: 3 } : {}, server.fetch, controlled ? { is_completed: true } : undefined);
     expect(payload.data).toEqual([first, second]);
     expect(server.urls).toHaveLength(2);
     const [one, two] = server.urls.map((url) => new URL(url));
@@ -432,9 +435,9 @@ describe('F06 boundaries and continuation through the tools', () => {
     expect(two?.host).toBe(new URL(configuration.baseUrl).host);
     expect(two?.search.replace(/&(?:limit|offset)=\d+/gu, '')).toBe(one?.search.replace(/&(?:limit|offset)=\d+/gu, ''));
     expect(control(server.urls[1], 'offset')).toBe('1');
-    // A controlled list keeps its own page size (the driver's default, 250, when the
-    // caller names none); a response-driven list takes the link's limit, here 1.
-    expect(control(server.urls[1], 'limit')).toBe(controlled ? '250' : '1');
+    // A controlled list keeps the caller's page size on every request; a response-driven
+    // list takes the link's limit, here 1.
+    expect(control(server.urls[1], 'limit')).toBe(controlled ? '3' : '1');
     expect(server.urls[1]).not.toMatch(/suite_id|get_cases|get_users|attacker/u);
     if (controlled) expect(server.urls[1]).toMatch(/[?&]is_completed=1(?:&|$)/u);
   });
@@ -461,6 +464,15 @@ describe('F06 boundaries and continuation through the tools', () => {
     const payload = await all(tool, {}, onward.fetch);
     expect(payload.data).toEqual([first]);
     expect(onward.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(both)('%s fails an aggregate whose page answers an offset it was not asked for, as invalid_page', async (tool, key) => {
+    const [first] = items(tool, key);
+    // The driver expects the page at the offset it asked for (0) and refuses any other.
+    const server = serve({ '0': { offset: 5, limit: 1, size: 1, _links: { next: null, prev: null }, [key]: [first] } });
+    const payload = await all(tool, {}, server.fetch);
+    expect(payload.error).toMatchObject({ code: 'INVALID_RESPONSE', reason: 'invalid_page' });
+    expect(payload).not.toHaveProperty('data');
   });
 
   it('reports the start offset the caller asked for, and starts there', async () => {
