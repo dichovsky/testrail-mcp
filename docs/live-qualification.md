@@ -13,9 +13,15 @@ The run must not change or delete data that existed before it.
 | Writes outside the project | `add_user`, `update_user`, `add_group`, `update_group`, `delete_group` and `add_case_field` run only with `--instance-writes`. Use it only on a disposable instance. |
 | Report generation | `run_report` and `run_cross_project_report` run only from templates you name, because each run generates a report and may email it. |
 
-A guard checks every write before it is sent. Each ID the write names, in the path, the query or the body, must be an entity of that kind the run created, or the call is not made. Status, priority, type, template, role and user references choose among the instance's settings and change nothing, so the guard allows them.
+A guard checks every write before it is sent. Each ID the write names, in the path, the query or the body, must be an entity of that kind the run created, or the call is not made. That includes the group and user IDs in a project's access rows. Status, priority, type, template, role and user references choose among the instance's settings and change nothing, so the guard allows them. The exception is `add_case_field`'s `template_ids`, which adds the field to the templates it names. The run creates no templates, so the guard refuses any.
 
-The last step deletes the project and everything in it. If the run stops early, because a call fails, the MCP session breaks or you press Ctrl-C, the runner still deletes the project, and the group when there is one, on the way out. Ctrl-C at a terminal stops the server as well as the runner, so the runner starts a fresh server to clean up through. A second Ctrl-C abandons that cleanup and names the project it leaves.
+A read whose answer later steps use is checked the same way, since what it returns can become the run's own. The run's tests, for example, are read from the run it created. A refused call is a failure: it means a fault in the plan, or an answer the plan did not expect.
+
+The last step deletes the project and everything in it. If the run stops early, because a call fails, the MCP session breaks or you press Ctrl-C, the runner still deletes the project, and the group when there is one, on the way out. Closing the terminal (SIGHUP) and SIGTERM stop the run the same way.
+
+Ctrl-C at a terminal stops the server as well as the runner, so the runner starts a fresh server to clean up through. It also stops a `| tee` that keeps the log; output that can no longer be written does not stop the cleanup.
+
+A second Ctrl-C abandons that cleanup. The runner removes its temporary files, names what may be left, and exits with 2 without writing evidence.
 
 TestRail's API cannot delete users or case fields. With `--instance-writes`, one inactive user and one case field stay behind, and the evidence lists them. When TestRail's answer to creating one is unknown, it lists it as possible, and so it does for the project and the group. A request the driver gave up waiting on counts as unknown, although its status is 408, since TestRail may still have acted on it. The user's name and the case field's label start with `testrail-mcp qualification`; the case field's system name is `tmq_<id>_f`, and the user's address ends in `@example.invalid`.
 
@@ -63,14 +69,14 @@ It prints one line per step, with the error code and the server's message for an
 | --- | --- |
 | 0 | The run reached its end, no tool failed, and nothing that should have been deleted was left behind. |
 | 1 | A tool failed, the project or group was left behind, or the run stopped early. |
-| 2 | The run could not start, or the evidence could not be written. |
+| 2 | The run could not start, the evidence could not be written, or a second Ctrl-C abandoned cleanup. |
 
 ## Statuses
 
 | Status | Meaning |
 | --- | --- |
 | `pass` | Every step of the tool that ran succeeded. |
-| `fail` | TestRail or the server returned an error, other than a missing licence or permission, or the reply lacked what the next steps need. On the 10.7.0 baseline, a failure is a finding. |
+| `fail` | TestRail or the server returned an error, other than a missing licence or permission, the reply lacked what the next steps need, or the guard refused the call. On the 10.7.0 baseline, a failure is a finding. |
 | `blocked` | The instance lacks a licensed feature (`LICENSE_REQUIRED`) or the user a permission (`PERMISSION_DENIED`). A step whose prerequisite was blocked or failed is blocked too, and names what it needed. A blocked tool is never counted as a pass. |
 | `not_run` | Left out, with the reason: an option not given, nothing in the instance to act on (a group read where there are no groups), or the run stopped, including a step Ctrl-C cut short. |
 
@@ -109,14 +115,24 @@ If any of them appears, it refuses to write the file.
 - only the six instance writes need `--instance-writes`;
 - the project comes first and is deleted last.
 
-It checks the guard against foreign, nested, differently-kinded and parent IDs, and against every target kind. Every ID-like argument any tool accepts is either a target or a named reference to the instance's settings. Inside a run, a refused write is never sent.
+It checks the guard against:
+- foreign, nested, differently-kinded and parent IDs;
+- GUID entry and attachment IDs;
+- the IDs in a project's access rows;
+- every target kind;
+- reads whose answers later steps use.
 
-It runs the whole plan through the registered tools and the real driver against the stand-in, where every tool passes and nothing is refused. It also runs by default, where the instance writes and reports are not run and never reach the stand-in. Further runs cover:
+Every ID-like argument any tool accepts is either a target or a named reference to the instance's settings. Inside a run, a refused write is never sent, and it fails its tool and the run.
+
+It runs the whole plan through the registered tools and the real driver against the stand-in, where every tool passes and nothing is refused. In that run, every entity the run creates gets an ID of its own, so a write aimed at anything else is refused. It also runs by default, where the instance writes and reports are not run and never reach the stand-in. Further runs cover:
 - a project TestRail refuses to create;
 - a missing licence;
 - a session that fails part-way;
 - a session that dies, after which cleanup deletes the project through a fresh one;
 - Ctrl-C, in-process and at a real terminal, after which cleanup deletes the project and the group;
+- a closed terminal, with the output's reader gone, after which cleanup still deletes the project;
+- a second Ctrl-C, which removes the temporary files and exits with 2;
+- a run that throws part-way, which still says what cleanup did;
 - a project or group that could not be deleted;
 - a project, group, user or case field whose creation's outcome is unknown, including a request the driver timed out;
 - refused credentials;

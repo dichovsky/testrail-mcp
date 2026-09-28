@@ -24,7 +24,7 @@
  *     [--command testrail-mcp] [--arg ...]
  */
 import { randomBytes } from 'node:crypto';
-import { realpathSync } from 'node:fs';
+import { realpathSync, rmSync } from 'node:fs';
 import { mkdir, mkdtemp, open, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -39,11 +39,15 @@ export const TOOL_PREFIX = 'testrail_';
 /** Codes that mean the instance lacks a licensed feature or the user a permission. */
 const BLOCKING = new Set(['LICENSE_REQUIRED', 'PERMISSION_DENIED']);
 const REQUIRED_VARIABLES = ['TESTRAIL_BASE_URL', 'TESTRAIL_EMAIL', 'TESTRAIL_API_KEY'];
+/** Ctrl-C, a closed terminal, and a polite kill. */
+const SIGNALS = ['SIGINT', 'SIGHUP', 'SIGTERM'];
 
 /**
  * The entity kind each argument names. A write may name only entities of that kind the
  * run created. Other IDs a write carries, such as status, priority, type, template, role
- * or user references, choose among the instance's own settings and change nothing.
+ * or user references, choose among the instance's own settings and change nothing. The
+ * templates add_case_field's template_ids names are changed, since the field is added to
+ * them, and the run creates none, so any it names is refused.
  */
 export const TARGET_KINDS = Object.freeze({
   project_id: 'project', project_ids: 'project', assigned_projects: 'project',
@@ -54,7 +58,14 @@ export const TARGET_KINDS = Object.freeze({
   label_id: 'label', label_ids: 'label', labels: 'label',
   shared_step_id: 'shared_step', dataset_id: 'dataset', variable_id: 'variable',
   attachment_id: 'attachment', group_id: 'group', group_ids: 'group', user_id: 'user',
+  template_ids: 'template',
 });
+
+/** The kind a bare `id` names inside each list that holds one, as update_project's access rows do. */
+export const ITEM_KINDS = Object.freeze({ groups: 'group', users: 'user' });
+
+// By sound: an entry, an attachment, but a user.
+const article = (word) => (/^[aeio]/u.test(word) ? 'an' : 'a');
 
 /** A parent or neighbour is a section in section tools and a milestone in milestone tools. */
 function relativeKind(tool) {
@@ -104,32 +115,38 @@ export class Ledger {
 export function targetsOf(tool, input) {
   const targets = [];
   const relative = relativeKind(tool);
-  const visit = (value, key) => {
+  const visit = (value, key, holder) => {
     if (Array.isArray(value)) {
-      for (const item of value) visit(item, key);
+      for (const item of value) visit(item, key, holder);
       return;
     }
     if (value !== null && typeof value === 'object') {
-      for (const [inner, innerValue] of Object.entries(value)) if (inner !== '_mcp') visit(innerValue, inner);
+      for (const [inner, innerValue] of Object.entries(value)) if (inner !== '_mcp') visit(innerValue, inner, key);
       return;
     }
-    const kind = key === 'parent_id' || key === 'after_id' ? relative : TARGET_KINDS[key];
+    const kind = key === 'id' ? ITEM_KINDS[holder] : key === 'parent_id' || key === 'after_id' ? relative : TARGET_KINDS[key];
     if (kind === undefined || value === null || value === undefined) return;
     // Labels are named by ID or by title; a title names no existing entity.
     if (key === 'labels' && typeof value === 'string') return;
     targets.push({ key, kind, id: value });
   };
-  visit(input, undefined);
+  visit(input, undefined, undefined);
   return targets;
 }
 
-/** Refuse a write that names anything the run did not create. Reads may name anything. */
+/**
+ * Refuse a write that names anything the run did not create. A read may name anything,
+ * unless later steps use its answer: what it returns, such as a run's tests, can become the
+ * run's own, so it must read only what the run created. The refusal names the argument and
+ * the kind, never the ID, since it goes into the evidence.
+ */
 export function guard(step, input, ledger) {
-  if (step.scope === 'read') return;
+  if (step.scope === 'read' && step.capture === undefined) return;
   const tool = `${TOOL_PREFIX}${step.tool}`;
   for (const { key, kind, id } of targetsOf(tool, input)) {
     if (!ledger.has(kind, id)) {
-      throw new GuardRefusal(`${tool}: ${key} ${String(id)} is not a ${kind} this run created`);
+      const noun = kind.replaceAll('_', ' ');
+      throw new GuardRefusal(`${tool}: ${key} names ${article(noun)} ${noun} this run did not create`);
     }
   }
 }
@@ -219,7 +236,8 @@ export function pacedCaller(call, { minIntervalMs, retryDelayMs, attempts }) {
  * server too, `reconnect` gives a fresh `call` to clean up through.
  */
 export async function runQualification({
-  call, plan = PLAN, options = {}, stamp, uploads, pacing = LIVE_PACING, onStep = () => undefined, shouldStop = () => undefined, reconnect,
+  call, plan = PLAN, options = {}, stamp, uploads, pacing = LIVE_PACING, onStep = () => undefined, onCleanup = () => undefined,
+  shouldStop = () => undefined, reconnect,
 }) {
   const invoke = pacedCaller(call, pacing);
   const ledger = new Ledger();
@@ -232,6 +250,7 @@ export async function runQualification({
     onStep(entry);
   };
   const cleanup = { project: 'not_created', group: 'not_created' };
+  let residue;
   try {
     for (const step of plan) {
       stopped ??= shouldStop();
@@ -249,7 +268,8 @@ export async function runQualification({
         guard(step, input, ledger);
       } catch (error) {
         if (error instanceof MissingDependency) record(step, { status: 'blocked', reason: error.message });
-        else if (error instanceof GuardRefusal) record(step, { status: 'not_run', reason: `refused by the guard: ${error.message}` });
+        // A refused write is a fault in the plan or an answer it did not expect: a failure.
+        else if (error instanceof GuardRefusal) record(step, { status: 'fail', reason: `refused by the guard: ${error.message}` });
         else if (error instanceof NotApplicable) record(step, { status: 'not_run', reason: error.message });
         else throw error;
         continue;
@@ -321,9 +341,11 @@ export async function runQualification({
         cleanup[kind] = 'left_behind';
       }
     }
+    residue = [...c.leftBehind].map(([kind, count]) => ({ kind, count }));
+    for (const kind of ['project', 'group']) if (cleanup[kind] === 'left_behind') residue.push({ kind, count: 1 });
+    // Said here, so a run that throws still says what cleanup did.
+    onCleanup({ ...cleanup, residue });
   }
-  const residue = [...c.leftBehind].map(([kind, count]) => ({ kind, count }));
-  for (const kind of ['project', 'group']) if (cleanup[kind] === 'left_behind') residue.push({ kind, count: 1 });
   // The signed-in user's address is kept only to prove the evidence does not carry it.
   const personal = [c.values.get('current_user_email')].filter((value) => typeof value === 'string');
   return {
@@ -503,7 +525,7 @@ async function installedDriverVersion() {
  */
 export async function main({
   argv = process.argv.slice(2), env = process.env, connect = connectStdio, pacing = LIVE_PACING, log = (line) => { process.stderr.write(`${line}\n`); },
-  signals = process,
+  signals = process, exit = (code) => process.exit(code),
 } = {}) {
   const { out, options, server, ownServer } = parseOptions(argv);
   const missing = REQUIRED_VARIABLES.filter((key) => (env[key] ?? '') === '');
@@ -525,21 +547,22 @@ export async function main({
   }
   await checkOut(out);
   const work = await mkdtemp(join(tmpdir(), 'testrail-mcp-live-'));
+  const stamp = newStamp();
   let stop;
-  let projectName;
   // The first Ctrl-C stops the run after the current step and deletes the project; a second
-  // abandons that cleanup.
+  // abandons that cleanup, leaves no evidence and exits at once. A closed terminal (SIGHUP)
+  // or SIGTERM stops the run the same way.
   const onSignal = () => {
     if (stop === undefined) {
       stop = 'interrupted';
       log('Stopping: the qualification project will be deleted. Press Ctrl-C again to abandon that cleanup.');
       return;
     }
-    log(`Cleanup abandoned: ${projectName ?? 'the qualification project'} may be left behind.`);
-    process.exit(1);
+    log(`Cleanup abandoned: anything named "${QUALIFICATION_PREFIX} ${stamp} …" may be left behind, and no evidence was written.`);
+    rmSync(work, { recursive: true, force: true });
+    exit(2);
   };
-  signals.on('SIGINT', onSignal);
-  signals.on('SIGTERM', onSignal);
+  for (const signal of SIGNALS) signals.on(signal, onSignal);
   const sessions = [];
   try {
     const uploadRoot = join(work, 'uploads');
@@ -554,9 +577,7 @@ export async function main({
       return opened;
     };
     const session = await open();
-    const stamp = newStamp();
-    projectName = `${QUALIFICATION_PREFIX} ${stamp} project`;
-    log(`Qualification project: ${projectName}`);
+    log(`Qualification project: ${QUALIFICATION_PREFIX} ${stamp} project`);
     let run;
     try {
       run = await runQualification({
@@ -569,13 +590,15 @@ export async function main({
           const detail = [code, reason, message].filter((part) => part !== undefined).join(': ');
           log(`${status.padEnd(7)} ${tool}${label === null ? '' : ` (${label})`}${detail === '' ? '' : ` ${detail}`}`);
         },
+        // What cleanup did is said before anything else can fail: it names kinds and outcomes only.
+        onCleanup: ({ project, group, residue }) => {
+          const left = residue.map(({ kind, count }) => `${String(count)} ${kind}`).join(', ');
+          log(`Cleanup: project ${project}, group ${group}${left === '' ? '' : `; left behind: ${left}`}.`);
+        },
       });
     } finally {
       await Promise.all(sessions.map(async (opened) => { await opened.close().catch(() => undefined); }));
     }
-    // What cleanup did is said before anything else can fail: it names kinds and outcomes only.
-    const residue = run.cleanup.residue.map(({ kind, count }) => `${String(count)} ${kind}`).join(', ');
-    log(`Cleanup: project ${run.cleanup.project}, group ${run.cleanup.group}${residue === '' ? '' : `; left behind: ${residue}`}.`);
     const evidence = buildEvidence({
       run,
       tools,
@@ -594,8 +617,7 @@ export async function main({
     log(`Evidence written to ${out}: ${Object.entries(evidence.summary).map(([status, count]) => `${String(count)} ${status}`).join(', ')}${evidence.stopped === null ? '' : `; stopped early: ${evidence.stopped}`}.`);
     return evidence;
   } finally {
-    signals.removeListener('SIGINT', onSignal);
-    signals.removeListener('SIGTERM', onSignal);
+    for (const signal of SIGNALS) signals.removeListener(signal, onSignal);
     await rm(work, { recursive: true, force: true });
   }
 }
@@ -625,6 +647,9 @@ export async function connectStdio({ command, args, env }) {
 
 // Compared through the real path, so a clone under a symlinked directory still runs.
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
+  // Output nobody can read any more, such as through a `| tee` that Ctrl-C stopped too, must
+  // not stop the run before it cleans up.
+  process.stderr.on('error', () => undefined);
   main().then(
     // A blocked tool is recorded, not failed.
     (evidence) => { process.exitCode = exitCode(evidence); },
