@@ -7,6 +7,7 @@ import type { JsonSchemaType } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { loadConfiguration, type Configuration } from '../src/config/environment.js';
 import { driverOptions } from '../src/driver/configuration.js';
 import { operationRegistry } from '../src/operations/catalog.js';
@@ -165,7 +166,7 @@ describe('every tool\'s result, as a connected client receives it', () => {
     expect(verdicts.filter(({ accepts, rejects }) => !accepts || !rejects)).toEqual([]);
   });
 
-  it.each(calls)('%s (%s, fixture %s) validates against its advertised output schema', async (tool, _mode, _id, operation, fixture) => {
+  it.each(calls)('%s (%s, fixture %s) validates against its advertised output schema and preserves its data', async (tool, _mode, _id, operation, fixture) => {
     if (fixture.expect.kind !== 'accepted') throw new Error('accepted fixtures only');
     const manifest = manifestFor(tool);
     const directory = join(base, tool);
@@ -187,6 +188,19 @@ describe('every tool\'s result, as a connected client receives it', () => {
     expect(content[0]?.text).toBe(JSON.stringify(result.structuredContent));
     // A paged list says how much of the dataset it returned; nothing else claims to.
     expect(Object.hasOwn(result.structuredContent ?? {}, 'pagination')).toBe(operation.pagination.kind !== 'none');
+    // The data is what the driver returned, unchanged: the manifest's hand-written driver
+    // result, its items for a page, and null for a void method. A download returns the
+    // written file's description instead, whose path cannot be known in advance.
+    if (operation.files.kind !== 'download') {
+      const expected = fixture.expect.driver_result;
+      const data = (result.structuredContent as { data: unknown }).data;
+      if (expected.kind === 'void') expect(data).toBeNull();
+      else if (expected.kind === 'json') {
+        expect(data).toEqual(operation.pagination.kind !== 'none' && _mode === 'page'
+          ? (expected.value as { items: unknown }).items
+          : expected.value);
+      }
+    }
   });
 
   it.each([
@@ -260,14 +274,14 @@ describe('drift warnings belong to the call that received the drifted reply', ()
     const runtime = createRuntime({ client, limits: configuration.limits });
     try {
       const call = (id: number) => executeToolCall(registered('testrail_get_project'), { project_id: id }, { runtime, configuration });
-      const pending = [call(7), call(7), call(8)];
-      // The two identical reads share one request; the third has its own.
+      const pending = [call(7), call(7), call(7), call(8)];
+      // The three identical reads share one request; the fourth has its own.
       await vi.waitFor(() => { expect(fetch).toHaveBeenCalledTimes(2); });
       release();
-      const [first, second, other] = await Promise.all(pending);
+      const [first, second, third, other] = await Promise.all(pending);
       const warnings = (result: { structuredContent?: unknown } | undefined) => (result?.structuredContent as { warnings?: unknown[] } | undefined)?.warnings;
-      expect(warnings(first)?.length).toBeGreaterThan(0);
-      expect(warnings(second)).toEqual(warnings(first));
+      // One field drifted (a number where the name belongs): each joiner gets exactly that.
+      for (const joined of [first, second, third]) expect(warnings(joined)).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
       expect(warnings(other)).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(2);
       // Nothing carries over to a later identical call whose reply is clean.
@@ -318,6 +332,223 @@ describe('the complete-result budget through a tool', () => {
         const fits = await executeToolCall(registered(tool), args, { runtime: roomy, configuration });
         expect(fits.isError).toBeUndefined();
       } finally { await roomy.shutdown(); }
+    } finally { await runtime.shutdown(); }
+  });
+});
+
+/*
+ * F05's acceptance evidence that the sweep above cannot give: behaviour at the adapter's
+ * own checks, which the driver usually pre-empts, and the claims that need a hostile
+ * schema or a reply that goes missing. Every call runs through a registered tool.
+ */
+describe('F05 result evidence through registered tools', () => {
+  // A string as it appears inside serialized JSON (backslashes escaped on Windows).
+  const asJson = (text: string) => JSON.stringify(text).slice(1, -1);
+  type Result = { isError?: boolean; structuredContent?: unknown };
+  const payloadOf = (result: Result) => result.structuredContent as { data?: unknown; warnings?: unknown; error?: Record<string, unknown> };
+  const withEntity = (operation: Operation, entitySchema: z.ZodType) =>
+    ({ ...operation, response: { ...operation.response, entitySchema } }) as unknown as Operation;
+
+  it('gives two different drifting operations running at once their own exact counts, and a later drift its own', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { client, fetch } = driver(configuration, async (url) => {
+      await gate;
+      if (/get_project\/1$/u.test(url)) return json({ a: 'x' });
+      if (/get_project\/2$/u.test(url)) return json({ a: 'x', b: 'y' });
+      return json({ a: 'x', b: 'y', c: 'z' });
+    });
+    const runtime = createRuntime({ client, limits: configuration.limits });
+    const one = withEntity(registered('testrail_get_project'), z.object({ a: z.number(), b: z.number().optional() }));
+    const three = withEntity(registered('testrail_get_suite'), z.object({ a: z.number(), b: z.number(), c: z.number() }));
+    try {
+      const pending = [
+        executeToolCall(one, { project_id: 1 }, { runtime, configuration }),
+        executeToolCall(three, { suite_id: 3 }, { runtime, configuration }),
+      ];
+      // Both requests are in flight before either reply is released.
+      await vi.waitFor(() => { expect(fetch).toHaveBeenCalledTimes(2); });
+      release();
+      const [first, second] = await Promise.all(pending);
+      expect(payloadOf(first!).warnings).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
+      expect(payloadOf(second!).warnings).toEqual([{ code: 'SCHEMA_DRIFT', count: 3 }]);
+      // A second drifted call of the first operation reports its own count, not a reused one.
+      const later = await executeToolCall(one, { project_id: 2 }, { runtime, configuration });
+      expect(payloadOf(later).warnings).toEqual([{ code: 'SCHEMA_DRIFT', count: 2 }]);
+    } finally {
+      release();
+      await runtime.shutdown();
+    }
+  });
+
+  it.each([
+    ['a read', 'testrail_get_project', { project_id: 7 }, { id: 7, name: 'Kept' }],
+    ['a write TestRail accepted', 'testrail_add_project', { body: { name: 'Kept' } }, { id: 9, name: 'Kept' }],
+  ] as const)('returns %s whose advisory schema throws, with its data and one drift warning', async (_label, tool, args, body) => {
+    const { client } = driver(configuration, () => json(body));
+    const runtime = createRuntime({ client, limits: configuration.limits });
+    const throwing = z.record(z.string(), z.unknown()).refine(() => { throw new Error('advisory hook failed'); });
+    try {
+      const result = await executeToolCall(withEntity(registered(tool), throwing), args, { runtime, configuration });
+      expect(result.isError).toBeUndefined();
+      expect(payloadOf(result)).toEqual({ data: body, warnings: [{ code: 'SCHEMA_DRIFT', count: 1 }] });
+    } finally { await runtime.shutdown(); }
+  });
+
+  const rewritten = { id: '7', custom_x: 1 };
+  const projectPage = { offset: 0, limit: 250, size: 1, _links: { next: null, prev: null }, projects: [rewritten] };
+  it.each([
+    ['a record', 'testrail_get_project', { project_id: 7 }, rewritten, rewritten],
+    ['a list', 'testrail_get_case_titles', { query: { case_ids: [7] } }, [rewritten], [rewritten]],
+    ['a page', 'testrail_get_projects', {}, projectPage, [rewritten]],
+    ['an aggregate', 'testrail_get_projects', { _mcp: { pagination: 'all' } }, projectPage, [rewritten]],
+  ] as const)('returns %s reply unchanged when the advisory schema coerces, defaults and transforms', async (_label, tool, args, reply, expected) => {
+    const { client } = driver(configuration, () => json(structuredClone(reply)));
+    const runtime = createRuntime({ client, limits: configuration.limits });
+    const rewriting = z.object({ id: z.coerce.number(), status: z.string().default('active') })
+      .transform((value) => ({ ...value, extra: 1 }));
+    try {
+      const result = await executeToolCall(withEntity(registered(tool), rewriting), args, { runtime, configuration });
+      expect(payloadOf(result).data).toEqual(expected);
+      expect(payloadOf(result).warnings).toBeUndefined();
+    } finally { await runtime.shutdown(); }
+  });
+
+  /*
+   * The driver validates a page before the adapter sees it, so the adapter's own checks
+   * are reached here by a driver call that returns the malformed value directly.
+   */
+  it.each([
+    ['a page whose kind is unknown', 'page', { kind: 'bogus', items: [] }],
+    ['a page without items', 'page', { kind: 'envelope' }],
+    ['an aggregate that is not an array', 'all', { projects: [] }],
+    ['an aggregate that is a string', 'all', 'x'],
+  ] as const)('fails %s at the adapter as INVALID_RESPONSE', async (_label, mode, value) => {
+    const base = registered('testrail_get_projects');
+    if (base.pagination.kind === 'none') throw new Error('testrail_get_projects must page');
+    const call = mode === 'page' ? base.pagination.page : base.pagination.all;
+    const operation = { ...base, pagination: { ...base.pagination, [mode]: { ...call, invoke: () => Promise.resolve(value) } } } as unknown as Operation;
+    const { client } = driver(configuration, () => json({}));
+    const runtime = createRuntime({ client, limits: configuration.limits });
+    try {
+      const args = mode === 'all' ? { _mcp: { pagination: 'all' } } : {};
+      const result = await executeToolCall(operation, args, { runtime, configuration });
+      expect(payloadOf(result).error).toMatchObject({ code: 'INVALID_RESPONSE' });
+      expect(payloadOf(result)).not.toHaveProperty('data');
+    } finally { await runtime.shutdown(); }
+  });
+
+  it('reports a 404 only as a missing resource, and an unknown-method reply as TestRail\'s own error', async () => {
+    const replies: Reply[] = [
+      json({ error: 'Field :project_id is not a valid or accessible project.' }, 404),
+      // What a TestRail too old for an endpoint answers: nothing may infer a version from it.
+      json({ error: 'Unknown method \'get_project\'' }, 400),
+    ];
+    const { client } = driver(configuration, () => replies.shift() ?? json({}));
+    const runtime = createRuntime({ client, limits: configuration.limits });
+    try {
+      const missing = payloadOf(await executeToolCall(registered('testrail_get_project'), { project_id: 7 }, { runtime, configuration })).error;
+      expect(missing).toEqual({ code: 'NOT_FOUND', message: 'TestRail reported that the requested resource does not exist.', http_status: 404 });
+      expect(JSON.stringify(missing)).not.toMatch(/version|support/iu);
+      const unknownMethod = payloadOf(await executeToolCall(registered('testrail_get_project'), { project_id: 7 }, { runtime, configuration })).error;
+      expect(unknownMethod).toEqual({ code: 'UPSTREAM_ERROR', message: 'TestRail returned an error.', http_status: 400 });
+    } finally { await runtime.shutdown(); }
+  });
+
+  /* Production retry settings: the driver re-sends a write after nothing but a 429. */
+  it.each([
+    ['a network error', () => Promise.reject(new TypeError('fetch failed')), { code: 'INVALID_RESPONSE' }],
+    ['a 500 reply', () => Promise.resolve(new Response('{"error":"x"}', { status: 500, headers: { 'content-type': 'application/json' } })), { code: 'UPSTREAM_ERROR', http_status: 500 }],
+    ['a 200 reply that is not JSON', () => Promise.resolve(new Response('<html>ok</html>', { status: 200, headers: { 'content-type': 'application/json' } })), { code: 'INVALID_RESPONSE' }],
+  ] as const)('reports a JSON write whose reply is lost to %s as unknown, sent once', async (_label, respond, error) => {
+    const fetch = vi.fn(respond);
+    const client = new TestRailClient({
+      ...driverOptions(configuration),
+      dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
+      fetch,
+    });
+    const runtime = createRuntime({ client, limits: configuration.limits });
+    try {
+      for (const [tool, args] of [
+        ['testrail_add_project', { body: { name: 'Lost' } }],
+        ['testrail_add_results_for_cases', { run_id: 1, body: { results: [{ case_id: 1, status_id: 1 }] } }],
+      ] as const) {
+        fetch.mockClear();
+        const result = await executeToolCall(registered(tool), args, { runtime, configuration });
+        expect(payloadOf(result).error, tool).toMatchObject({ ...error, write_outcome: 'unknown' });
+        expect(payloadOf(result), tool).not.toHaveProperty('data');
+        expect(fetch, tool).toHaveBeenCalledTimes(1);
+      }
+    } finally { await runtime.shutdown(); }
+  });
+
+  it('enforces the configured data budget through a tool, never truncating', async () => {
+    const small = await loadConfiguration({
+      TESTRAIL_BASE_URL: 'https://results.testrail.io', TESTRAIL_EMAIL: 'user@example.com', TESTRAIL_API_KEY: 'synthetic',
+      TESTRAIL_MCP_UPLOAD_ROOTS: JSON.stringify([base]), TESTRAIL_MCP_DOWNLOAD_DIR: base,
+      TESTRAIL_MCP_LIMITS: JSON.stringify({ max_data_bytes: 200, max_all_bytes: 200 }),
+    });
+    const { client } = driver(small, () => json({ id: 7, name: 'n'.repeat(300) }));
+    const runtime = createRuntime({ client, limits: small.limits });
+    try {
+      const result = await executeToolCall(registered('testrail_get_project'), { project_id: 7 }, { runtime, configuration: small });
+      expect(payloadOf(result).error).toMatchObject({ code: 'RESPONSE_TOO_LARGE' });
+      expect(payloadOf(result)).not.toHaveProperty('data');
+    } finally { await runtime.shutdown(); }
+  });
+
+  it('keeps arguments, response bodies, paths and hosts out of every tool_call diagnostic', async () => {
+    const marker = 'argument-marker-6f1c';
+    const secretBody = JSON.stringify({ error: 'api_key=SECRET-9d2 at https://internal.example.test /Users/someone/private' });
+    const replies: Reply[] = [{ status: 500, body: secretBody, type: 'application/json' }, json({ id: 7, name: 'data-marker-3b8e' })];
+    const { client } = driver(configuration, () => replies.shift() ?? json({}));
+    const runtime = createRuntime({ client, limits: configuration.limits });
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      await executeToolCall(registered('testrail_add_project'), { body: { name: marker } }, { runtime, configuration });
+      await executeToolCall(registered('testrail_get_project'), { project_id: 7 }, { runtime, configuration });
+      const outside = join(tmpdir(), `outside-${marker}`, 'secret.txt');
+      await executeToolCall(registered('testrail_add_attachment_to_case'), { case_id: 1, file_path: outside, filename: 'x.txt' }, {
+        runtime, configuration, stagingDirectory: () => Promise.resolve(base),
+      });
+      const lines = write.mock.calls.map(([chunk]) => String(chunk));
+      // One event per call, in call order, each carrying only its fixed code.
+      expect(lines.map((line) => {
+        const { tool, outcome, code } = JSON.parse(line) as Record<string, unknown>;
+        return [tool, outcome, code];
+      })).toEqual([
+        ['testrail_add_project', 'error', 'UPSTREAM_ERROR'],
+        ['testrail_get_project', 'success', undefined],
+        ['testrail_add_attachment_to_case', 'error', 'FILE_ACCESS_DENIED'],
+      ]);
+      // Only these fields may ever appear.
+      const allowed = new Set(['event', 'correlation', 'tool', 'outcome', 'code', 'duration_ms', 'warnings']);
+      for (const line of lines) {
+        const event = JSON.parse(line) as Record<string, unknown>;
+        expect(event.event).toBe('tool_call');
+        expect(Object.keys(event).filter((key) => !allowed.has(key))).toEqual([]);
+        for (const leaked of [marker, 'SECRET-9d2', 'internal.example.test', '/Users/someone', 'data-marker-3b8e', outside, asJson(outside), configuration.baseUrl, new URL(configuration.baseUrl).host, configuration.apiKey]) {
+          expect(line).not.toContain(leaked);
+        }
+      }
+    } finally {
+      write.mockRestore();
+      await runtime.shutdown();
+    }
+  });
+
+  it('never puts a local path in a FILE_ACCESS_DENIED error', async () => {
+    const { client } = driver(configuration, () => json({ attachment_id: 1 }));
+    const runtime = createRuntime({ client, limits: configuration.limits });
+    const outside = join(tmpdir(), 'outside-path-marker-51a0', 'secret.txt');
+    try {
+      const result = await executeToolCall(registered('testrail_add_attachment_to_case'), { case_id: 1, file_path: outside, filename: 'x.txt' }, {
+        runtime, configuration, stagingDirectory: () => Promise.resolve(base),
+      });
+      expect(payloadOf(result).error).toMatchObject({ code: 'FILE_ACCESS_DENIED', write_outcome: 'not_started' });
+      expect(JSON.stringify(result)).not.toContain('outside-path-marker-51a0');
+      // As serialized: on Windows every backslash is escaped, so the raw path could never match.
+      expect(JSON.stringify(result)).not.toContain(asJson(tmpdir()));
     } finally { await runtime.shutdown(); }
   });
 });
