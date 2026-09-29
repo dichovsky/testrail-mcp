@@ -50,7 +50,7 @@ Either way, revoke any token used for the bootstrap afterwards.
 1. **Gates.**
    - CI passes on `main`.
    - Every record in [client evidence](evidence/clients/) holds the required-client results.
-   - The live TestRail qualification evidence is complete.
+   - The live TestRail qualification evidence is complete: a [live qualification](live-qualification.md) record for 10.7.0 with no `fail`, and every `blocked` or `not_run` tool explained.
    - [Client configuration](client-compatibility.md) and the [release gates](implementation-plan.md#release-gates-and-evidence) list what each must contain.
 2. **Version pull request.** Set `version` in `package.json` and `package-lock.json`, then replace `Unreleased` with the release date in that version's [changelog](../CHANGELOG.md) section. Merge it once CI passes.
 3. **Tag.** Tag the merge commit on `main` as `vX.Y.Z` and push the tag.
