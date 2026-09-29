@@ -927,6 +927,23 @@ describe('the operator guide', () => {
   });
 });
 
+describe('the live evidence in the repository', () => {
+  const directory = new URL('../docs/evidence/live/', import.meta.url);
+
+  it('holds each file to what the runner writes: every registered tool, a summary that adds up, and a name that says the version', async () => {
+    const files = (await readdir(directory)).filter((name) => name.endsWith('.json'));
+    expect(files).not.toEqual([]);
+    for (const name of files) {
+      const evidence = evidenceSchema.parse(JSON.parse(await readFile(new URL(name, directory), 'utf8')));
+      expect(Object.keys(evidence.tools).sort(), name).toEqual(operationRegistry.entries.map(({ tool }) => tool).sort());
+      const summary = { pass: 0, not_run: 0, blocked: 0, fail: 0 };
+      for (const { status } of Object.values(evidence.tools)) summary[status] += 1;
+      expect(evidence.summary, name).toEqual(summary);
+      expect(name).toBe(`testrail-${String(evidence.testrail_version).split('.').slice(0, 3).join('.')}.json`);
+    }
+  });
+});
+
 describe('the command line', () => {
   const cli = (args: string[], env: Environment) => promisify(execFile)(process.execPath, [script('live-qualification.mjs'), ...args], { env });
 

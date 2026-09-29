@@ -1,0 +1,1503 @@
+{
+  "schema_version": 1,
+  "provenance": "live_testrail",
+  "tested_on": "2026-09-29",
+  "testrail_version": "10.8.1.1049",
+  "server": {
+    "package_version": "0.1.0-dev.0",
+    "protocol": "2025-11-25",
+    "driver_version": "7.2.0"
+  },
+  "options": {
+    "instance_writes": false,
+    "report_template": false,
+    "cross_project_report_template": false
+  },
+  "stopped": null,
+  "summary": {
+    "pass": 97,
+    "not_run": 8,
+    "blocked": 27,
+    "fail": 1
+  },
+  "tools": {
+    "testrail_add_attachment_to_case": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_attachment_to_plan": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_attachment_to_plan_entry": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "reason": "needs the entry an earlier step did not provide",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_attachment_to_result": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_attachment_to_run": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_bdd": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_case": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "second",
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "to delete",
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_case_field": {
+      "status": "not_run",
+      "steps": [
+        {
+          "label": null,
+          "status": "not_run",
+          "reason": "needs --instance-writes",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_cases": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_config": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": "Chrome",
+          "status": "blocked",
+          "reason": "needs the config_group an earlier step did not provide",
+          "warnings": []
+        },
+        {
+          "label": "Firefox",
+          "status": "blocked",
+          "reason": "needs the config_group an earlier step did not provide",
+          "warnings": []
+        },
+        {
+          "label": "to delete",
+          "status": "blocked",
+          "reason": "needs the config group to delete an earlier step did not provide",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_config_group": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "code": "PERMISSION_DENIED",
+          "http_status": 403,
+          "warnings": []
+        },
+        {
+          "label": "to delete",
+          "status": "blocked",
+          "code": "PERMISSION_DENIED",
+          "http_status": 403,
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_dataset": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "code": "LICENSE_REQUIRED",
+          "http_status": 403,
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_group": {
+      "status": "not_run",
+      "steps": [
+        {
+          "label": null,
+          "status": "not_run",
+          "reason": "needs --instance-writes",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_label": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "to delete",
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "to bulk delete",
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_milestone": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "to delete",
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_plan": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "to delete",
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_plan_entry": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "reason": "needs the Chrome an earlier step did not provide",
+          "warnings": []
+        },
+        {
+          "label": "to delete",
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_project": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_result": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_result_for_case": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_results": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_results_for_cases": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_run": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "to delete",
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_run_to_plan_entry": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "reason": "needs the entry an earlier step did not provide",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_section": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "child",
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "target",
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "to delete",
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_shared_step": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_suite": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "to delete",
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_user": {
+      "status": "not_run",
+      "steps": [
+        {
+          "label": null,
+          "status": "not_run",
+          "reason": "needs --instance-writes",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_add_variable": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "code": "LICENSE_REQUIRED",
+          "http_status": 403,
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_close_plan": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_close_run": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_copy_cases_to_section": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_attachment": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_case": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_cases": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_config": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "reason": "needs the config to delete an earlier step did not provide",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_config_group": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "reason": "needs the config group to delete an earlier step did not provide",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_dataset": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "reason": "needs the dataset an earlier step did not provide",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_group": {
+      "status": "not_run",
+      "steps": [
+        {
+          "label": null,
+          "status": "not_run",
+          "reason": "needs --instance-writes",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_label": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_labels": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_milestone": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "code": "PERMISSION_DENIED",
+          "http_status": 403,
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_plan": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "code": "PERMISSION_DENIED",
+          "http_status": 403,
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_plan_entry": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_project": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_run": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "code": "PERMISSION_DENIED",
+          "http_status": 403,
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_run_from_plan_entry": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "reason": "needs the second plan run an earlier step did not provide",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_section": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_shared_step": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_suite": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_delete_variable": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "reason": "needs the variable an earlier step did not provide",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_edit_result": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_attachment": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_attachments_for_case": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_attachments_for_plan": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_attachments_for_plan_entry": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "reason": "needs the entry an earlier step did not provide",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_attachments_for_run": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_attachments_for_test": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_bdd": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_bdds": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_case": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_case_fields": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_case_statuses": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "code": "LICENSE_REQUIRED",
+          "http_status": 403,
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_case_titles": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_case_types": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_cases": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_configs": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_cross_project_reports": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "code": "PERMISSION_DENIED",
+          "http_status": 403,
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_current_user": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_dataset": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "reason": "needs the dataset an earlier step did not provide",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_datasets": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "code": "LICENSE_REQUIRED",
+          "http_status": 403,
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_dynamic_filter_fields": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": [
+            "SCHEMA_DRIFT"
+          ]
+        }
+      ]
+    },
+    "testrail_get_group": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": "existing group",
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "own group",
+          "status": "not_run",
+          "reason": "needs --instance-writes",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_groups": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_history_for_case": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_label": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": [
+            "SCHEMA_DRIFT"
+          ]
+        }
+      ]
+    },
+    "testrail_get_labels": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_milestone": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_milestones": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_plan": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_plans": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_priorities": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_project": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_projects": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_reports": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_result_fields": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_results": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_results_for_case": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_results_for_run": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_roles": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_run": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_runs": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_section": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_sections": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_shared_step": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_shared_step_history": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_shared_steps": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_statuses": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_suite": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_suites": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_templates": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_test": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_tests": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_user": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_user_by_email": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_users": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": "instance",
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "project",
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_variables": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "code": "LICENSE_REQUIRED",
+          "http_status": 403,
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_get_version": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_move_cases_to_section": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_move_section": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_run_cross_project_report": {
+      "status": "not_run",
+      "steps": [
+        {
+          "label": null,
+          "status": "not_run",
+          "reason": "needs --cross-project-report-template-id",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_run_report": {
+      "status": "not_run",
+      "steps": [
+        {
+          "label": null,
+          "status": "not_run",
+          "reason": "needs --report-template-id",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_bdd": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_case": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_cases": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_config": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "reason": "needs the Chrome an earlier step did not provide",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_config_group": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "reason": "needs the config_group an earlier step did not provide",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_dataset": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "reason": "needs the dataset an earlier step did not provide",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_group": {
+      "status": "not_run",
+      "steps": [
+        {
+          "label": null,
+          "status": "not_run",
+          "reason": "needs --instance-writes",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_label": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_milestone": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_plan": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_plan_entry": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "reason": "needs the entry an earlier step did not provide",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_project": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_run": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_run_in_plan_entry": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "reason": "needs the plan run an earlier step did not provide",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_section": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_shared_step": {
+      "status": "fail",
+      "steps": [
+        {
+          "label": null,
+          "status": "fail",
+          "code": "UPSTREAM_ERROR",
+          "http_status": 500,
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_suite": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_test": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_tests": {
+      "status": "pass",
+      "steps": [
+        {
+          "label": null,
+          "status": "pass",
+          "warnings": [
+            "SCHEMA_DRIFT"
+          ]
+        }
+      ]
+    },
+    "testrail_update_user": {
+      "status": "not_run",
+      "steps": [
+        {
+          "label": null,
+          "status": "not_run",
+          "reason": "needs --instance-writes",
+          "warnings": []
+        }
+      ]
+    },
+    "testrail_update_variable": {
+      "status": "blocked",
+      "steps": [
+        {
+          "label": null,
+          "status": "blocked",
+          "reason": "needs the variable an earlier step did not provide",
+          "warnings": []
+        }
+      ]
+    }
+  },
+  "cleanup": {
+    "project": "deleted",
+    "group": "not_created",
+    "residue": []
+  }
+}
