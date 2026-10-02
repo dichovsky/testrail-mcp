@@ -1,6 +1,10 @@
 import { spawnSync } from 'node:child_process';
 import { chmodSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { requireLockedInstall } from './check-install.mjs';
+
+// Before the output is removed, so a refused build leaves the previous one in place.
+requireLockedInstall();
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const output = new URL('../dist/', import.meta.url);

@@ -1,8 +1,9 @@
 import { execFile } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -14,7 +15,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
  * Every action in every workflow is pinned to a commit. The release notes come from a
  * dated changelog section for exactly the tagged version. The dependency inventory lists
  * what a user's install gets. The post-publish check installs the artifact, compares it
- * with the registry and drives it over MCP.
+ * with the registry and drives it over MCP. A publish typed by hand from the working tree
+ * cannot publish the development version or put a pre-release under `latest`, and a build
+ * against an install older than the lockfile stops and says so.
  */
 
 // Windows checkouts may carry CRLF line endings; the checks read files as LF.
@@ -24,7 +27,7 @@ const run = promisify(execFile);
 const release = await read('../.github/workflows/release.yml');
 const releaseDoc = await read('../docs/release.md');
 const changelog = await read('../CHANGELOG.md');
-const packageJson = JSON.parse(await read('../package.json')) as { version: string; dependencies: Record<string, string> };
+const packageJson = JSON.parse(await read('../package.json')) as { name: string; version: string; dependencies: Record<string, string>; scripts: Record<string, string> };
 const lockfile = JSON.parse(await read('../package-lock.json')) as { packages: Record<string, { version?: string; dev?: boolean; devOptional?: boolean }> };
 const script = (name: string): string => fileURLToPath(new URL(`../scripts/${name}`, import.meta.url));
 const projectRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -34,6 +37,9 @@ interface Registry {
   viewField: (spec: string, field: string) => unknown;
 }
 const { checkRegistry, viewField } = (await import(new URL('../scripts/verify-published.mjs', import.meta.url).href)) as Registry;
+const { publishRefusal } = (await import(new URL('../scripts/check-publish.mjs', import.meta.url).href)) as { publishRefusal: (version: string, tag: string | undefined) => string | undefined };
+const { staleDependencies } = (await import(new URL('../scripts/check-install.mjs', import.meta.url).href)) as { staleDependencies: (root?: URL) => string[] };
+const { npmCommand } = (await import(new URL('../scripts/npm-command.mjs', import.meta.url).href)) as { npmCommand: () => [string, string[]] };
 
 /** The lines of one job, from its key to the next key at a job's indent or less, comments aside. */
 function job(workflow: string, name: string): string {
@@ -402,3 +408,130 @@ describe('the release files', () => {
   }, 300_000);
 });
 
+
+describe('a publish by hand from the working tree', () => {
+  const development = /is this repository's development version and is never published/u;
+  const untagged = /is a pre-release\. Publish it with a --tag other than latest/u;
+
+  it('refuses the development version under any tag, and a pre-release without a tag other than latest', () => {
+    const cases: [version: string, tag: string | undefined, refusal: RegExp | undefined][] = [
+      ['0.1.0-dev.0', undefined, development],
+      ['0.1.0-dev.0', 'next', development],
+      ['1.0.0-dev', 'latest', development],
+      ['0.0.0-bootstrap.0', undefined, untagged],
+      ['0.0.0-bootstrap.0', 'latest', untagged],
+      ['1.0.0-rc.1+build.5', undefined, untagged],
+      ['0.0.0-bootstrap.0', 'bootstrap', undefined],
+      ['1.0.0-rc.1+build.5', 'next', undefined],
+      ['1.0.0-development.1', 'next', undefined],
+      ['1.0.0', undefined, undefined],
+      ['1.0.0', 'latest', undefined],
+      ['1.0.0+build.5', undefined, undefined],
+    ];
+    for (const [version, tag, refusal] of cases) {
+      const outcome = publishRefusal(version, tag);
+      if (refusal === undefined) expect(outcome, `${version} --tag ${String(tag)}`).toBeUndefined();
+      else expect(outcome, `${version} --tag ${String(tag)}`).toMatch(refusal);
+    }
+  });
+
+  it('runs as npm\'s prepublishOnly, with the tag npm was given, before anything is built', async () => {
+    expect(packageJson.scripts.prepublishOnly).toBe('node scripts/check-publish.mjs');
+    const base = await mkdtemp(join(tmpdir(), 'testrail-mcp-prepublish-'));
+    try {
+      await mkdir(join(base, 'scripts'));
+      await copyFile(script('check-publish.mjs'), join(base, 'scripts', 'check-publish.mjs'));
+      const built = join(base, 'built');
+      const [command, prefix] = npmCommand();
+      // Only this test's settings reach npm, whatever npm ran the tests.
+      const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^npm_config_/iu.test(key)));
+      /*
+       * A dry run, against a registry nothing listens on, of a tree whose build records that
+       * it ran and then fails. npm 11 contacts the registry once its own checks pass, so a
+       * publish the guard allows stops at the build, before any registry.
+       */
+      const publish = async (version: string, ...args: string[]) => {
+        await writeFile(join(base, 'package.json'), JSON.stringify({
+          name: packageJson.name,
+          version,
+          scripts: { prepublishOnly: packageJson.scripts.prepublishOnly, prepack: 'node -e "require(\'fs\').writeFileSync(\'built\', \'\'); process.exit(3)"' },
+        }));
+        await rm(built, { force: true });
+        const outcome = await run(command, [...prefix, 'publish', '--dry-run', '--registry', 'http://127.0.0.1:9/', '--fetch-retries', '0', ...args], { cwd: base, env })
+          .then(() => 'published', ({ stderr }: { stderr: string }) => stderr);
+        return { outcome, built: existsSync(built) };
+      };
+      expect(await publish('0.1.0-dev.0', '--tag', 'next')).toEqual({ outcome: expect.stringMatching(development) as unknown, built: false });
+      expect(await publish('1.0.0-rc.1')).toEqual({ outcome: expect.stringMatching(untagged) as unknown, built: false });
+      expect(await publish('1.0.0-rc.1', '--tag', 'latest')).toEqual({ outcome: expect.stringMatching(untagged) as unknown, built: false });
+      // Allowed, so npm goes on to the build, which stops it.
+      expect(await publish('1.0.0-rc.1', '--tag', 'next')).toEqual({ outcome: expect.not.stringMatching(/pre-release|development/u) as unknown, built: true });
+      expect(await publish('1.0.0')).toEqual({ outcome: expect.not.stringMatching(/pre-release|development/u) as unknown, built: true });
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  }, 120_000);
+});
+
+describe('a build from the working tree', () => {
+  /** A tree with these pins, lockfile entries and installed versions; undefined leaves one out. */
+  async function tree(base: string, packages: Record<string, { pinned?: 'dependencies' | 'devDependencies'; locked?: string; installed?: string }>): Promise<URL> {
+    const manifest: Record<string, Record<string, string>> = { dependencies: {}, devDependencies: {} };
+    const lock: Record<string, { version: string }> = {};
+    for (const [name, { pinned, locked, installed }] of Object.entries(packages)) {
+      if (pinned !== undefined && manifest[pinned] !== undefined) manifest[pinned][name] = locked ?? installed ?? '0.0.0';
+      if (locked !== undefined) lock[`node_modules/${name}`] = { version: locked };
+      if (installed !== undefined) {
+        await mkdir(join(base, 'node_modules', name), { recursive: true });
+        await writeFile(join(base, 'node_modules', name, 'package.json'), JSON.stringify({ name, version: installed }));
+      }
+    }
+    await writeFile(join(base, 'package.json'), JSON.stringify({ name: 'tree', version: '1.0.0', ...manifest }));
+    await writeFile(join(base, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { '': { name: 'tree' }, ...lock } }));
+    return pathToFileURL(join(base, 'package.json'));
+  }
+
+  it('finds this repository installed as its lockfile records', () => {
+    expect(staleDependencies()).toEqual([]);
+  });
+
+  it('names each direct dependency, production or development, installed at a version other than the lockfile\'s', async () => {
+    const base = await mkdtemp(join(tmpdir(), 'testrail-mcp-install-'));
+    try {
+      const root = await tree(base, {
+        '@scope/current': { pinned: 'dependencies', locked: '1.0.0', installed: '1.0.0' },
+        '@scope/behind': { pinned: 'dependencies', locked: '7.2.0', installed: '7.1.0' },
+        ahead: { pinned: 'devDependencies', locked: '2.0.0', installed: '2.1.0' },
+        missing: { pinned: 'devDependencies', locked: '3.0.0' },
+        unlocked: { pinned: 'dependencies', installed: '4.0.0' },
+        // Installed and locked, but nothing pins it directly: npm ci's business, not this check's.
+        transitive: { locked: '5.0.0', installed: '4.0.0' },
+      });
+      expect(staleDependencies(root)).toEqual([
+        '@scope/behind: installed 7.1.0, package-lock.json has 7.2.0',
+        'ahead: installed 2.1.0, package-lock.json has 2.0.0',
+        'missing: not installed, package-lock.json has 3.0.0',
+        'unlocked: not in package-lock.json',
+      ]);
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+
+  it('stops before it removes the previous build, and says to run npm ci', async () => {
+    const base = await mkdtemp(join(tmpdir(), 'testrail-mcp-build-'));
+    try {
+      await mkdir(join(base, 'scripts'));
+      for (const name of ['build.mjs', 'check-install.mjs']) await copyFile(script(name), join(base, 'scripts', name));
+      await mkdir(join(base, 'dist'));
+      await writeFile(join(base, 'dist', 'cli.js'), 'the previous build');
+      await tree(base, { '@dichovsky/testrail-api-client': { pinned: 'dependencies', locked: '7.2.0', installed: '7.1.0' } });
+      await expect(run(process.execPath, [join(base, 'scripts', 'build.mjs')], { cwd: base })).rejects.toMatchObject({
+        stderr: 'The installed dependencies do not match package-lock.json:\n  @dichovsky/testrail-api-client: installed 7.1.0, package-lock.json has 7.2.0\nRun npm ci, then try again.\n',
+      });
+      expect(await readFile(join(base, 'dist', 'cli.js'), 'utf8')).toBe('the previous build');
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+});
