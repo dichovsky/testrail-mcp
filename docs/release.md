@@ -1,6 +1,6 @@
 # Releases
 
-This is how `@dichovsky/testrail-mcp` is versioned, published, upgraded and rolled back. The package is not yet published; 1.0.0 is the first planned release.
+This is how `@dichovsky/testrail-mcp` is versioned, published, upgraded and rolled back. No release is on npm yet: the only version there is the deprecated placeholder `0.0.0-bootstrap.0`, and 1.0.0 is the first planned release.
 
 ## Versioning and compatibility
 
@@ -34,16 +34,24 @@ The [release workflow](../.github/workflows/release.yml) publishes only from tha
 | Workflow filename | `release.yml` |
 | Environment name | `npm-release` |
 
-npm allows a trusted publisher only on a package that already exists, so the very first version must be published another way. The owner chooses one of these before tagging 1.0.0:
+npm allows a trusted publisher only on a package that already exists, so the very first version must be published another way. There are two routes. The owner took the first, and published `0.0.0-bootstrap.0` on 2026-10-02, so what remains is the trusted publisher above.
 
 - **Publish a placeholder first**, so that 1.0.0 goes through the workflow like every later release, with provenance.
   1. Set `version` to `0.0.0-bootstrap.0` in a scratch copy of the tree.
-  2. Run `npm publish --access public --tag bootstrap` there. npm refuses to publish a prerelease without an explicit `--tag`, and this keeps `latest` free for 1.0.0.
+  2. Run `npm publish --access public --tag bootstrap` there. A pre-release needs a `--tag` other than `latest`: the [check below](#publishing-by-hand) refuses one without it, and so does npm 11. The tag does not keep `latest` free, though. The registry points `latest` at a package's first version whatever its tag, so until 1.0.0 is published, `npm install @dichovsky/testrail-mcp` gets the deprecated placeholder. Publishing 1.0.0 moves `latest` to it.
   3. Run `npm deprecate @dichovsky/testrail-mcp@0.0.0-bootstrap.0 "Placeholder; install 1.0.0 or later."`.
   4. Configure the trusted publisher above, then release 1.0.0 with the checklist below.
 - **Publish 1.0.0 once from a terminal**, from the tagged, fully checked tree, with `npm publish --access public`. 1.0.0 then has no provenance attestation. The workflow the tag starts cannot finish for 1.0.0. Its publish job stops at a 1.0.0 published from a different tarball, and a byte-identical one fails the provenance check, so there is no workflow SBOM or GitHub release. Create the release by hand with `gh release create v1.0.0 --verify-tag --notes-file <notes>`, attaching the tarball you published. Every later version goes through the workflow.
 
 Either way, revoke any token used for the bootstrap afterwards.
+
+### Publishing by hand
+
+`npm publish` from a working tree first runs `scripts/check-publish.mjs`, before anything is built. It refuses:
+- the tree's own `-dev` version, under any tag;
+- a pre-release without a `--tag` other than `latest`. npm 10 would publish one under `latest`, and npm 11 refuses one without `--tag` only after the build.
+
+The release workflow publishes a packed tarball, which runs no package scripts, so the check does not affect it. `--ignore-scripts` skips the check, and the build with it.
 
 ## Release checklist
 

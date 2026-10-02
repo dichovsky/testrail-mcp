@@ -25,7 +25,7 @@ Use `serveStdio(factory)` from `@modelcontextprotocol/server/stdio`. The release
 
 ## Shared installation and environment
 
-Package: `@dichovsky/testrail-mcp`. Executable: `testrail-mcp`. The package is not yet published to npm; until it is, install it from a packed checkout as the [README](../README.md#install) describes.
+Package: `@dichovsky/testrail-mcp`. Executable: `testrail-mcp`. No release is on npm yet, only a deprecated placeholder; until the first release, install it from a packed checkout as the [README](../README.md#install) describes.
 
 For release verification, build and pack the candidate, install that tarball into an isolated prefix, and use the installed executable. Verify the published, exact version through npm once publication is part of the release workflow. The examples below assume `testrail-mcp` is on the host's executable path. When it is not, replace `command` with the absolute path of that same installed executable; check this separately for the desktop launch environment.
 

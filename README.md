@@ -11,7 +11,7 @@ It exposes **133 tools, one per TestRail REST endpoint**, across all 28 API reso
 | Endpoint tools | All 133 registered, each with a complete independent parameter manifest ([coverage reports](docs/coverage-reports.md)) |
 | Offline verification | Fixture contracts for every endpoint, both MCP protocol eras (legacy `initialize` and 2026-07-28), and the packed executable on Node 24 across Linux, macOS and Windows |
 | Client qualification | Pending: [R02](https://github.com/dichovsky/testrail-mcp/issues/23) |
-| Live TestRail 10.7 qualification and npm release | Pending: [R03](https://github.com/dichovsky/testrail-mcp/issues/24). The package is **not yet published to npm** |
+| Live TestRail 10.7 qualification and npm release | Pending: [R03](https://github.com/dichovsky/testrail-mcp/issues/24). **No release is on npm yet**; the only version there is a deprecated placeholder, `0.0.0-bootstrap.0` |
 
 ## Install
 
@@ -26,7 +26,7 @@ npm install --global ./dichovsky-testrail-mcp-<version>.tgz
 testrail-mcp --version
 ```
 
-Once published, install an exact version from npm, for example `npm install --global @dichovsky/testrail-mcp@<version>`. [Releases](docs/release.md) covers versioning, upgrading, rolling back and uninstalling.
+After the first release, install an exact version from npm, for example `npm install --global @dichovsky/testrail-mcp@<version>`. [Releases](docs/release.md) covers versioning, upgrading, rolling back and uninstalling.
 
 ## Configure
 
@@ -87,7 +87,7 @@ npm run check
 ```
 
 `npm run check` runs these steps, and none of them need TestRail credentials:
-1. builds from a clean output directory;
+1. builds from a clean output directory, after checking that each direct dependency is installed at the version `package-lock.json` records. If one is not, for example after a pull that changed a pin, the build stops and names it; run `npm ci`;
 2. checks the registry against the pinned [operation inventory](docs/operation-inventory.json) and the generated [operation reference](docs/operation-reference.md);
 3. typechecks and lints;
 4. runs every test;

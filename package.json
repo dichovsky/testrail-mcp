@@ -38,7 +38,8 @@
     "registry:check": "node scripts/check-registry.mjs --complete",
     "registry:generate": "npm run build && node scripts/check-registry.mjs --write",
     "check": "npm run build && npm run registry:check && npm run typecheck && npm run lint && npm test && npm run test:package",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "prepublishOnly": "node scripts/check-publish.mjs"
   },
   "dependencies": {
     "@dichovsky/testrail-api-client": "7.2.0",
