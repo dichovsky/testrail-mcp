@@ -13701,7 +13701,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_update_shared_step
 
-Update a TestRail shared step set. Supplied fields replace their current values, and sending custom_steps_separated replaces every existing step rather than adding to them. Required path arguments: shared_step_id. Changes TestRail data.
+Update a TestRail shared step set. Supplied fields replace their current values, and sending custom_steps_separated replaces every existing step rather than adding to them. TestRail 10.8.1 answers an update that sends title without custom_steps_separated with HTTP 500 and changes nothing, so send the steps with the title. Required path arguments: shared_step_id. Changes TestRail data.
 
 REST: `POST update_shared_step/{shared_step_id}`. Driver: `sharedSteps.updateSharedStep`. Family: T03.
 

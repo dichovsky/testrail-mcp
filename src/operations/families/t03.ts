@@ -352,7 +352,7 @@ export const updateSharedStep = defineOperation({
   route: 'update_shared_step/{shared_step_id}',
   family: 'T03',
   driverBinding: 'sharedSteps.updateSharedStep',
-  summary: 'Update a TestRail shared step set. Supplied fields replace their current values, and sending custom_steps_separated replaces every existing step rather than adding to them.',
+  summary: 'Update a TestRail shared step set. Supplied fields replace their current values, and sending custom_steps_separated replaces every existing step rather than adding to them. TestRail 10.8.1 answers an update that sends title without custom_steps_separated with HTTP 500 and changes nothing, so send the steps with the title.',
   inputSchema: updateSharedStepInput,
   argumentMap: [
     { input: 'shared_step_id', call: 'single', argument: 0, serialization: 'path' },
