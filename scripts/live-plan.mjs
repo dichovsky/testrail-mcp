@@ -331,22 +331,22 @@ export const PLAN = [
 
   // Attachments on the case, run and result.
   {
-    tool: 'add_attachment_to_case', scope: 'own', input: (c) => ({ case_id: c.id('case'), ...c.upload('text') }),
+    tool: 'add_attachment_to_case', scope: 'own', unconfirmed: 'attachment', input: (c) => ({ case_id: c.id('case'), ...c.upload('text') }),
     capture: (data, c) => { c.own('attachment', idOf(data, 'attachment_id')); },
   },
   {
-    tool: 'add_attachment_to_run', scope: 'own', input: (c) => ({ run_id: c.id('run'), ...c.upload('text') }),
+    tool: 'add_attachment_to_run', scope: 'own', unconfirmed: 'attachment', input: (c) => ({ run_id: c.id('run'), ...c.upload('text') }),
     capture: (data, c) => { c.own('attachment', idOf(data, 'attachment_id'), 'run attachment'); },
   },
   {
-    tool: 'add_attachment_to_result', scope: 'own', input: (c) => ({ result_id: c.id('result'), ...c.upload('text') }),
+    tool: 'add_attachment_to_result', scope: 'own', unconfirmed: 'attachment', input: (c) => ({ result_id: c.id('result'), ...c.upload('text') }),
     capture: (data, c) => { c.own('attachment', idOf(data, 'attachment_id'), 'result attachment'); },
   },
   { tool: 'get_attachments_for_case', scope: 'read', input: (c) => ({ case_id: c.id('case') }) },
   { tool: 'get_attachments_for_run', scope: 'read', input: (c) => ({ run_id: c.id('run') }) },
   { tool: 'get_attachments_for_test', scope: 'read', input: (c) => ({ test_id: c.id('test') }) },
   { tool: 'get_attachment', scope: 'read', input: (c) => ({ attachment_id: c.id('attachment') }) },
-  { tool: 'delete_attachment', scope: 'own', input: (c) => ({ attachment_id: c.id('run attachment') }) },
+  { tool: 'delete_attachment', label: 'run attachment', scope: 'own', input: (c) => ({ attachment_id: c.id('run attachment') }) },
 
   // A plan with configured entries.
   {
@@ -380,11 +380,11 @@ export const PLAN = [
   { tool: 'update_plan_entry', scope: 'own', input: (c) => ({ plan_id: c.id('plan'), entry_id: c.id('entry'), body: { description: 'Updated.' } }) },
   { tool: 'update_run_in_plan_entry', scope: 'own', input: (c) => ({ run_id: c.id('plan run'), body: { description: 'Updated.' } }) },
   {
-    tool: 'add_attachment_to_plan', scope: 'own', input: (c) => ({ plan_id: c.id('plan'), ...c.upload('text') }),
+    tool: 'add_attachment_to_plan', scope: 'own', unconfirmed: 'attachment', input: (c) => ({ plan_id: c.id('plan'), ...c.upload('text') }),
     capture: (data, c) => { c.own('attachment', idOf(data, 'attachment_id'), 'plan attachment'); },
   },
   {
-    tool: 'add_attachment_to_plan_entry', scope: 'own', input: (c) => ({ plan_id: c.id('plan'), entry_id: c.id('entry'), ...c.upload('text') }),
+    tool: 'add_attachment_to_plan_entry', scope: 'own', unconfirmed: 'attachment', input: (c) => ({ plan_id: c.id('plan'), entry_id: c.id('entry'), ...c.upload('text') }),
     capture: (data, c) => { c.own('attachment', idOf(data, 'attachment_id'), 'entry attachment'); },
   },
   { tool: 'get_attachments_for_plan', scope: 'read', input: (c) => ({ plan_id: c.id('plan') }) },
@@ -413,11 +413,15 @@ export const PLAN = [
   },
   { tool: 'delete_run', scope: 'own', input: (c) => ({ run_id: c.id('run to delete') }) },
 
-  // Reports, only from templates the operator configured for the test.
-  { tool: 'run_report', scope: 'report', requires: 'reportTemplateId', input: (c) => ({ report_template_id: c.option('reportTemplateId') }) },
+  // Reports, only from templates the operator configured for the test. TestRail's API cannot
+  // delete a generated report, so each one is left behind for the operator to delete.
   {
-    tool: 'run_cross_project_report', scope: 'report', requires: 'crossProjectReportTemplateId',
-    input: (c) => ({ report_template_id: c.option('crossProjectReportTemplateId') }),
+    tool: 'run_report', scope: 'report', requires: 'reportTemplateId', unconfirmed: 'generated report',
+    input: (c) => ({ report_template_id: c.option('reportTemplateId') }), capture: (_data, c) => { c.residue('generated report'); },
+  },
+  {
+    tool: 'run_cross_project_report', scope: 'report', requires: 'crossProjectReportTemplateId', unconfirmed: 'generated cross-project report',
+    input: (c) => ({ report_template_id: c.option('crossProjectReportTemplateId') }), capture: (_data, c) => { c.residue('generated cross-project report'); },
   },
 
   // Writes outside the project: a disposable instance only.
@@ -446,6 +450,16 @@ export const PLAN = [
     } }),
     capture: (_data, c) => { c.residue('case_field'); },
   },
+
+  // Each remaining attachment is deleted itself: attachments are stored apart from what they
+  // hang on, so they are not left to go with the project.
+  ...[['case attachment', 'attachment'], ['result attachment'], ['plan attachment'], ['entry attachment']].map(([label, name = label]) => ({
+    tool: 'delete_attachment', label, scope: 'own',
+    input: (c) => {
+      if (!c.has(name)) throw new NotApplicable(`no ${label} was made`);
+      return { attachment_id: c.id(name) };
+    },
+  })),
 
   // Last, the project itself, and everything still in it.
   { tool: 'delete_project', scope: 'own', input: (c) => ({ project_id: c.id('project') }), capture: (_data, c) => { c.gone('project'); } },

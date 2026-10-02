@@ -38,7 +38,8 @@ interface Session { call: Call; serverVersion?: string | undefined; protocol?: s
 interface Pacing { minIntervalMs: number; retryDelayMs: number; attempts: number }
 interface LedgerLike { add: (kind: string, id: unknown) => void }
 interface StepRecord { tool: string; label: string | null; status: string; code?: string; reason?: string; retries?: number }
-interface Run { steps: StepRecord[]; cleanup: { project: string; group: string; residue: { kind: string; count: number }[] }; stopped: string | null }
+interface Verified { gone: number; present: number; unverified: number }
+interface Run { steps: StepRecord[]; cleanup: { project: string; group: string; verified: Verified; residue: { kind: string; count: number }[] }; stopped: string | null }
 type Connect = (server: { command: string; args: string[]; env: Environment }) => Promise<Session>;
 interface Runner {
   PLAN: PlanStep[];
@@ -50,7 +51,7 @@ interface Runner {
   guard: (step: Pick<PlanStep, 'tool' | 'scope' | 'capture'>, input: unknown, ledger: LedgerLike) => void;
   targetsOf: (tool: string, input: unknown) => { key: string; kind: string; id: unknown }[];
   toolStatus: (steps: { status: string }[]) => string;
-  exitCode: (evidence: { summary: { fail: number }; cleanup: { project: string; group: string }; stopped: string | null }) => number;
+  exitCode: (evidence: { summary: { fail: number }; cleanup: { project: string; group: string; verified: Verified }; stopped: string | null }) => number;
   pacedCaller: (call: Call, pacing: Pacing) => (tool: string, input: unknown) => Promise<{ result: ToolResult; retries: number }>;
   parseOptions: (argv: string[]) => { out: string; server: { command: string; args: string[] } };
   runQualification: (options: {
@@ -68,7 +69,7 @@ interface StandIn { baseUrl: string; environment: Record<string, string>; reques
 const script = (name: string): string => fileURLToPath(new URL(`../scripts/${name}`, import.meta.url));
 const runner = (await import(new URL('../scripts/live-qualification.mjs', import.meta.url).href)) as Runner;
 const { startFixtureTestRail } = (await import(new URL('../scripts/fixture-testrail.mjs', import.meta.url).href)) as {
-  startFixtureTestRail: () => Promise<StandIn>;
+  startFixtureTestRail: (options?: { rememberDeletions?: boolean }) => Promise<StandIn>;
 };
 const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
 const installedDriver = JSON.parse(await readFile(new URL('../node_modules/@dichovsky/testrail-api-client/package.json', import.meta.url), 'utf8')) as { version: string };
@@ -90,8 +91,9 @@ const stepSchema = z.strictObject({
   warnings: z.array(z.string()),
 });
 const count = z.number().int().nonnegative();
-const evidenceSchema = z.strictObject({
-  schema_version: z.literal(1),
+const deletion = z.enum(['not_created', 'deleted', 'deleted_in_cleanup', 'left_behind']);
+const residueSchema = z.array(z.strictObject({ kind: z.string().min(1), count: z.number().int().positive() }));
+const evidenceFields = {
   provenance: z.literal('live_testrail'),
   tested_on: z.iso.date(),
   testrail_version: z.string().min(1).nullable(),
@@ -100,13 +102,23 @@ const evidenceSchema = z.strictObject({
   stopped: z.string().min(1).nullable(),
   summary: z.strictObject({ pass: count, not_run: count, blocked: count, fail: count }),
   tools: z.record(z.string(), z.strictObject({ status: z.enum(STATUSES), steps: z.array(stepSchema).min(1) })),
+};
+const evidenceSchema = z.strictObject({
+  schema_version: z.literal(2),
+  ...evidenceFields,
   cleanup: z.strictObject({
-    project: z.enum(['not_created', 'deleted', 'deleted_in_cleanup', 'left_behind']),
-    group: z.enum(['not_created', 'deleted', 'deleted_in_cleanup', 'left_behind']),
-    residue: z.array(z.strictObject({ kind: z.string().min(1), count: z.number().int().positive() })),
+    project: deletion, group: deletion,
+    // What TestRail answered when asked again, after cleanup, for the project, group and attachments.
+    verified: z.strictObject({ gone: count, present: count, unverified: count }),
+    residue: residueSchema,
   }),
 });
 type Evidence = z.infer<typeof evidenceSchema>;
+// Version 1, before the runner asked TestRail again after cleanup: the first live run's record.
+const recordedEvidenceSchema = z.discriminatedUnion('schema_version', [
+  evidenceSchema,
+  z.strictObject({ schema_version: z.literal(1), ...evidenceFields, cleanup: z.strictObject({ project: deletion, group: deletion, residue: residueSchema }) }),
+]);
 
 function registered(tool: string): Operation {
   const operation = operationRegistry.get(tool);
@@ -121,7 +133,7 @@ const failure = (code: string, httpStatus?: number): ToolResult => ({
 let standIn: StandIn;
 let base: string;
 beforeAll(async () => {
-  standIn = await startFixtureTestRail();
+  standIn = await startFixtureTestRail({ rememberDeletions: true });
   base = await mkdtemp(join(tmpdir(), 'testrail-mcp-live-'));
 });
 afterAll(async () => {
@@ -343,7 +355,8 @@ describe('the guard\'s view of every argument', () => {
     const sent: string[] = [];
     const call: Call = (tool) => {
       sent.push(tool);
-      return Promise.resolve({ structuredContent: { data: { id: 5 } } });
+      // Read back after cleanup, the deleted project is answered as TestRail answers an ID it does not have.
+      return Promise.resolve(tool === 'testrail_get_project' ? failure('UPSTREAM_ERROR', 400) : { structuredContent: { data: { id: 5 } } });
     };
     const plan: PlanStep[] = [
       { tool: 'add_project', scope: 'own', input: () => ({ body: { name: 'p' } }), capture: (data, c) => { c.own('project', (data as { id: number }).id); } },
@@ -353,7 +366,7 @@ describe('the guard\'s view of every argument', () => {
       { tool: 'delete_project', scope: 'own', input: (c) => ({ project_id: c.id('project') }), capture: (_data, c) => { c.gone('project'); } },
     ];
     const run = await runner.runQualification({ call, plan, stamp: 's', uploads: {}, pacing: INSTANT });
-    expect(sent).toEqual(['testrail_add_project', 'testrail_update_project', 'testrail_delete_project']);
+    expect(sent).toEqual(['testrail_add_project', 'testrail_update_project', 'testrail_delete_project', 'testrail_get_project']);
     // The refusal names the argument and the kind, never the ID.
     expect(run.steps.map(({ tool, status, reason }) => `${tool} ${status}${reason === undefined ? '' : `: ${reason}`}`)).toEqual([
       'testrail_add_project pass',
@@ -435,13 +448,18 @@ describe('statuses and exit codes', () => {
   });
 
   it('fails a run with a failed tool, anything left behind, or a stop before the end', () => {
-    const evidence = (fail: number, project: string, group: string, stopped: string | null) => ({ summary: { fail }, cleanup: { project, group }, stopped });
+    const evidence = (fail: number, project: string, group: string, stopped: string | null, verified = { gone: 1, present: 0, unverified: 0 }) => ({
+      summary: { fail }, cleanup: { project, group, verified }, stopped,
+    });
     expect(runner.exitCode(evidence(0, 'deleted', 'not_created', null))).toBe(0);
     expect(runner.exitCode(evidence(0, 'deleted_in_cleanup', 'deleted', null))).toBe(0);
     expect(runner.exitCode(evidence(1, 'deleted', 'not_created', null))).toBe(1);
     expect(runner.exitCode(evidence(0, 'left_behind', 'not_created', null))).toBe(1);
     expect(runner.exitCode(evidence(0, 'deleted', 'left_behind', null))).toBe(1);
     expect(runner.exitCode(evidence(0, 'deleted_in_cleanup', 'not_created', 'interrupted'))).toBe(1);
+    // Anything TestRail still serves after cleanup, or could not be asked about.
+    expect(runner.exitCode(evidence(0, 'deleted', 'not_created', null, { gone: 0, present: 1, unverified: 0 }))).toBe(1);
+    expect(runner.exitCode(evidence(0, 'deleted', 'not_created', null, { gone: 0, present: 0, unverified: 1 }))).toBe(1);
   });
 });
 
@@ -495,8 +513,13 @@ describe('a full run against the stand-in', () => {
     expect(full.evidence.summary).toEqual({ pass: 133, not_run: 0, blocked: 0, fail: 0 });
     expect(full.evidence.cleanup).toEqual({
       project: 'deleted', group: 'deleted',
-      // TestRail's API cannot delete users or case fields.
-      residue: [{ kind: 'user', count: 1 }, { kind: 'case_field', count: 1 }],
+      // Read back after cleanup: the project, the group and all five attachments are gone.
+      verified: { gone: 7, present: 0, unverified: 0 },
+      // TestRail's API cannot delete generated reports, users or case fields.
+      residue: [
+        { kind: 'generated report', count: 1 }, { kind: 'generated cross-project report', count: 1 },
+        { kind: 'user', count: 1 }, { kind: 'case_field', count: 1 },
+      ],
     });
     expect(full.evidence).toMatchObject({
       testrail_version: '10.6.0.1041',
@@ -537,7 +560,11 @@ describe('a full run against the stand-in', () => {
     expect(foreign).toEqual([]);
     // Every write the plan makes was seen: the full run leaves none out.
     expect(ids.writes).toHaveLength(runner.PLAN.filter(({ tool }) => registered(`testrail_${tool}`).effects.testRail !== 'read').length);
-    expect(full.requests.filter(({ method }) => method === 'POST').map(({ tool }) => tool).at(-1)).toBe('testrail_delete_project');
+    const posts = full.requests.filter(({ method }) => method === 'POST').map(({ tool }) => tool);
+    expect(posts.at(-1)).toBe('testrail_delete_project');
+    // Each of the five attachments is deleted itself, before the project it hangs on.
+    expect(posts.slice(posts.lastIndexOf('testrail_add_case_field') + 1)).toEqual([...Array<string>(4).fill('testrail_delete_attachment'), 'testrail_delete_project']);
+    expect(posts.filter((tool) => tool === 'testrail_delete_attachment')).toHaveLength(5);
     expect(stepsOf(full.evidence).filter(({ reason }) => reason?.startsWith('refused by the guard') === true)).toEqual([]);
     expect(full.log.filter((line) => /^pass {4}testrail_/u.test(line))).toHaveLength(runner.PLAN.length);
   });
@@ -555,7 +582,66 @@ describe('a run by default', () => {
     expect(evidence.tools.testrail_get_group?.steps.map(({ label, status }) => `${String(label)}: ${status}`)).toEqual(['existing group: pass', 'own group: not_run']);
     const routes = requests.map(({ tool }) => tool?.replace(/^testrail_/u, ''));
     for (const tool of [...INSTANCE_WRITES, 'run_report', 'run_cross_project_report']) expect(routes, tool).not.toContain(tool);
-    expect(evidence.cleanup).toEqual({ project: 'deleted', group: 'not_created', residue: [] });
+    // Read back after cleanup: the project, and the one attachment ID the stand-in gives every upload.
+    expect(evidence.cleanup).toEqual({ project: 'deleted', group: 'not_created', verified: { gone: 2, present: 0, unverified: 0 }, residue: [] });
+  });
+});
+
+describe('cleanup, checked afterwards', () => {
+  /** After the project is deleted, `tool` answers as `answer` says, however often it is called. */
+  const afterDeletion = (tool: string, answer: (input: unknown, real: () => Promise<ToolResult>) => Promise<ToolResult>): Parameters<typeof inProcess>[0] => {
+    let deleted = false;
+    return (name, input, real) => {
+      if (name === 'testrail_delete_project') deleted = true;
+      return deleted && name === tool ? answer(input, () => real(name, input)) : real(name, input);
+    };
+  };
+
+  it('deletes again an attachment TestRail still serves, and reports one it cannot delete', async () => {
+    // Served once more after the project has gone, as an attachment TestRail kept would be.
+    let served = false;
+    const kept = await qualify([], afterDeletion('testrail_get_attachment', (_input, real) => {
+      if (served) return real();
+      served = true;
+      return Promise.resolve({ structuredContent: { data: { path: 'kept' } } });
+    }));
+    // What reached TestRail: the first check was answered above, so it sees the deletion and the second check.
+    const after = kept.requests.slice(kept.requests.findIndex(({ tool }) => tool === 'testrail_delete_project'));
+    expect(after.map(({ tool }) => tool)).toEqual(['testrail_delete_project', 'testrail_get_project', 'testrail_delete_attachment', 'testrail_get_attachment']);
+    expect(kept.evidence.cleanup).toEqual({ project: 'deleted', group: 'not_created', verified: { gone: 2, present: 0, unverified: 0 }, residue: [] });
+    expect(runner.exitCode(kept.evidence)).toBe(0);
+    // Served every time, and its deletion refused.
+    let gone = false;
+    const stuck = await qualify([], (name, input, real) => {
+      if (name === 'testrail_delete_project') gone = true;
+      if (gone && name === 'testrail_get_attachment') return Promise.resolve({ structuredContent: { data: { path: 'kept' } } });
+      if (gone && name === 'testrail_delete_attachment') return Promise.resolve(failure('PERMISSION_DENIED', 403));
+      return real(name, input);
+    });
+    expect(stuck.evidence.cleanup).toEqual({ project: 'deleted', group: 'not_created', verified: { gone: 1, present: 1, unverified: 0 }, residue: [{ kind: 'attachment', count: 1 }] });
+    expect(runner.exitCode(stuck.evidence)).toBe(1);
+    expect(stuck.log.at(-2)).toBe('Cleanup: project deleted, group not_created; checked afterwards: 1 gone, 1 still there, 0 unverified; left behind: 1 attachment.');
+  });
+
+  it('fails a run whose cleanup TestRail cannot confirm, and says which', async () => {
+    const unanswered = await qualify([], afterDeletion('testrail_get_project', () => Promise.resolve(failure('UPSTREAM_ERROR', 500))));
+    expect(unanswered.evidence.cleanup).toEqual({ project: 'deleted', group: 'not_created', verified: { gone: 1, present: 0, unverified: 1 }, residue: [{ kind: 'unverified project', count: 1 }] });
+    expect(runner.exitCode(unanswered.evidence)).toBe(1);
+    // A permission refusal is no answer either: only NOT_FOUND, or TestRail's 400 for an ID it does not have, is gone.
+    const forbidden = await qualify([], afterDeletion('testrail_get_attachment', () => Promise.resolve(failure('PERMISSION_DENIED', 403))));
+    expect(forbidden.evidence.cleanup.residue).toEqual([{ kind: 'unverified attachment', count: 1 }]);
+    const missing = await qualify([], afterDeletion('testrail_get_project', () => Promise.resolve(failure('NOT_FOUND', 404))));
+    expect(missing.evidence.cleanup.verified).toEqual({ gone: 2, present: 0, unverified: 0 });
+  });
+
+  it('skips, rather than blocks, deleting an attachment that was never made', async () => {
+    const { evidence } = await qualify([], (tool, input, real) => (tool === 'testrail_add_plan_entry' ? Promise.resolve(failure('PERMISSION_DENIED', 403)) : real(tool, input)));
+    const deletes = evidence.tools.testrail_delete_attachment?.steps.map(({ label, status, reason }) => `${String(label)}: ${status}${reason === undefined ? '' : ` (${reason})`}`);
+    expect(deletes).toEqual([
+      'run attachment: pass', 'case attachment: pass', 'result attachment: pass', 'plan attachment: pass',
+      'entry attachment: not_run (no entry attachment was made)',
+    ]);
+    expect(evidence.tools.testrail_delete_attachment?.status).toBe('pass');
   });
 });
 
@@ -566,8 +652,8 @@ describe('a run that cannot finish', () => {
     expect(evidence.tools.testrail_add_suite?.steps[0]).toMatchObject({ status: 'blocked', reason: 'needs the project an earlier step did not provide' });
     expect(evidence.tools.testrail_get_projects?.status).toBe('pass');
     expect(requests.some(({ tool }) => tool === 'testrail_delete_project')).toBe(false);
-    // TestRail refused it, so there is nothing to clean up.
-    expect(evidence.cleanup).toEqual({ project: 'not_created', group: 'not_created', residue: [] });
+    // TestRail refused it, so there is nothing to clean up or check.
+    expect(evidence.cleanup).toEqual({ project: 'not_created', group: 'not_created', verified: { gone: 0, present: 0, unverified: 0 }, residue: [] });
   });
 
   it('marks a missing licence as blocked, not failed, with its code and HTTP status', async () => {
@@ -591,7 +677,9 @@ describe('a run that cannot finish', () => {
     expect(evidence.cleanup.project).toBe('deleted_in_cleanup');
     expect(evidence.stopped).toBe('the MCP session failed');
     expect(runner.exitCode(evidence)).toBe(1);
-    expect(requests.at(-1)?.tool).toBe('testrail_delete_project');
+    // Deleted, then read back; it stopped before any attachment was made.
+    expect(requests.slice(-2).map(({ tool }) => tool)).toEqual(['testrail_delete_project', 'testrail_get_project']);
+    expect(evidence.cleanup.verified).toEqual({ gone: 1, present: 0, unverified: 0 });
   });
 
   /** A session that stops answering after `tool`, as when its server has exited; later sessions work. */
@@ -621,8 +709,8 @@ describe('a run that cannot finish', () => {
     const { evidence, requests, log } = await qualify([], undefined, { connect: dyingAfter('testrail_add_run') });
     expect(stepsOf(evidence).filter(({ status }) => status === 'fail').map(({ reason }) => reason)).toEqual(['the call failed: Not connected']);
     expect(evidence.tools.testrail_close_run?.steps[0]).toMatchObject({ status: 'not_run', reason: 'the MCP session failed' });
-    expect(evidence.cleanup).toEqual({ project: 'deleted_in_cleanup', group: 'not_created', residue: [] });
-    expect(requests.at(-1)?.tool).toBe('testrail_delete_project');
+    expect(evidence.cleanup).toEqual({ project: 'deleted_in_cleanup', group: 'not_created', verified: { gone: 1, present: 0, unverified: 0 }, residue: [] });
+    expect(requests.slice(-2).map(({ tool }) => tool)).toEqual(['testrail_delete_project', 'testrail_get_project']);
     expect(log).toContain('The session to the server has ended; starting a fresh one to clean up.');
   });
 
@@ -640,9 +728,16 @@ describe('a run that cannot finish', () => {
     const requests = standIn.requests.slice(signalled);
     expect(evidence.stopped).toBe('interrupted');
     expect(evidence.tools.testrail_update_group?.steps[0]).toMatchObject({ status: 'not_run', reason: 'interrupted' });
-    expect(evidence.cleanup).toEqual({ project: 'deleted_in_cleanup', group: 'deleted_in_cleanup', residue: [] });
+    expect(evidence.cleanup).toEqual({
+      project: 'deleted_in_cleanup', group: 'deleted_in_cleanup',
+      // The project, the group and the attachment, all read back gone.
+      verified: { gone: 3, present: 0, unverified: 0 },
+      // The reports ran before the group was made, and TestRail's API cannot delete them.
+      residue: [{ kind: 'generated report', count: 1 }, { kind: 'generated cross-project report', count: 1 }],
+    });
     const deletes = requests.filter(({ method, tool }) => method === 'POST' && tool?.startsWith('testrail_delete_') === true).map(({ tool }) => tool);
-    expect(deletes).toEqual(['testrail_delete_project', 'testrail_delete_group']);
+    // The attachment first, while the project it hangs on still exists.
+    expect(deletes).toEqual(['testrail_delete_attachment', 'testrail_delete_project', 'testrail_delete_group']);
     expect(log[log.findIndex((line) => line.startsWith('Stopping:'))]).toBe('Stopping: the qualification project will be deleted. Press Ctrl-C again to abandon that cleanup.');
     for (const signal of ['SIGINT', 'SIGHUP', 'SIGTERM']) expect(signals.listenerCount(signal), signal).toBe(0);
     expect(runner.exitCode(evidence)).toBe(1);
@@ -705,16 +800,27 @@ describe('a run that cannot finish', () => {
 
   it('reports a project, or a group, it could not delete even through a fresh session', async () => {
     const refusing = await qualify([], (tool, input, real) => (tool === 'testrail_delete_project' ? Promise.reject(new Error('Not connected')) : real(tool, input)));
-    expect(refusing.evidence.cleanup).toEqual({ project: 'left_behind', group: 'not_created', residue: [{ kind: 'project', count: 1 }] });
+    // Still served when read back; its attachment is gone.
+    expect(refusing.evidence.cleanup).toEqual({ project: 'left_behind', group: 'not_created', verified: { gone: 1, present: 1, unverified: 0 }, residue: [{ kind: 'project', count: 1 }] });
     expect(refusing.log).toContain('The session to the server has ended; starting a fresh one to clean up.');
     const denied = await qualify(FULL, (tool, input, real) => (tool === 'testrail_delete_group' ? Promise.resolve(failure('PERMISSION_DENIED', 403)) : real(tool, input)));
-    expect(denied.evidence.cleanup).toEqual({ project: 'deleted', group: 'left_behind', residue: [{ kind: 'user', count: 1 }, { kind: 'case_field', count: 1 }, { kind: 'group', count: 1 }] });
+    expect(denied.evidence.cleanup).toEqual({
+      project: 'deleted', group: 'left_behind', verified: { gone: 2, present: 1, unverified: 0 },
+      residue: [
+        { kind: 'generated report', count: 1 }, { kind: 'generated cross-project report', count: 1 },
+        { kind: 'user', count: 1 }, { kind: 'case_field', count: 1 }, { kind: 'group', count: 1 },
+      ],
+    });
     expect(runner.exitCode(denied.evidence)).toBe(1);
   });
 
-  it('lists a group, user or case field that may exist when its creation\'s outcome is unknown', async () => {
+  it('lists a group, user, case field, attachment or report that may exist when its creation\'s outcome is unknown', async () => {
     const unknown: ToolResult = { isError: true, structuredContent: { error: { code: 'TIMEOUT', message: 'Synthetic.', write_outcome: 'unknown' } } };
-    for (const [tool, kind] of [['testrail_add_group', 'possible group'], ['testrail_add_user', 'possible user'], ['testrail_add_case_field', 'possible case_field']]) {
+    for (const [tool, kind] of [
+      ['testrail_add_group', 'possible group'], ['testrail_add_user', 'possible user'], ['testrail_add_case_field', 'possible case_field'],
+      ['testrail_add_attachment_to_result', 'possible attachment'], ['testrail_run_report', 'possible generated report'],
+      ['testrail_run_cross_project_report', 'possible generated cross-project report'],
+    ]) {
       const { evidence } = await qualify(FULL, (name, input, real) => (name === tool ? Promise.resolve(unknown) : real(name, input)));
       expect(evidence.cleanup.residue, tool).toContainEqual({ kind, count: 1 });
     }
@@ -743,7 +849,7 @@ describe('a run that cannot finish', () => {
       return Promise.resolve({ structuredContent: { data: { id: 5 } } });
     };
     await expect(runner.runQualification({ call, plan, stamp: 's', uploads: {}, pacing: INSTANT })).rejects.toThrow(/a bug in the plan/u);
-    expect(calls).toEqual(['testrail_add_project', 'testrail_delete_project']);
+    expect(calls).toEqual(['testrail_add_project', 'testrail_delete_project', 'testrail_get_project']);
   });
 
   it('says what cleanup did even when the run throws part-way', async () => {
@@ -757,7 +863,7 @@ describe('a run that cannot finish', () => {
         log.push(line);
       },
     })).rejects.toBe(fault);
-    expect(log.at(-1)).toBe('Cleanup: project deleted_in_cleanup, group not_created.');
+    expect(log.at(-1)).toBe('Cleanup: project deleted_in_cleanup, group not_created; checked afterwards: 1 gone, 0 still there, 0 unverified.');
   });
 
   it('reports a project it could not delete as left behind', async () => {
@@ -769,7 +875,7 @@ describe('a run that cannot finish', () => {
   it('reports a project that may exist when TestRail\'s answer to creating it is unknown', async () => {
     const unknown = (outcome: string): ToolResult => ({ isError: true, structuredContent: { error: { code: 'TIMEOUT', message: 'Synthetic.', write_outcome: outcome } } });
     const timedOut = await qualify([], (tool, input, real) => (tool === 'testrail_add_project' ? Promise.resolve(unknown('unknown')) : real(tool, input)));
-    expect(timedOut.evidence.cleanup).toEqual({ project: 'not_created', group: 'not_created', residue: [{ kind: 'possible project', count: 1 }] });
+    expect(timedOut.evidence.cleanup).toEqual({ project: 'not_created', group: 'not_created', verified: { gone: 0, present: 0, unverified: 0 }, residue: [{ kind: 'possible project', count: 1 }] });
     // A write TestRail never received leaves nothing.
     const refused = await qualify([], (tool, input, real) => (tool === 'testrail_add_project' ? Promise.resolve(unknown('not_started')) : real(tool, input)));
     expect(refused.evidence.cleanup.residue).toEqual([]);
@@ -789,7 +895,7 @@ describe('a run that cannot finish', () => {
       await real(tool, input);
       return deadline;
     });
-    expect(project.evidence.cleanup).toEqual({ project: 'not_created', group: 'not_created', residue: [{ kind: 'possible project', count: 1 }] });
+    expect(project.evidence.cleanup).toEqual({ project: 'not_created', group: 'not_created', verified: { gone: 0, present: 0, unverified: 0 }, residue: [{ kind: 'possible project', count: 1 }] });
     for (const [tool, kind] of [['testrail_add_group', 'possible group'], ['testrail_add_user', 'possible user'], ['testrail_add_case_field', 'possible case_field']]) {
       const { evidence } = await qualify(FULL, (name, input, real) => (name === tool ? Promise.resolve(deadline) : real(name, input)));
       expect(evidence.cleanup.residue, tool).toContainEqual({ kind, count: 1 });
@@ -838,7 +944,7 @@ describe('a run that cannot finish', () => {
       expect(settled, value).toMatch(/the evidence would carry \d+ configured or personal value\(s\); it was not written/u);
       expect(written, value).toBe(false);
       // What cleanup did is still said.
-      expect(log, value).toContain('Cleanup: project deleted, group not_created.');
+      expect(log, value).toContain('Cleanup: project deleted, group not_created; checked afterwards: 2 gone, 0 still there, 0 unverified.');
     }
   });
 
@@ -934,7 +1040,7 @@ describe('the live evidence in the repository', () => {
     const files = (await readdir(directory)).filter((name) => name.endsWith('.json'));
     expect(files).not.toEqual([]);
     for (const name of files) {
-      const evidence = evidenceSchema.parse(JSON.parse(await readFile(new URL(name, directory), 'utf8')));
+      const evidence = recordedEvidenceSchema.parse(JSON.parse(await readFile(new URL(name, directory), 'utf8')));
       expect(Object.keys(evidence.tools).sort(), name).toEqual(operationRegistry.entries.map(({ tool }) => tool).sort());
       const summary = { pass: 0, not_run: 0, blocked: 0, fail: 0 };
       for (const { status } of Object.values(evidence.tools)) summary[status] += 1;
