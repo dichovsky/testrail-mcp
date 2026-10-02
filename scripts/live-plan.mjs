@@ -227,7 +227,15 @@ export const PLAN = [
   },
   { tool: 'get_shared_step', scope: 'read', input: (c) => ({ shared_step_id: c.id('shared_step') }) },
   { tool: 'get_shared_steps', scope: 'read', input: (c) => ({ project_id: c.id('project') }) },
-  { tool: 'update_shared_step', scope: 'own', input: (c) => ({ shared_step_id: c.id('shared_step'), body: { title: 'Shared step, updated' } }) },
+  // TestRail 10.8.1 answers a title sent without the steps with a 500 and changes nothing, so
+  // the update sends both, as the tool's description tells clients to.
+  {
+    tool: 'update_shared_step', scope: 'own',
+    input: (c) => ({
+      shared_step_id: c.id('shared_step'),
+      body: { title: 'Shared step, updated', custom_steps_separated: [{ content: 'Open the page', expected: 'The page opens' }] },
+    }),
+  },
   { tool: 'get_shared_step_history', scope: 'read', input: (c) => ({ shared_step_id: c.id('shared_step') }) },
   { tool: 'delete_shared_step', scope: 'own', input: (c) => ({ shared_step_id: c.id('shared_step'), body: { keep_in_cases: false } }) },
 

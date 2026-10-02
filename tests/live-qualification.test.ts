@@ -185,6 +185,12 @@ const FULL = ['--instance-writes', '--report-template-id', '1', '--cross-project
 describe('the qualification plan', () => {
   const tools = runner.PLAN.map(({ tool }) => `testrail_${tool}`);
 
+  it('updates the shared step with its steps, since TestRail 10.8.1 refuses a title sent alone', () => {
+    const update = runner.PLAN.find(({ tool }) => tool === 'update_shared_step');
+    const context = { id: () => 1 } as unknown as Context;
+    expect(update?.input?.(context)).toMatchObject({ body: { title: expect.any(String) as unknown, custom_steps_separated: [{ content: expect.any(String) as unknown }] } });
+  });
+
   it('calls every registered tool, and nothing else', () => {
     expect([...new Set(tools)].sort()).toEqual(operationRegistry.entries.map(({ tool }) => tool).sort());
   });
