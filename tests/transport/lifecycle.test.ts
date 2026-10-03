@@ -215,6 +215,19 @@ async function openSession(session: Running): Promise<void> {
 const eventNames = (stderr: string): string[] => stderr.split('\n').filter((line) => line.trim() !== '')
   .map((line) => (JSON.parse(line) as { event: string }).event);
 
+/**
+ * Every line on stdout, read after the process has exited, is a whole JSON-RPC message.
+ * A shutdown step that wrote anything else there would corrupt the host's stream.
+ */
+function expectProtocolOnly(stdout: string): void {
+  expect(stdout.endsWith('\n')).toBe(true);
+  for (const line of stdout.split('\n').filter((entry) => entry !== '')) {
+    const message = JSON.parse(line) as Record<string, unknown>;
+    expect(message.jsonrpc).toBe('2.0');
+    expect('method' in message || 'result' in message || 'error' in message).toBe(true);
+  }
+}
+
 /*
  * Node cannot deliver a catchable signal to a child on Windows: `kill('SIGINT')` and
  * `kill('SIGTERM')` terminate it unconditionally, so there is no handler to test there.
@@ -273,6 +286,7 @@ describe('packaged server shutdown against a TestRail that never answers', () =>
       const names = eventNames(session.err());
       expect(names.filter((name) => name === 'server_stopping')).toHaveLength(1);
       expect(names.filter((name) => name === 'server_stopped')).toHaveLength(1);
+      expectProtocolOnly(session.out());
       for (const stream of [session.out(), session.err()]) {
         expect(stream).not.toContain(SECRET);
         expect(stream).not.toContain(EMAIL);
@@ -303,6 +317,7 @@ describe('packaged server shutdown against a TestRail that never answers', () =>
       const { code, signal } = await session.exited;
       expect({ code, signal }).toEqual({ code: 0, signal: null });
       expect(eventNames(session.err()).filter((name) => name === 'server_stopped')).toHaveLength(1);
+      expectProtocolOnly(session.out());
     } finally {
       session.child.kill('SIGKILL');
       await testRail.close();
