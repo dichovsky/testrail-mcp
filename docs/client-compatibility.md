@@ -1,6 +1,6 @@
 # MCP client setup and release verification
 
-Status: the server is implemented, and all 133 tools are verified offline (see [coverage reports](coverage-reports.md)). No client compatibility test has run yet; that is [R02](https://github.com/dichovsky/testrail-mcp/issues/23). The client research below dates from 2026-09-09. The configuration examples are release documentation, not changes to your client settings.
+Status: the server is implemented, and all 133 tools are verified offline (see [coverage reports](coverage-reports.md)). Claude Code has a fixture-run record; the other surfaces, and every live smoke check, are pending under [R02](https://github.com/dichovsky/testrail-mcp/issues/23). The client research below dates from 2026-09-09. The configuration examples are release documentation, not changes to your client settings.
 
 ## Required surfaces and evidence
 
@@ -97,7 +97,9 @@ This is a project `.mcp.json` example. Use the equivalent user/local scope when 
 }
 ```
 
-Use normal automatic discovery: leave `alwaysLoad` and `ENABLE_TOOL_SEARCH` unset. Current docs describe default deferred search, subject to model/provider/settings exceptions, and no fixed per-server tool cap. Keep individual tool descriptions and server instructions under 2 KiB. Check the connected catalog in `/mcp`. The per-server `timeout` is in milliseconds.
+Use normal automatic discovery: leave `alwaysLoad` and `ENABLE_TOOL_SEARCH` unset.
+
+Large results: Claude Code moves an MCP result of more than 25,000 tokens into a file and gives the model its path. The server's result is one line of JSON, which the client's `Read` tool cannot page, so allow `jq`, for example `Bash(jq:*)`, or approve it when asked, to let the model query a large result there. The 2026-10-03 fixture run recovered a 717 KB page that way; see [its record](evidence/clients/claude-code.json). Current docs describe default deferred search, subject to model/provider/settings exceptions, and no fixed per-server tool cap. Keep individual tool descriptions and server instructions under 2 KiB. Check the connected catalog in `/mcp`. The per-server `timeout` is in milliseconds.
 
 First test the client's default stdio negotiation. Where the installed runtime supports it, additionally test `MCP_PROTOCOL_NEGOTIATION=auto` on the Claude process. Record the negotiated revision instead of inferring it from the runtime version. Current docs distinguish the v2 runtime from its separate stdio protocol-probing setting. Source: [Claude Code MCP reference](https://code.claude.com/docs/en/mcp).
 

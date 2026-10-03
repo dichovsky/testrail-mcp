@@ -44,17 +44,17 @@
     "C01": {
       "status": "pass",
       "evidence": "docs/evidence/clients/claude-code/C01-cold-launch.json",
-      "notes": "Connected on a cold start and listed all 133 tools with the expected hash, by default and with MCP_PROTOCOL_NEGOTIATION=auto; both opened with a server/discover probe at 2026-07-28. The catalog script agrees in both eras with no TestRail request. Neither credential appears in any transcript or server output line."
+      "notes": "Connected on a cold start and listed all 133 tools with the expected hash, by default and with MCP_PROTOCOL_NEGOTIATION=auto; both opened with a server/discover probe at 2026-07-28. The catalog script agrees in both eras with no TestRail request. Neither credential appears in a client transcript or in any line the server wrote to stdout or stderr."
     },
     "C02": {
       "status": "pass",
       "evidence": "docs/evidence/clients/claude-code/C02-deferred-discovery.json",
-      "notes": "All 133 tools loaded through ToolSearch select: queries, seven of them, with no TestRail call."
+      "notes": "In a session that called no TestRail tool, seven ToolSearch select: queries returned all 133 tool references; the returned names hash to the expected catalog hash. A probe session shows the deferral: the model loaded a schema before calling the tool."
     },
     "C03": {
       "status": "pass",
       "evidence": "docs/evidence/clients/claude-code/C03-selection.json",
-      "notes": "All 28 tasks chose the intended tool first, with valid arguments and no tool error. 26 match the corpus arguments exactly; get_shared_steps added an explicit page mode, and get_roles asked for all roles. Ten sessions made follow-up calls: next pages, or reads that checked the stand-in's canned replies. None was a retry after an error."
+      "notes": "All 28 tasks chose the intended tool first, with valid arguments and no tool error. 26 match the corpus arguments exactly; get_shared_steps added an explicit page mode, and get_roles asked for all roles. Ten sessions made follow-up calls, listed in the evidence: next pages, or reads that checked the stand-in's canned replies. None was a retry after an error."
     },
     "C04": {
       "status": "pass",
@@ -64,7 +64,7 @@
     "C05": {
       "status": "pass",
       "evidence": "docs/evidence/clients/claude-code/C05-fetch-all.json",
-      "notes": "A complete read returned 150 cases with complete true. The host moved the 55 KB result to a file, and the model read it there. Project 990045 stopped with PAGINATION_LIMIT, reason max_duration, after 3 pages, with no partial data, inside the 120-second client timeout."
+      "notes": "A complete read returned 150 cases with complete true. The host moved the 55 KB result to a file; the model read its start and end and took the count from returned. Two other sessions of this read ran out of turns. Project 990045 stopped with PAGINATION_LIMIT, reason max_duration, after 3 pages and 45 seconds, with no partial data."
     },
     "C06": {
       "status": "pass",
@@ -84,17 +84,17 @@
     "C09": {
       "status": "pass",
       "evidence": "docs/evidence/clients/claude-code/C09-large-results.json",
-      "notes": "A 717 KB page arrived whole in a file the host saved. The model read it fully with jq allowed, and could not without it. A 3 MB page returned RESPONSE_TOO_LARGE; the same list with all returned PAGINATION_LIMIT, reason max_bytes, with no partial data."
+      "notes": "A 717 KB page arrived whole in a file the host saved. With jq allowed, jq parsed the whole file and the model recovered the count, first and last IDs and pagination; that page had no warnings and no continuation. A 3 MB page returned RESPONSE_TOO_LARGE; the same list with all returned PAGINATION_LIMIT, reason max_bytes, with no partial data."
     },
     "C10": {
       "status": "pass",
       "evidence": "docs/evidence/clients/claude-code/C10-timeout-cancellation.json",
-      "notes": "Five parallel calls to a 20-second reply: four held every slot and timed out at the driver's 15 seconds with TIMEOUT, and the fifth got BUSY at once with no request. An interrupt sent notifications/cancelled, which the server recorded as CANCELLED. The aggregate budget is in C05. That capacity returns after settlement is held by the server's tests, not observed here."
+      "notes": "Five parallel calls to a 20-second reply: the fifth got BUSY at once with no request, and the four admitted ones shared one driver request and timed out together at 15 seconds with TIMEOUT. After the replies settled, an ordinary call was admitted again. An interrupt sent through the SDK input channel reached the server as notifications/cancelled; it recorded CANCELLED and the stand-in logged the request as abandoned. The aggregate budget is in C05."
     },
     "C11": {
       "status": "pass",
       "evidence": "docs/evidence/clients/claude-code/C11-restart.json",
-      "notes": "48 sessions each started the server cold and saw the same 133-tool catalog. 52 of 53 server processes stopped cleanly with exit code 0. The other was cut short by the host after the C10 interrupt. No process remained afterwards."
+      "notes": "50 headless sessions each started the server cold and saw the same 133-tool catalog. 53 of 55 server processes stopped cleanly with exit code 0; the host ended the two interrupted C10 sessions before the drain finished. No process remained. Only cold restarts were exercised, not a reconnect within a session."
     },
     "C12": {
       "status": "pass",
@@ -104,11 +104,12 @@
   },
   "limitations": [
     "Fixture stand-in only. No live TestRail was contacted, and the stand-in's canned replies do not echo the IDs asked for.",
-    "Headless sessions only (claude -p). The interactive /mcp view and the approval prompts were not exercised.",
-    "Results over 25,000 tokens are moved to a file. The server's result is one line of JSON, which the Read tool cannot page, so recovering a large result needs jq allowed or approved. Raising MAX_MCP_OUTPUT_TOKENS to 100000 did not bring a 54 KB result back inline.",
+    "Headless sessions only (claude -p, with --max-turns per session). The interactive /mcp view and the approval prompts were not exercised.",
+    "Results over 25,000 tokens are moved to a file. The server's result is one line of JSON, which the Read tool cannot page. In headless mode tail and grep ran without approval, while jq and python3 needed it; the full 717 KB page was recovered once jq was allowed. A raised MAX_MCP_OUTPUT_TOKENS did not bring a 54 KB result back inline.",
     "The server ran under a recorder that passes stdio through unchanged, to read the negotiated revision, rather than being started directly.",
-    "The package is the development version, not a release, and the client model was not pinned.",
+    "The package is the development version, not a release.",
+    "The model is deliberately not named in this record, a departure from the guide's rule, so the C03 selections and the C05 and C09 behaviour are tied to an unpinned default model.",
     "One Linux container only; macOS and Windows were not tested.",
-    "Identical in-flight reads are coalesced by the driver, so five parallel reads of one ID sent one request."
+    "The driver coalesces identical in-flight reads: the four admitted reads of one ID in C10 shared one request."
   ]
 }

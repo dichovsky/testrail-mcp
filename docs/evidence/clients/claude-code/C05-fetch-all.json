@@ -194,5 +194,10 @@
    "answer": "The call failed, and I did not retry it.\n\n- **Call:** `testrail_get_cases` for project 990045, with `_mcp.pagination: \"all\"`.\n- **Succeeded:** No.\n- **Error code:** `PAGINATION_LIMIT`\n- **Message:** \"The aggregate stopped at a configured safety bound; no partial data is returned.\"\n- **Reason:** `max_duration`. The read hit the tool's configured time limit before it finished.\n- **Fetched before stopping:** 3 pages and 750 items. That matches 250 per page, the maximum page size.\n- **Partial data returned:** None. The 750 items were fetched but not handed back to me, so I have no case data.\n\nI can't say how many cases the project has in total, because the read stopped before the last page.\n\nTo get the data, I can read it in smaller pieces. For example, I can page manually with `limit` and `offset`, or filter by suite or section. Each of those would be a new call, so I'll wait for your go-ahead."
   }
  },
+ "duration_budget_timing": {
+  "tools_call_received": "2026-10-03T19:11:50.405Z",
+  "reply_sent": "2026-10-03T19:12:35.415Z",
+  "elapsed_seconds": 45.0
+ },
  "stand_in_requests_for_slow_pages": 4
 }

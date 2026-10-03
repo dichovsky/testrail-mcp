@@ -266,10 +266,15 @@ describe('the client evidence records', () => {
     expect(records.flatMap(({ slug, record }) => unsupported(record).map((problem) => `${slug}: ${problem}`))).toEqual([]);
   });
 
-  /** Every scenario back to not_run, so a test record starts from the committed shape alone, whatever was run. */
+  /** The record as committed before any run: every field empty, so a test states only what it sets. */
   const unrun = (record: ClientRecord): ClientRecord => {
     for (const id of SCENARIOS) record.scenarios[id] = { status: 'not_run', evidence: null, notes: null };
-    record.limitations = [];
+    record.client = { version: null, os: null, arch: null, node: null, model: null, provider: null };
+    record.server = { package_version: null, tarball_integrity: null, driver_version: null };
+    const auto = 'auto' in record.settings.negotiated_revisions ? { auto: null } : {};
+    record.settings = { config_scope: null, discovery_mode: null, negotiated_revisions: { default: null, ...auto }, variables: [] };
+    record.catalog = { count: null, sorted_names_sha256: null };
+    Object.assign(record, { provenance: null, testrail_version: null, tested_on: null, tester: null, limitations: [] });
     return record;
   };
 

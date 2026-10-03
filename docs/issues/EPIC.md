@@ -52,6 +52,6 @@ Two statements above have been overtaken:
 - The outcome names TestRail 10.7.0. The tools still cover the 10.7.0 API reference, but on 2026-10-02 the owner made TestRail 10.8.1 the version the live qualification runs against. See [R03](R03.md).
 
 Still open:
-- [R02](R02.md) (#23): evidence from Codex, Claude Code and Copilot CLI. The host-check kit and evidence templates exist; only a real host can produce the records.
-- [R03](R03.md) (#24): the live gate and the release. Two live runs against 10.8.1 are recorded. Its first acceptance item stays open: in the second run, 27 tools are blocked by a missing licence or permission, and there is no disposable instance. Publishing needs the npm trusted publisher and the `npm-release` environment.
+- [R02](R02.md) (#23): evidence from Codex, Claude Code and Copilot CLI. Claude Code has a fixture-run record of all twelve scenarios. Codex desktop, Codex CLI and Copilot CLI, and every live smoke check, remain.
+- [R03](R03.md) (#24): the live gate and the release. Two live runs against 10.8.1 are recorded. Its first acceptance item stays open: in the second run, 35 tools have no live pass, 27 blocked by a missing licence or permission and 8 left out by the owner's choice, and there is no disposable instance. Publishing needs the npm trusted publisher and the `npm-release` environment.
 - #49 and #55 are contradictions inside the driver: a result payload that requires `status_id`, and an email lookup that accepts addresses the write payloads refuse. The server honours the driver's declared types, and a fix belongs in `@dichovsky/testrail-api-client`. Neither is an item on this checklist.
