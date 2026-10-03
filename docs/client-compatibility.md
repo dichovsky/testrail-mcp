@@ -164,6 +164,8 @@ Use an isolated client configuration and the fixture-backed test launcher for re
 
 The kit lets you run every scenario below with no TestRail account. It needs a clone of this repository with `npm ci` run in it.
 
+The [R02 runbook](client-runbook.md) turns the steps below into a script for Codex desktop, Codex CLI and Copilot CLI, with the exact prompts the Claude Code record used.
+
 1. **Start the stand-in.** Run `node scripts/fixture-testrail.mjs` in the clone. It prints the variables the client needs, with synthetic credentials.
    - `--pages 3` makes every paged list hold three pages, for C04 and C05: 150 items, read 50 at a time, for a list that takes a page size, and 6 items, 2 at a time, for a list that chooses its own pages. A larger page size or `"all"` reads the same list.
    - `--log requests.jsonl` records each request's method, endpoint and status, one line per request when its reply is ready, and marks a request as `abandoned` when the client had already given up, as the driver does at its request timeout. It never records the credentials. It appends, so give each session its own file. The stand-in refuses to start if it cannot write the file, and if a later write fails it still sends that reply, then stops with an error.
