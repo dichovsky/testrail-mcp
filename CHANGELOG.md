@@ -12,7 +12,7 @@ The first release: a local stdio MCP server for the complete TestRail 10.7.0 API
 - MCP over stdio for both the legacy `initialize` handshake and protocol 2026-07-28, with protocol messages only on stdout and JSON diagnostic events on stderr.
 - Results as `{data, pagination, warnings}` that keep TestRail's field names and custom fields, advisory drift warnings, and a byte budget that refuses a result whole rather than truncating it.
 - Errors with a fixed code, and a `write_outcome` of `not_started`, `acknowledged` or `unknown` for every write.
-- One page of 50 by default, up to 250, and a bounded complete fetch with `_mcp.pagination: "all"` that stops with `PAGINATION_LIMIT` and no partial data.
+- One page of 50 by default, up to 250, and a bounded complete fetch with `_mcp.pagination: "all"`, as far as TestRail's replies link on, that stops with `PAGINATION_LIMIT` and no partial data.
 - Uploads confined to configured directories and read through a staged copy, and downloads that always create a new, retained file.
 - At most four calls at a time, a 60-second response wait, and a call's slot held until its TestRail request has really finished.
 - Configuration from the launch environment only, with a startup error that names the variable and never its value.
