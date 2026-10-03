@@ -143,8 +143,11 @@ describe('the README\'s configuration', () => {
   });
 
   it('names only error codes a client can receive, and write outcomes the server returns', () => {
-    // Every code-like name anywhere in the README, other than a variable.
-    const named = [...readme.matchAll(/`([A-Z][A-Z_]{3,})`/gu)].map(([, code = '']) => code).filter((code) => !code.startsWith('TESTRAIL_'));
+    // Every code-like name anywhere in the README, other than a variable: the server's own,
+    // or one of the Node and proxy variables its network note names.
+    const environment = ['HTTP_PROXY', 'HTTPS_PROXY', 'NODE_USE_ENV_PROXY', 'NODE_EXTRA_CA_CERTS'];
+    const named = [...readme.matchAll(/`([A-Z][A-Z_]{3,})`/gu)].map(([, code = '']) => code)
+      .filter((code) => !code.startsWith('TESTRAIL_') && !environment.includes(code));
     expect(named.length).toBeGreaterThan(0);
     expect(named.filter((code) => !(ERROR_CODES as readonly string[]).includes(code))).toEqual([]);
     // The SDK drops the response to a cancelled call (tests/transport/cancellation.test.ts),

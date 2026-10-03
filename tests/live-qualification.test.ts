@@ -520,7 +520,7 @@ describe('a full run against the stand-in', () => {
     });
     expect(full.evidence).toMatchObject({
       testrail_version: '10.6.0.1041',
-      server: { package_version: packageJson.version, driver_version: '8.0.0' },
+      server: { package_version: packageJson.version, driver_version: '9.0.0' },
       options: { instance_writes: true, report_template: true, cross_project_report_template: true },
     });
     expect(full.returned).toEqual(full.evidence);

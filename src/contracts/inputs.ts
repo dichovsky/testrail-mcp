@@ -1,4 +1,7 @@
 import {
+  AddResultForCasePayloadSchema,
+  AddResultForTestPayloadSchema,
+  AddResultPayloadSchema,
   DeleteCasesPayloadSchema,
   EditResultPayloadSchema,
 } from '@dichovsky/testrail-api-client';
@@ -18,16 +21,12 @@ export const entryIdSchema = z.string().regex(
 export const attachmentIdSchema = z.union([positiveIdSchema, entryIdSchema]);
 /*
  * The address form every user tool takes: exactly one '@' with non-empty, whitespace-free
- * parts on either side. It is the rule the driver enforces for get_user_by_email, and it
- * deliberately does not require a dotted domain, because self-hosted, LDAP, AD and SSO
- * instances legitimately store single-label domains and domain literals, and TestRail
- * owns the authoritative rule.
- *
- * The writes take it too. Driver 8.0.0 declares a stricter, dotted-domain format on its
- * user write payloads, but addUser and updateUser forward the payload without parsing
- * it, so that declaration was only ever this boundary's to apply, and applying it made a
- * user this server could look up one it could not create or update. Driver 9.0.0
- * declares this same rule on the writes (dichovsky/testrail-api-client#305).
+ * parts on either side. It is the driver's one rule for get_user_by_email and for the
+ * user write payloads, TESTRAIL_USER_EMAIL_PATTERN, and it deliberately does not require
+ * a dotted domain, because self-hosted, LDAP, AD and SSO instances legitimately store
+ * single-label domains and domain literals, and TestRail owns the authoritative rule.
+ * It is restated only because this server requires the Unicode flag for JSON Schema
+ * parity; a test holds it to the driver's verdicts.
  */
 export const emailSchema = z.string().regex(/^[^\s@]+@[^\s@]+(?![\s\S])/u);
 
@@ -72,11 +71,6 @@ type PayloadOptions<Fields extends InputShape> = {
   extensions?: 'custom' | 'json';
   /** Explicit field replacements for endpoint domains and nested extensions. */
   fields?: Fields;
-  /**
-   * Declared fields of which at least one must be present. JSON Schema states the same
-   * rule as anyOf over single-name required lists, and presence is the test on both sides.
-   */
-  requireOneOf?: readonly [string, ...string[]];
 };
 
 type PayloadOutput<Source extends z.ZodType, Fields extends InputShape> =
@@ -84,8 +78,8 @@ type PayloadOutput<Source extends z.ZodType, Fields extends InputShape> =
     ? z.output<z.ZodObject<Omit<Shape, keyof Fields> & Fields>> & Record<string, unknown>
     : z.output<Source>;
 
-// Zod cannot infer JSON Schema for arbitrary custom checks. These two checks in
-// the pinned driver's payloads have reviewed structural equivalents below.
+// Zod cannot infer JSON Schema for arbitrary custom checks. These checks in the
+// pinned driver's payloads have reviewed structural equivalents below.
 const representedRefinements = new WeakMap<z.core.$ZodCheck, Record<string, unknown>>();
 
 function customChecks(schema: z.ZodType): z.core.$ZodCheck[] {
@@ -125,16 +119,25 @@ export function payloadInput<Source extends z.ZodType, Fields extends InputShape
   if (options.extensions !== undefined && !(source instanceof z.ZodObject)) {
     throw new Error('Payload extensions require an object schema');
   }
-  if (options.requireOneOf !== undefined && !(source instanceof z.ZodObject)) {
-    throw new Error('Required alternatives require an object schema');
-  }
   // Structural adaptation retains the source output fields except the explicit
   // replacements. Its additional checks only narrow accepted values.
   return adaptPayload(source, options) as z.ZodType<PayloadOutput<Source, Fields>>;
 }
 
+/*
+ * A new result needs a status, a comment or an assignee, any one of them. The driver
+ * states that as a refinement on the three result payloads, testing each field for
+ * presence, and JSON Schema states the same thing as anyOf over single-name required
+ * lists.
+ */
+const resultContentSchemas = new Set<z.ZodType>([
+  AddResultPayloadSchema, AddResultForCasePayloadSchema, AddResultForTestPayloadSchema,
+]);
+const resultContent = { anyOf: ['status_id', 'comment', 'assignedto_id'].map((name) => ({ required: [name] })) };
+
 function adaptPayload(source: z.ZodType, options: PayloadOptions<InputShape> = {}): z.ZodType {
-  if (hasCustomCheck(source) && source !== DeleteCasesPayloadSchema && source !== EditResultPayloadSchema) {
+  if (hasCustomCheck(source) && source !== DeleteCasesPayloadSchema && source !== EditResultPayloadSchema
+    && !resultContentSchemas.has(source)) {
     throw new Error('Payload contains a refinement without a reviewed JSON Schema equivalent');
   }
   if (source instanceof z.ZodObject) {
@@ -163,20 +166,9 @@ function adaptPayload(source: z.ZodType, options: PayloadOptions<InputShape> = {
       object = object.meta({ not: forbidden });
       for (const check of customChecks(source)) representedRefinements.set(check, { not: forbidden });
     }
-    if (options.requireOneOf !== undefined) {
-      const alternatives = options.requireOneOf;
-      if (alternatives.some((name) => !Object.hasOwn(shape, name))) {
-        throw new Error('Required alternatives must be declared payload fields');
-      }
-      const anyOf = alternatives.map((name) => ({ required: [name] }));
-      const metadata = object.meta() ?? {};
-      object = object.refine(
-        (value) => alternatives.some((name) => (value as Record<string, unknown>)[name] !== undefined),
-        { message: `At least one of ${alternatives.join(', ')} is required` },
-      ).meta({ ...metadata, anyOf });
-      const alternativesCheck = customChecks(object).at(-1);
-      if (alternativesCheck === undefined) throw new Error('Required alternatives check was not created');
-      representedRefinements.set(alternativesCheck, { anyOf });
+    if (resultContentSchemas.has(source)) {
+      object = object.meta(resultContent);
+      for (const check of customChecks(source)) representedRefinements.set(check, resultContent);
     }
     if (options.extensions === 'custom') {
       const names = new Set(Object.keys(shape));

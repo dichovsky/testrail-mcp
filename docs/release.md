@@ -14,7 +14,7 @@ Versions follow semantic versioning, applied to what a client and its model depe
 
 - **TestRail.** The tools cover TestRail's 10.7.0 API reference. 10.8.1 is the baseline, the version the live qualification runs against. Older versions are best effort: a tool the instance does not support fails with TestRail's own error, and the server never hides it.
 - **TypeScript.** TypeScript 7 (`@typescript/native`) builds the package and runs `typecheck`. `typescript` stays on 6.x only because typescript-eslint does not yet accept 7; `typecheck:ts6` keeps both compilers agreeing. Drop it, and the 6.x pin, once typescript-eslint supports TypeScript 7.
-- **Node.** The engine range is `>=24`, which the pinned driver 8.0.0 requires as well. CI runs the newest 24 release on Linux, macOS and Windows. Later majors satisfy the range but are untested and best effort.
+- **Node.** The engine range is `>=24`, which the pinned driver 9.0.0 requires as well. CI runs the newest 24 release on Linux, macOS and Windows. Later majors satisfy the range but are untested and best effort.
 - **Driver.** Each release pins one exact, qualified driver version. The pin changes only with the review that [driver qualification](driver-qualification.md) describes.
 
 ## One-time setup

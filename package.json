@@ -44,7 +44,7 @@
     "prepublishOnly": "node scripts/check-publish.mjs"
   },
   "dependencies": {
-    "@dichovsky/testrail-api-client": "8.0.0",
+    "@dichovsky/testrail-api-client": "9.0.0",
     "@modelcontextprotocol/server": "2.3.0",
     "zod": "4.6.5"
   },

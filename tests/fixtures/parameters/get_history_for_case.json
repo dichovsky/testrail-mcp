@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -16,15 +16,24 @@
           { "path": "src/pagination.ts", "changed": true, "note": "Changed between the releases: an aggregate's page request carries intent 'fresh-read' in place of bypassCache and remainingTimeMs, and a request-budget expiry is reported as max_duration even when the wall clock disagrees. The bounds, defaults, decodePage and stop conditions cited here are unchanged." },
           { "path": "src/url.ts", "changed": false }
         ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/cases.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/cases.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/modules/paginated-list.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/paginated-list.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/pagination.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/pagination.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/url.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/url.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
+        ]
       }
     ]
   },
   "endpoint": { "family_id": "T02", "http_method": "GET", "route": "get_history_for_case/{case_id}", "tool": "testrail_get_history_for_case", "driver_method": "cases.getHistoryForCase" },
   "sources": [
-    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/cases.ts", "supports": "getHistoryForCasePage and getAllHistoryForCase validate the case ID and place it as the only path segment; the endpoint takes no filters. The executor is declared with a nested envelope, so TestRail's outer array around one envelope is decoded like the plain envelope, and a bare array as one terminal page." },
-    { "id": "driver-paginated-list", "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/paginated-list.ts", "supports": "The page helper validates limit and offset before dispatch and appends them after the filters. The all helper copies only pageSize, startOffset, maxPages, maxItems, maxDurationMs and maxBytes from its options." },
-    { "id": "driver-pagination", "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/pagination.ts", "supports": "collectAllPages validates every bound before the first request, defaults pageSize to 250 and startOffset to 0, requires the first envelope offset to equal startOffset, and stops when _links.next is null." },
-    { "id": "driver-url", "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/url.ts", "supports": "buildEndpoint appends controls path-style after an ampersand, skips undefined values, repeats an array-valued key once per element and percent-encodes every key and value independently." },
+    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/cases.ts", "supports": "getHistoryForCasePage and getAllHistoryForCase validate the case ID and place it as the only path segment; the endpoint takes no filters. The executor is declared with a nested envelope, so TestRail's outer array around one envelope is decoded like the plain envelope, and a bare array as one terminal page." },
+    { "id": "driver-paginated-list", "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/paginated-list.ts", "supports": "The page helper validates limit and offset before dispatch and appends them after the filters. The all helper copies only pageSize, startOffset, maxPages, maxItems, maxDurationMs and maxBytes from its options." },
+    { "id": "driver-pagination", "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts", "supports": "collectAllPages validates every bound before the first request, defaults pageSize to 250 and startOffset to 0, requires the first envelope offset to equal startOffset, and stops when _links.next is null." },
+    { "id": "driver-url", "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/url.ts", "supports": "buildEndpoint appends controls path-style after an ampersand, skips undefined values, repeats an array-valued key once per element and percent-encodes every key and value independently." },
     { "id": "testrail-cases", "url": "https://support.testrail.com/hc/en-us/articles/7077292642580-Cases", "supports": "get_history_for_case/{case_id} requires TestRail 6.5.4 or later, takes limit (250 by default) and offset on TestRail 6.7 or later, and answers with an array wrapping one offset/limit/size/_links envelope around history entries that carry id, type_id, created_on, user_id and a changes array." }
   ],
   "input_policy": { "ordinary_fields": "reject", "custom_fields": "reject", "notes": "Strictness is an MCP boundary requirement at every depth: the top level, query and _mcp are each closed. There are no filters; query carries only the paging controls." },

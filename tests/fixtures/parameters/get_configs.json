@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -13,6 +13,13 @@
         "files": [
           { "path": "src/modules/configurations.ts", "changed": false },
           { "path": "src/schemas/configurations.ts", "changed": false }
+        ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/configurations.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/configurations.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/schemas/configurations.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/configurations.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
       }
     ]
@@ -27,12 +34,12 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/configurations.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/configurations.ts",
       "supports": "Every method validates its identifier, places it as the only path segment of the matching endpoint and forwards any JSON payload unchanged. getConfigurations is the module's one read and parses against an array of ConfigurationGroupSchema. The group writes parse against ConfigurationGroupSchema and the configuration writes against ConfigurationSchema; the two deletes pass no schema and resolve with no value."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/configurations.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/configurations.ts",
       "supports": "ConfigurationGroupSchema carries id, name, project_id and a configs array; ConfigurationSchema carries id, name and group_id. The add payloads require name and the update payloads make it optional. No payload is parsed by the public method, which forwards it as given, so every payload rule is enforced at the MCP boundary alone."
     },
     {

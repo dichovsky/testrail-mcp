@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -15,6 +15,15 @@
           { "path": "src/schemas/users.ts", "changed": false },
           { "path": "src/modules/paginated-list.ts", "changed": true, "note": "Changed between the releases: the page request's transport carries the aggregate's intent in place of bypassCache and remainingTimeMs. Which controls are appended, the page and list schemas, and the options each helper copies are unchanged, so the claims cited here stand." },
           { "path": "src/pagination.ts", "changed": true, "note": "Changed between the releases: an aggregate's page request carries intent 'fresh-read' in place of bypassCache and remainingTimeMs, and a request-budget expiry is reported as max_duration even when the wall clock disagrees. The bounds, defaults, decodePage and stop conditions cited here are unchanged." }
+        ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/metadata.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/metadata.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/schemas/users.ts", "changed": true, "note": "Changed between the releases: both user write payloads check email with TESTRAIL_USER_EMAIL_PATTERN, the lookup's shape rule, instead of z.string().email(), and UserSchema's comment now says shape check. The claim is rewritten for the shared rule; the other schemas it cites are unchanged." },
+          { "path": "src/modules/paginated-list.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/paginated-list.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/pagination.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/pagination.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
       }
     ]
@@ -29,22 +38,22 @@
   "sources": [
     {
       "id": "driver-module-metadata",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/metadata.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/metadata.ts",
       "supports": "The roles list is a response-driven paginated executor with request controls disabled: it prepares the get_roles operation with no query at all, so the server chooses each page and the aggregate walks the envelope's next link under the supplied bounds."
     },
     {
       "id": "driver-schema-users",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/users.ts",
-      "supports": "UserSchema is the reply shape and is permissive: role_id, is_admin, group_ids and the enterprise fields are all nullish because older servers omit them and get_current_user returns a reduced record, and mfa_required admits an integer because TestRail Cloud wire-encodes it as 0 or 1. UserAddPayloadSchema requires a non-empty name and an email, for which it declares a dotted-domain format that addUser and updateUser never apply, since they forward the payload unparsed. It declares role_id, group_ids and assigned_projects as positive integers; UserUpdatePayloadSchema makes every field optional. GroupSchema carries id, name and a nullish user_ids. AddGroupPayloadSchema requires name; UpdateGroupPayloadSchema makes it optional and its comment records that TestRail accepts an empty update body. RoleSchema carries id, name, is_default and a nullish is_project_admin."
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/users.ts",
+      "supports": "UserSchema is the reply shape and is permissive: role_id, is_admin, group_ids and the enterprise fields are all nullish because older servers omit them and get_current_user returns a reduced record, and mfa_required admits an integer because TestRail Cloud wire-encodes it as 0 or 1. UserAddPayloadSchema requires a non-empty name and an email checked with TESTRAIL_USER_EMAIL_PATTERN, the lookup's shape rule, which UserUpdatePayloadSchema applies to its optional email as well; addUser and updateUser forward the payload unparsed, so the boundary applies it. It declares role_id, group_ids and assigned_projects as positive integers; UserUpdatePayloadSchema makes every field optional. GroupSchema carries id, name and a nullish user_ids. AddGroupPayloadSchema requires name; UpdateGroupPayloadSchema makes it optional and its comment records that TestRail accepts an empty update body. RoleSchema carries id, name, is_default and a nullish is_project_admin."
     },
     {
       "id": "driver-paginated-list",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/paginated-list.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/paginated-list.ts",
       "supports": "The shared executor issues the page request, and with request controls disabled it sends no limit or offset of its own. The all helper walks the envelope's next link under the supplied bounds."
     },
     {
       "id": "driver-pagination",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/pagination.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts",
       "supports": "The aggregate bounds maxItems, maxPages, maxBytes and maxDurationMs stop the walk and are never serialized upstream."
     },
     {

@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -13,6 +13,13 @@
         "files": [
           { "path": "src/modules/suites.ts", "changed": false },
           { "path": "src/schemas/suites.ts", "changed": false }
+        ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/suites.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/suites.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/schemas/suites.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/suites.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
       }
     ]
@@ -27,12 +34,12 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/suites.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/suites.ts",
       "supports": "addSuite validates the project ID, places it as the only path segment and sends the payload as the JSON body."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/suites.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/suites.ts",
       "supports": "AddSuitePayloadSchema requires name and leaves description optional; it permits additional properties."
     },
     {

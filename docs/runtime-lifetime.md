@@ -41,7 +41,7 @@ A call still stuck when the drain expires is abandoned: the adapter stops waitin
 `tests/runtime-invocation.test.ts` also holds shutdown's order and what the runtime leaves behind. Admission is closed while the drain is still waiting, and the client is destroyed only after in-flight work settles. Across ten rounds of success, watchdog expiry, mid-flight cancellation and pre-dispatch refusal, every 60-second watchdog is cleared once its call answers, no abort listener stays on a caller's signal, and nothing is retained for shutdown to drain. `tests/runtime-lifetime.test.ts` fills all four slots with aggregates whose body cancellation is still pending, and `tests/transport/cancellation.test.ts` cancels four dispatched calls in both protocol eras. Both require the next call to be `BUSY` without a request until real settlement.
 
 `tests/runtime-timing.test.ts` tells each timing budget apart on a fake clock. It uses the production driver options through the composition root's seam and the runtime's real 60-second watchdog timer:
-- DNS wait counts against no timer, and the 15-second header timeout starts only once the lookup answers.
+- DNS counts against the 15-second request timeout, which starts before the lookup (driver 9.0.0): a resolver that never answers ends the call with `TIMEOUT` at 15 seconds, before any request, and the call keeps its slot until the lookup settles, since a lookup cannot be cancelled.
 - The body has its own 15 seconds from the arrival of the headers.
 - Retries back off 1, 2 and 4 seconds, and a `Retry-After` is honoured up to its 10-second cap.
 - The watchdog reports `TIMEOUT` at 60 seconds while the driver is still retrying, and the slot is released only when the driver gives up.

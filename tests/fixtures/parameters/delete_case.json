@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -14,13 +14,20 @@
           { "path": "src/modules/cases.ts", "changed": false },
           { "path": "src/schemas/cases.ts", "changed": false }
         ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/cases.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/cases.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/schemas/cases.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/cases.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
+        ]
       }
     ]
   },
   "endpoint": { "family_id": "T02", "http_method": "POST", "route": "delete_case/{case_id}", "tool": "testrail_delete_case", "driver_method": "cases.deleteCase" },
   "sources": [
-    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/cases.ts", "supports": "deleteCase validates the case ID, appends soft=1 only when the soft option is true, resolves with no value after a deletion and with the parsed preview after a soft request. The driver documents soft mode as TestRail 6.5 or later." },
-    { "id": "driver-schema", "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/cases.ts", "supports": "SoftDeletePreviewSchema describes the affected_tests, affected_cases, affected_sections, affected_runs, affected_milestones, affected_plans and affected_suites counts, each optional." },
+    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/cases.ts", "supports": "deleteCase validates the case ID, appends soft=1 only when the soft option is true, resolves with no value after a deletion and with the parsed preview after a soft request. The driver documents soft mode as TestRail 6.5 or later." },
+    { "id": "driver-schema", "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/cases.ts", "supports": "SoftDeletePreviewSchema describes the affected_tests, affected_cases, affected_sections, affected_runs, affected_milestones, affected_plans and affected_suites counts, each optional." },
     { "id": "testrail-cases", "url": "https://support.testrail.com/hc/en-us/articles/7077292642580-Cases", "supports": "delete_case/{case_id} deletes the case and permanently deletes its results in active runs; it cannot be undone. Omitting soft or sending soft=0 deletes; soft=1 returns the number of affected tests and deletes nothing." }
   ],
   "input_policy": { "ordinary_fields": "reject", "custom_fields": "reject", "notes": "Strictness is an MCP boundary requirement. No body is sent; the only control is the soft preview flag, and any other query key is a caller mistake." },

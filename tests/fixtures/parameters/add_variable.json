@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -13,6 +13,13 @@
         "files": [
           { "path": "src/modules/variables.ts", "changed": false },
           { "path": "src/schemas/variables.ts", "changed": false }
+        ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/variables.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/variables.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/schemas/variables.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/variables.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
       }
     ]
@@ -27,12 +34,12 @@
   "sources": [
     {
       "id": "driver-module-variables",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/variables.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/variables.ts",
       "supports": "addVariable validates the project identifier, posts to add_variable/{project_id} with the payload as the JSON body and parses the reply with VariableSchema. The payload is passed through unexamined: no public method parses AddVariablePayloadSchema, so every payload rule is enforced at the MCP boundary alone."
     },
     {
       "id": "driver-schema-variables",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/variables.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/variables.ts",
       "supports": "AddVariablePayloadSchema declares a single required name of type string and nothing else. VariableSchema declares the reply as exactly two required non-nullable fields, id and name; there is no value field, because a value belongs to a dataset."
     },
     {

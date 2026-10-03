@@ -1,7 +1,6 @@
 import {
   AddResultPayloadSchema, AddResultsForCasesPayloadSchema, AddResultsPayloadSchema,
   EditResultPayloadSchema, ResultSchema,
-  type AddResultPayload, type AddResultsForCasesPayload, type AddResultsPayload,
   type GetResultsForRunOptions, type GetResultsOptions,
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
@@ -205,11 +204,9 @@ export const getResultsForRun = defineOperation({
  * including the step results, so forwarding the container would drop them silently.
  *
  * TestRail records a result that carries a status, a comment or an assignee, any one of
- * them, so status_id is optional and at least one of the three is required. Driver 8.0.0
- * still declares status_id required on these payload types, but its methods forward the
- * body without parsing it; the type is corrected upstream from 9.0.0
- * (dichovsky/testrail-api-client#305). Until the pin moves, the four add calls assert
- * the body to the declared type, and those assertions go with the upgrade.
+ * them. The driver's payloads make status_id optional and refine them to require one of
+ * the three, and the adapter advertises that refinement in JSON Schema, so each body
+ * and each bulk entry is held to it here, before the driver forwards it unparsed.
  */
 const resultBodyFields = {
   status_id: positiveIdSchema.optional(),
@@ -217,11 +214,7 @@ const resultBodyFields = {
   custom_fields: z.never().optional(),
 };
 
-const resultContent = ['status_id', 'comment', 'assignedto_id'] as const;
-
-const resultBody = payloadInput(AddResultPayloadSchema, {
-  extensions: 'custom', fields: resultBodyFields, requireOneOf: resultContent,
-});
+const resultBody = payloadInput(AddResultPayloadSchema, { extensions: 'custom', fields: resultBodyFields });
 
 const addResultInput = strictObject({ test_id: positiveIdSchema, body: resultBody });
 
@@ -240,8 +233,7 @@ export const addResult = defineOperation({
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: ResultSchema },
   pagination: {
     kind: 'none',
-    single: driverCall(addResultInput, 'results.addResult',
-      (method, input) => method(input.test_id, input.body as AddResultPayload)),
+    single: driverCall(addResultInput, 'results.addResult', (method, input) => method(input.test_id, input.body)),
   },
   files: { kind: 'none' },
   // Each call records another result; the test's history keeps both.
@@ -272,7 +264,7 @@ export const addResultForCase = defineOperation({
   pagination: {
     kind: 'none',
     single: driverCall(addResultForCaseInput, 'results.addResultForCase',
-      (method, input) => method(input.run_id, input.case_id, input.body as AddResultPayload)),
+      (method, input) => method(input.run_id, input.case_id, input.body)),
   },
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: false, idempotent: false },
@@ -292,14 +284,12 @@ const resultsForTests = payloadArray(AddResultsPayloadSchema.shape.results,
   payloadInput(AddResultsPayloadSchema.shape.results.element, {
     extensions: 'custom',
     fields: { test_id: positiveIdSchema, ...resultBodyFields },
-    requireOneOf: resultContent,
   })).min(1);
 
 const resultsForCases = payloadArray(AddResultsForCasesPayloadSchema.shape.results,
   payloadInput(AddResultsForCasesPayloadSchema.shape.results.element, {
     extensions: 'custom',
     fields: { case_id: positiveIdSchema, ...resultBodyFields },
-    requireOneOf: resultContent,
   })).min(1);
 
 const addResultsInput = strictObject({
@@ -322,8 +312,7 @@ export const addResults = defineOperation({
   response: { shape: 'array', outerSchema: z.array(z.unknown()), entitySchema: ResultSchema },
   pagination: {
     kind: 'none',
-    single: driverCall(addResultsInput, 'results.addResults',
-      (method, input) => method(input.run_id, input.body as AddResultsPayload)),
+    single: driverCall(addResultsInput, 'results.addResults', (method, input) => method(input.run_id, input.body)),
   },
   files: { kind: 'none' },
   // Each call records another result for every entry; nothing is replaced.
@@ -352,7 +341,7 @@ export const addResultsForCases = defineOperation({
   pagination: {
     kind: 'none',
     single: driverCall(addResultsForCasesInput, 'results.addResultsForCases',
-      (method, input) => method(input.run_id, input.body as AddResultsForCasesPayload)),
+      (method, input) => method(input.run_id, input.body)),
   },
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: false, idempotent: false },

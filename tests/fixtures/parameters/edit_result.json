@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -14,6 +14,14 @@
           { "path": "src/modules/results.ts", "changed": false },
           { "path": "src/schemas/results.ts", "changed": false },
           { "path": "src/schemas/common.ts", "changed": false }
+        ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/results.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/results.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/schemas/results.ts", "changed": true, "note": "Changed between the releases: status_id is optional on the three add payloads, which now carry a refinement requiring at least one of status_id, comment or assignedto_id. The claim's add-payload sentence is reworded; EditResultPayloadSchema and the empty-payload refinement cited here are unchanged." },
+          { "path": "src/schemas/common.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/common.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
       }
     ]
@@ -28,17 +36,17 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/results.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/results.ts",
       "supports": "editResult validates the result ID, refuses an empty payload with a validation error before dispatch, places the ID as the only path segment of edit_result, forwards the JSON payload unchanged and parses the reply advisorily against ResultSchema. The driver documents the endpoint as TestRail 10.4 or later."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/results.ts",
-      "supports": "AddResultPayloadSchema declares status_id required and accepts comment, version, elapsed, defects, assignedto_id and a custom_fields record. The bulk payloads wrap an array of the same fields under results, each entry additionally requiring test_id or case_id. EditResultPayloadSchema makes every field optional, declares custom_step_results outright and carries no custom_fields record; its refinement rejects an empty payload. None of these is parsed by the public method, which forwards the payload as given, so every payload rule is enforced at the MCP boundary alone."
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/results.ts",
+      "supports": "AddResultPayloadSchema makes every field optional, accepting status_id, comment, version, elapsed, defects, assignedto_id and a custom_fields record, and refines the payload to need at least one of status_id, comment or assignedto_id. The bulk payloads wrap an array of the same fields under results, each entry additionally requiring test_id or case_id and carrying the same refinement. EditResultPayloadSchema makes every field optional, declares custom_step_results outright and carries no custom_fields record; its refinement rejects an empty payload. None of these is parsed by the public method, which forwards the payload as given, so every payload rule is enforced at the MCP boundary alone."
     },
     {
       "id": "driver-common",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/common.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/common.ts",
       "supports": "zObject uses passthrough, so the declared payload type admits unknown and custom_ properties alike; the MCP boundary must reject ordinary unknown names separately."
     },
     {
@@ -48,7 +56,7 @@
     },
     {
       "id": "driver-inputs",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/results.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/results.ts",
       "supports": "The edit payload's refinement rejecting an empty object is represented at the boundary as a minimum property count, so the emitted JSON Schema states the same rule the driver enforces at runtime."
     }
   ],

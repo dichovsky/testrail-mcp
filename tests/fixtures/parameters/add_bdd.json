@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -14,6 +14,14 @@
           { "path": "src/modules/bdd.ts", "changed": true, "note": "Changed between the releases: the BDD upload no longer passes retry: 'none', since 8.0.0 derives the policy from the multipart body. Validation, paths, queries and parsing are unchanged, so the claims cited here stand." },
           { "path": "src/client-core.ts", "changed": true, "note": "Changed between the releases: the multipart body builder moved out to src/upload-source.ts, now cited separately, and request() derives the retry policy from the request's shape instead of taking it from the call site. A multipart body is still sent without a JSON content type. The claim is rewritten for the new split." },
           { "path": "src/upload-source.ts", "changed": true, "note": "New in 8.0.0: the multipart body builder moved here from src/client-core.ts, where it was cited at cc7751c. First cited at this review." }
+        ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/bdd.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/bdd.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/client-core.ts", "changed": true, "note": "Changed between the releases: request() now starts the attempt timer before the host guard's DNS lookup and races it, connects through a dispatcher pinned to the validated DNS answers, watches a multipart upload's transport so an aborted upload closes its part cleanly, and sends a single-token User-Agent. The multipart hand-off to createUploadSource, the retry policy derived from the request's shape and the body sent without a JSON content type are unchanged." },
+          { "path": "src/upload-source.ts", "changed": true, "note": "Changed between the releases: only ownUploadStreams, whose cleanup now closes a part cleanly once the transport is confirmed aborted and errors it otherwise. The FormData field, filename, openAsBlob media type and single build() cited here are unchanged." }
         ]
       }
     ]
@@ -28,17 +36,17 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/bdd.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/bdd.ts",
       "supports": "addBdd validates the section ID, places it as the only path segment of add_bdd and posts the file through the shared multipart pipeline with the caller's filename, parsing TestRail's reply as a case."
     },
     {
       "id": "driver-client",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/client-core.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/client-core.ts",
       "supports": "request() hands a multipart body to createUploadSource and derives its retry policy with deriveRetryPolicy, which selects the none policy for any multipart body, so an upload is never retried. The built form data is the request body."
     },
     {
       "id": "driver-upload",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/upload-source.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/upload-source.ts",
       "supports": "createUploadSource appends the file to a FormData under the field name attachment with the caller's filename, and opens the staged path with openAsBlob as a blob whose media type is the one supplied or empty when none was. Its build() refuses a second call, because the first one hands the descriptor over and releases it when the body has been consumed."
     },
     {

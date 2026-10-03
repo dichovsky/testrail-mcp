@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "review": {
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -14,6 +14,15 @@
           { "path": "src/utils.ts", "changed": false },
           { "path": "src/modules/cases.ts", "changed": false }
         ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/validation.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/validation.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/pagination.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/pagination.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/utils.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/utils.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/modules/cases.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/cases.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
+        ]
       }
     ]
   },
@@ -21,7 +30,7 @@
     "positive_id": {
       "source": {
         "id": "driver-validation",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/validation.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/validation.ts",
         "supports": "validateId(id, name) rejects non-numbers, non-integers and values at or below zero. Its name argument only shapes the message, so every identifier in the API shares one domain; it is applied at 129 call sites."
       },
       "probe": {
@@ -87,7 +96,7 @@
     "pagination_limit": {
       "source": {
         "id": "driver-validation",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/validation.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/validation.ts",
         "supports": "validatePaginationParams rejects a limit that is not a positive integer, and one above the documented maximum of 250."
       },
       "probe": {
@@ -146,7 +155,7 @@
     "pagination_offset": {
       "source": {
         "id": "driver-validation",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/validation.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/validation.ts",
         "supports": "validatePaginationParams rejects an offset that is not a non-negative integer. Zero is valid and means the first page."
       },
       "probe": {
@@ -199,7 +208,7 @@
     "aggregate_page_size": {
       "source": {
         "id": "driver-pagination",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/pagination.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts",
         "supports": "resolveCollectionOptions validates pageSize as a positive integer not exceeding 250 before the first request, and defaults it to 250."
       },
       "probe": {
@@ -230,7 +239,7 @@
     "aggregate_start_offset": {
       "source": {
         "id": "driver-pagination",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/pagination.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts",
         "supports": "resolveCollectionOptions validates startOffset as a non-negative safe integer before the first request, defaults it to 0, and requires the first envelope's offset to equal it."
       },
       "probe": {
@@ -259,7 +268,7 @@
     "aggregate_max_items": {
       "source": {
         "id": "driver-pagination",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/pagination.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts",
         "supports": "resolveCollectionOptions validates maxItems as a positive safe integer before the first request and defaults it to 25,000. The adapter's aggregateLimitDefaults (src/contracts/inputs.ts) caps what a caller may request at 1,000, and DEFAULT_LIMITS forwards 1,000 when the caller sets none."
       },
       "probe": {
@@ -290,7 +299,7 @@
     "aggregate_max_pages": {
       "source": {
         "id": "driver-pagination",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/pagination.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts",
         "supports": "resolveCollectionOptions validates maxPages as a positive safe integer before the first request and defaults it to 100. The adapter's aggregateLimitDefaults caps what a caller may request at 20, and DEFAULT_LIMITS forwards 20 when the caller sets none."
       },
       "probe": {
@@ -320,7 +329,7 @@
     "aggregate_max_bytes": {
       "source": {
         "id": "driver-pagination",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/pagination.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts",
         "supports": "resolveCollectionOptions validates maxBytes as a positive safe integer not exceeding 1 GiB before the first request and defaults it to 100 MiB. The adapter's aggregateLimitDefaults caps what a caller may request at 1 MiB, and DEFAULT_LIMITS forwards 1 MiB when the caller sets none."
       },
       "probe": {
@@ -350,7 +359,7 @@
     "aggregate_max_duration_ms": {
       "source": {
         "id": "driver-pagination",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/pagination.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts",
         "supports": "resolveCollectionOptions validates maxDurationMs as a positive safe integer not exceeding five minutes before the first request and defaults it to five minutes. The adapter's aggregateLimitDefaults caps what a caller may request at 45,000 ms, and DEFAULT_LIMITS forwards 45,000 when the caller sets none."
       },
       "probe": {
@@ -380,7 +389,7 @@
     "id_filter": {
       "source": {
         "id": "driver-utils",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/utils.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/utils.ts",
         "supports": "serializeIdFilter(value, name) accepts one identifier or an array of them, validates each member with validateId, joins an array with commas, and returns undefined for an empty array so the filter is omitted from the request."
       },
       "probe": {
@@ -431,7 +440,7 @@
     "unix_timestamp": {
       "source": {
         "id": "driver-module",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/cases.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/cases.ts",
         "supports": "The get_cases preparation forwards createdAfter, createdBefore, updatedAfter and updatedBefore to the query unchanged and applies no validation to them, so their domain is held entirely at the MCP boundary."
       },
       "probe": {
@@ -464,7 +473,7 @@
     "case_ids": {
       "source": {
         "id": "driver-module",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/cases.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/cases.ts",
         "supports": "getCaseTitles refuses an empty list and validates every member with validateId before joining them with commas. The bulk case payload schemas declare case_ids as an array of numbers and forward it unchecked; the MCP boundary holds each member to the identifier domain and requires at least one."
       },
       "probe": {
@@ -500,7 +509,7 @@
     "entry_id": {
       "source": {
         "id": "driver-validation",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/validation.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/validation.ts",
         "supports": "validateEntryId tests the value against a case-insensitive RFC 4122 layout anchored at both ends and rejects anything else before a request is issued. The comment records why a plain string is refused: a plan-entry identifier reaches the URL path, so accepting arbitrary text would let a traversal sequence be injected into it."
       },
       "probe": {

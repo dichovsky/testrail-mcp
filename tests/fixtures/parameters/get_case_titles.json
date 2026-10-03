@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -14,13 +14,20 @@
           { "path": "src/modules/cases.ts", "changed": false },
           { "path": "src/url.ts", "changed": false }
         ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/cases.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/cases.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/url.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/url.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
+        ]
       }
     ]
   },
   "endpoint": { "family_id": "T02", "http_method": "GET", "route": "get_case_titles", "tool": "testrail_get_case_titles", "driver_method": "cases.getCaseTitles" },
   "sources": [
-    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/cases.ts", "supports": "getCaseTitles refuses an empty list, validates every member as an identifier, joins them with commas as the case_ids query control of get_case_titles, and parses the reply as an array of CaseTitleSchema records. The driver documents the endpoint as TestRail 10.5 or later." },
-    { "id": "driver-url", "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/url.ts", "supports": "buildEndpoint appends the control path-style after an ampersand and percent-encodes the value, so the joining commas are sent as %2C." },
+    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/cases.ts", "supports": "getCaseTitles refuses an empty list, validates every member as an identifier, joins them with commas as the case_ids query control of get_case_titles, and parses the reply as an array of CaseTitleSchema records. The driver documents the endpoint as TestRail 10.5 or later." },
+    { "id": "driver-url", "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/url.ts", "supports": "buildEndpoint appends the control path-style after an ampersand and percent-encodes the value, so the joining commas are sent as %2C." },
     { "id": "testrail-10-5", "url": "https://support.testrail.com/hc/en-us/articles/50194016906900-TestRail-10-5-1-Default-1001", "supports": "The 10.5.1 release notes introduce get_case_titles as a lightweight call mapping a list of case IDs to their titles. The Cases API reference does not yet document it, so the driver is the source for its request shape." }
   ],
   "input_policy": { "ordinary_fields": "reject", "custom_fields": "reject", "notes": "Strictness is an MCP boundary requirement. The identifier list is the only input and it lives in query, where TestRail reads it." },
