@@ -381,24 +381,31 @@ describe('the process signals and stdin closure startServer owns by default', ()
     const destroy = vi.spyOn(TestRailClient.prototype, 'destroy');
     const stdio = inMemory();
     const started = await startServer(environment(), { serve: stdio.serve, driver });
-    expect([...captured.keys()].sort()).toEqual(['SIGINT', 'SIGTERM', 'stdin:close', 'stdin:end']);
-    // One stop for every ending, so however the host ends the session it drains once.
-    expect(new Set(captured.values()).size).toBe(1);
-    expect(destroy).toHaveBeenCalledTimes(1); // the configuration probe at load
+    // Stop the server even when an assertion fails, so it never outlives this test.
+    let stopped = false;
+    try {
+      expect([...captured.keys()].sort()).toEqual(['SIGINT', 'SIGTERM', 'stdin:close', 'stdin:end']);
+      // One stop for every ending, so however the host ends the session it drains once.
+      expect(new Set(captured.values()).size).toBe(1);
+      expect(destroy).toHaveBeenCalledTimes(1); // the configuration probe at load
 
-    const stop = captured.get('SIGTERM');
-    if (stop === undefined) throw new Error('no SIGTERM handler was registered');
-    stop();
-    captured.get('stdin:end')?.();
-    await vi.waitFor(() => { expect(exit).toHaveBeenCalledTimes(2); }, { timeout: EXIT_GRACE_MS * 8 });
+      const stop = captured.get('SIGTERM');
+      if (stop === undefined) throw new Error('no SIGTERM handler was registered');
+      stop();
+      captured.get('stdin:end')?.();
+      await vi.waitFor(() => { expect(exit).toHaveBeenCalledTimes(2); }, { timeout: EXIT_GRACE_MS * 8 });
 
-    const names = events(write).map(({ event }) => event);
-    expect(names.filter((name) => name === 'server_stopping')).toHaveLength(1);
-    expect(names.filter((name) => name === 'server_stopped')).toHaveLength(1);
-    expect(destroy).toHaveBeenCalledTimes(2);
-    // Each exit waited for the one shared stop, so nothing was cut off mid-drain.
-    expect(stoppedAtExit).toEqual([true, true]);
-    await expect(started.shutdown()).resolves.toBeUndefined();
+      const names = events(write).map(({ event }) => event);
+      expect(names.filter((name) => name === 'server_stopping')).toHaveLength(1);
+      expect(names.filter((name) => name === 'server_stopped')).toHaveLength(1);
+      expect(destroy).toHaveBeenCalledTimes(2);
+      // Each exit waited for the one shared stop, so nothing was cut off mid-drain.
+      expect(stoppedAtExit).toEqual([true, true]);
+      await expect(started.shutdown()).resolves.toBeUndefined();
+      stopped = true;
+    } finally {
+      if (!stopped) await started.shutdown().catch(() => undefined);
+    }
 
     vi.restoreAllMocks();
     expect({ SIGINT: process.listenerCount('SIGINT'), SIGTERM: process.listenerCount('SIGTERM') }).toEqual(signals);

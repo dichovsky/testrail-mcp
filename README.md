@@ -93,7 +93,7 @@ npm run check
 4. runs every test;
 5. packs and installs the tarball into a clean directory, then drives the installed executable over MCP in both protocol eras against a local stand-in for TestRail.
 
-`npm run test:coverage` runs the same tests and fails if source coverage of `src/` drops below 99% for lines, statements, functions or branches; the thresholds live in `vitest.config.ts`. CI does the same on Node 24 across Linux, macOS and Windows, enforces those thresholds on Linux, and publishes the [coverage reports](docs/coverage-reports.md) as artifacts. Source layout follows the [component boundaries](src/README.md).
+CI runs these steps on Node 24 across Linux, macOS and Windows. On Linux its test step is `npm run test:coverage` instead, which runs the same tests and fails if source coverage of `src/` drops below 99% for lines, statements, functions or branches; the thresholds live in `vitest.config.ts`. CI also publishes the [coverage reports](docs/coverage-reports.md) as artifacts. Source layout follows the [component boundaries](src/README.md).
 
 ## Documents
 
