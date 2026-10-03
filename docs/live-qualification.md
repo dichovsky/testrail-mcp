@@ -116,7 +116,7 @@ If any of them appears, it refuses to write the file.
 }
 ```
 
-Version 1, the first live run's record, has no `cleanup.verified`: that runner did not ask TestRail again after cleanup.
+Version 1 has no `cleanup.verified`: that runner did not ask TestRail again after cleanup. The first live run's record was version 1; the second run's replaced it, and it stays in commit `51dd910`.
 
 `driver_version` is the driver installed beside the runner, which its own server loads. With `--command` it is `null`: the runner cannot see which driver another server loads, and `package_version` names the release, which pins one driver.
 

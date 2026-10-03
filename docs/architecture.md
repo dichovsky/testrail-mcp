@@ -12,7 +12,7 @@ Status: accepted implementation architecture, 2026-09-09. Implementation and rel
 
 The server is a local adapter between MCP clients and the TestRail API. It translates typed endpoint tools into calls to the required driver, enforces the MCP input and result contracts, and manages local attachment files. TestRail remains the system of record and the authority for the configured user's permissions.
 
-The first release covers TestRail's **10.7.0** API reference and is qualified live on TestRail **10.8.1**, the baseline. Older TestRail versions are supported on a best-effort basis: preserve compatible responses and surface unavailable endpoints, parameters, permissions, and license requirements clearly. Do not promise full endpoint availability on older versions or infer compatibility merely from a successful connection. A later compatibility guarantee requires explicit version-specific verification.
+The first release covers TestRail's **10.7.0** API reference, and its live qualification runs against TestRail **10.8.1**, the baseline. Older TestRail versions are supported on a best-effort basis: preserve compatible responses and surface unavailable endpoints, parameters, permissions, and license requirements clearly. Do not promise full endpoint availability on older versions or infer compatibility merely from a successful connection. A later compatibility guarantee requires explicit version-specific verification.
 
 ## Runtime and component boundaries
 
