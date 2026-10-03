@@ -73,8 +73,8 @@ describe('staged upload', () => {
 
 describe('T04 get_test with data, when TestRail refuses', () => {
   it('passes an upstream error through rather than blaming the reply', async () => {
-    // Only a TypeError from assembling the parts means the reply was malformed; an
-    // ordinary API error must keep its own classification and status.
+    // A malformed reply is the driver's to refuse; an ordinary API error must keep its
+    // own classification and status.
     const fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ error: 'Field :test_id is not a valid test.' }), {
         status: 404, headers: { 'content-type': 'application/json' },

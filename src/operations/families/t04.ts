@@ -4,7 +4,6 @@ import {
   type GetRunsOptions, type GetTestsOptions,
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
-import { AdapterError } from '../../contracts/errors.js';
 import {
   createListInput, idFilterSchema, nonnegativeIntegerSchema, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
@@ -282,21 +281,9 @@ export const getTest = defineOperation({
     kind: 'none',
     single: driverCall(getTestInput, 'tests.getTest', async (method, input) => {
       const data = withData(input.query);
-      if (data === undefined) return method(input.test_id);
-      try {
-        return await method(input.test_id, { withData: data });
-      } catch (error) {
-        /*
-         * Asking for the data makes the driver build one record out of TestRail's
-         * test, results and attachments. Response validation is advisory, so a reply
-         * that is not that shape reaches the assembly anyway and it throws while
-         * reading the parts it cannot find. That is the response failing to be what
-         * the endpoint documents, not a fault in this server, and saying so is the
-         * difference between blaming TestRail's body and blaming the adapter.
-         */
-        if (error instanceof TypeError) throw new AdapterError('INVALID_RESPONSE');
-        throw error;
-      }
+      // With the data, the driver assembles one record from TestRail's test, results and
+      // attachments, and refuses a reply that is not that shape as an invalid response.
+      return data === undefined ? method(input.test_id) : method(input.test_id, { withData: data });
     }),
   },
   files: { kind: 'none' },

@@ -315,7 +315,7 @@ describe('strict reuse of public driver payload schemas', () => {
     ], [{ body: { parent_id: '0' } }]);
   });
 
-  it('represents the two exported driver payload refinements in JSON Schema', () => {
+  it('represents the exported driver payload refinements in JSON Schema', () => {
     acceptsBoth(strictObject({ body: payloadInput(DeleteCasesPayloadSchema) }), [
       { body: { case_ids: [1] } },
     ], [{ body: { case_ids: [1], soft: 1 } }]);

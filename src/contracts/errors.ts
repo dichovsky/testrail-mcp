@@ -85,6 +85,10 @@ const BOUND_REASONS = new Set(['max_pages', 'max_items', 'max_bytes', 'max_durat
  * aggregate then rethrows that timer's own error rather than its duration stop. That is
  * the same bound, not an upstream failure, and no response arrived to give it a status.
  *
+ * From driver 9.0.0 the aggregate labels its own abort timer and deadline race as the
+ * duration stop, so of the three only a clipped body read timeout still reaches here from
+ * the real driver; the two 408 spellings are kept as a guard against that changing back.
+ *
  * Only the driver raises these: an error built from a received response always carries
  * a response text, its body or 'Unknown error' when the body broke, and a status of 0
  * never comes from HTTP. A request or body timeout is the deadline only when the driver

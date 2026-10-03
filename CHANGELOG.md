@@ -18,7 +18,7 @@ The first release: a local stdio MCP server for the complete TestRail 10.7.0 API
 - Configuration from the launch environment only, with a startup error that names the variable and never its value.
 - Results with only a comment or only an assignee: the four add-result tools need at least one of `status_id`, `comment` or `assignedto_id`, as TestRail documents, rather than always `status_id` ([#49](https://github.com/dichovsky/testrail-mcp/issues/49)).
 - One address rule for every user tool: `add_user` and `update_user` accept the single-label domains and domain literals `get_user_by_email` accepts, so a user a self-hosted or directory instance stores can be created and updated as well as looked up ([#55](https://github.com/dichovsky/testrail-mcp/issues/55)).
-- The pinned, qualified driver `@dichovsky/testrail-api-client` 9.0.0, and with it a Node 24 or later requirement. TestRail connections go direct, pinned to the DNS answers the driver's private-host guard approved: proxy settings are not used, and `NODE_EXTRA_CA_CERTS` adds trust for a private certificate authority. DNS resolution counts against the 15-second request timeout.
+- The pinned, qualified driver `@dichovsky/testrail-api-client` 9.0.0, and with it a Node 24 or later requirement. By default TestRail connections go direct, pinned to the DNS answers the driver's private-host guard approved: proxy settings are not used, and `NODE_EXTRA_CA_CERTS` adds trust for a private certificate authority. With `TESTRAIL_ALLOW_PRIVATE_HOSTS=true` nothing is pinned, and Node's own connection settings, a configured proxy included, apply. DNS resolution counts against the 15-second request timeout.
 
 ### Verification
 

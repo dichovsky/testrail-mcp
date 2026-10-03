@@ -19,7 +19,7 @@
         "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
         "files": [
           { "path": "src/modules/bdd.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/bdd.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
-          { "path": "src/client-core.ts", "changed": true, "note": "Changed between the releases: request() now starts the attempt timer before the host guard's DNS lookup and races it, connects through a dispatcher pinned to the validated DNS answers, watches a multipart upload's transport so an aborted upload closes its part cleanly, and sends a single-token User-Agent. The text pipeline cited here still returns the raw response body unparsed." }
+          { "path": "src/client-core.ts", "changed": true, "note": "Changed between the releases: request() now starts the attempt timer before the host guard's DNS lookup and races it, connects through a dispatcher pinned to the validated DNS answers when the guard runs (not with allowPrivateHosts), labels a timer the aggregate budget owns as its duration stop, normalizes a fetch rejection that is not an Error, watches a multipart upload's transport so an aborted upload closes its part cleanly, and sends a single-token User-Agent. The text pipeline cited here still returns the raw response body unparsed." }
         ]
       }
     ]
