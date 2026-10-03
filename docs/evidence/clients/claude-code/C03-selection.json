@@ -1,0 +1,452 @@
+{
+ "scenario": "C03",
+ "what": "Each corpus prompt typed as written into a fresh session (tests/fixtures/clients/c03-corpus.json).",
+ "tasks": [
+  {
+   "id": "projects",
+   "expected_tool": "testrail_update_project",
+   "first_call_tool": "testrail_update_project",
+   "first_call_args": {
+    "project_id": 7,
+    "body": {
+     "name": "Checkout revamp"
+    }
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 2,
+   "follow_up_calls": [
+    {
+     "tool": "testrail_get_project",
+     "args": {
+      "project_id": 7
+     }
+    }
+   ],
+   "tool_errors": 0
+  },
+  {
+   "id": "sections",
+   "expected_tool": "testrail_move_section",
+   "first_call_tool": "testrail_move_section",
+   "first_call_args": {
+    "section_id": 14,
+    "body": {
+     "parent_id": 12
+    }
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 3,
+   "follow_up_calls": [
+    {
+     "tool": "testrail_get_section",
+     "args": {
+      "section_id": 14
+     }
+    },
+    {
+     "tool": "testrail_get_section",
+     "args": {
+      "section_id": 14
+     }
+    }
+   ],
+   "tool_errors": 0
+  },
+  {
+   "id": "suites",
+   "expected_tool": "testrail_get_suites",
+   "first_call_tool": "testrail_get_suites",
+   "first_call_args": {
+    "project_id": 7
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "cases",
+   "expected_tool": "testrail_get_history_for_case",
+   "first_call_tool": "testrail_get_history_for_case",
+   "first_call_args": {
+    "case_id": 42
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 2,
+   "follow_up_calls": [
+    {
+     "tool": "testrail_get_history_for_case",
+     "args": {
+      "case_id": 42,
+      "query": {
+       "limit": 250,
+       "offset": 50
+      }
+     }
+    }
+   ],
+   "tool_errors": 0
+  },
+  {
+   "id": "bdd",
+   "expected_tool": "testrail_get_bdd",
+   "first_call_tool": "testrail_get_bdd",
+   "first_call_args": {
+    "case_id": 42
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "shared-steps",
+   "expected_tool": "testrail_get_shared_steps",
+   "first_call_tool": "testrail_get_shared_steps",
+   "first_call_args": {
+    "project_id": 7,
+    "_mcp": {
+     "pagination": "page"
+    }
+   },
+   "matches_corpus_args": false,
+   "testrail_calls": 2,
+   "follow_up_calls": [
+    {
+     "tool": "testrail_get_shared_steps",
+     "args": {
+      "project_id": 7,
+      "query": {
+       "limit": 250,
+       "offset": 50
+      }
+     }
+    }
+   ],
+   "tool_errors": 0
+  },
+  {
+   "id": "runs",
+   "expected_tool": "testrail_close_run",
+   "first_call_tool": "testrail_close_run",
+   "first_call_args": {
+    "run_id": 3
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "tests",
+   "expected_tool": "testrail_get_test",
+   "first_call_tool": "testrail_get_test",
+   "first_call_args": {
+    "test_id": 5
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 2,
+   "follow_up_calls": [
+    {
+     "tool": "testrail_get_statuses",
+     "args": {}
+    }
+   ],
+   "tool_errors": 0
+  },
+  {
+   "id": "results",
+   "expected_tool": "testrail_add_result_for_case",
+   "first_call_tool": "testrail_add_result_for_case",
+   "first_call_args": {
+    "run_id": 3,
+    "case_id": 42,
+    "body": {
+     "status_id": 1,
+     "comment": "Login works again"
+    }
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "configurations",
+   "expected_tool": "testrail_add_config",
+   "first_call_tool": "testrail_add_config",
+   "first_call_args": {
+    "config_group_id": 2,
+    "body": {
+     "name": "Firefox"
+    }
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "plans",
+   "expected_tool": "testrail_get_plan",
+   "first_call_tool": "testrail_get_plan",
+   "first_call_args": {
+    "plan_id": 9
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "labels",
+   "expected_tool": "testrail_get_labels",
+   "first_call_tool": "testrail_get_labels",
+   "first_call_args": {
+    "project_id": 7
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 2,
+   "follow_up_calls": [
+    {
+     "tool": "testrail_get_labels",
+     "args": {
+      "project_id": 7,
+      "query": {
+       "limit": 250,
+       "offset": 50
+      }
+     }
+    }
+   ],
+   "tool_errors": 0
+  },
+  {
+   "id": "milestones",
+   "expected_tool": "testrail_add_milestone",
+   "first_call_tool": "testrail_add_milestone",
+   "first_call_args": {
+    "project_id": 7,
+    "body": {
+     "name": "Release 2.0"
+    }
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "groups",
+   "expected_tool": "testrail_get_group",
+   "first_call_tool": "testrail_get_group",
+   "first_call_args": {
+    "group_id": 4
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 2,
+   "follow_up_calls": [
+    {
+     "tool": "testrail_get_users",
+     "args": {}
+    }
+   ],
+   "tool_errors": 0
+  },
+  {
+   "id": "roles",
+   "expected_tool": "testrail_get_roles",
+   "first_call_tool": "testrail_get_roles",
+   "first_call_args": {
+    "_mcp": {
+     "pagination": "all"
+    }
+   },
+   "matches_corpus_args": false,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "users",
+   "expected_tool": "testrail_get_user_by_email",
+   "first_call_tool": "testrail_get_user_by_email",
+   "first_call_args": {
+    "query": {
+     "email": "ada@example.com"
+    }
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "datasets",
+   "expected_tool": "testrail_get_datasets",
+   "first_call_tool": "testrail_get_datasets",
+   "first_call_args": {
+    "project_id": 2
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 2,
+   "follow_up_calls": [
+    {
+     "tool": "testrail_get_datasets",
+     "args": {
+      "project_id": 2,
+      "_mcp": {
+       "pagination": "all"
+      }
+     }
+    }
+   ],
+   "tool_errors": 0
+  },
+  {
+   "id": "variables",
+   "expected_tool": "testrail_add_variable",
+   "first_call_tool": "testrail_add_variable",
+   "first_call_args": {
+    "project_id": 12,
+    "body": {
+     "name": "browser"
+    }
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 2,
+   "follow_up_calls": [
+    {
+     "tool": "testrail_get_variables",
+     "args": {
+      "project_id": 12
+     }
+    }
+   ],
+   "tool_errors": 0
+  },
+  {
+   "id": "case-fields",
+   "expected_tool": "testrail_get_case_fields",
+   "first_call_tool": "testrail_get_case_fields",
+   "first_call_args": {},
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "case-types",
+   "expected_tool": "testrail_get_case_types",
+   "first_call_tool": "testrail_get_case_types",
+   "first_call_args": {},
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "dynamic-filter-fields",
+   "expected_tool": "testrail_get_dynamic_filter_fields",
+   "first_call_tool": "testrail_get_dynamic_filter_fields",
+   "first_call_args": {
+    "project_id": 7
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "priorities",
+   "expected_tool": "testrail_get_priorities",
+   "first_call_tool": "testrail_get_priorities",
+   "first_call_args": {},
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "result-fields",
+   "expected_tool": "testrail_get_result_fields",
+   "first_call_tool": "testrail_get_result_fields",
+   "first_call_args": {},
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "statuses",
+   "expected_tool": "testrail_get_statuses",
+   "first_call_tool": "testrail_get_statuses",
+   "first_call_args": {},
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "templates",
+   "expected_tool": "testrail_get_templates",
+   "first_call_tool": "testrail_get_templates",
+   "first_call_args": {
+    "project_id": 7
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "versions",
+   "expected_tool": "testrail_get_version",
+   "first_call_tool": "testrail_get_version",
+   "first_call_args": {},
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "reports",
+   "expected_tool": "testrail_get_reports",
+   "first_call_tool": "testrail_get_reports",
+   "first_call_args": {
+    "project_id": 7
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 1,
+   "follow_up_calls": [],
+   "tool_errors": 0
+  },
+  {
+   "id": "attachments",
+   "expected_tool": "testrail_get_attachments_for_run",
+   "first_call_tool": "testrail_get_attachments_for_run",
+   "first_call_args": {
+    "run_id": 3
+   },
+   "matches_corpus_args": true,
+   "testrail_calls": 2,
+   "follow_up_calls": [
+    {
+     "tool": "testrail_get_attachments_for_run",
+     "args": {
+      "run_id": 3,
+      "_mcp": {
+       "pagination": "page"
+      },
+      "query": {
+       "limit": 250,
+       "offset": 50
+      }
+     }
+    }
+   ],
+   "tool_errors": 0
+  }
+ ],
+ "harness_note": "An earlier batch passed prompts through a shell that dropped the spaces inside quoted names; the five prompts with quotes were re-run with their exact text, and these rows are the re-runs."
+}

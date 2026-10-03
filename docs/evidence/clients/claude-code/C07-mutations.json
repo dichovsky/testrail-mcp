@@ -1,0 +1,195 @@
+{
+ "scenario": "C07",
+ "session": {
+  "session": "c07",
+  "client": "2.1.288",
+  "servers": [
+   {
+    "name": "testrail",
+    "status": "connected"
+   }
+  ],
+  "testrail_tools_listed": 133,
+  "calls": [
+   {
+    "tool": "ToolSearch",
+    "input": {
+     "query": "select:mcp__testrail__testrail_add_case,mcp__testrail__testrail_update_case,mcp__testrail__testrail_update_cases,mcp__testrail__testrail_close_run,mcp__testrail__testrail_delete_case",
+     "max_results": 10
+    },
+    "is_error": false,
+    "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_add_case\"} {\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_update_case\"} {\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_update_cases\"} {\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_close_run\"} {\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_delete_case\"}",
+    "result_chars": 390
+   },
+   {
+    "tool": "mcp__testrail__testrail_add_case",
+    "input": {
+     "section_id": 1,
+     "body": {
+      "title": "C07 create"
+     }
+    },
+    "is_error": false,
+    "result": "{\"data\":{\"id\":42,\"title\":\"Print document history\",\"section_id\":5,\"template_id\":1,\"type_id\":2,\"priority_id\":4,\"milestone_id\":9,\"refs\":\"RF-1, RF-2\",\"created_by\":1,\"created_on\":1646317844,\"updated_by\":1,\"updated_on\":1646317844,\"estimate\":\"3m\",\"estimate_forecast\":\"8m 40s\",\"suite_id\":3,\"display_order\":1,\"is_deleted\":0,\"labels\":[{\"id\":7,\"title\":\"label1\"}],\"custom_preconds\":\"These are the preconditions\",\"custom_steps_separated\":[{\"content\":\"Step 1\",\"expected\":\"Expected Result 1\"},{\"shared_step_id\":3}],\"custom_null\":null,\"custom_zero\":0,\"custom_flag\":false}}",
+    "result_chars": 556
+   },
+   {
+    "tool": "mcp__testrail__testrail_update_case",
+    "input": {
+     "case_id": 1,
+     "body": {
+      "title": "C07 update"
+     }
+    },
+    "is_error": false,
+    "result": "{\"data\":{\"id\":42,\"title\":\"Print document history\",\"section_id\":6,\"template_id\":1,\"type_id\":2,\"priority_id\":4,\"milestone_id\":9,\"refs\":\"RF-1, RF-2\",\"created_by\":1,\"created_on\":1646317844,\"updated_by\":1,\"updated_on\":1646317844,\"estimate\":\"3m\",\"estimate_forecast\":\"8m 40s\",\"suite_id\":3,\"display_order\":1,\"is_deleted\":0,\"labels\":[{\"id\":7,\"title\":\"label1\"}],\"custom_preconds\":\"These are the preconditions\",\"custom_steps_separated\":[{\"content\":\"Step 1\",\"expected\":\"Expected Result 1\"},{\"shared_step_id\":3}],\"custom_null\":null,\"custom_zero\":0,\"custom_flag\":false}}",
+    "result_chars": 556
+   },
+   {
+    "tool": "mcp__testrail__testrail_update_cases",
+    "input": {
+     "suite_id": 1,
+     "body": {
+      "case_ids": [
+       1,
+       2
+      ],
+      "priority_id": 2
+     }
+    },
+    "is_error": false,
+    "result": "{\"data\":[{\"id\":42,\"title\":\"Print document history\",\"section_id\":6,\"template_id\":1,\"type_id\":2,\"priority_id\":4,\"milestone_id\":9,\"refs\":\"RF-1, RF-2\",\"created_by\":1,\"created_on\":1646317844,\"updated_by\":1,\"updated_on\":1646317844,\"estimate\":\"3m\",\"estimate_forecast\":\"8m 40s\",\"suite_id\":3,\"display_order\":1,\"is_deleted\":0,\"labels\":[{\"id\":7,\"title\":\"label1\"}],\"custom_preconds\":\"These are the preconditions\",\"custom_steps_separated\":[{\"content\":\"Step 1\",\"expected\":\"Expected Result 1\"},{\"shared_step_id\":3}],\"custom_null\":null,\"custom_zero\":0,\"custom_flag\":false},{\"id\":43,\"title\":\"Export as PDF\",\"section_id\":5,\"template_id\":1,\"type_id\":2,\"priority_id\":4,\"milestone_id\":null,\"refs\":null,\"created_by\":1,\"cre …",
+    "result_chars": 883
+   },
+   {
+    "tool": "mcp__testrail__testrail_close_run",
+    "input": {
+     "run_id": 1
+    },
+    "is_error": false,
+    "result": "{\"data\":{\"id\":9942,\"suite_id\":10,\"name\":\"Test Run Name\",\"description\":null,\"milestone_id\":null,\"assignedto_id\":null,\"include_all\":false,\"is_completed\":true,\"completed_on\":1775500000,\"config\":null,\"config_ids\":[],\"passed_count\":0,\"blocked_count\":0,\"untested_count\":46,\"retest_count\":0,\"failed_count\":0,\"project_id\":3,\"plan_id\":null,\"created_on\":1775495967,\"created_by\":376,\"refs\":null,\"url\":\"https://test.testrail.io/index.php?/runs/view/123\",\"start_on\":null,\"due_on\":null,\"updated_on\":1775495967}}",
+    "result_chars": 497
+   },
+   {
+    "tool": "mcp__testrail__testrail_delete_case",
+    "input": {
+     "case_id": 1
+    },
+    "is_error": false,
+    "result": "{\"data\":null}",
+    "result_chars": 13
+   },
+   {
+    "tool": "mcp__testrail__testrail_add_case",
+    "input": {
+     "section_id": 990400,
+     "body": {
+      "title": "C07 rejected"
+     }
+    },
+    "is_error": true,
+    "result": "{\"error\":{\"code\":\"UPSTREAM_ERROR\",\"message\":\"TestRail returned an error.\",\"http_status\":400,\"write_outcome\":\"unknown\"}}",
+    "result_chars": 119
+   },
+   {
+    "tool": "mcp__testrail__testrail_add_case",
+    "input": {
+     "section_id": 990500,
+     "body": {
+      "title": "C07 unknown"
+     }
+    },
+    "is_error": true,
+    "result": "{\"error\":{\"code\":\"UPSTREAM_ERROR\",\"message\":\"TestRail returned an error.\",\"http_status\":500,\"write_outcome\":\"unknown\"}}",
+    "result_chars": 119
+   }
+  ],
+  "final": {
+   "subtype": "success",
+   "turns": 9,
+   "answer": "All seven calls ran once each, in order. Several responses don't match what I requested, so \"applied\" below means the tool returned a success reply, not that the change is confirmed.\n\n| # | Call | Response (verbatim) | Outcome |\n|---|---|---|---|\n| 1 | Add case \"C07 create\" to section 1 | `{\"data\":{\"id\":42,\"title\":\"Print document history\",\"section_id\":5,\"template_id\":1,\"type_id\":2,\"priority_id\":4,\"milestone_id\":9,\"refs\":\"RF-1, RF-2\",\"created_by\":1,\"created_on\":1646317844,\"updated_by\":1,\"updated_on\":1646317844,\"estimate\":\"3m\",\"estimate_forecast\":\"8m 40s\",\"suite_id\":3,\"display_order\":1,\"is_deleted\":0,\"labels\":[{\"id\":7,\"title\":\"label1\"}],\"custom_preconds\":\"These are the preconditions\",\"custom_steps_separated\":[{\"content\":\"Step 1\",\"expected\":\"Expected Result 1\"},{\"shared_step_id\":3}],\"custom_null\":null,\"custom_zero\":0,\"custom_flag\":false}}` | Applied by the tool's success reply, but the reply doesn't match the request. It shows title \"Print document history\" and section 5, not \"C07 create\" in section 1. |\n| 2 | Update case 1 to title \"C07 update\" | `{\"data\":{\"id\":42,\"title\":\"Print document history\",\"section_id\":6,\"template_id\":1,\"type_id\":2,\"priority_id\":4,\"milestone_id\":9,\"refs\":\"RF-1, RF-2\",\"created_by\":1,\"created_on\":1646317844,\"updated_by\":1,\"updated_on\":1646317844,\"estimate\":\"3m\",\"estimate_forecast\":\"8m 40s\",\"suite_id\":3,\"display_order\":1,\"is_deleted\":0,\"labels\":[{\"id\":7,\"title\":\"label1\"}],\"custom_preconds\":\"These are the preconditions\",\"custom_steps_separated\":[{\"content\":\""
+  }
+ },
+ "stand_in_requests": [
+  {
+   "method": "POST",
+   "endpoint": "add_case/1",
+   "status": 200,
+   "abandoned": false
+  },
+  {
+   "method": "POST",
+   "endpoint": "update_case/1",
+   "status": 200,
+   "abandoned": false
+  },
+  {
+   "method": "POST",
+   "endpoint": "update_cases/1",
+   "status": 200,
+   "abandoned": false
+  },
+  {
+   "method": "POST",
+   "endpoint": "close_run/1",
+   "status": 200,
+   "abandoned": false
+  },
+  {
+   "method": "POST",
+   "endpoint": "delete_case/1",
+   "status": 200,
+   "abandoned": false
+  },
+  {
+   "method": "POST",
+   "endpoint": "add_case/990400",
+   "status": 400,
+   "abandoned": false
+  },
+  {
+   "method": "POST",
+   "endpoint": "add_case/990500",
+   "status": 500,
+   "abandoned": false
+  }
+ ],
+ "annotations_received_by_host": {
+  "testrail_add_case": {
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": false,
+   "openWorldHint": true
+  },
+  "testrail_update_case": {
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": true
+  },
+  "testrail_update_cases": {
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": true,
+   "openWorldHint": true
+  },
+  "testrail_close_run": {
+   "readOnlyHint": false,
+   "destructiveHint": true,
+   "idempotentHint": false,
+   "openWorldHint": true
+  },
+  "testrail_delete_case": {
+   "readOnlyHint": false,
+   "destructiveHint": true,
+   "idempotentHint": false,
+   "openWorldHint": true
+  },
+  "testrail_get_attachment": {
+   "readOnlyHint": false,
+   "destructiveHint": false,
+   "idempotentHint": false,
+   "openWorldHint": true
+  }
+ }
+}

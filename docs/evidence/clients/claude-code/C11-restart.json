@@ -1,0 +1,35 @@
+{
+ "scenario": "C11",
+ "what": "Each headless session starts the server cold and ends it; the attachment restart is in C08.",
+ "sessions": 50,
+ "catalog_per_session": {
+  "133 tools, sha256 a423193aa71240cb0cca5bd0ed54c30fdadfdadb3d61ac297a9afb4afd111724, connected": 50
+ },
+ "server_processes": 55,
+ "server_ends": {
+  "exit code 0 after server_stopped": 53,
+  "other": 2
+ },
+ "not_finished": [
+  {
+   "session": "c10-cancel2",
+   "last_events": [
+    "server_started",
+    "tool_call",
+    "server_stopping"
+   ],
+   "exit_recorded": null
+  },
+  {
+   "session": "c10-cancel",
+   "last_events": [
+    "server_started",
+    "tool_call",
+    "server_stopping"
+   ],
+   "exit_recorded": null
+  }
+ ],
+ "orphans_after_all_sessions": "ps listed no testrail-mcp or recorder process once the sessions had ended.",
+ "note": "There are more server processes than sessions because the first batch of C03 ran the five prompts that contain quotes with their spaces lost; those five were re-run, and both runs started a server. The servers not seen to finish are the interrupted sessions in C10: the host ended right after the interrupt, before the drain completed. No process remained. Only cold restarts, one server per headless session, were exercised; a reconnect within a session was not."
+}

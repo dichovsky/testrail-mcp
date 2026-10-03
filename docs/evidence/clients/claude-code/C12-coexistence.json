@@ -1,0 +1,66 @@
+{
+ "scenario": "C12",
+ "additional_server": "@modelcontextprotocol/server-filesystem 2026.8.31, the reference filesystem server, installed locally before the session",
+ "tools_listed": {
+  "testrail": 133,
+  "filesystem": 14
+ },
+ "colliding_bare_names": [],
+ "session": {
+  "session": "c12",
+  "client": "2.1.288",
+  "servers": [
+   {
+    "name": "testrail",
+    "status": "connected"
+   },
+   {
+    "name": "filesystem",
+    "status": "connected"
+   }
+  ],
+  "testrail_tools_listed": 133,
+  "calls": [
+   {
+    "tool": "ToolSearch",
+    "input": {
+     "query": "select:mcp__testrail__testrail_get_project,mcp__filesystem__list_allowed_directories,mcp__filesystem__list_directory",
+     "max_results": 5
+    },
+    "is_error": false,
+    "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_get_project\"} {\"type\": \"tool_reference\", \"tool_name\": \"mcp__filesystem__list_allowed_directories\"} {\"type\": \"tool_reference\", \"tool_name\": \"mcp__filesystem__list_directory\"}",
+    "result_chars": 238
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_project",
+    "input": {
+     "project_id": 1
+    },
+    "is_error": false,
+    "result": "{\"data\":{\"id\":7,\"name\":\"Fixture project\",\"announcement\":null,\"show_announcement\":false,\"is_completed\":false,\"completed_on\":null,\"suite_mode\":1,\"url\":\"https://fixture.testrail.test/index.php?/projects/overview/7\"}}",
+    "result_chars": 213
+   },
+   {
+    "tool": "mcp__filesystem__list_allowed_directories",
+    "input": {},
+    "is_error": false,
+    "result": "{\"content\":\"Allowed directories:\\n<run>/work\"}",
+    "result_chars": 132
+   },
+   {
+    "tool": "mcp__filesystem__list_directory",
+    "input": {
+     "path": "<run>/work"
+    },
+    "is_error": false,
+    "result": "{\"content\":\"[FILE] mcp-coexist.json\\n[FILE] mcp.json\"}",
+    "result_chars": 54
+   }
+  ],
+  "final": {
+   "subtype": "success",
+   "turns": 5,
+   "answer": "1. **TestRail project:** I requested project 1, and the response is named **\"Fixture project\"**. The returned `id` is 7, not 1, so the server may be mapping or fixturing the ID. Treat the \"project 1\" label with some caution.\n\n2. **Filesystem directory:** The only allowed directory is `<run>/work`. It contains two files:\n   - `mcp-coexist.json`\n   - `mcp.json`\n\n3. **Tool counts and collisions:** I counted these from the tool list in this session, not from a live query of each server.\n   - **TestRail:** 133 tools, all named `testrail_*`.\n   - **Filesystem:** 14 tools.\n   - **Collisions:** None. The full tool names are namespaced by server (`mcp__testrail__testrail_*` and `mcp__filesystem__*`). The bare names don't overlap either, because TestRail names carry a `testrail_` prefix and the filesystem names are things like `read_file` and `list_directory`."
+  }
+ }
+}

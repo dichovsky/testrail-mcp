@@ -1,0 +1,85 @@
+{
+ "scenario": "C04",
+ "controlled_list": {
+  "session": "c04-controlled",
+  "client": "2.1.288",
+  "servers": [
+   {
+    "name": "testrail",
+    "status": "connected"
+   }
+  ],
+  "testrail_tools_listed": 133,
+  "calls": [
+   {
+    "tool": "ToolSearch",
+    "input": {
+     "query": "select:mcp__testrail__testrail_get_cases",
+     "max_results": 1
+    },
+    "is_error": false,
+    "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_get_cases\"}",
+    "result_chars": 76
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_cases",
+    "input": {
+     "project_id": 1,
+     "query": {
+      "suite_id": 1
+     },
+     "_mcp": {
+      "pagination": "page"
+     }
+    },
+    "is_error": false,
+    "result": "{\"data\":[{\"id\":700000,\"title\":\"Print document history\",\"section_id\":5,\"template_id\":1,\"type_id\":2,\"priority_id\":4,\"milestone_id\":9,\"refs\":\"REQ-1\",\"created_by\":1,\"created_on\":1646317844,\"updated_by\":2,\"updated_on\":1647317844,\"estimate\":\"3m\",\"estimate_forecast\":\"8m 40s\",\"suite_id\":3,\"display_order\":1,\"is_deleted\":0,\"labels\":[{\"id\":11,\"title\":\"login\"}],\"custom_preconds\":null},{\"id\":700001,\"title\":\"Print document history\",\"section_id\":5,\"template_id\":1,\"type_id\":2,\"priority_id\":4,\"milestone_id\":9,\"refs\":\"REQ-1\",\"created_by\":1,\"created_on\":1646317844,\"updated_by\":2,\"updated_on\":1647317844,\"estimate\":\"3m\",\"estimate_forecast\":\"8m 40s\",\"suite_id\":3,\"display_order\":1,\"is_deleted\":0,\"labels\":[{\"id\":11,\"title\":\"login\"}],\"custom_preconds\":null},{\"id\":700002,\"title\":\"Print document history\",\"section_id\":5,\"template_id\":1,\"type_id\":2,\"priority_id\":4,\"milestone_id\":9,\"refs\":\"REQ-1\",\"created_by\":1,\"created_on\":1646317844,\"updated_by\":2,\"updated_on\":1647317844,\"estimate\":\"3m\",\"estimate_forecast\":\"8m 40s\",\"suite_id\":3,\"display_order\":1,\"is_deleted\":0,\"labels\":[{\"id\":11,\"title\":\"login\"}],\"custom_preconds\":null},{\"id\":700003,\"title\":\"Print document history\",\"section_id\":5,\"template_id\":1,\"type_id\":2,\" …",
+    "result_chars": 18617
+   }
+  ],
+  "final": {
+   "subtype": "success",
+   "turns": 3,
+   "answer": "**Case IDs on this page:** 700000 through 700049, 50 consecutive IDs.\n\n**Custom fields of the first case (700000):** There is one, `custom_preconds`, and its value is `null`. The other properties on the case are standard TestRail fields, not custom ones. Examples are `title` (\"Print document history\"), `refs` (\"REQ-1\"), `estimate` (\"3m\") and `labels` (`login`).\n\n**Cases returned:** 50.\n\n**More cases after this page:** Yes. The pagination block says `\"has_more\": true`.\n\n**Getting the next page:** Call `testrail_get_cases` again with the same arguments, but with `query.offset` set to 50. Keep `project_id` 1, `suite_id` 1 and `limit` 50, and keep `_mcp.pagination: \"page\"`. The tool's `next_offset` is 50.\n\n**Pagination information returned by the tool:**\n```json\n{\"mode\":\"page\",\"source\":\"envelope\",\"returned\":50,\"has_more\":true,\n \"manual_continuation\":true,\"next_action\":\"page\",\"limit\":50,\"offset\":0,\n \"next_offset\":50,\n \"driver\":{\"size\":50,\"links\":{\"next\":\"/api/v2/get_cases/1&limit=50&offset=50\",\"prev\":null}}}\n```\n\nThe returned cases all say `\"suite_id\":3`, although I asked for suite 1. I don't know why. It could be the tool or the data, so check which suite these cases belong to before relying on them. The next link is `/api/v2/get_cases/1&limit=50&offset=50`. It carries only the project, limit and offset. Whether the suite filter carries over to the next page is unclear, so keep `suite_id` in the follow-up call."
+  }
+ },
+ "list_without_manual_continuation": {
+  "session": "c04-response-driven",
+  "client": "2.1.288",
+  "servers": [
+   {
+    "name": "testrail",
+    "status": "connected"
+   }
+  ],
+  "testrail_tools_listed": 133,
+  "calls": [
+   {
+    "tool": "ToolSearch",
+    "input": {
+     "query": "select:mcp__testrail__testrail_get_roles",
+     "max_results": 1
+    },
+    "is_error": false,
+    "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_get_roles\"}",
+    "result_chars": 76
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_roles",
+    "input": {
+     "_mcp": {
+      "pagination": "page"
+     }
+    },
+    "is_error": false,
+    "result": "{\"data\":[{\"id\":700000,\"name\":\"Tester\",\"is_default\":true,\"is_project_admin\":false},{\"id\":700001,\"name\":\"Tester\",\"is_default\":true,\"is_project_admin\":false}],\"pagination\":{\"mode\":\"page\",\"source\":\"envelope\",\"returned\":2,\"has_more\":true,\"manual_continuation\":false,\"next_action\":\"all\",\"limit\":2,\"offset\":0,\"driver\":{\"size\":2,\"links\":{\"next\":\"/api/v2/get_roles&limit=2&offset=2\",\"prev\":null}}}}",
+    "result_chars": 389
+   }
+  ],
+  "final": {
+   "subtype": "success",
+   "turns": 3,
+   "answer": "This page returned **2 roles**, and **more exist**.\n\nThe roles were id 700000 and id 700001. Both are named \"Tester\", with `is_default: true` and `is_project_admin: false`.\n\nThe pagination information the tool returned, quoted exactly:\n\n```json\n\"pagination\":{\"mode\":\"page\",\"source\":\"envelope\",\"returned\":2,\"has_more\":true,\"manual_continuation\":false,\"next_action\":\"all\",\"limit\":2,\"offset\":0,\"driver\":{\"size\":2,\"links\":{\"next\":\"/api/v2/get_roles&limit=2&offset=2\",\"prev\":null}}}\n```\n\n**How to get the rest:**\n- `has_more: true` means there are more roles.\n- `next_action: \"all\"` says to call the tool again with `_mcp.pagination` set to `\"all\"`.\n- `manual_continuation: false` means I can't fetch the next page myself. The tool schema says the same: this endpoint accepts no paging controls, and the server picks each page.\n- `links.next` is `/api/v2/get_roles&limit=2&offset=2`. That is the raw TestRail link for the next page, but the tool gives me no way to pass `limit` or `offset`, so I can't follow it.\n- The tool description also says a complete read that stops at one of its bounds can't be resumed from where it stopped. It would need a larger bound instead.\n\nI haven't fetched the rest. Let me know if you want me to run it with `\"all\"`."
+  }
+ }
+}

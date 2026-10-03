@@ -1,0 +1,133 @@
+{
+ "scenario": "C08",
+ "first_session": {
+  "session": "c08a",
+  "client": "2.1.288",
+  "servers": [
+   {
+    "name": "testrail",
+    "status": "connected"
+   }
+  ],
+  "testrail_tools_listed": 133,
+  "calls": [
+   {
+    "tool": "ToolSearch",
+    "input": {
+     "query": "select:mcp__testrail__testrail_add_attachment_to_case,mcp__testrail__testrail_get_attachment",
+     "max_results": 5
+    },
+    "is_error": false,
+    "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_add_attachment_to_case\"} {\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_get_attachment\"}",
+    "result_chars": 171
+   },
+   {
+    "tool": "mcp__testrail__testrail_add_attachment_to_case",
+    "input": {
+     "case_id": 1,
+     "file_path": "<run>/uploads/c08-evidence.txt",
+     "filename": "c08-evidence.txt"
+    },
+    "is_error": false,
+    "result": "{\"data\":{\"attachment_id\":443}}",
+    "result_chars": 30
+   },
+   {
+    "tool": "mcp__testrail__testrail_add_attachment_to_case",
+    "input": {
+     "case_id": 1,
+     "file_path": "<run>/outside/secret.txt",
+     "filename": "secret.txt"
+    },
+    "is_error": true,
+    "result": "{\"error\":{\"code\":\"FILE_ACCESS_DENIED\",\"message\":\"The local file is outside a configured directory or is not readable.\",\"write_outcome\":\"not_started\"}}",
+    "result_chars": 150
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_attachment",
+    "input": {
+     "attachment_id": 501
+    },
+    "is_error": false,
+    "result": "{\"data\":{\"attachment_id\":501,\"file_path\":\"<run>/downloads/800120bb-e967-46b2-9888-27902273fa7b.bin\",\"bytes\":19}}",
+    "result_chars": 198
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_attachment",
+    "input": {
+     "attachment_id": 501
+    },
+    "is_error": false,
+    "result": "{\"data\":{\"attachment_id\":501,\"file_path\":\"<run>/downloads/f7b2b11f-9d9c-482a-9617-18fca13cbdea.bin\",\"bytes\":19}}",
+    "result_chars": 198
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_attachment",
+    "input": {
+     "attachment_id": 990404
+    },
+    "is_error": true,
+    "result": "{\"error\":{\"code\":\"NOT_FOUND\",\"message\":\"TestRail reported that the requested resource does not exist.\",\"http_status\":404}}",
+    "result_chars": 122
+   }
+  ],
+  "final": {
+   "subtype": "success",
+   "turns": 7,
+   "answer": "All five steps ran once each. Here are the tool responses verbatim.\n\n**1) Attach `c08-evidence.txt` to case 1:** it worked.\n```\n{\"data\":{\"attachment_id\":443}}\n```\n\n**2) Attach `outside/secret.txt` to case 1:** it was refused. Nothing was sent to TestRail.\n```\n{\"error\":{\"code\":\"FILE_ACCESS_DENIED\",\"message\":\"The local file is outside a configured directory or is not readable.\",\"write_outcome\":\"not_started\"}}\n```\n\n**3) Download attachment 501:**\n```\n{\"data\":{\"attachment_id\":501,\"file_path\":\"<run>/downloads/800120bb-e967-46b2-9888-27902273fa7b.bin\",\"bytes\":19}}\n```\n- Local path: `<run>/downloads/800120bb-e967-46b2-9888-27902273fa7b.bin`\n- Attachment ID: 501\n- Bytes: 19\n\n**4) Download attachment 501 again:** it wrote a new file, as the tool description says it would.\n```\n{\"data\":{\"attachment_id\":501,\"file_path\":\"<run>/downloads/f7b2b11f-9d9c-482a-9617-18fca13cbdea.bin\",\"bytes\":19}}\n```\n- Local path: `<run>/downloads/f7b2b11f-9d9c-482a-9617-18fca13cbdea.bin`\n- Attachment ID: 501\n- Bytes: 19\n\n**5) Download attachment 990404:** TestRail returned a 404, so no file was written and there is no path or byte count.\n```\n{\"error\":{\"code\":\"NOT_FOUND\",\"m"
+  }
+ },
+ "after_restart": {
+  "session": "c08b",
+  "client": "2.1.288",
+  "servers": [
+   {
+    "name": "testrail",
+    "status": "connected"
+   }
+  ],
+  "testrail_tools_listed": 133,
+  "calls": [
+   {
+    "tool": "ToolSearch",
+    "input": {
+     "query": "select:mcp__testrail__testrail_get_attachment",
+     "max_results": 1
+    },
+    "is_error": false,
+    "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_get_attachment\"}",
+    "result_chars": 81
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_attachment",
+    "input": {
+     "attachment_id": 501
+    },
+    "is_error": false,
+    "result": "{\"data\":{\"attachment_id\":501,\"file_path\":\"<run>/downloads/e355f97c-13c5-41f2-83dd-ba31a51b9119.bin\",\"bytes\":19}}",
+    "result_chars": 198
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_attachment",
+    "input": {
+     "attachment_id": 990020
+    },
+    "is_error": true,
+    "result": "{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}",
+    "result_chars": 103
+   }
+  ],
+  "final": {
+   "subtype": "success",
+   "turns": 4,
+   "answer": "I called each tool once, one after the other, because only one download can run at a time. These are the responses verbatim.\n\n**1) Attachment 501**\n```\n{\"data\":{\"attachment_id\":501,\"file_path\":\"<run>/downloads/e355f97c-13c5-41f2-83dd-ba31a51b9119.bin\",\"bytes\":19}}\n```\n\n**2) Attachment 990020**\n```\n{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}\n```\n\nThe tool returned TIMEOUT for 990020, which fits the slowness you expected. Per the tool description, nothing was written for that call. I did not retry it."
+  }
+ },
+ "download_directory": {
+  "after_first_session": [
+   "800120bb-e967-46b2-9888-27902273fa7b.bin",
+   "f7b2b11f-9d9c-482a-9617-18fca13cbdea.bin"
+  ],
+  "note": "Both files were still present after the restart, which added a third; each is 19 bytes, mode 0600, and the two first-session files are identical."
+ }
+}
