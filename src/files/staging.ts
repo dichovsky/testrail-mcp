@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { lstat, mkdir, open, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, open, readdir, readFile, rm, truncate, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { AdapterError } from '../contracts/errors.js';
 import { containedRealPath } from './containment.js';
@@ -32,6 +32,27 @@ function onceRemove(target: string): () => Promise<void> {
   };
 }
 
+/**
+ * Removal of one staged copy, emptied first.
+ *
+ * Disposal runs only once nothing should still read the copy. But after a request body
+ * is abandoned mid-read, Node's file-backed Blob inside the driver keeps a descriptor on
+ * the copy until garbage collection, and an unlinked file keeps its blocks while any
+ * descriptor is open. Emptying it first means that descriptor holds no data. The staging
+ * area itself is only ever removed, never emptied: shutdown can remove it while an
+ * upload is still reading its copy.
+ */
+function onceDiscard(target: string): () => Promise<void> {
+  const remove = onceRemove(target);
+  let done = false;
+  return async () => {
+    if (done) return;
+    done = true;
+    await truncate(target, 0).catch(() => undefined);
+    await remove();
+  };
+}
+
 export async function createStagingArea(parent: string): Promise<StagingArea> {
   const directory = join(parent, `${DIRECTORY_PREFIX}${process.pid}-${randomUUID()}`);
   await mkdir(directory, { recursive: false, mode: 0o700 });
@@ -54,7 +75,8 @@ export async function createStagingArea(parent: string): Promise<StagingArea> {
  * time binds the approval to the content.
  *
  * The size limit is enforced while copying rather than from the initial stat, because
- * a file may grow after it is measured.
+ * a file may grow after it is measured. The signal is checked before anything is opened
+ * and before each chunk, so an abandoned call stops copying and leaves nothing staged.
  */
 export async function stageUpload(
   source: string,
@@ -62,8 +84,15 @@ export async function stageUpload(
     readonly roots: readonly string[];
     readonly maxBytes: number;
     readonly stagingDirectory: string;
+    /** Aborted once the call is abandoned: the copy stops before its next chunk. */
+    readonly signal?: AbortSignal;
   },
 ): Promise<StagedUpload> {
+  const stopIfAbandoned = (): void => {
+    if (options.signal?.aborted === true) throw new AdapterError('CANCELLED');
+  };
+  // A call already abandoned opens and creates nothing.
+  stopIfAbandoned();
   const resolved = await containedRealPath(source, options.roots);
 
   /*
@@ -96,26 +125,30 @@ export async function stageUpload(
   let disposeTarget: () => Promise<void> = () => Promise.resolve();
 
   try {
-    // Inspect the handle rather than the path: this is the file actually opened.
-    const opened = await handle.stat();
+    // Inspect the handle rather than the path: this is the file actually opened. Read as
+    // BigInt because a file ID is 64 bits: a Windows (NTFS) ID routinely exceeds 2^53,
+    // and as a number two different IDs can round to the same value.
+    const opened = await handle.stat({ bigint: true });
     if (!opened.isFile()) throw new AdapterError('FILE_ACCESS_DENIED');
-    if (opened.size > options.maxBytes) throw new AdapterError('FILE_TOO_LARGE');
+    if (opened.size > BigInt(options.maxBytes)) throw new AdapterError('FILE_TOO_LARGE');
 
     // Where the platform reports an inode, confirm the path still names the file the
     // handle holds. The check is skipped only when the inode reads as zero.
-    if (opened.ino !== 0) {
-      const named = await lstat(resolved).catch(() => null);
+    if (opened.ino !== 0n) {
+      const named = await lstat(resolved, { bigint: true }).catch(() => null);
       if (named === null || named.ino !== opened.ino || named.dev !== opened.dev) {
         throw new AdapterError('FILE_ACCESS_DENIED');
       }
     }
 
     const staged = await open(target, 'wx', 0o600);
-    disposeTarget = onceRemove(target);
+    disposeTarget = onceDiscard(target);
     let bytes = 0;
     try {
       const buffer = Buffer.allocUnsafe(COPY_CHUNK);
       for (;;) {
+        // The partial copy is closed and removed by the catches below.
+        stopIfAbandoned();
         const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
         if (bytesRead === 0) break;
         bytes += bytesRead;
