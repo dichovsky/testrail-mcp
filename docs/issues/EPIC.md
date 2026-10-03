@@ -19,7 +19,7 @@ Implement the full TestRail MCP server in this repository using the public `@dic
 - [x] [[F04] Build the operation registry, strict inputs and parameter manifest](https://github.com/dichovsky/testrail-mcp/issues/5)
 - [ ] [[F05] Implement preserved results, per-call warnings and truthful errors](https://github.com/dichovsky/testrail-mcp/issues/6)
 - [ ] [[F06] Implement page defaults and bounded complete aggregation](https://github.com/dichovsky/testrail-mcp/issues/7)
-- [x] [[F07] Implement shared upload staging and persistent attachment downloads](https://github.com/dichovsky/testrail-mcp/issues/8)
+- [ ] [[F07] Implement shared upload staging and persistent attachment downloads](https://github.com/dichovsky/testrail-mcp/issues/8)
 - [ ] [[F08] Wire stdio MCP with legacy and current protocol compatibility](https://github.com/dichovsky/testrail-mcp/issues/9)
 - [ ] [[T01] Implement Projects, Suites, Sections endpoint tools (16)](https://github.com/dichovsky/testrail-mcp/issues/10)
 - [ ] [[T02] Implement Cases endpoint tools (12)](https://github.com/dichovsky/testrail-mcp/issues/11)
