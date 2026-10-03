@@ -17,6 +17,7 @@ The first release: a local stdio MCP server for the complete TestRail 10.7.0 API
 - At most four calls at a time, a 60-second response wait, and a call's slot held until its TestRail request has really finished.
 - Configuration from the launch environment only, with a startup error that names the variable and never its value.
 - The pinned, qualified driver `@dichovsky/testrail-api-client` 7.2.0.
+- Node 24 or later: the engine range is `>=24`, the driver's own floor from 8.0.0.
 
 ### Verification
 

@@ -15,7 +15,7 @@ It exposes **133 tools, one per TestRail REST endpoint**, across all 28 API reso
 
 ## Install
 
-Node 24 is tested. The package's engine range also admits Node 22.13 or later in the 22 series and later majors; those are untested and best effort.
+Node 24 or later is required, as it is for the driver from 8.0.0; Node 24 is the version tested. Later majors satisfy the engine range but are untested and best effort.
 
 Until the first npm release, install from a packed checkout. `npm pack` prints the tarball's file name; install that file by name, since Windows shells do not expand a `*` wildcard:
 

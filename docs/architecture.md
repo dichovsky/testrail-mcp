@@ -16,7 +16,7 @@ The first release covers TestRail's **10.7.0** API reference, and its live quali
 
 ## Runtime and component boundaries
 
-Use TypeScript compiled to ESM, with Node engines `^22.13.0 || >=24`. Run the release test matrix on Node 24; an engine range that admits another Node version is not a claim that it has been certified. The planned npm package is `@dichovsky/testrail-mcp`, exposing the `testrail-mcp` executable.
+Use TypeScript compiled to ESM, with Node engines `>=24`, the driver's own floor from 8.0.0. Run the release test matrix on Node 24; an engine range that admits a later Node version is not a claim that it has been certified. The planned npm package is `@dichovsky/testrail-mcp`, exposing the `testrail-mcp` executable.
 
 Use the official `@modelcontextprotocol/server` SDK pinned to **2.0.0**, with `@modelcontextprotocol/client` **2.0.0** for protocol tests. Host the server through `serveStdio(factory)` and retain its default legacy compatibility. Test both the earlier initialization flow and MCP 2026-07-28 discovery; do not assume that a required client uses the modern revision by default. The [released stdio entry point](https://raw.githubusercontent.com/modelcontextprotocol/typescript-sdk/@modelcontextprotocol%2Fserver@2.0.0/packages/server/src/server/serveStdio.ts) supports both.
 

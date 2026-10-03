@@ -13,7 +13,7 @@ Versions follow semantic versioning, applied to what a client and its model depe
 | A fix that makes behaviour match the documentation; a dependency update with no behaviour change | Patch |
 
 - **TestRail.** The tools cover TestRail's 10.7.0 API reference. 10.8.1 is the baseline, the version the live qualification runs against. Older versions are best effort: a tool the instance does not support fails with TestRail's own error, and the server never hides it.
-- **Node.** CI runs the newest 24 release on Linux, macOS and Windows. The package's engine range also admits 22.13 and later in the 22 series, and later majors; those are untested and best effort.
+- **Node.** The package requires Node 24 or later, as the driver does from 8.0.0. CI runs the newest 24 release on Linux, macOS and Windows; later majors satisfy the engine range but are untested and best effort.
 - **Driver.** Each release pins one exact, qualified driver version. The pin changes only with the review that [driver qualification](driver-qualification.md) describes.
 
 ## One-time setup
