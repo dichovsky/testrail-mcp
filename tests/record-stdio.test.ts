@@ -62,7 +62,9 @@ describe('the stdio recorder', () => {
     const usage = await run(['--log', join(directory, 'stdio.jsonl')], '');
     expect(usage.code).toBe(2);
     expect(usage.stderr).toMatch(/^Usage: /u);
-    const unwritable = await run(['--log', directory, '--server', join(directory, 'absent.mjs')], '');
+    // A directory that does not exist, which every platform refuses; Windows will open a
+    // directory itself for appending.
+    const unwritable = await run(['--log', join(directory, 'missing', 'stdio.jsonl'), '--server', join(directory, 'absent.mjs')], '');
     expect(unwritable.code).toBe(2);
     expect(unwritable.stderr).toMatch(/^Cannot write the stdio log /u);
   });
