@@ -63,7 +63,7 @@ Dependencies describe completion prerequisites. An implementer may prepare fixtu
 | Runtime and local files | Bounded calls/downloads, per-caller warnings, complete-result byte caps, honest cancellation/write outcomes, staging cleanup after actual descendant settlement, persistent completed downloads and accurate local-effect annotations | F03, F05–F07, R01 |
 | Protocol and packaging | Legacy initialization plus MCP 2026-07-28 discovery; protocol-only stdout; tarball install and executable checks on Node 24 across Linux/macOS/Windows | F02, F08, R01 |
 | Required clients | Exact versions/builds, models/providers, settings and C01–C12 results for Codex desktop, Codex CLI, Claude Code and Copilot CLI | R02 |
-| TestRail 10.8.1 | Dedicated disposable environment, required features/licenses/permissions, operation-level live evidence and truthful availability reporting | R03 |
+| TestRail 10.8.1 | Dedicated disposable project, operation-level live evidence and truthful availability reporting. A tool the instance's licence or permissions block is a documented limitation in the release notes, never a pass (owner's decision, 2026-10-03, in [R03](issues/R03.md)) | R03 |
 | Published artifact | Tested version/tag/lockfile/provenance, authorized npm release and post-publication install verification | R03 |
 
 The deterministic suite needs no live credentials. Live qualification and model-facing client tests require available accounts, clients and a dedicated TestRail environment during implementation. Their absence is a recorded outstanding prerequisite, not a reason to claim a pass or reduce API coverage. Destructive fixtures and live cleanup target disposable test data. Report templates used in live tests must have deliberate notification settings.
