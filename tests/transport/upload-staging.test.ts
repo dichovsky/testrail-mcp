@@ -14,7 +14,8 @@ import { executeToolCall } from '../../src/transport/tool-call.js';
  * Upload staging runs inside the call's slot: admitted like the request, bounded by the
  * response watchdog and stopped by cancellation. Driven through the production
  * registration of testrail_add_attachment_to_case. The staging module and the
- * filesystem are spied so a copy can be paused mid-read and its own outcome observed.
+ * filesystem are spied so a copy can be paused mid-read or while closing, and its own
+ * outcome observed.
  */
 vi.mock('node:fs/promises', { spy: true });
 vi.mock('../../src/files/staging.js', { spy: true });
@@ -126,6 +127,57 @@ describe('upload staging inside the call slot', () => {
       // own promise says so: it was stopped, not merely left unsent.
       expect(reads).toBe(1);
       await expect(vi.mocked(stageUpload).mock.results[0]?.value).rejects.toMatchObject({ code: 'CANCELLED' });
+      expect(seen).toEqual({ lookups: 0, requests: 0 });
+      expect(await readdir(area.directory)).toEqual(['owner.json']);
+    } finally {
+      release();
+      await runtime.shutdown();
+      await area.dispose();
+    }
+  });
+
+  it('sends nothing when the watchdog ends the wait while the finished copy is closing', async () => {
+    const source = join(roots, 'closing-stage.txt');
+    const content = 'staged, then timed out';
+    await writeFile(source, content);
+    const area = await createStagingArea(base);
+
+    // The staged copy is the file created exclusively. Its close is held, so the copy has
+    // read every chunk, and passed its last per-chunk check, when the watchdog fires.
+    let closing = false;
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    vi.mocked(open).mockImplementation(async (...args: Parameters<typeof actualFs.open>) => {
+      const handle = await actualFs.open(...args);
+      if (args[1] !== 'wx') return handle;
+      const originalClose = handle.close.bind(handle);
+      handle.close = async () => {
+        closing = true;
+        await held;
+        return originalClose();
+      };
+      return handle;
+    });
+
+    const { client, seen } = counted();
+    const watchdog = manualDelay();
+    const runtime = createRuntime({ client, limits: configuration.limits, delay: watchdog.delay });
+    try {
+      const pending = executeToolCall(addAttachmentToCase, { case_id: 1, file_path: source, filename: 'closing.txt' }, {
+        runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory),
+      });
+      await vi.waitFor(() => { expect({ closing, watchdogs: watchdog.watchdogs() }).toEqual({ closing: true, watchdogs: 1 }); });
+
+      // No caller signal exists here: only the call's own abandonment can stop the send.
+      watchdog.fire();
+      expect(error(await pending)).toMatchObject({ code: 'TIMEOUT', write_outcome: 'not_started' });
+      expect(runtime.stats().active).toBe(1);
+
+      release();
+      await vi.waitFor(() => { expect(runtime.stats().active).toBe(0); });
+      // The copy finished rather than stopping at a chunk, so only the check after
+      // staging stood between it and the driver.
+      await expect(vi.mocked(stageUpload).mock.results[0]?.value).resolves.toMatchObject({ bytes: Buffer.byteLength(content) });
       expect(seen).toEqual({ lookups: 0, requests: 0 });
       expect(await readdir(area.directory)).toEqual(['owner.json']);
     } finally {
