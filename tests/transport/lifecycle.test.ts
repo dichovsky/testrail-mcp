@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseJSONRPCMessage } from '@modelcontextprotocol/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const cli = fileURLToPath(new URL('../../dist/cli.js', import.meta.url));
@@ -185,6 +186,8 @@ interface Running {
   /** When the parent first read the `server_stopped` line, or undefined. */
   readonly stoppedAt: () => number | undefined;
   readonly exited: Promise<{ code: number | null; signal: NodeJS.Signals | null; at: number }>;
+  /** Settles once the child's stdio streams have closed, so nothing written to them is missed. */
+  readonly closed: Promise<void>;
   readonly send: (message: object) => void;
 }
 
@@ -200,8 +203,10 @@ function run(child: ChildProcessWithoutNullStreams): Running {
   const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null; at: number }>((resolve) => {
     child.on('exit', (code, signal) => { resolve({ code, signal, at: Date.now() }); });
   });
+  // 'exit' can fire before the pipes are drained; 'close' waits for them.
+  const closed = new Promise<void>((resolve) => { child.on('close', () => { resolve(); }); });
   return {
-    child, exited, out: () => out, err: () => err, stoppedAt: () => stoppedAt,
+    child, exited, closed, out: () => out, err: () => err, stoppedAt: () => stoppedAt,
     send: (message) => { child.stdin.write(`${JSON.stringify(message)}\n`); },
   };
 }
@@ -216,15 +221,15 @@ const eventNames = (stderr: string): string[] => stderr.split('\n').filter((line
   .map((line) => (JSON.parse(line) as { event: string }).event);
 
 /**
- * Every line on stdout, read after the process has exited, is a whole JSON-RPC message.
- * A shutdown step that wrote anything else there would corrupt the host's stream.
+ * Every line on stdout, read once the stream has closed, is a whole JSON-RPC message, as
+ * the SDK's own parser accepts it. A blank line fails too: only the newline that ends the
+ * last message is allowed. A shutdown step that wrote anything else there would corrupt
+ * the host's stream.
  */
 function expectProtocolOnly(stdout: string): void {
   expect(stdout.endsWith('\n')).toBe(true);
-  for (const line of stdout.split('\n').filter((entry) => entry !== '')) {
-    const message = JSON.parse(line) as Record<string, unknown>;
-    expect(message.jsonrpc).toBe('2.0');
-    expect('method' in message || 'result' in message || 'error' in message).toBe(true);
+  for (const line of stdout.slice(0, -1).split('\n')) {
+    expect(() => parseJSONRPCMessage(JSON.parse(line))).not.toThrow();
   }
 }
 
@@ -283,6 +288,7 @@ describe('packaged server shutdown against a TestRail that never answers', () =>
       const stopped = session.stoppedAt();
       expect(stopped).toBeDefined();
       expect(at - (stopped ?? 0)).toBeLessThan(1_500);
+      await session.closed;
       const names = eventNames(session.err());
       expect(names.filter((name) => name === 'server_stopping')).toHaveLength(1);
       expect(names.filter((name) => name === 'server_stopped')).toHaveLength(1);
@@ -316,6 +322,7 @@ describe('packaged server shutdown against a TestRail that never answers', () =>
       // process mid-drain, before the client was destroyed or the stop was logged.
       const { code, signal } = await session.exited;
       expect({ code, signal }).toEqual({ code: 0, signal: null });
+      await session.closed;
       expect(eventNames(session.err()).filter((name) => name === 'server_stopped')).toHaveLength(1);
       expectProtocolOnly(session.out());
     } finally {

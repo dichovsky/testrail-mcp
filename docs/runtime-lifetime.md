@@ -50,7 +50,7 @@ Each outcome is shown arriving at its own instant and not a millisecond before.
 
 `tests/transport/composition.test.ts` runs `startServer` itself, with its test-only seams replacing only the driver's network and resolver and the stdio entry. It shows:
 - startup and discovery make no request or lookup;
-- two protocol consumers share one driver identity and one budget of four calls;
+- two protocol consumers share one driver identity and one budget of four calls, whether they negotiate the same era or one is legacy and the other 2026-07-28;
 - one consumer disconnecting leaves the other served, and the driver is destroyed only at shutdown;
 - concurrent shutdowns share one drain;
 - a write pending at shutdown is recorded as `unknown` in the `tool_call` diagnostic, and its request failing during the drain leaves no unhandled rejection;
