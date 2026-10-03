@@ -3,10 +3,21 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "7.2.0",
-    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "driver_version": "8.0.0",
+    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-09-26"
+    "reviewed_on": "2026-10-03",
+    "evidence": [
+      {
+        "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/metadata.ts", "changed": false },
+          { "path": "src/schemas/metadata.ts", "changed": false },
+          { "path": "src/modules/paginated-list.ts", "changed": true, "note": "Changed between the releases: the page request's transport carries the aggregate's intent in place of bypassCache and remainingTimeMs. Which controls are appended, the page and list schemas, and the options each helper copies are unchanged, so the claims cited here stand." },
+          { "path": "src/pagination.ts", "changed": true, "note": "Changed between the releases: an aggregate's page request carries intent 'fresh-read' in place of bypassCache and remainingTimeMs, and a request-budget expiry is reported as max_duration even when the wall clock disagrees. The bounds, defaults, decodePage and stop conditions cited here are unchanged." }
+        ]
+      }
+    ]
   },
   "endpoint": {
     "family_id": "T10",
@@ -18,22 +29,22 @@
   "sources": [
     {
       "id": "driver-module-metadata",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/metadata.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/metadata.ts",
       "supports": "CASE_STATUSES_PAGINATION is a response-driven paginated executor over the case_statuses collection, declared with requestControls false and an envelope response, and its prepare step selects the get_case_statuses operation with no path parameter and no query. getCaseStatusesPage takes no argument, getAllCaseStatuses takes only the aggregate options, and neither sends a limit or an offset of its own. getStatuses, by contrast, is a plain GET of get_statuses through no executor."
     },
     {
       "id": "driver-schema-metadata",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/metadata.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/metadata.ts",
       "supports": "CaseStatusSchema requires case_status_id, name, is_default and is_approved and admits a nullish abbreviation and is_untested. Its comments record that get_case_statuses returns case-level statuses such as draft and approved, distinct from the result statuses of get_statuses, keyed by case_status_id rather than id; that the built-in Approved and Draft statuses ship with abbreviation unset, which TestRail's example returns as null; and that TestRail never emits is_untested here, which is kept nullish only so an instance that does send it still parses."
     },
     {
       "id": "driver-paginated-list",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/paginated-list.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/paginated-list.ts",
       "supports": "The page step forwards only the limit and offset its caller passes, and getCaseStatusesPage passes none, so the page request carries neither. The aggregate of an executor declared without request controls copies only maxPages, maxItems, maxDurationMs and maxBytes from its options, so it sends no control of its own; a continuation carries the offset and limit from the envelope's next link. Both steps decode each reply with the shared decodePage."
     },
     {
       "id": "driver-pagination",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/pagination.ts",
       "supports": "The aggregate bounds maxItems, maxPages, maxBytes and maxDurationMs stop the walk and are never serialized upstream. decodePage turns a bare array into a legacy-array page carrying items and size, and an envelope into an envelope page carrying the envelope's offset, limit, size and _links. An envelope is read only when _links is an object; one without it, such as an envelope keyed links, is an invalid page."
     },
     {

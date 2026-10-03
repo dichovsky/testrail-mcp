@@ -3,10 +3,25 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "7.2.0",
-    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "driver_version": "8.0.0",
+    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-09-26"
+    "reviewed_on": "2026-10-03",
+    "evidence": [
+      {
+        "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/attachments.ts", "changed": true, "note": "Changed between the releases: the binary and multipart calls no longer pass a retry field, since 8.0.0 derives the policy from the request's shape. Paths, validation and parsing are unchanged; the claim now names the derived policy instead of a declared one." },
+          { "path": "src/validation.ts", "changed": false },
+          { "path": "src/client-core.ts", "changed": true, "note": "Changed between the releases: the multipart body builder moved out to src/upload-source.ts, now cited separately, and request() derives the retry policy from the request's shape instead of taking it from the call site. A multipart body is still sent without a JSON content type. The claim is rewritten for the new split." },
+          { "path": "src/upload-source.ts", "changed": true, "note": "New in 8.0.0: the multipart body builder moved here from src/client-core.ts, where it was cited at cc7751c. First cited at this review." },
+          { "path": "src/constants.ts", "changed": true, "note": "Changed between the releases: only the comment on MULTIPART_FIELD_NAME, which now says src/upload-source.ts both appends and looks up the field. The value is still attachment." },
+          { "path": "src/retry-policy.ts", "changed": true, "note": "Changed between the releases: deriveRetryPolicy now selects the policy from the body kind, intent and response kind, a multipart body first, and getRetryPolicy survives only as a test oracle. The four policies themselves are unchanged. The claim now says how the policy is selected." },
+          { "path": "src/cli/file-input.ts", "changed": false },
+          { "path": "skill/SKILL.md", "changed": true, "note": "Changed between the releases: the version line, a Node 24 install requirement, and the --quiet, report-download, cache and retry notes. The --filename guidance cited here is unchanged." }
+        ]
+      }
+    ]
   },
   "endpoint": {
     "family_id": "T12",
@@ -18,37 +33,42 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/attachments.ts",
-      "supports": "addAttachmentToPlanEntry validates the plan ID and the entry ID, places them in that order after add_attachment_to_plan_entry and posts the file through the shared multipart pipeline with the caller's filename under the none retry policy, parsing no schema. Its comment records that entry_id is the plan entry's GUID and that TestRail refuses a numeric one with 400."
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/attachments.ts",
+      "supports": "addAttachmentToPlanEntry validates the plan ID and the entry ID, places them in that order after add_attachment_to_plan_entry and posts the file through the shared multipart pipeline with the caller's filename as a multipart body, which the core never retries, parsing no schema. Its comment records that entry_id is the plan entry's GUID and that TestRail refuses a numeric one with 400."
     },
     {
       "id": "driver-validation",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/validation.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/validation.ts",
       "supports": "validateId accepts any positive integer: it tests Number.isInteger and has no safe-integer bound, so the largest-safe-integer ceiling on these identifiers is this server's own. validateEntryId and validateAttachmentId test strings against one case-insensitive UUID expression anchored at both ends, so a traversal sequence, a surrounding space or a trailing line terminator is refused; validateAttachmentId otherwise accepts any positive integer, with the same missing bound."
     },
     {
       "id": "driver-client",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/client-core.ts",
-      "supports": "The multipart pipeline appends the file to a FormData under the field name attachment with the caller's filename, and opens the staged path as a blob whose media type is the one supplied, as given, or empty when none was; FormData lowercases it when it wraps the blob as a File. That form data is the request body, sent without a JSON content type. The upload methods name the none retry policy, which re-sends nothing, not even a 429; retry-policy.ts gives the reason as an upload not being idempotent and TestRail documenting no retry semantics for creating an attachment."
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/client-core.ts",
+      "supports": "request() hands a multipart body to createUploadSource and derives its retry policy from the request's shape with deriveRetryPolicy, which selects the none policy for any multipart body before considering anything else, so an upload re-sends nothing, not even a 429. The built form data is the request body, sent without a JSON content type."
+    },
+    {
+      "id": "driver-upload",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/upload-source.ts",
+      "supports": "createUploadSource appends the file to a FormData under the field name attachment (MULTIPART_FIELD_NAME) with the caller's filename, and opens a path input with openAsBlob as a blob whose media type is the one supplied, as given, or empty when none was; FormData lowercases it when it wraps the blob as a File. Its build() refuses a second call, because the first one hands the descriptor over and releases it when the body has been consumed."
     },
     {
       "id": "driver-constants",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/constants.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/constants.ts",
       "supports": "MULTIPART_FIELD_NAME is attachment."
     },
     {
       "id": "driver-retry",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/retry-policy.ts",
-      "supports": "NO_RETRY_POLICY, the none policy, retries no status and no network error. It is used by multipart uploads, which are not idempotent and for which TestRail documents no retry semantics, so zero retries is the safe default."
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/retry-policy.ts",
+      "supports": "NO_RETRY_POLICY, the none policy, retries no status and no network error. deriveRetryPolicy selects it for every multipart body, ahead of any other input, because an upload is not idempotent and TestRail documents no retry semantics for one, so zero retries is the safe default."
     },
     {
       "id": "driver-cli",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/cli/file-input.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/cli/file-input.ts",
       "supports": "The filename flag overrides the basename-derived filename when a caller wants to rename on upload, and callers reading from stdin are encouraged to pass one so TestRail stores a sensible value."
     },
     {
       "id": "driver-skill",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/skill/SKILL.md",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/skill/SKILL.md",
       "supports": "The --filename option overrides the path basename so the attachment shows up with a meaningful name in the TestRail UI."
     },
     {
@@ -167,7 +187,8 @@
       },
       "sources": [
         "driver-module",
-        "driver-client"
+        "driver-client",
+        "driver-upload"
       ],
       "requirements": [
         {
@@ -220,6 +241,7 @@
       "sources": [
         "driver-module",
         "driver-client",
+        "driver-upload",
         "driver-cli",
         "driver-skill"
       ],
@@ -290,7 +312,8 @@
         "encoding": "Sent lowercased as the attachment part's content type. With none supplied the part carries application/octet-stream, which is what the encoder writes for a blob with no declared type."
       },
       "sources": [
-        "driver-client"
+        "driver-client",
+        "driver-upload"
       ],
       "requirements": [
         {

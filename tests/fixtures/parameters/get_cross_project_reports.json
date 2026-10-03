@@ -3,10 +3,19 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "7.2.0",
-    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "driver_version": "8.0.0",
+    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-09-26"
+    "reviewed_on": "2026-10-03",
+    "evidence": [
+      {
+        "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/reports.ts", "changed": true, "note": "Changed between the releases: runReport and runCrossProjectReport pass intent 'side-effecting-read' in place of bypassCache: true and retry: 'rateLimitOnly', and the comments explaining both moved to the core. Paths and validation are unchanged; the claim is rewritten." },
+          { "path": "src/schemas/reports.ts", "changed": false }
+        ]
+      }
+    ]
   },
   "endpoint": {
     "family_id": "T11",
@@ -18,12 +27,12 @@
   "sources": [
     {
       "id": "driver-module-reports",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/reports.ts",
-      "supports": "getReports validates the project identifier with validateId and places it as the only path segment of get_reports; getCrossProjectReports takes no argument and requests get_cross_project_reports. runReport and runCrossProjectReport validate the template identifier the same way and place it as the only path segment of run_report and run_cross_project_report, requesting with bypassCache true and retry rateLimitOnly. Their comments record that each call generates a new report and the template may email it, so the cache and in-flight coalescing are bypassed and every explicit call executes once, and that only a 429 is retried because the rate limiter rejects before execution, so nothing was generated."
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/reports.ts",
+      "supports": "getReports validates the project identifier with validateId and places it as the only path segment of get_reports; getCrossProjectReports takes no argument and requests get_cross_project_reports. runReport and runCrossProjectReport validate the template identifier the same way and place it as the only path segment of run_report and run_cross_project_report, requesting with intent 'side-effecting-read'. The module no longer states what that intent does; the core derives it (client-core.ts and retry-policy.ts)."
     },
     {
       "id": "driver-schema-reports",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/reports.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/reports.ts",
       "supports": "ReportSchema requires id and name and admits a nullish description and the nullish notify_user, notify_link, notify_link_recipients, notify_attachment, notify_attachment_recipients, notify_attachment_html_format and notify_attachment_pdf_format fields, beside a nullish is_shared. CrossProjectReportSchema also requires project_ids, include_open_runs_and_plans, include_completed_runs_and_plans and report_timeframe, and its comment records that the Summary-only and User Workload-only selections stay optional because TestRail omits them from the other family, and that included_statuses admits both a list and the comma-separated string of the wire example. ReportResultSchema requires report_url and admits nullish report_html, report_pdf and user_report_url, the last a forward and legacy compatibility placeholder absent from the current reference. Every object is passthrough, so unmodelled keys survive parsing."
     },
     {

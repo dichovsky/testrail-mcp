@@ -19,7 +19,7 @@ Keep all 133 endpoint tools registered and enabled. Host deferral controls when 
 
 ## SDK and protocol baseline
 
-The npm registry reported `@modelcontextprotocol/server@2.0.0` and `@modelcontextprotocol/client@2.0.0` as their respective `latest` packages during this check. Both specify Node >=20; the selected runtime must also satisfy the stricter TestRail driver requirement. Pin the verified dependencies and retain a lockfile. Sources: [server registry metadata](https://registry.npmjs.org/@modelcontextprotocol%2fserver/latest), [client registry metadata](https://registry.npmjs.org/@modelcontextprotocol%2fclient/latest).
+The npm registry reported `@modelcontextprotocol/server@2.0.0` and `@modelcontextprotocol/client@2.0.0` as their respective `latest` packages during this check, the original baseline; the package now pins 2.3.0 of both. Both specify Node >=20; the selected runtime must also satisfy the stricter TestRail driver requirement. Pin the verified dependencies and retain a lockfile. Sources: [server registry metadata](https://registry.npmjs.org/@modelcontextprotocol%2fserver/latest), [client registry metadata](https://registry.npmjs.org/@modelcontextprotocol%2fclient/latest).
 
 Use `serveStdio(factory)` from `@modelcontextprotocol/server/stdio`. The released implementation accepts legacy clients by default and also serves MCP 2026-07-28. Do not set `legacy: 'reject'`. Modern discovery and legacy initialization must both be tested; installing SDK v2 does not imply that every host uses the modern protocol. Source: [released v2 stdio implementation](https://raw.githubusercontent.com/modelcontextprotocol/typescript-sdk/@modelcontextprotocol%2Fserver@2.0.0/packages/server/src/server/serveStdio.ts).
 

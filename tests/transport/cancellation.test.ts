@@ -77,14 +77,16 @@ interface Session {
   readonly runtime: Runtime;
   /** Every message the server wrote to the client, in order. */
   readonly sent: { readonly id?: unknown }[];
+  /** Every message the client wrote to the server, in order. */
+  readonly received: { readonly id?: unknown; readonly method?: unknown }[];
   readonly close: () => Promise<void>;
 }
 
 /**
  * The production catalog over a linked in-memory pair: the protocol runs for real.
  *
- * A session discovers before it calls, as a host does. That also keeps the tool call off
- * request id 0, which the SDK cannot cancel; see the last test in this file.
+ * A session discovers before it calls, as a host does, so its tool call is not request
+ * id 0; the last test in this file opts out to cancel id 0 itself.
  */
 async function connect(
   fetch: typeof globalThis.fetch,
@@ -106,6 +108,12 @@ async function connect(
     sent.push(message as { id?: unknown });
     return send(message, options);
   };
+  const received: { id?: unknown; method?: unknown }[] = [];
+  const receive = clientTransport.send.bind(clientTransport);
+  clientTransport.send = (message, options) => {
+    received.push(message);
+    return receive(message, options);
+  };
   const handle = serveStdio(() => buildServer({
     configuration, runtime, registry: operationRegistry,
     stagingDirectory: () => Promise.resolve(directory),
@@ -115,7 +123,7 @@ async function connect(
   await client.connect(clientTransport);
   if (discover) await client.listTools();
   return {
-    client, runtime, sent,
+    client, runtime, sent, received,
     close: async () => {
       await client.close().catch(() => undefined);
       await handle.close().catch(() => undefined);
@@ -261,17 +269,17 @@ describe.each([
 });
 
 /*
- * Recorded SDK behaviour, not an endorsement. The server's cancellation handler begins
- * `if (!notification.params.requestId) return;`, so a cancellation naming request id 0 is
+ * Recorded SDK behaviour. Through 2.0.0 the server's cancellation handler began
+ * `if (!notification.params.requestId) return;`, so a cancellation naming request id 0 was
  * dropped as if it named none. A legacy connection spends id 0 on initialize, which is
  * never cancelled, but a 2026-07-28 client opens with a string-id discover probe and gives
- * its first ordinary request id 0. If that request is a tool call, cancelling it does not
- * reach the handler: the call runs to completion and its reply is written anyway. Hosts
- * list tools before calling one, so this needs an unusual client, but it is pinned here so
- * that an SDK change surfaces rather than silently altering what cancellation means.
+ * its first ordinary request id 0, so cancelling that request never reached the handler.
+ * 2.3.0 tests `requestId === undefined` instead, and id 0 is cancelled like any other.
+ * This stays pinned so that an SDK change to it surfaces rather than silently altering
+ * what cancellation means.
  */
 describe('a cancelled first request on a 2026-07-28 connection', () => {
-  it('is not delivered to the handler, which completes and replies', async () => {
+  it('is delivered to the handler like any other, and its reply is suppressed', async () => {
     const upstream = heldUpstream({ id: 7, name: 'Project' });
     const session = await connect(upstream.fetch, { pin: '2026-07-28' }, false);
     try {
@@ -281,16 +289,22 @@ describe('a cancelled first request on a 2026-07-28 connection', () => {
         { signal: cancel.signal },
       );
       await waitFor(() => upstream.calls === 1, 'the dispatched request');
+      // The case under test: the tool call is this connection's request id 0.
+      expect(session.received.filter(({ method }) => method === 'tools/call').map(({ id }) => id)).toEqual([0]);
       cancel.abort('caller gave up');
-      // The client gives up on its side regardless.
       await expect(call).rejects.toThrow();
+      await waitFor(() => vi.mocked(executeToolCall).mock.results.length > 0, 'the handler call');
+
+      const handled = await lastHandlerResult();
+      // Before 2.3.0 the cancellation was dropped and this call completed normally.
+      expect(errorOf(handled).code).toBe('CANCELLED');
+      expect(errorOf(handled).write_outcome).toBeUndefined();
 
       upstream.releaseAll();
-      const handled = await lastHandlerResult();
-      // Had the cancellation arrived, this would be a CANCELLED error.
-      expect(handled.isError).toBeUndefined();
-      await waitFor(() => session.sent.some((message) => message.id === 0), 'the reply to request 0');
-      await waitFor(() => session.runtime.stats().active === 0, 'the slot released');
+      await waitFor(() => upstream.replies === 1, 'the late reply');
+      await waitFor(() => session.runtime.stats().active === 0, 'the slot released on settlement');
+      // The SDK suppresses the response to a request it has seen cancelled.
+      expect(session.sent.some((message) => message.id === 0)).toBe(false);
     } finally {
       upstream.releaseAll();
       await session.close();

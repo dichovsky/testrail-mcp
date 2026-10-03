@@ -3,10 +3,18 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "7.2.0",
-    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "driver_version": "8.0.0",
+    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-09-19"
+    "reviewed_on": "2026-10-03",
+    "evidence": [
+      {
+        "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/sharedSteps.ts", "changed": false }
+        ]
+      }
+    ]
   },
   "endpoint": {
     "family_id": "T03",
@@ -18,7 +26,7 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/sharedSteps.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/sharedSteps.ts",
       "supports": "deleteSharedStep validates the shared-step ID, places it as the only path segment of delete_shared_step and resolves with no value. It sends a JSON body only when the keepInCases option is supplied, converting the boolean to the 1 or 0 TestRail expects; with the option absent no body is sent at all and TestRail's own default applies."
     },
     {

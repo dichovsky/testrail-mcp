@@ -3,10 +3,19 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "7.2.0",
-    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "driver_version": "8.0.0",
+    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-09-19"
+    "reviewed_on": "2026-10-03",
+    "evidence": [
+      {
+        "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/sections.ts", "changed": false },
+          { "path": "src/schemas/sections.ts", "changed": false }
+        ]
+      }
+    ]
   },
   "endpoint": {
     "family_id": "T01",
@@ -18,12 +27,12 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/sections.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/sections.ts",
       "supports": "moveSection validates the section ID, sends the payload as the JSON body and resolves with no value whatever TestRail returns. The driver's documentation states that parent_id null moves the section to the root, after_id null moves it to the top of its container, an omitted field leaves that axis unchanged, and that the endpoint returns no body on older TestRail versions and the updated section on newer ones, so it recommends a follow-up getSection for the new position."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/sections.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/sections.ts",
       "supports": "MoveSectionPayloadSchema makes parent_id and after_id each optional and nullable, and the null-versus-omitted distinction must survive serialization. Values are plain numbers: the driver deliberately imposes no minimum, noting that zero is a useful sentinel in some installs. It permits additional properties."
     },
     {

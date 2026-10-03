@@ -27,7 +27,7 @@ const inventory = (JSON.parse(await readFile(new URL('../docs/operation-inventor
 }).operations.filter(({ pagination }) => pagination.kind !== 'none');
 const manifests = await loadParameterManifests();
 
-/** From @dichovsky/testrail-api-client cc7751c, src/modules/*.ts page descriptors. */
+/** From @dichovsky/testrail-api-client 7680ab6 (8.0.0), src/modules/*.ts page descriptors; unchanged since cc7751c. */
 const COLLECTION: Readonly<Record<string, string>> = {
   testrail_get_projects: 'projects',
   testrail_get_sections: 'sections',

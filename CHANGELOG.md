@@ -16,10 +16,9 @@ The first release: a local stdio MCP server for the complete TestRail 10.7.0 API
 - Uploads confined to configured directories and read through a staged copy, and downloads that always create a new, retained file.
 - At most four calls at a time, a 60-second response wait, and a call's slot held until its TestRail request has really finished.
 - Configuration from the launch environment only, with a startup error that names the variable and never its value.
-- The pinned, qualified driver `@dichovsky/testrail-api-client` 7.2.0.
-- Node 24 or later: the engine range is `>=24`, the driver's own floor from 8.0.0.
+- The pinned, qualified driver `@dichovsky/testrail-api-client` 8.0.0, and with it a Node 24 or later requirement.
 
 ### Verification
 
-- Every endpoint's hand-authored parameter manifest runs through the registered tool and the real driver. Registry, protocol, result-contract, paging and runtime-lifetime gates run in CI on Node 24 across Linux, macOS and Windows, and CI publishes coverage reports as artifacts.
+- Every endpoint's hand-authored parameter manifest runs through the registered tool and the real driver. Registry, protocol, result-contract, paging and runtime-lifetime gates run in CI on Node 24 across Linux, macOS and Windows, and CI publishes coverage reports as artifacts. CI on Linux also requires at least 99% line, statement, function and branch coverage of the source.
 - Client qualification (R02) and live TestRail 10.8.1 qualification (R03) are recorded before this section is dated.
