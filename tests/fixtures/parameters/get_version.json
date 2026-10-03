@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -13,6 +13,13 @@
         "files": [
           { "path": "src/modules/metadata.ts", "changed": false },
           { "path": "src/schemas/metadata.ts", "changed": false }
+        ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/metadata.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/metadata.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/schemas/metadata.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/metadata.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
       }
     ]
@@ -27,12 +34,12 @@
   "sources": [
     {
       "id": "driver-module-metadata",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/metadata.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/metadata.ts",
       "supports": "getVersion, getStatuses, getPriorities, getResultFields, getCaseFields and getCaseTypes each take no argument and issue one GET to their own endpoint with no path segment, query or body, parsing the reply with the matching schema. getDynamicFilterFields and getTemplates validate the project identifier with validateId and place it as the only path segment. None of them consults another endpoint first, so no call here triggers a version or capability request of its own."
     },
     {
       "id": "driver-schema-metadata",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/metadata.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/metadata.ts",
       "supports": "StatusSchema requires id, name, label, the three numeric colour fields color_dark, color_medium and color_bright, and the booleans is_system, is_untested and is_final. PrioritySchema requires id, name, short_name, is_default and priority. CaseTypeSchema and TemplateSchema each require id, name and is_default and admit a nullish i18n_custom_id. DynamicFilterFieldSchema requires type_id, system_name and label and admits nullish options and sub_filters strings, its comment describing the two as mutually endpoint-dependent. TestRailVersionSchema requires a version string and its comment dates the endpoint to TestRail 10.6. Every object is passthrough, so unmodelled keys survive parsing."
     },
     {

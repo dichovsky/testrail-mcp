@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "71a80d984aea14713d8eeaf6ac9a0d41c1fba12b",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -21,6 +21,13 @@
           { "path": "src/modules/projects.ts", "changed": false },
           { "path": "src/schemas/projects.ts", "changed": false }
         ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/projects.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/projects.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/schemas/projects.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/projects.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
+        ]
       }
     ]
   },
@@ -34,12 +41,12 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/projects.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/projects.ts",
       "supports": "updateProject validates the project ID and forwards the payload unchanged as the JSON body."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/projects.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/projects.ts",
       "supports": "UpdateProjectPayloadSchema leaves every body field optional. A group assignment takes a positive-integer id and a nonnegative-integer-or-null role_id; a user assignment is an exclusive union naming the user as id or as user_id with the same role_id; default_role_id is a nonnegative integer. Every object permits additional properties."
     },
     {

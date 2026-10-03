@@ -53,9 +53,6 @@ import {
   UpdateDatasetPayloadSchema,
   UpdateVariablePayloadSchema,
   AddCaseFieldPayloadSchema,
-  type AddResultPayload,
-  type AddResultsForCasesPayload,
-  type AddResultsPayload,
 } from '@dichovsky/testrail-api-client';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -103,6 +100,7 @@ const installedDriver: InstalledDriver = {
 const release700 = '71a80d984aea14713d8eeaf6ac9a0d41c1fba12b';
 const release720 = 'cc7751c01c3d3956d061073283bee6b23bf33422';
 const release800 = '7680ab6c0d1973749e3178016a3d133af27bfb0a';
+const release900 = 'a5ccffbfa176e9c6675bd81fff61859bd7b6be5d';
 
 function example() {
   const manifest = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_get_attachment');
@@ -177,9 +175,9 @@ describe('driver provenance evidence', () => {
   const bumped = ['get_attachment', 'get_attachments_for_plan_entry', 'get_cases', 'update_case', 'update_project'];
 
   it('carries evidence on every manifest, from 7.0.0 on exactly the five authored there', () => {
-    // Every manifest was re-reviewed against 8.0.0, so none has a driver commit it was authored at.
+    // Every manifest was re-reviewed against 8.0.0 and then 9.0.0, so none has a driver commit it was authored at.
     expect(manifests.filter(({ review }) => review.authored_commit === review.driver_commit)).toEqual([]);
-    expect(manifests.filter(({ review }) => review.driver_commit !== release800)).toEqual([]);
+    expect(manifests.filter(({ review }) => review.driver_commit !== release900)).toEqual([]);
     expect(manifests.filter(({ review }) => review.evidence === undefined)).toEqual([]);
     // authored_commit is declared, not derived, so the gate alone cannot tell a moved one
     // from an honest one. Pin it here: re-authoring any manifest at a later commit, the
@@ -191,8 +189,8 @@ describe('driver provenance evidence', () => {
     for (const { endpoint, review } of manifests) {
       const steps = review.evidence?.map(({ from_commit, to_commit }) => [from_commit, to_commit]);
       expect(steps, endpoint.tool).toEqual(bumped.includes(endpoint.tool.replace(/^testrail_/, ''))
-        ? [[release700, release720], [release720, release800]]
-        : [[release720, release800]]);
+        ? [[release700, release720], [release720, release800], [release800, release900]]
+        : [[release720, release800], [release800, release900]]);
     }
   });
 
@@ -205,23 +203,29 @@ describe('driver provenance evidence', () => {
       release.version, createHash('sha256').update(JSON.stringify(release)).digest('hex'),
     ]))).toEqual({
       '7.0.0': '1a282e74688b1869c60b01f0779b6e8938fb83cb1daf8b58a92b3767023797f0',
-      // Rewritten once, on 2026-10-03, to record src/upload-source.ts as absent at 7.2.0:
-      // 8.0.0 moved the multipart builder there, and an evidence step needs both ends.
-      '7.2.0': '19089bcdcdf32d1604965fb4c7fbb256da56e74ec5984f0bae2487097dab574c',
-      '8.0.0': 'e2391c5712518c17adf72144e6c953ff63e464faca3a7170d659c994cd852856',
+      // Rewritten twice on 2026-10-03, to record files a later release first cited as
+      // absent here, since an evidence step needs both ends: src/upload-source.ts, where
+      // 8.0.0 moved the multipart builder, and skill/reference/recipes.md, where 9.0.0
+      // moved the skill's recipes.
+      '7.2.0': '6cff0397e51d262be7d0a85961ff6dc9f4a1b2c3dc165f9113ec4adba39ee4a0',
+      // Rewritten once, on 2026-10-03, to record skill/reference/recipes.md as absent at
+      // 8.0.0: 9.0.0 split skill/SKILL.md and moved the recipes the attachment manifests
+      // cite there, and an evidence step needs both ends.
+      '8.0.0': '6fa18ca4c519ba2503814e50c9f1ca0d35a1202f8c573ef0c6e8e36f789d1796',
+      '9.0.0': '4e7b00db1f2ed301adb32abf1e2f8ccf7420b257250b801f423594ccd562d5d1',
     });
   });
 
   it('records the installed driver in the release ledger, integrity and shipped files alike', () => {
     expect(auditDriverReleases(releases, installedDriver)).toEqual([]);
     const installed = releases.releases.find(({ version }) => version === driverVersion);
-    expect(installed?.commit).toBe(release800);
+    expect(installed?.commit).toBe(release900);
   });
 
   it('fails a driver_commit bump that carries no evidence', () => {
     const project = find('update_project');
     delete project.review.evidence;
-    expect(audit(project)).toEqual(['testrail_update_project: Driver commit advanced from 71a80d98 to 7680ab6c without evidence']);
+    expect(audit(project)).toEqual(['testrail_update_project: Driver commit advanced from 71a80d98 to a5ccffbf without evidence']);
   });
 
   it('fails a manifest backdated to an earlier authored commit without evidence for the span', () => {
@@ -229,7 +233,7 @@ describe('driver provenance evidence', () => {
     cases.review.authored_commit = release700;
     expect(audit(cases)).toEqual(['testrail_add_case: Evidence step 1 starts at cc7751c0, not 71a80d98']);
     delete cases.review.evidence;
-    expect(audit(cases)).toEqual(['testrail_add_case: Driver commit advanced from 71a80d98 to 7680ab6c without evidence']);
+    expect(audit(cases)).toEqual(['testrail_add_case: Driver commit advanced from 71a80d98 to a5ccffbf without evidence']);
   });
 
   it('rejects evidence claiming a changed file unchanged', () => {
@@ -246,17 +250,19 @@ describe('driver provenance evidence', () => {
     const project = find('update_project');
     project.sources.push({
       id: 'driver-client-core',
-      url: `https://github.com/dichovsky/testrail-api-client/blob/${release800}/src/client-core.ts`,
+      url: `https://github.com/dichovsky/testrail-api-client/blob/${release900}/src/client-core.ts`,
       supports: 'The shared request pipeline.',
     });
     expect(audit(project)).toEqual([
       'testrail_update_project: Evidence 71a80d98..cc7751c0 does not cover cited file src/client-core.ts',
       'testrail_update_project: Evidence cc7751c0..7680ab6c does not cover cited file src/client-core.ts',
+      'testrail_update_project: Evidence 7680ab6c..a5ccffbf does not cover cited file src/client-core.ts',
     ]);
     for (const step of project.review.evidence ?? []) step.files.push({ path: 'src/client-core.ts', changed: false });
     expect(audit(project)).toEqual([
       'testrail_update_project: Evidence 71a80d98..cc7751c0 claims src/client-core.ts unchanged, but the release ledger records it changed',
       'testrail_update_project: Evidence cc7751c0..7680ab6c claims src/client-core.ts unchanged, but the release ledger records it changed',
+      'testrail_update_project: Evidence 7680ab6c..a5ccffbf claims src/client-core.ts unchanged, but the release ledger records it changed',
     ]);
   });
 
@@ -327,15 +333,15 @@ describe('driver provenance evidence', () => {
     short.review.evidence?.splice(1);
     expect(audit(short)).toEqual([
       'testrail_update_project: Evidence step 1 does not advance',
-      'testrail_update_project: Evidence ends at 71a80d98, not at driver commit 7680ab6c',
+      'testrail_update_project: Evidence ends at 71a80d98, not at driver commit a5ccffbf',
     ]);
     const unrecorded = structuredClone(project);
     const unrecordedStep = unrecorded.review.evidence?.at(-1);
     if (!unrecordedStep) throw new Error('update_project evidence is missing');
-    unrecorded.review.evidence?.push({ ...unrecordedStep, from_commit: release800, to_commit: 'f'.repeat(40) });
+    unrecorded.review.evidence?.push({ ...unrecordedStep, from_commit: release900, to_commit: 'f'.repeat(40) });
     expect(audit(unrecorded)).toEqual([
-      'testrail_update_project: Evidence 7680ab6c..ffffffff names a commit that is not a recorded release',
-      'testrail_update_project: Evidence ends at ffffffff, not at driver commit 7680ab6c',
+      'testrail_update_project: Evidence a5ccffbf..ffffffff names a commit that is not a recorded release',
+      'testrail_update_project: Evidence ends at ffffffff, not at driver commit a5ccffbf',
     ]);
     const unrecordedStart = structuredClone(project);
     Object.assign(unrecordedStart.review, { authored_commit: 'e'.repeat(40) });
@@ -367,7 +373,7 @@ describe('driver provenance evidence', () => {
     ]) {
       const project = find('update_project');
       project.sources.push({ id: 'stale-link', url, supports: 'A driver link in another form.' });
-      expect(audit(project), url).toEqual(['testrail_update_project: Source stale-link cites the driver outside a blob URL pinned at 7680ab6c']);
+      expect(audit(project), url).toEqual(['testrail_update_project: Source stale-link cites the driver outside a blob URL pinned at a5ccffbf']);
     }
     const unrelated = find('update_project');
     unrelated.sources.push({ id: 'other', url: 'https://github.com/dichovsky/testrail-api-client-extras/blob/main/x.ts', supports: 'Another repository.' });
@@ -386,14 +392,14 @@ describe('driver provenance evidence', () => {
     // A downgrade: authored at 7.2.0, evidenced back to 7.0.0.
     const downgrade = structuredClone(project);
     Object.assign(downgrade.review, { authored_commit: release720, driver_commit: release700, driver_version: '7.0.0' });
-    downgrade.sources = downgrade.sources.map((source) => ({ ...source, url: source.url.replace(release800, release700) }));
+    downgrade.sources = downgrade.sources.map((source) => ({ ...source, url: source.url.replace(release900, release700) }));
     downgrade.review.evidence = [{ ...step, from_commit: release720, to_commit: release700 }];
     expect(audit(downgrade)).toEqual(['testrail_update_project: Evidence step 1 moves back to an earlier release']);
     const late = structuredClone(project);
     const lateStep = late.review.evidence?.at(-1);
     if (!lateStep) throw new Error('update_project evidence is missing');
     lateStep.reviewed_on = '2026-10-04';
-    expect(audit(late)).toEqual(['testrail_update_project: Evidence step 2 reviewed on 2026-10-04, out of order with the review dates around it']);
+    expect(audit(late)).toEqual(['testrail_update_project: Evidence step 3 reviewed on 2026-10-04, out of order with the review dates around it']);
     const twoSteps = structuredClone(project);
     Object.assign(twoSteps.review, { authored_commit: release700, driver_commit: release720 });
     twoSteps.review.evidence = [
@@ -406,45 +412,44 @@ describe('driver provenance evidence', () => {
   it('refuses evidence on a manifest whose driver commit never advanced', () => {
     // Authored at the driver commit it is reviewed against, yet carrying a step.
     const cases = find('add_case');
-    cases.review.authored_commit = release800;
+    cases.review.authored_commit = release900;
     expect(audit(cases)).toEqual(['testrail_add_case: Evidence is recorded for a driver commit that never advanced']);
   });
 
   it('requires the driver and authored commits to be recorded releases of the stated version', () => {
     const cases = find('add_case');
     cases.review.driver_version = '7.2.0';
-    expect(audit(cases)).toEqual(['testrail_add_case: Driver version 7.2.0 disagrees with release 8.0.0 recorded for 7680ab6c']);
+    expect(audit(cases)).toEqual(['testrail_add_case: Driver version 7.2.0 disagrees with release 9.0.0 recorded for a5ccffbf']);
     const orphan = find('add_case');
     orphan.review.authored_commit = 'a'.repeat(40);
     delete orphan.review.evidence;
     expect(audit(orphan)).toEqual([
       'testrail_add_case: Authored commit aaaaaaaa is not a recorded release',
-      'testrail_add_case: Driver commit advanced from aaaaaaaa to 7680ab6c without evidence',
+      'testrail_add_case: Driver commit advanced from aaaaaaaa to a5ccffbf without evidence',
     ]);
-    expect(audit(find('add_case'), ledger((copy) => { copy.releases = copy.releases.filter(({ commit }) => commit !== release800); })))
-      .toContain('testrail_add_case: Driver commit 7680ab6c is not a recorded release');
+    expect(audit(find('add_case'), ledger((copy) => { copy.releases = copy.releases.filter(({ commit }) => commit !== release900); })))
+      .toContain('testrail_add_case: Driver commit a5ccffbf is not a recorded release');
   });
 
   it('requires the ledger to record every cited driver file at the driver commit', () => {
     const without = ledger((copy) => {
-      const release = copy.releases.find(({ commit }) => commit === release800);
-      if (!release) throw new Error('8.0.0 is missing from the ledger');
+      const release = copy.releases.find(({ commit }) => commit === release900);
+      if (!release) throw new Error('9.0.0 is missing from the ledger');
       release.files = Object.fromEntries(Object.entries(release.files).filter(([path]) => path !== 'src/schemas/cases.ts'));
     });
     expect(audit(find('add_case'), without)).toEqual([
-      'testrail_add_case: Release ledger does not record cited file src/schemas/cases.ts at 7680ab6c',
-      'testrail_add_case: Evidence cc7751c0..7680ab6c names src/schemas/cases.ts, which the release ledger does not record at both commits',
+      'testrail_add_case: Release ledger does not record cited file src/schemas/cases.ts at a5ccffbf',
+      'testrail_add_case: Evidence 7680ab6c..a5ccffbf names src/schemas/cases.ts, which the release ledger does not record at both commits',
     ]);
-    const absent = ledger((copy) => { releaseFile(copy, release800, 'src/schemas/cases.ts').git_blob = null; });
+    const absent = ledger((copy) => { releaseFile(copy, release900, 'src/schemas/cases.ts').git_blob = null; });
     expect(audit(find('add_case'), absent)).toEqual([
-      'testrail_add_case: Release ledger does not record cited file src/schemas/cases.ts at 7680ab6c',
-      'testrail_add_case: Evidence cc7751c0..7680ab6c claims src/schemas/cases.ts unchanged, but the release ledger records it changed',
+      'testrail_add_case: Release ledger does not record cited file src/schemas/cases.ts at a5ccffbf',
     ]);
   });
 
   it('reads a cited path without its anchor or query, decoded, and reports a malformed one', () => {
     const cite = (manifest: ParameterManifest, path: string): void => {
-      manifest.sources.push({ id: `extra-${String(manifest.sources.length)}`, url: `https://github.com/dichovsky/testrail-api-client/blob/${release800}/${path}`, supports: 'An extra citation.' });
+      manifest.sources.push({ id: `extra-${String(manifest.sources.length)}`, url: `https://github.com/dichovsky/testrail-api-client/blob/${release900}/${path}`, supports: 'An extra citation.' });
     };
     const anchored = find('update_project');
     cite(anchored, 'src/modules/projects.ts#L10-L20');
@@ -455,6 +460,7 @@ describe('driver provenance evidence', () => {
     expect(audit(encoded)).toEqual([
       'testrail_update_project: Evidence 71a80d98..cc7751c0 does not cover cited file src/url.ts',
       'testrail_update_project: Evidence cc7751c0..7680ab6c does not cover cited file src/url.ts',
+      'testrail_update_project: Evidence 7680ab6c..a5ccffbf does not cover cited file src/url.ts',
     ]);
     const malformed = find('update_project');
     cite(malformed, 'src/%E0.ts');
@@ -464,14 +470,14 @@ describe('driver provenance evidence', () => {
   it('holds the ledger to the installed package', () => {
     expect(auditDriverReleases(releases, { ...installedDriver, version: '9.9.9' })).toEqual(['No recorded release for installed driver 9.9.9']);
     expect(auditDriverReleases(releases, { ...installedDriver, integrity: 'sha512-AAAA' }))
-      .toEqual(['Release 8.0.0 integrity disagrees with the locked package']);
-    expect(auditDriverReleases(ledger((copy) => { releaseFile(copy, release800, 'src/url.ts').package_sha256 = '0'.repeat(64); }), installedDriver))
+      .toEqual(['Release 9.0.0 integrity disagrees with the locked package']);
+    expect(auditDriverReleases(ledger((copy) => { releaseFile(copy, release900, 'src/url.ts').package_sha256 = '0'.repeat(64); }), installedDriver))
       .toEqual(['src/url.ts: installed dist/url.js does not match its recorded SHA-256']);
-    expect(auditDriverReleases(ledger((copy) => { releaseFile(copy, release800, 'src/url.ts').package_sha256 = null; }), installedDriver))
+    expect(auditDriverReleases(ledger((copy) => { releaseFile(copy, release900, 'src/url.ts').package_sha256 = null; }), installedDriver))
       .toEqual(['src/url.ts: dist/url.js is installed but recorded as absent']);
-    expect(auditDriverReleases(ledger((copy) => { releaseFile(copy, release800, 'src/url.ts').package_file = 'dist/absent.js'; }), installedDriver))
+    expect(auditDriverReleases(ledger((copy) => { releaseFile(copy, release900, 'src/url.ts').package_file = 'dist/absent.js'; }), installedDriver))
       .toEqual([
-        '8.0.0 src/url.ts: package_file dist/absent.js is not the file the package ships for it (dist/url.js)',
+        '9.0.0 src/url.ts: package_file dist/absent.js is not the file the package ships for it (dist/url.js)',
         'src/url.ts: dist/absent.js is recorded but not installed',
       ]);
     // A shipped file that exists but belongs to another source is caught by path, not by hash.
@@ -485,6 +491,7 @@ describe('driver provenance evidence', () => {
       '7.0.0 src/modules/projects.ts: package_file dist/modules/plans.js is not the file the package ships for it (dist/modules/projects.js)',
       '7.2.0 src/modules/projects.ts: package_file dist/modules/plans.js is not the file the package ships for it (dist/modules/projects.js)',
       '8.0.0 src/modules/projects.ts: package_file dist/modules/plans.js is not the file the package ships for it (dist/modules/projects.js)',
+      '9.0.0 src/modules/projects.ts: package_file dist/modules/plans.js is not the file the package ships for it (dist/modules/projects.js)',
     ]);
     expect(auditDriverReleases(ledger((copy) => {
       const [first] = copy.releases;
@@ -496,10 +503,10 @@ describe('driver provenance evidence', () => {
     }), installedDriver)).toEqual([
       'Duplicate release version: 7.0.0',
       'Duplicate release commit: 71a80d984aea14713d8eeaf6ac9a0d41c1fba12b',
-      'Release 7.0.0 is not listed after 8.0.0',
+      'Release 7.0.0 is not listed after 9.0.0',
     ]);
     expect(auditDriverReleases(ledger((copy) => { copy.releases.reverse(); }), installedDriver))
-      .toEqual(['Release 7.2.0 is not listed after 8.0.0', 'Release 7.0.0 is not listed after 7.2.0']);
+      .toEqual(['Release 8.0.0 is not listed after 9.0.0', 'Release 7.2.0 is not listed after 8.0.0', 'Release 7.0.0 is not listed after 7.2.0']);
   });
 });
 
@@ -1234,25 +1241,6 @@ function present<T extends object>(value: T): { [K in keyof T]: Exclude<T[K], un
   };
 }
 
-/*
- * Driver 8.0.0 declares two payload rules its public methods never apply: status_id is
- * required on the four add-result payloads, and user writes require a dotted email
- * domain. The adapter states TestRail's rules instead (#49, #55), so a fixture may carry
- * a comment-only result or a single-label address. These parse the literal arguments
- * with only those two declarations widened, so each such case is driven through the real
- * method, which forwards the payload unparsed; driver 9.0.0 corrects both declarations.
- */
-const resultEntry = <Shape extends z.ZodObject>(schema: Shape) => schema.partial({ status_id: true });
-const addResultArgument = resultEntry(AddResultPayloadSchema);
-const addResultsArgument = AddResultsPayloadSchema.extend({
-  results: z.array(resultEntry(AddResultsPayloadSchema.shape.results.element)),
-});
-const addResultsForCasesArgument = AddResultsForCasesPayloadSchema.extend({
-  results: z.array(resultEntry(AddResultsForCasesPayloadSchema.shape.results.element)),
-});
-const addUserArgument = UserAddPayloadSchema.extend({ email: z.string() });
-const updateUserArgument = UserUpdatePayloadSchema.extend({ email: z.string().optional() });
-
 // This explicitly invokes the pinned public API. It is not an endpoint adapter:
 // the literal expected driver arguments already live in independently authored fixtures.
 async function invokeDriver(client: TestRailClient, expected: Extract<ParameterFixture['expect'], { kind: 'accepted' }>): Promise<unknown> {
@@ -1350,20 +1338,20 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
       return client.results.getAllResultsForRun(runId, present(options));
     }
     case 'results.addResult': {
-      const [testId, payload] = z.tuple([z.number(), addResultArgument]).parse(expected.driver.arguments);
-      return client.results.addResult(testId, payload as AddResultPayload);
+      const [testId, payload] = z.tuple([z.number(), AddResultPayloadSchema]).parse(expected.driver.arguments);
+      return client.results.addResult(testId, payload);
     }
     case 'results.addResultForCase': {
-      const [runId, caseId, payload] = z.tuple([z.number(), z.number(), addResultArgument]).parse(expected.driver.arguments);
-      return client.results.addResultForCase(runId, caseId, payload as AddResultPayload);
+      const [runId, caseId, payload] = z.tuple([z.number(), z.number(), AddResultPayloadSchema]).parse(expected.driver.arguments);
+      return client.results.addResultForCase(runId, caseId, payload);
     }
     case 'results.addResults': {
-      const [runId, payload] = z.tuple([z.number(), addResultsArgument]).parse(expected.driver.arguments);
-      return client.results.addResults(runId, payload as AddResultsPayload);
+      const [runId, payload] = z.tuple([z.number(), AddResultsPayloadSchema]).parse(expected.driver.arguments);
+      return client.results.addResults(runId, payload);
     }
     case 'results.addResultsForCases': {
-      const [runId, payload] = z.tuple([z.number(), addResultsForCasesArgument]).parse(expected.driver.arguments);
-      return client.results.addResultsForCases(runId, payload as AddResultsForCasesPayload);
+      const [runId, payload] = z.tuple([z.number(), AddResultsForCasesPayloadSchema]).parse(expected.driver.arguments);
+      return client.results.addResultsForCases(runId, payload);
     }
     case 'results.editResult': {
       const [resultId, payload] = z.tuple([z.number(), EditResultPayloadSchema]).parse(expected.driver.arguments);
@@ -1812,11 +1800,11 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
       return projectId === undefined ? client.users.getUsers() : client.users.getUsers(projectId);
     }
     case 'users.addUser': {
-      const [payload] = z.tuple([addUserArgument]).parse(expected.driver.arguments);
+      const [payload] = z.tuple([UserAddPayloadSchema]).parse(expected.driver.arguments);
       return client.users.addUser(payload);
     }
     case 'users.updateUser': {
-      const [userId, payload] = z.tuple([z.number(), updateUserArgument]).parse(expected.driver.arguments);
+      const [userId, payload] = z.tuple([z.number(), UserUpdatePayloadSchema]).parse(expected.driver.arguments);
       return client.users.updateUser(userId, payload);
     }
     case 'users.getGroup': {

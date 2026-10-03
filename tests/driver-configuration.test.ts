@@ -190,3 +190,35 @@ describe('driver construction preparation', () => {
     expect(() => createConfiguredDriver(config)).not.toThrow(ConfigurationError);
   });
 });
+
+/*
+ * Driver 9.0.0 connects each request through a dispatcher pinned to the DNS answers its
+ * private-host guard approved, which also keeps it off any global proxy. With private
+ * hosts allowed the guard does not run, so there is nothing to pin: the request goes out
+ * through Node's own connection settings, a configured proxy included. The docs say so,
+ * and this holds both halves to the driver the package pins.
+ */
+describe('the connection a request is sent on', () => {
+  async function dispatcherSent(overrides: NodeJS.ProcessEnv): Promise<unknown> {
+    let sent: unknown = 'not called';
+    const client = createConfiguredDriver(await configuration(overrides), {
+      fetch: ((_url: string, init: RequestInit & { dispatcher?: unknown }) => {
+        sent = init.dispatcher;
+        return Promise.resolve(new Response(JSON.stringify({ id: 1, name: 'Project' }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        }));
+      }) as typeof globalThis.fetch,
+      dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
+    });
+    try {
+      await client.projects.getProject(1);
+    } finally { client.destroy(); }
+    return sent;
+  }
+
+  it('is pinned to the approved DNS answer by default, and left to Node with private hosts allowed', async () => {
+    const pinned = await dispatcherSent({}) as { dispatch?: unknown } | undefined;
+    expect(typeof pinned?.dispatch).toBe('function');
+    expect(await dispatcherSent({ TESTRAIL_ALLOW_PRIVATE_HOSTS: 'true' })).toBeUndefined();
+  });
+});

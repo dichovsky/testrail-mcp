@@ -93,31 +93,38 @@ function slowBody(headersAt: number, restAfter: number | undefined): Fetch {
 }
 
 describe('timing budgets on a fake clock, with production driver options', () => {
-  it('starts the 15-second header timeout only once DNS has answered, and does not retry it', async () => {
+  /*
+   * From driver 9.0.0 the 15-second request timeout covers DNS resolution, so a resolver
+   * that never answers no longer holds a call open without limit. The lookup cannot be
+   * cancelled, though, so the call keeps its slot until the lookup settles, after it has
+   * already answered.
+   */
+  it('counts DNS against the 15-second request timeout, and keeps the slot until the lookup settles', async () => {
     let answer: () => void = () => undefined;
     const lookup = () => new Promise<{ address: string; family: 4 }[]>((resolve) => {
       answer = () => { resolve([{ address: '203.0.113.10', family: 4 }]); };
     });
     const call = start(unanswered, lookup);
     try {
-      // A slow resolver is not a slow TestRail: no request, no timeout, well past 15 s.
-      await vi.advanceTimersByTimeAsync(20_000);
-      expect(call.fetchTimes).toEqual([]);
-      expect(call.settled()).toBe(false);
-
-      answer();
-      await vi.advanceTimersByTimeAsync(0);
-      expect(call.fetchTimes).toEqual([20_000]);
       await vi.advanceTimersByTimeAsync(14_999);
       expect(call.settled()).toBe(false);
       await vi.advanceTimersByTimeAsync(1);
       expect(call.settled()).toBe(true);
-      // The driver gave up waiting, and TestRail sent no status: TIMEOUT, not a 408
-      // (decided 2026-10-03; docs/results-and-errors.md).
+      // The driver gave up waiting before any request, and TestRail sent no status:
+      // TIMEOUT, not a 408 (decided 2026-10-03; docs/results-and-errors.md).
       const error = errorOf(await call.result);
       expect(error).toMatchObject({ code: 'TIMEOUT' });
       expect(error).not.toHaveProperty('http_status');
-      expect(call.fetchTimes).toEqual([20_000]);
+      expect(call.fetchTimes).toEqual([]);
+      // Answered, but the lookup is still running: the slot is still taken.
+      expect(call.runtime.stats().active).toBe(1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(call.runtime.stats().active).toBe(1);
+      answer();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(call.runtime.stats().active).toBe(0);
+      // A late answer starts no request, and nothing retried the timed-out attempt.
+      expect(call.fetchTimes).toEqual([]);
     } finally { await call.runtime.shutdown(); }
   });
 

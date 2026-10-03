@@ -100,9 +100,9 @@ describe('T04 results that are not the entity they name', () => {
   });
 
   it('blames the reply, not the server, when the data cannot be assembled', async () => {
-    // A server that ignores with_data answers with the test alone. The driver builds
-    // one record out of three parts and throws while reading the parts that are not
-    // there, which must not reach the caller as a fault in this server.
+    // A server that ignores with_data answers with the test alone. The driver builds one
+    // record out of three parts and refuses a reply without them as an unexpected
+    // response, which must not reach the caller as a fault in this server.
     const plain = { id: 100, case_id: 1, run_id: 1, status_id: 5, title: 'Verify line spacing' };
     const fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(plain), { headers: { 'content-type': 'application/json' } }),

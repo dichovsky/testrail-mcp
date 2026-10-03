@@ -21,7 +21,7 @@
     "compatibility_audit_url": "https://github.com/dichovsky/testrail-api-client/blob/89f636e276ea701412bb06039e3b963d83126ea1/docs/TESTRAIL-10.7.0-COMPATIBILITY.md"
   },
   "release_verification": {
-    "provenance_note": "checked_on through recommended_exact_dependency_scope, follow_up_audit, and each production requirement's description record the audits of 7.0.0 on 2026-09-09 and 7.1.0 on 2026-09-10, and are kept for provenance. production_release.status, production_release.exact_dependency, each requirement's status, and qualified_release record the current state: the package pins published 8.0.0, re-qualified on 2026-10-03 after 7.2.0 was qualified on 2026-09-17.",
+    "provenance_note": "checked_on through recommended_exact_dependency_scope, follow_up_audit, and each production requirement's description record the audits of 7.0.0 on 2026-09-09 and 7.1.0 on 2026-09-10, and are kept for provenance. production_release.status, production_release.exact_dependency, each requirement's status, and qualified_release record the current state: the package pins published 9.0.0, re-qualified on 2026-10-03 after 8.0.0 was re-qualified earlier that day and 7.2.0 was qualified on 2026-09-17.",
     "checked_on": "2026-09-09",
     "latest_stable_version": "7.0.0",
     "release_tag": "release/7.0.0",
@@ -36,8 +36,8 @@
     "runtime_caveat": "Exact npm 7.0.0 is the development baseline only. It lacks the inspected main commit's network-guard fixes, and both revisions still require the report-generator cache/coalescing bypass and no-retry patch. Production release requires a new fixed published driver, pinned and verified exactly. The inspected public method promises can reject while DNS/fetch/body descendants remain pending; F03 additionally requires a published public operation-settlement API.",
     "recommended_exact_dependency_scope": "development_only",
     "production_release": {
-      "status": "met_by_published_8.0.0",
-      "exact_dependency": "8.0.0",
+      "status": "met_by_published_9.0.0",
+      "exact_dependency": "9.0.0",
       "requirements": [
         {
           "id": "network_guard_fixes",
@@ -61,7 +61,7 @@
           },
           "required_cache_behavior": "Bypass GET cache reads, GET cache writes, and pending-request coalescing.",
           "description": "These GET endpoints generate reports and must execute independently for each explicit invocation without automatic retries. Both exact npm 7.0.0 and inspected main still require this driver patch.",
-          "accepted_deviation": "7.2.0 re-sends a rate-limited (429) report run from its rate limiter. TestRail rejects a rate-limited request before handling it, so the re-send cannot generate a report twice; reviewed and accepted on 2026-09-17 and asserted by tests/driver-qualification.test.ts. 8.0.0 keeps the same behavior, now derived from the reports' side-effecting-read intent rather than declared by retry and bypassCache options, and the same test asserts it."
+          "accepted_deviation": "7.2.0 re-sends a rate-limited (429) report run from its rate limiter. TestRail rejects a rate-limited request before handling it, so the re-send cannot generate a report twice; reviewed and accepted on 2026-09-17 and asserted by tests/driver-qualification.test.ts. 8.0.0 keeps the same behavior, now derived from the reports' side-effecting-read intent rather than declared by retry and bypassCache options, and 9.0.0 leaves the retry policy unchanged; the same test asserts it."
         },
         {
           "id": "operation_result_and_settlement",
@@ -74,7 +74,7 @@
         },
         {
           "id": "published_dependency_pin_and_verification",
-          "status": "pinned_and_verified_8.0.0",
+          "status": "pinned_and_verified_9.0.0",
           "description": "Select the newly published fixed driver version, pin that exact version with a committed lockfile, and reverify endpoint bindings and runtime regression checks against its published package. An unpinned Git dependency is not an acceptable production substitute."
         }
       ]
@@ -94,10 +94,10 @@
     },
     "qualified_release": {
       "checked_on": "2026-10-03",
-      "version": "8.0.0",
-      "release_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
-      "release_url": "https://github.com/dichovsky/testrail-api-client/releases/tag/release/8.0.0",
-      "npm_integrity": "sha512-1f7zBc6owy08SCCdLADc5LmwDgtMuhb8drYbgORUhn4LbKjJJE2K28K/3KOEtuIJ8jxZ81jBx5WGGBF4FNM8mw==",
+      "version": "9.0.0",
+      "release_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
+      "release_url": "https://github.com/dichovsky/testrail-api-client/releases/tag/release/9.0.0",
+      "npm_integrity": "sha512-CfGOEAkrEfrJTHaVY57YqzUBla3V0FP0cXXFyEfY7FcW+PdMJBp0Ro39MS9qLdz748X7fKOhdy971mZQ/rzkmg==",
       "public_endpoint_and_helper_bindings_verified": 181,
       "track_operation_available": true,
       "qualified_for_production": true,
