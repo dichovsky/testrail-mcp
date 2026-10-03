@@ -3,10 +3,19 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "7.2.0",
-    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "driver_version": "8.0.0",
+    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-09-21"
+    "reviewed_on": "2026-10-03",
+    "evidence": [
+      {
+        "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/datasets.ts", "changed": false },
+          { "path": "src/schemas/datasets.ts", "changed": false }
+        ]
+      }
+    ]
   },
   "endpoint": {
     "family_id": "T09",
@@ -18,12 +27,12 @@
   "sources": [
     {
       "id": "driver-module-datasets",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/datasets.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/datasets.ts",
       "supports": "addDataset validates the project identifier, posts to add_dataset/{project_id} with the payload as the JSON body and parses the reply with DatasetSchema. The payload is passed through unexamined: no public method parses AddDatasetPayloadSchema, so every payload rule is enforced at the MCP boundary alone."
     },
     {
       "id": "driver-schema-datasets",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/datasets.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/datasets.ts",
       "supports": "AddDatasetPayloadSchema declares a required name and an optional variables map of string keys to string values, and records that write payloads identify dataset variables by name and carry the value directly, unlike the response projection whose entries include server-assigned IDs. The reply is a Dataset: id and name required, variables a nullish array of entries with a nullable value."
     },
     {

@@ -3,10 +3,10 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "7.2.0",
-    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "driver_version": "8.0.0",
+    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
     "authored_commit": "71a80d984aea14713d8eeaf6ac9a0d41c1fba12b",
-    "reviewed_on": "2026-09-26",
+    "reviewed_on": "2026-10-03",
     "evidence": [
       {
         "from_commit": "71a80d984aea14713d8eeaf6ac9a0d41c1fba12b", "to_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-17",
@@ -14,6 +14,14 @@
           { "path": "src/modules/attachments.ts", "changed": false },
           { "path": "src/validation.ts", "changed": false },
           { "path": "src/retry-policy.ts", "changed": true, "note": "Changed between the releases: 7.2.0 adds the rateLimitOnly policy for report generation; the binaryGet and none policies a download and an upload use are unchanged. First cited on 2026-09-26 (f6b0a6f), in a review made directly against cc7751c; not a source at the 71a80d98 review this step records." }
+        ]
+      },
+      {
+        "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/attachments.ts", "changed": true, "note": "Changed between the releases: the binary and multipart calls no longer pass a retry field, since 8.0.0 derives the policy from the request's shape. Paths, validation and parsing are unchanged; the claim now names the derived policy instead of a declared one." },
+          { "path": "src/validation.ts", "changed": false },
+          { "path": "src/retry-policy.ts", "changed": true, "note": "Changed between the releases: deriveRetryPolicy now selects the policy from the body kind, intent and response kind, a multipart body first, and getRetryPolicy survives only as a test oracle. The four policies themselves are unchanged. The claim now says how the policy is selected." }
         ]
       }
     ]
@@ -28,18 +36,18 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/attachments.ts",
-      "supports": "getAttachment validates the number/UUID union, places it as the only path segment of get_attachment and requests the reply as binary under the binaryGet retry policy, resolving with the body as an ArrayBuffer and nothing else."
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/attachments.ts",
+      "supports": "getAttachment validates the number/UUID union, places it as the only path segment of get_attachment and requests the reply as binary, for which the core derives the binaryGet retry policy, resolving with the body as an ArrayBuffer and nothing else."
     },
     {
       "id": "driver-validation",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/validation.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/validation.ts",
       "supports": "validateId accepts any positive integer: it tests Number.isInteger and has no safe-integer bound, so the largest-safe-integer ceiling on these identifiers is this server's own. validateEntryId and validateAttachmentId test strings against one case-insensitive UUID expression anchored at both ends, so a traversal sequence, a surrounding space or a trailing line terminator is refused; validateAttachmentId otherwise accepts any positive integer, with the same missing bound."
     },
     {
       "id": "driver-retry",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/retry-policy.ts",
-      "supports": "The binaryGet policy re-sends a download after a 429, any 5xx or a network error, the same failures the default policy retries for a GET."
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/retry-policy.ts",
+      "supports": "deriveRetryPolicy selects the binaryGet policy for a binary response that is neither a multipart body nor a side-effecting read. It re-sends a download after a 429, any 5xx or a network error, the same failures the default policy retries for a GET."
     },
     {
       "id": "testrail-attachments",

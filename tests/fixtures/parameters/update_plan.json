@@ -3,10 +3,20 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "7.2.0",
-    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "driver_version": "8.0.0",
+    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-09-20"
+    "reviewed_on": "2026-10-03",
+    "evidence": [
+      {
+        "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/plans.ts", "changed": false },
+          { "path": "src/schemas/plans.ts", "changed": false },
+          { "path": "src/schemas/common.ts", "changed": false }
+        ]
+      }
+    ]
   },
   "endpoint": {
     "family_id": "T06",
@@ -18,17 +28,17 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/plans.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/plans.ts",
       "supports": "Every write validates its identifiers, an entry identifier through the UUID validator, places them as the path segments of the matching endpoint and forwards the JSON payload unchanged. The replies are parsed advisorily against PlanSchema, PlanEntrySchema or RunSchema."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/plans.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/plans.ts",
       "supports": "AddPlanPayloadSchema requires name and accepts description, milestone_id, start_on, due_on, refs and an entries array. An entry carries suite_id, name, description, assignedto_id, include_all, case_ids, config_ids, a runs array, dynamic_filters, start_on, due_on and refs; a nested run carries name, description, assignedto_id, include_all, case_ids, config_ids and refs. UpdatePlanPayloadSchema drops entries and makes name optional. AddPlanEntryPayloadSchema matches an entry, and its comments record that suite_id is required only for projects using multiple suites or baselines. UpdatePlanEntryPayloadSchema deliberately omits config_ids and runs, which TestRail does not accept, and suite_id, which the endpoint's request body does not carry. AddRunToPlanEntryPayloadSchema requires config_ids and omits name, which TestRail derives from the configuration; UpdateRunInPlanEntryPayloadSchema omits both. No payload is parsed by the public method, so every payload rule is enforced at the MCP boundary alone."
     },
     {
       "id": "driver-common",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/common.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/common.ts",
       "supports": "zObject uses passthrough, so the declared payload types admit unknown properties; the MCP boundary must reject them separately."
     },
     {

@@ -1,10 +1,26 @@
 {
   "schema_version": 1,
-  "review": { "status": "complete", "pending": [], "driver_version": "7.2.0", "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-19" },
+  "review": {
+    "status": "complete",
+    "pending": [],
+    "driver_version": "8.0.0",
+    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "reviewed_on": "2026-10-03",
+    "evidence": [
+      {
+        "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/cases.ts", "changed": false },
+          { "path": "src/schemas/cases.ts", "changed": false }
+        ]
+      }
+    ]
+  },
   "endpoint": { "family_id": "T02", "http_method": "POST", "route": "delete_cases/{suite_id}", "tool": "testrail_delete_cases", "driver_method": "cases.deleteCases" },
   "sources": [
-    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/cases.ts", "supports": "deleteCases validates the suite and project IDs, sends the suite in the path and project_id as a query control followed by soft=1 only when the soft option is true, forwards the JSON body unchanged, resolves with no value after a deletion and with the parsed preview after a soft request." },
-    { "id": "driver-schema", "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/cases.ts", "supports": "DeleteCasesPayloadSchema declares case_ids as an array of numbers and refines away a body-level soft key, because TestRail toggles the preview through the query and a pasted example must not turn a preview into a deletion. That refinement belongs to the exported type: the public method forwards the payload without parsing it, so the rule is enforced at the MCP boundary alone. SoftDeletePreviewSchema describes the optional affected counts." },
+    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/cases.ts", "supports": "deleteCases validates the suite and project IDs, sends the suite in the path and project_id as a query control followed by soft=1 only when the soft option is true, forwards the JSON body unchanged, resolves with no value after a deletion and with the parsed preview after a soft request." },
+    { "id": "driver-schema", "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/cases.ts", "supports": "DeleteCasesPayloadSchema declares case_ids as an array of numbers and refines away a body-level soft key, because TestRail toggles the preview through the query and a pasted example must not turn a preview into a deletion. That refinement belongs to the exported type: the public method forwards the payload without parsing it, so the rule is enforced at the MCP boundary alone. SoftDeletePreviewSchema describes the optional affected counts." },
     { "id": "testrail-cases", "url": "https://support.testrail.com/hc/en-us/articles/7077292642580-Cases", "supports": "delete_cases/{suite_id}&soft=1 deletes multiple cases from a project or suite and cannot be undone; case_ids and project_id are required, suite_id is required in multi-suite mode, and soft=1 returns information about the data that would be deleted without proceeding." }
   ],
   "input_policy": { "ordinary_fields": "reject", "custom_fields": "reject", "notes": "Strictness is an MCP boundary requirement at every depth. The suite is a path argument, the project and the preview flag are query controls, and the body carries only the case identifiers. A body-level soft key is refused here rather than forwarded, matching the refinement the driver's exported payload type declares but never runs." },

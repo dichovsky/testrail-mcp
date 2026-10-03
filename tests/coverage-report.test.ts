@@ -38,7 +38,7 @@ if (locked === undefined) throw new Error('The driver is missing from the lockfi
 
 /** The product contract's numbers and the reviewed driver release, stated here rather than read back. */
 const CONTRACT = { operations: 133, resources: 28, families: 12, controlled: 18, response_driven: 6, helpers: 48 } as const;
-const REVIEWED_DRIVER = { version: '7.2.0', commit: 'cc7751c01c3d3956d061073283bee6b23bf33422' } as const;
+const REVIEWED_DRIVER = { version: '8.0.0', commit: '7680ab6c0d1973749e3178016a3d133af27bfb0a' } as const;
 
 const commit = (value: string | undefined): string | null => value !== undefined && /^[0-9a-f]{40}$/u.test(value) ? value : null;
 

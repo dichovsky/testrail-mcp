@@ -179,6 +179,7 @@ const rawDriverMetadata: unknown = JSON.parse(await readFile(
 const driverVersion = z.object({ version: z.string() }).parse(rawDriverMetadata).version;
 const release700 = '71a80d984aea14713d8eeaf6ac9a0d41c1fba12b';
 const release720 = 'cc7751c01c3d3956d061073283bee6b23bf33422';
+const release800 = '7680ab6c0d1973749e3178016a3d133af27bfb0a';
 const driverBlob = 'https://github.com/dichovsky/testrail-api-client/blob/';
 
 /*
@@ -221,45 +222,45 @@ describe('domain library provenance', () => {
       'https://support.testrail.com/hc/en-us/articles/7077292642580-Cases',
     ]) {
       expect(auditDomainProvenance(edited((copy) => { cite(copy, 'id_filter', url); })), url)
-        .toEqual(['Domain id_filter does not cite a driver blob pinned at cc7751c0']);
+        .toEqual(['Domain id_filter does not cite a driver blob pinned at 7680ab6c']);
     }
   });
 
   it('refuses a driver link in any other form, through the manifests\' own rule', () => {
-    const raw = `https://raw.githubusercontent.com/dichovsky/testrail-api-client/${release720}/src/utils.ts`;
+    const raw = `https://raw.githubusercontent.com/dichovsky/testrail-api-client/${release800}/src/utils.ts`;
     expect(auditDomainProvenance(edited((copy) => { cite(copy, 'id_filter', raw); }))).toEqual([
-      'Domain id_filter does not cite a driver blob pinned at cc7751c0',
-      'Source id_filter cites the driver outside a blob URL pinned at cc7751c0',
+      'Domain id_filter does not cite a driver blob pinned at 7680ab6c',
+      'Source id_filter cites the driver outside a blob URL pinned at 7680ab6c',
     ]);
   });
 
   it('requires the ledger to record every cited driver file at the library commit', () => {
-    expect(auditDomainProvenance(edited((copy) => { cite(copy, 'id_filter', `${driverBlob}${release720}/src/not-a-file.ts`); })))
-      .toEqual(['Release ledger does not record cited file src/not-a-file.ts at cc7751c0']);
+    expect(auditDomainProvenance(edited((copy) => { cite(copy, 'id_filter', `${driverBlob}${release800}/src/not-a-file.ts`); })))
+      .toEqual([
+        'Release ledger does not record cited file src/not-a-file.ts at 7680ab6c',
+        'Evidence cc7751c0..7680ab6c does not cover cited file src/not-a-file.ts',
+      ]);
   });
 
   it('requires evidence covering every cited file once the driver commit advances', async () => {
-    const cited = ['src/modules/cases.ts', 'src/pagination.ts', 'src/utils.ts', 'src/validation.ts'];
-    const step = (paths: readonly string[]) => [{
-      from_commit: release700, to_commit: release720, reviewed_on: '2026-09-18',
-      files: paths.map((path) => ({ path, changed: false })),
-    }];
-    const backdated = edited((copy) => { copy.review.authored_commit = release700; });
-    expect(auditDomainProvenance(backdated)).toEqual(['Driver commit advanced from 71a80d98 to cc7751c0 without evidence']);
-    const evidenced = edited((copy) => { Object.assign(copy.review, { authored_commit: release700, evidence: step(cited) }); });
-    expect(auditDomainProvenance(evidenced)).toEqual([]);
+    const [step] = library.review.evidence ?? [];
+    if (!step) throw new Error('The library carries no evidence for its 8.0.0 review');
+    expect([step.from_commit, step.to_commit]).toEqual([release720, release800]);
+    expect(step.files.map(({ path }) => path).sort()).toEqual(['src/modules/cases.ts', 'src/pagination.ts', 'src/utils.ts', 'src/validation.ts']);
+    const unevidenced = edited((copy) => { delete copy.review.evidence; });
+    expect(auditDomainProvenance(unevidenced)).toEqual(['Driver commit advanced from cc7751c0 to 7680ab6c without evidence']);
     // The case that matters most: most manifests do not cite src/validation.ts, so only
     // the library's own evidence makes a bump re-review the domains built on it.
     const partial = edited((copy) => {
-      Object.assign(copy.review, { authored_commit: release700, evidence: step(cited.filter((path) => path !== 'src/validation.ts')) });
+      copy.review.evidence = [{ ...step, files: step.files.filter(({ path }) => path !== 'src/validation.ts') }];
     });
-    expect(auditDomainProvenance(partial)).toEqual(['Evidence 71a80d98..cc7751c0 does not cover cited file src/validation.ts']);
+    expect(auditDomainProvenance(partial)).toEqual(['Evidence cc7751c0..7680ab6c does not cover cited file src/validation.ts']);
     const changed = await loadDriverReleases();
-    const validation = changed.releases.find(({ commit }) => commit === release720)?.files['src/validation.ts'];
-    if (!validation) throw new Error('The ledger has no src/validation.ts at 7.2.0');
+    const validation = changed.releases.find(({ commit }) => commit === release800)?.files['src/validation.ts'];
+    if (!validation) throw new Error('The ledger has no src/validation.ts at 8.0.0');
     validation.git_blob = '0'.repeat(40);
-    expect(auditDomainProvenance(evidenced, changed)).toEqual([
-      'Evidence 71a80d98..cc7751c0 claims src/validation.ts unchanged, but the release ledger records it changed',
+    expect(auditDomainProvenance(library, changed)).toEqual([
+      'Evidence cc7751c0..7680ab6c claims src/validation.ts unchanged, but the release ledger records it changed',
     ]);
   });
 });

@@ -3,10 +3,19 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "7.2.0",
-    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "driver_version": "8.0.0",
+    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-09-21"
+    "reviewed_on": "2026-10-03",
+    "evidence": [
+      {
+        "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/variables.ts", "changed": false },
+          { "path": "src/schemas/variables.ts", "changed": false }
+        ]
+      }
+    ]
   },
   "endpoint": {
     "family_id": "T09",
@@ -18,12 +27,12 @@
   "sources": [
     {
       "id": "driver-module-variables",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/variables.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/variables.ts",
       "supports": "updateVariable validates the variable identifier, posts to update_variable/{variable_id} with the payload as the JSON body and parses the reply with VariableSchema. The payload is passed through unexamined: no public method parses UpdateVariablePayloadSchema, so every payload rule is enforced at the MCP boundary alone."
     },
     {
       "id": "driver-schema-variables",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/variables.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/variables.ts",
       "supports": "UpdateVariablePayloadSchema declares name optional and nothing else, and records that an empty body is intentionally accepted as a no-op rather than refused client-side, because TestRail itself accepts it and returns the unchanged variable."
     },
     {

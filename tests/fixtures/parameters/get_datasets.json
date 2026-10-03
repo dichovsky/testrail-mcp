@@ -3,10 +3,21 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "7.2.0",
-    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "driver_version": "8.0.0",
+    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-09-21"
+    "reviewed_on": "2026-10-03",
+    "evidence": [
+      {
+        "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/datasets.ts", "changed": false },
+          { "path": "src/modules/paginated-list.ts", "changed": true, "note": "Changed between the releases: the page request's transport carries the aggregate's intent in place of bypassCache and remainingTimeMs. Which controls are appended, the page and list schemas, and the options each helper copies are unchanged, so the claims cited here stand." },
+          { "path": "src/pagination.ts", "changed": true, "note": "Changed between the releases: an aggregate's page request carries intent 'fresh-read' in place of bypassCache and remainingTimeMs, and a request-budget expiry is reported as max_duration even when the wall clock disagrees. The bounds, defaults, decodePage and stop conditions cited here are unchanged." },
+          { "path": "src/schemas/datasets.ts", "changed": false }
+        ]
+      }
+    ]
   },
   "endpoint": {
     "family_id": "T09",
@@ -18,22 +29,22 @@
   "sources": [
     {
       "id": "driver-module-datasets",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/datasets.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/datasets.ts",
       "supports": "DATASETS_PAGINATION is declared with requestControls false and an envelope response over the datasets collection, and its prepare step contributes the project alone as a path parameter. Neither getDatasetsPage nor getAllDatasets therefore sends a limit or an offset of its own: the page helper takes the project alone and the aggregate takes it with the safety bounds, walking the envelope's next link for each further page and carrying whatever offset and limit TestRail put there. prepare validates the project identifier, so an invalid one is refused before any request."
     },
     {
       "id": "driver-paginated-list",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/paginated-list.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/paginated-list.ts",
       "supports": "An executor declared without request controls appends neither a limit nor an offset to the page request, and its aggregate is built on the envelope-only branch whose options type excludes pageSize and startOffset outright. The all helper copies only maxPages, maxItems, maxDurationMs and maxBytes."
     },
     {
       "id": "driver-pagination",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/pagination.ts",
       "supports": "The safety bounds are named maxItems, maxPages, maxBytes and maxDurationMs, and a page is normalized to a kind discriminator beside the decoded items, carrying the envelope's own offset, limit, size and links through."
     },
     {
       "id": "driver-schema-datasets",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/datasets.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/datasets.ts",
       "supports": "The list endpoint wraps dataset objects in the standard bulk envelope, which the module unwraps before parsing, so DatasetSchema models one dataset. id and name are required scalars, variables is nullish, and each entry's value is nullable."
     },
     {

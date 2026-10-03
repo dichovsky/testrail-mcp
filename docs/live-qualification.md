@@ -107,7 +107,7 @@ If any of them appears, it refuses to write the file.
   "provenance": "live_testrail",
   "tested_on": "YYYY-MM-DD",
   "testrail_version": "from testrail_get_version",
-  "server": { "package_version": "...", "protocol": "negotiated MCP revision", "driver_version": "7.2.0" },
+  "server": { "package_version": "...", "protocol": "negotiated MCP revision", "driver_version": "8.0.0" },
   "options": { "instance_writes": false, "report_template": false, "cross_project_report_template": false },
   "stopped": null,
   "summary": { "pass": 0, "not_run": 0, "blocked": 0, "fail": 0 },
