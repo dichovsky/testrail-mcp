@@ -248,6 +248,52 @@ describe('runtime admission and invocation', () => {
     },
   );
 
+  it.each<[string, (fetch: typeof globalThis.fetch) => TestRailClient, (target: TestRailClient) => Promise<unknown>, RegExp]>([
+    [
+      'a call that rejects at once',
+      client,
+      () => Promise.reject(new Error('rejected before any I/O')),
+      /rejected before any I\/O/u,
+    ],
+    [
+      // The driver checks its arguments before it starts a request.
+      'the driver refusing an argument',
+      client,
+      (target) => target.projects.getProject(0),
+      /projectId must be a positive integer/u,
+    ],
+    [
+      // A failure further into the driver's request pipeline, before any fetch.
+      'a DNS lookup that fails at once',
+      (fetch) => new TestRailClient({
+        baseUrl: 'https://runtime.testrail.io', email: 'user@example.com', apiKey: 'synthetic',
+        fetch, registerProcessHandlers: false, maxRetries: 0,
+        dnsLookup: () => Promise.reject(Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' })),
+      }),
+      (target) => target.projects.getProject(1),
+      /DNS validation failed/u,
+    ],
+  ])('observes a result that rejects before the event loop turns: %s', async (_source, instance, call, error) => {
+    // The race is the result's only observer, and it subscribes in the turn that
+    // started the operation. Had invoke yielded to the event loop first, this
+    // rejection would be reported as unhandled before the race subscribed, which
+    // under Node's default ends the server.
+    const upstream = gatedFetch();
+    const runtime = createRuntime({ client: instance(upstream.fetch), limits: DEFAULT_LIMITS });
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    try {
+      await expect(runtime.invoke(call)).rejects.toThrow(error);
+      expect(upstream.calls).toBe(0);
+      await waitFor(() => runtime.stats().active === 0, 'the slot released by the failure');
+      await settle();
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+      await runtime.shutdown();
+    }
+  });
+
   it('reserves the single download slot independently of general capacity', async () => {
     const upstream = gatedFetch();
     const runtime = createRuntime({ client: client(upstream.fetch), limits: DEFAULT_LIMITS });
