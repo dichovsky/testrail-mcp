@@ -16,6 +16,8 @@ The first release: a local stdio MCP server for the complete TestRail 10.7.0 API
 - Uploads confined to configured directories and read through a staged copy, and downloads that always create a new, retained file.
 - At most four calls at a time, a 60-second response wait, and a call's slot held until its TestRail request has really finished.
 - Configuration from the launch environment only, with a startup error that names the variable and never its value.
+- Results with only a comment or only an assignee: the four add-result tools need at least one of `status_id`, `comment` or `assignedto_id`, as TestRail documents, rather than always `status_id` ([#49](https://github.com/dichovsky/testrail-mcp/issues/49)).
+- One address rule for every user tool: `add_user` and `update_user` accept the single-label domains and domain literals `get_user_by_email` accepts, so a user a self-hosted or directory instance stores can be created and updated as well as looked up ([#55](https://github.com/dichovsky/testrail-mcp/issues/55)).
 - The pinned, qualified driver `@dichovsky/testrail-api-client` 8.0.0, and with it a Node 24 or later requirement.
 
 ### Verification

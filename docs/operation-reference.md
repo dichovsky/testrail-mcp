@@ -1860,7 +1860,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_add_result
 
-Record a result against a single TestRail test. body.status_id names the outcome, and step results and other custom fields go in the body as flat custom_ properties. Adding a result is what changes a test's status. Use the bulk tool when recording results for several tests of one run. Required path arguments: test_id. Changes TestRail data.
+Record a result against a single TestRail test. The body needs at least one of status_id, comment or assignedto_id. status_id names the outcome and is what changes the test's status; a result with only a comment or only an assignee is recorded with a null status_id. Step results and other custom fields go in the body as flat custom_ properties. Use the bulk tool when recording results for several tests of one run. Required path arguments: test_id. Changes TestRail data.
 
 REST: `POST add_result/{test_id}`. Driver: `results.addResult`. Family: T05.
 
@@ -1911,12 +1911,26 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
             "not": {}
           }
         },
-        "required": [
-          "status_id"
-        ],
         "additionalProperties": {
           "$ref": "#/definitions/__schema0"
         },
+        "anyOf": [
+          {
+            "required": [
+              "status_id"
+            ]
+          },
+          {
+            "required": [
+              "comment"
+            ]
+          },
+          {
+            "required": [
+              "assignedto_id"
+            ]
+          }
+        ],
         "propertyNames": {
           "anyOf": [
             {
@@ -2052,12 +2066,26 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
             "not": {}
           }
         },
-        "required": [
-          "status_id"
-        ],
         "additionalProperties": {
           "$ref": "#/definitions/__schema0"
         },
+        "anyOf": [
+          {
+            "required": [
+              "status_id"
+            ]
+          },
+          {
+            "required": [
+              "comment"
+            ]
+          },
+          {
+            "required": [
+              "assignedto_id"
+            ]
+          }
+        ],
         "propertyNames": {
           "anyOf": [
             {
@@ -2144,7 +2172,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_add_results
 
-Record results for several tests of one TestRail run in a single call. Each entry of body.results names its test and takes the same fields as add_result. Every test must belong to the named run, and TestRail returns the created results in the order they were sent. Required path arguments: run_id. Changes TestRail data.
+Record results for several tests of one TestRail run in a single call. Each entry of body.results names its test and takes the same fields as add_result, including at least one of status_id, comment or assignedto_id. Every test must belong to the named run, and TestRail returns the created results in the order they were sent. Required path arguments: run_id. Changes TestRail data.
 
 REST: `POST add_results/{run_id}`. Driver: `results.addResults`. Family: T05.
 
@@ -2207,12 +2235,28 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
                 }
               },
               "required": [
-                "test_id",
-                "status_id"
+                "test_id"
               ],
               "additionalProperties": {
                 "$ref": "#/definitions/__schema0"
               },
+              "anyOf": [
+                {
+                  "required": [
+                    "status_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "comment"
+                  ]
+                },
+                {
+                  "required": [
+                    "assignedto_id"
+                  ]
+                }
+              ],
               "propertyNames": {
                 "anyOf": [
                   {
@@ -2300,7 +2344,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_add_results_for_cases
 
-Record results for several cases of one TestRail run in a single call, naming each case rather than the test it became. Each entry of body.results takes the same fields as add_result. Required path arguments: run_id. Changes TestRail data.
+Record results for several cases of one TestRail run in a single call, naming each case rather than the test it became. Each entry of body.results takes the same fields as add_result, including at least one of status_id, comment or assignedto_id. Required path arguments: run_id. Changes TestRail data.
 
 REST: `POST add_results_for_cases/{run_id}`. Driver: `results.addResultsForCases`. Family: T05.
 
@@ -2363,12 +2407,28 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
                 }
               },
               "required": [
-                "case_id",
-                "status_id"
+                "case_id"
               ],
               "additionalProperties": {
                 "$ref": "#/definitions/__schema0"
               },
+              "anyOf": [
+                {
+                  "required": [
+                    "status_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "comment"
+                  ]
+                },
+                {
+                  "required": [
+                    "assignedto_id"
+                  ]
+                }
+              ],
               "propertyNames": {
                 "anyOf": [
                   {
@@ -3050,7 +3110,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_add_user
 
-Create a TestRail user (TestRail 7.3 or later). body.name and body.email are required, and the address must carry a dotted domain, which is stricter than the lookup tool accepts. TestRail defaults is_active to false, so a new user is created inactive unless the field is sent. Changes TestRail data.
+Create a TestRail user (TestRail 7.3 or later). body.name and body.email are required, and the address is checked only for shape, as the lookup tool checks it, so a single-label or literal domain reaches TestRail, which owns the rule. TestRail defaults is_active to false, so a new user is created inactive unless the field is sent. Changes TestRail data.
 
 REST: `POST add_user`. Driver: `users.addUser`. Family: T08.
 
@@ -3076,7 +3136,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
           },
           "email": {
             "type": "string",
-            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            "pattern": "^[^\\s@]+@[^\\s@]+(?![\\s\\S])"
           },
           "is_active": {
             "type": "boolean"
@@ -11577,7 +11637,7 @@ TestRail effect: `read`. Driver retry policy: `ordinary-read`. Local file behavi
 
 ## testrail_get_user_by_email
 
-Look a TestRail user up by email address. The address is checked only for shape, one @ with no whitespace, so a single-label or literal domain from a self-hosted, LDAP or SSO instance reaches TestRail rather than being refused here. Note that the user write tools require a stricter, dotted address than this lookup accepts.
+Look a TestRail user up by email address. The address is checked only for shape, one @ with no whitespace, so a single-label or literal domain from a self-hosted, LDAP or SSO instance reaches TestRail rather than being refused here.
 
 REST: `GET get_user_by_email`. Driver: `users.getUserByEmail`. Family: T08.
 
@@ -14055,7 +14115,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
           },
           "email": {
             "type": "string",
-            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            "pattern": "^[^\\s@]+@[^\\s@]+(?![\\s\\S])"
           },
           "is_active": {
             "type": "boolean"

@@ -105,6 +105,26 @@ describe('payloadInput construction guards', () => {
     expect(() => payloadInput(source, { extensions: 'custom' }))
       .toThrow('Custom property check was not created');
   });
+
+  it('refuses required alternatives on a non-object source', () => {
+    expect(() => payloadInput(z.string(), { requireOneOf: ['name'] }))
+      .toThrow('Required alternatives require an object schema');
+  });
+
+  it('refuses a required alternative the payload does not declare', () => {
+    expect(() => payloadInput(z.object({ name: z.string().optional() }), { requireOneOf: ['name', 'title'] }))
+      .toThrow('Required alternatives must be declared payload fields');
+  });
+
+  it('refuses required alternatives whose check was not registered', () => {
+    // Defensive, as for the custom_* policy: the JSON Schema would advertise an anyOf
+    // that nothing at runtime enforced.
+    const source = z.object({ name: z.string().optional() });
+    const prototype = Object.getPrototypeOf(source) as { refine: (...args: unknown[]) => unknown };
+    vi.spyOn(prototype, 'refine').mockImplementation(function (this: unknown) { return this; });
+    expect(() => payloadInput(source, { requireOneOf: ['name'] }))
+      .toThrow('Required alternatives check was not created');
+  });
 });
 
 describe('payloadInput __proto__ checks run synchronously only', () => {
