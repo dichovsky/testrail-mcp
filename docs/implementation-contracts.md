@@ -4,7 +4,7 @@ Status: implementation plan agreed on 2026-09-09. These are requirements for the
 
 ## Package and driver boundary
 
-Publish `@dichovsky/testrail-mcp` with executable `testrail-mcp`. Use TypeScript, ESM, strict type checking, npm and a committed lockfile. Declare Node `^22.13.0 || >=24`; certify Node 22 and 24 on Linux, macOS and Windows. Later Node majors satisfy the engine range but are best effort until certified.
+Publish `@dichovsky/testrail-mcp` with executable `testrail-mcp`. Use TypeScript, ESM, strict type checking, npm and a committed lockfile. Declare Node `^22.13.0 || >=24`; certify Node 24 on Linux, macOS and Windows. Node 22.13 and later in the 22 series, and later majors, satisfy the engine range but are best effort until certified.
 
 Pin `@modelcontextprotocol/server` to `2.0.0` initially, the test client to `@modelcontextprotocol/client@2.0.0`, and compatible Zod 4 dependencies exactly. Use public SDK entry points and public root exports of `@dichovsky/testrail-api-client`. No shelling out to its CLI, copying its HTTP engine, importing private registries, or adding direct TestRail fetches.
 

@@ -61,7 +61,7 @@ Dependencies describe completion prerequisites. An implementer may prepare fixtu
 | Published driver | Exact version/integrity with required runtime fixes; public export and endpoint parity; report requests execute independently without retries; per-operation settlement remains pending for deadline losers | F01 |
 | Endpoint and parameter coverage | All 133 bindings, 28 resources, 24 page/all pairs and every supported parameter; independent positive/negative fixtures and omission-detection regressions | T01–T12, R01 |
 | Runtime and local files | Bounded calls/downloads, per-caller warnings, complete-result byte caps, honest cancellation/write outcomes, staging cleanup after actual descendant settlement, persistent completed downloads and accurate local-effect annotations | F03, F05–F07, R01 |
-| Protocol and packaging | Legacy initialization plus MCP 2026-07-28 discovery; protocol-only stdout; tarball install and executable checks on Node 22/24 across Linux/macOS/Windows | F02, F08, R01 |
+| Protocol and packaging | Legacy initialization plus MCP 2026-07-28 discovery; protocol-only stdout; tarball install and executable checks on Node 24 across Linux/macOS/Windows | F02, F08, R01 |
 | Required clients | Exact versions/builds, models/providers, settings and C01–C12 results for Codex desktop, Codex CLI, Claude Code and Copilot CLI | R02 |
 | TestRail 10.7.0 | Dedicated disposable environment, required features/licenses/permissions, operation-level live evidence and truthful availability reporting | R03 |
 | Published artifact | Tested version/tag/lockfile/provenance, authorized npm release and post-publication install verification | R03 |

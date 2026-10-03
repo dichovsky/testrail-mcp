@@ -106,10 +106,11 @@ const ID = Object.fromEntries(EXPECTED.map(({ name, id }) => [name, id])) as Rec
 interface Started { baseUrl: string; environment: Record<string, string>; reserved: Record<string, number> }
 interface Logged { method: string; endpoint: string; tool: string | null; status: number; authorized: boolean; bytes: number; abandoned: boolean }
 interface StandIn { baseUrl: string; environment: Record<string, string>; requests: Logged[]; close: () => Promise<void> }
-const { startFixtureTestRail, DELAYS_MS, SLOW_PAGES } = (await import(new URL('../scripts/fixture-testrail.mjs', import.meta.url).href)) as {
-  startFixtureTestRail: (options: { delayScale?: number; log?: string; onLogError?: (error: unknown) => void }) => Promise<StandIn>;
+const { startFixtureTestRail, DELAYS_MS, SLOW_PAGES, SYNTHETIC } = (await import(new URL('../scripts/fixture-testrail.mjs', import.meta.url).href)) as {
+  startFixtureTestRail: (options: { delayScale?: number; rememberDeletions?: boolean; log?: string; onLogError?: (error: unknown) => void }) => Promise<StandIn>;
   DELAYS_MS: Record<number, number>;
   SLOW_PAGES: number;
+  SYNTHETIC: { email: string; apiKey: string };
 };
 
 let child: ChildProcess;
@@ -444,6 +445,51 @@ describe('the fixture stand-in serves the whole catalog', () => {
     }
     // A download holds exactly the fixture's bytes.
     if (driven.kind === 'binary') expect(await readFile((payload(result).data as { file_path: string }).file_path, 'utf8')).toBe(driven.utf8);
+  });
+});
+
+describe('the stand-in\'s memory of deletions', () => {
+  /** One request with the synthetic credentials. */
+  const send = (baseUrl: string, method: 'GET' | 'POST', endpoint: string) => fetch(`${baseUrl}/index.php?/api/v2/${endpoint}`, {
+    method,
+    headers: { authorization: `Basic ${Buffer.from(`${SYNTHETIC.email}:${SYNTHETIC.apiKey}`).toString('base64')}`, 'content-type': 'application/json' },
+    ...(method === 'POST' ? { body: '{}' } : {}),
+  });
+
+  it('answers a read of a deleted project, group or attachment as TestRail does only when asked to, until a creation hands its ID out again', async () => {
+    for (const remember of [false, true]) {
+      const standIn = await startFixtureTestRail({ rememberDeletions: remember });
+      try {
+        for (const [kind, add, field] of [['project', 'add_project', 'id'], ['group', 'add_group', 'id'], ['attachment', 'add_attachment_to_case/1', 'attachment_id']] as const) {
+          const label = `${kind}, remembered: ${String(remember)}`;
+          const id = String(((await (await send(standIn.baseUrl, 'POST', add)).json()) as Record<string, unknown>)[field]);
+          expect((await send(standIn.baseUrl, 'GET', `get_${kind}/${id}`)).status, label).toBe(200);
+          expect((await send(standIn.baseUrl, 'POST', `delete_${kind}/${id}`)).status, label).toBe(200);
+          const after = await send(standIn.baseUrl, 'GET', `get_${kind}/${id}`);
+          expect(after.status, label).toBe(remember ? 400 : 200);
+          if (remember) expect(await after.json(), label).toEqual({ error: `Field :${kind}_id is not a valid or accessible ${kind}.` });
+          else await after.arrayBuffer();
+          // A creation that hands the ID out again brings it back.
+          await (await send(standIn.baseUrl, 'POST', add)).arrayBuffer();
+          expect((await send(standIn.baseUrl, 'GET', `get_${kind}/${id}`)).status, label).toBe(200);
+        }
+      } finally {
+        await standIn.close();
+      }
+    }
+  });
+
+  it('remembers deletions when started with --remember-deletions', async () => {
+    const cli = spawn(process.execPath, [script, '--json', '--remember-deletions'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    try {
+      const line = await new Promise<string>((resolve) => { createInterface({ input: cli.stdout ?? process.stdin }).once('line', resolve); });
+      const { baseUrl } = JSON.parse(line) as Started;
+      expect((await send(baseUrl, 'POST', 'delete_project/7')).status).toBe(200);
+      expect((await send(baseUrl, 'GET', 'get_project/7')).status).toBe(400);
+      expect((await send(baseUrl, 'GET', 'get_project/8')).status).toBe(200);
+    } finally {
+      cli.kill();
+    }
   });
 });
 

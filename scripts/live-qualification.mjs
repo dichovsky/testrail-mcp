@@ -94,8 +94,13 @@ export class Ledger {
   #gone = new Set();
 
   add(kind, id) {
-    if (!this.#kinds.has(kind)) this.#kinds.set(kind, new Set());
-    this.#kinds.get(kind).add(String(id));
+    if (!this.#kinds.has(kind)) this.#kinds.set(kind, new Map());
+    this.#kinds.get(kind).set(String(id), id);
+  }
+
+  /** Every ID of a kind the run created, deleted or not, as TestRail gave it. */
+  ids(kind) {
+    return [...(this.#kinds.get(kind)?.values() ?? [])];
   }
 
   has(kind, id) {
@@ -163,6 +168,10 @@ function createContext({ ledger, options, stamp, uploads }) {
       ledger.add(kind, id);
       named.set(name, { kind, id });
       return id;
+    },
+    has(name) {
+      const entry = named.get(name);
+      return entry !== undefined && !ledger.isGone(entry.kind, entry.id);
     },
     id(name) {
       const entry = named.get(name);
@@ -250,6 +259,7 @@ export async function runQualification({
     onStep(entry);
   };
   const cleanup = { project: 'not_created', group: 'not_created' };
+  let verified;
   let residue;
   try {
     for (const step of plan) {
@@ -327,6 +337,16 @@ export async function runQualification({
         return (await cleaner(tool, input)).result;
       }
     };
+    const deleteAttachments = async () => {
+      for (const id of ledger.ids('attachment')) {
+        // One the plan already deleted is refused, and the check below decides.
+        await clean(`${TOOL_PREFIX}delete_attachment`, { attachment_id: id }).catch(() => undefined);
+      }
+    };
+    // Attachments are stored apart from what they hang on, so a run that stops early deletes
+    // each one itself before the project, rather than leaving them to go with it.
+    const project = c.named.get('project');
+    if (project !== undefined && !ledger.isGone(project.kind, project.id)) await deleteAttachments();
     for (const [kind, tool, key] of [['project', 'delete_project', 'project_id'], ['group', 'delete_group', 'group_id']]) {
       const entry = c.named.get(kind);
       if (entry === undefined) continue;
@@ -341,15 +361,47 @@ export async function runQualification({
         cleanup[kind] = 'left_behind';
       }
     }
+    /*
+     * Then TestRail is asked for each one again. A deleted ID is answered NOT_FOUND, or 400 as
+     * TestRail answers an ID it does not have; any other answer leaves it unverified. An
+     * attachment still served is deleted once more and asked for again.
+     */
+    const state = async (tool, input) => {
+      try {
+        const { status, code, http_status: httpStatus } = classify(await clean(`${TOOL_PREFIX}${tool}`, input));
+        if (status === 'pass') return 'present';
+        return code === 'NOT_FOUND' || httpStatus === 400 ? 'gone' : 'unverified';
+      } catch {
+        return 'unverified';
+      }
+    };
+    verified = { gone: 0, present: 0, unverified: 0 };
+    for (const [kind, tool, key] of [['project', 'get_project', 'project_id'], ['group', 'get_group', 'group_id']]) {
+      const entry = c.named.get(kind);
+      if (entry === undefined) continue;
+      const found = await state(tool, { [key]: entry.id });
+      verified[found] += 1;
+      // One whose deletion failed and that TestRail cannot be asked about is left behind.
+      if (found === 'present' || (found === 'unverified' && cleanup[kind] === 'left_behind')) c.residue(kind);
+      else if (found === 'unverified') c.residue(`unverified ${kind}`);
+    }
+    for (const id of ledger.ids('attachment')) {
+      let found = await state('get_attachment', { attachment_id: id });
+      if (found === 'present') {
+        await clean(`${TOOL_PREFIX}delete_attachment`, { attachment_id: id }).catch(() => undefined);
+        found = await state('get_attachment', { attachment_id: id });
+      }
+      verified[found] += 1;
+      if (found !== 'gone') c.residue(found === 'present' ? 'attachment' : 'unverified attachment');
+    }
     residue = [...c.leftBehind].map(([kind, count]) => ({ kind, count }));
-    for (const kind of ['project', 'group']) if (cleanup[kind] === 'left_behind') residue.push({ kind, count: 1 });
     // Said here, so a run that throws still says what cleanup did.
-    onCleanup({ ...cleanup, residue });
+    onCleanup({ ...cleanup, verified, residue });
   }
   // The signed-in user's address is kept only to prove the evidence does not carry it.
   const personal = [c.values.get('current_user_email')].filter((value) => typeof value === 'string');
   return {
-    steps, cleanup: { ...cleanup, residue }, stopped: stopped ?? null, testrailVersion: c.values.get('testrail_version') ?? null, personal,
+    steps, cleanup: { ...cleanup, verified, residue }, stopped: stopped ?? null, testrailVersion: c.values.get('testrail_version') ?? null, personal,
   };
 }
 
@@ -375,7 +427,7 @@ export function buildEvidence({ run, tools, options, testedOn, server }) {
   }));
   const summary = Object.fromEntries(RANK.map((status) => [status, Object.values(byTool).filter((entry) => entry.status === status).length]));
   return {
-    schema_version: 1,
+    schema_version: 2,
     provenance: 'live_testrail',
     tested_on: testedOn,
     testrail_version: run.testrailVersion,
@@ -393,9 +445,13 @@ export function buildEvidence({ run, tools, options, testedOn, server }) {
   };
 }
 
-/** A failed tool, anything left behind that should have been deleted, or a run cut short is a failed run. */
+/**
+ * A failed tool, anything left behind that should have been deleted, anything TestRail still
+ * serves or could not be asked about after cleanup, or a run cut short is a failed run.
+ */
 export function exitCode(evidence) {
-  const leftBehind = evidence.cleanup.project === 'left_behind' || evidence.cleanup.group === 'left_behind';
+  const { project, group, verified } = evidence.cleanup;
+  const leftBehind = project === 'left_behind' || group === 'left_behind' || verified.present > 0 || verified.unverified > 0;
   return evidence.summary.fail > 0 || leftBehind || evidence.stopped !== null ? 1 : 0;
 }
 
@@ -536,7 +592,7 @@ export async function main({
   const blank = buildEvidence({
     run: {
       steps: PLAN.map((step) => ({ tool: `${TOOL_PREFIX}${step.tool}`, label: step.label ?? null, status: 'not_run', reason: 'interrupted' })),
-      cleanup: { project: 'left_behind', group: 'left_behind', residue: [] }, stopped: 'interrupted', testrailVersion: null,
+      cleanup: { project: 'left_behind', group: 'left_behind', verified: { gone: 0, present: 0, unverified: 0 }, residue: [] }, stopped: 'interrupted', testrailVersion: null,
     },
     tools, options, testedOn: '2000-01-01', server: { package_version: null, protocol: null, driver_version: null },
   });
@@ -591,9 +647,10 @@ export async function main({
           log(`${status.padEnd(7)} ${tool}${label === null ? '' : ` (${label})`}${detail === '' ? '' : ` ${detail}`}`);
         },
         // What cleanup did is said before anything else can fail: it names kinds and outcomes only.
-        onCleanup: ({ project, group, residue }) => {
+        onCleanup: ({ project, group, verified, residue }) => {
           const left = residue.map(({ kind, count }) => `${String(count)} ${kind}`).join(', ');
-          log(`Cleanup: project ${project}, group ${group}${left === '' ? '' : `; left behind: ${left}`}.`);
+          const checked = `checked afterwards: ${String(verified.gone)} gone, ${String(verified.present)} still there, ${String(verified.unverified)} unverified`;
+          log(`Cleanup: project ${project}, group ${group}; ${checked}${left === '' ? '' : `; left behind: ${left}`}.`);
         },
       });
     } finally {

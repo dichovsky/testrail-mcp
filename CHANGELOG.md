@@ -20,5 +20,5 @@ The first release: a local stdio MCP server for the complete TestRail 10.7.0 API
 
 ### Verification
 
-- Every endpoint's hand-authored parameter manifest runs through the registered tool and the real driver. Registry, protocol, result-contract, paging and runtime-lifetime gates run in CI on Node 22 and 24 across Linux, macOS and Windows, and CI publishes coverage reports as artifacts.
+- Every endpoint's hand-authored parameter manifest runs through the registered tool and the real driver. Registry, protocol, result-contract, paging and runtime-lifetime gates run in CI on Node 24 across Linux, macOS and Windows, and CI publishes coverage reports as artifacts.
 - Client qualification (R02) and live TestRail 10.7 qualification (R03) are recorded before this section is dated.

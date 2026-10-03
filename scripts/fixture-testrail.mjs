@@ -215,18 +215,36 @@ function send(response, status, reply) {
 }
 
 const json = (body) => ({ kind: 'json', body });
+
+/*
+ * TestRail answers a read of a project, group or attachment it has deleted with a 400, as it
+ * answers any ID it does not have, and the live runner checks its cleanup that way. With
+ * `rememberDeletions` the stand-in does the same. It hands every creation the same few IDs,
+ * so it remembers a deletion only until a creation hands that ID out again. Without it, the
+ * stand-in keeps no state, and every request gets its fixture's reply.
+ */
+const DELETES = { testrail_delete_project: 'project', testrail_delete_group: 'group', testrail_delete_attachment: 'attachment' };
+const READS = { testrail_get_project: 'project', testrail_get_group: 'group', testrail_get_attachment: 'attachment' };
+const CREATES = {
+  testrail_add_project: ['project', 'id'], testrail_add_group: ['group', 'id'],
+  ...Object.fromEntries(['case', 'plan', 'plan_entry', 'result', 'run'].map((parent) => [`testrail_add_attachment_to_${parent}`, ['attachment', 'attachment_id']])),
+};
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms).unref(); });
 
 /**
  * Start the stand-in. `pages` sets how many pages every paged list spans; `delayScale`
- * shortens the reserved delays for tests; `log`, when set, receives one JSON line per
+ * shortens the reserved delays for tests; `rememberDeletions` answers a read of a deleted
+ * project, group or attachment as TestRail does; `log`, when set, receives one JSON line per
  * request, written when its reply is ready: its method, endpoint and status, and whether
  * the client had already gone, never its credentials. A log write that fails once the
  * stand-in is serving still sends the reply, then calls `onLogError` with the error.
  */
-export async function startFixtureTestRail({ port = 0, host = '127.0.0.1', pages = 1, delayScale = 1, log, onLogError = () => undefined } = {}) {
+export async function startFixtureTestRail({
+  port = 0, host = '127.0.0.1', pages = 1, delayScale = 1, rememberDeletions = false, log, onLogError = () => undefined,
+} = {}) {
   const routes = await loadRoutes();
   const requests = [];
+  const deleted = new Set();
   // A log that cannot be written is refused now, not discovered on the first request.
   if (log !== undefined) {
     try {
@@ -245,7 +263,8 @@ export async function startFixtureTestRail({ port = 0, host = '127.0.0.1', pages
         const at = url.indexOf(PREFIX);
         const [path = '', ...query] = at === -1 ? [''] : decodeURIComponent(url.slice(at + PREFIX.length)).split('&');
         const route = routes.find((candidate) => candidate.method === request.method && candidate.patterns.some((pattern) => pattern.test(path)));
-        const ids = route === undefined ? [] : (route.patterns.map((pattern) => pattern.exec(path)).find((match) => match !== null) ?? []).slice(1).map(Number);
+        const segments = route === undefined ? [] : (route.patterns.map((pattern) => pattern.exec(path)).find((match) => match !== null) ?? []).slice(1);
+        const ids = segments.map(Number);
         const reserved = ids.find((id) => Object.values(RESERVED).includes(id));
         let status = 200;
         let reply;
@@ -270,6 +289,9 @@ export async function startFixtureTestRail({ port = 0, host = '127.0.0.1', pages
           reply = json({ error: 'An internal error occurred on the stand-in.' });
         } else if (reserved === RESERVED.unusable) {
           reply = json('not the shape this endpoint documents');
+        } else if (rememberDeletions && READS[route.tool] !== undefined && deleted.has(`${READS[route.tool]}:${String(segments[0])}`)) {
+          status = 400;
+          reply = json({ error: `Field :${READS[route.tool]}_id is not a valid or accessible ${READS[route.tool]}.` });
         } else {
           if (reserved !== undefined && DELAYS_MS[reserved] !== undefined) await sleep(DELAYS_MS[reserved] * delayScale);
           reply = route.reply;
@@ -283,6 +305,9 @@ export async function startFixtureTestRail({ port = 0, host = '127.0.0.1', pages
             if (reserved === RESERVED.drift) body = withDrift(body);
             reply = json(body);
           }
+          if (rememberDeletions && DELETES[route.tool] !== undefined) deleted.add(`${DELETES[route.tool]}:${String(segments[0])}`);
+          const [made, field] = CREATES[route.tool] ?? [];
+          if (made !== undefined && reply.kind === 'json') deleted.delete(`${made}:${String(reply.body?.[field])}`);
         }
         const entry = { method: request.method, endpoint: path + (query.length === 0 ? '' : `&${query.join('&')}`),
           tool: route?.tool ?? null, status, authorized: typeof request.headers.authorization === 'string', bytes: Buffer.concat(chunks).length,
@@ -335,6 +360,7 @@ async function main() {
       host: { type: 'string', default: '127.0.0.1' },
       pages: { type: 'string', default: '1' },
       'delay-scale': { type: 'string', default: '1' },
+      'remember-deletions': { type: 'boolean', default: false },
       log: { type: 'string' },
       json: { type: 'boolean', default: false },
     },
@@ -351,7 +377,8 @@ async function main() {
     void standIn.close().then(() => process.exit(1));
   };
   const standIn = await startFixtureTestRail({
-    port: Number(values.port), host: values.host, pages, delayScale, onLogError, ...(values.log === undefined ? {} : { log: values.log }),
+    port: Number(values.port), host: values.host, pages, delayScale, rememberDeletions: values['remember-deletions'], onLogError,
+    ...(values.log === undefined ? {} : { log: values.log }),
   });
   if (values.json) {
     process.stdout.write(`${JSON.stringify({ baseUrl: standIn.baseUrl, environment: standIn.environment, reserved: RESERVED })}\n`);
