@@ -274,6 +274,50 @@ describe('a shutdown step that fails', () => {
     await expect(started.shutdown()).resolves.toBeUndefined();
     expect(events(write).map(({ event }) => event)).toContain('server_stopped');
   });
+
+  it('still drains, destroys the driver and logs its stop when closing the connection fails', async () => {
+    const destroy = vi.spyOn(TestRailClient.prototype, 'destroy');
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const fake = upstream();
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    // A real connection whose close then rejects. The SDK's own close absorbs the
+    // failures of the steps it awaits, so this stands in for whatever still escapes it:
+    // the claim is only that the composition root absorbs a rejecting close.
+    const serve = ((factory: Parameters<typeof serveStdio>[0], options: Parameters<typeof serveStdio>[1]) => {
+      const real = serveStdio(factory, { ...options, transport: serverSide });
+      return { close: async () => { await real.close(); throw new Error('close failed'); } };
+    }) as typeof serveStdio;
+    const started = await startServer(environment(), {
+      registerSignals: false, serve, driver: { fetch: fake.fetch, dnsLookup: fake.dnsLookup },
+    });
+    const client = new Client({ name: 'composition-test', version: '1.0.0' });
+    await client.connect(clientSide);
+    try {
+      // Shutdown closes the connection under this call, so the client's own promise rejects; observed here.
+      const call = client.callTool({ name: 'testrail_get_project', arguments: { project_id: 1 } })
+        .catch(() => undefined);
+      await waitFor(() => fake.calls === 1, 'the in-flight request');
+
+      let outcome: unknown = 'pending';
+      const stop = started.shutdown().then(() => { outcome = 'stopped'; }, (error: unknown) => { outcome = error; });
+      await waitFor(() => events(write).some(({ event }) => event === 'server_stopping'), 'the stop to begin');
+      await new Promise((resolve) => { setTimeout(resolve, 50); });
+      // The failed close neither failed the shutdown nor ended it early: the drain still
+      // waits for the call, and the driver is not yet destroyed under it.
+      expect(outcome).toBe('pending');
+      expect(destroy).toHaveBeenCalledTimes(1); // the probe at load
+
+      fake.answerAll();
+      await stop;
+      await call;
+      expect(outcome).toBe('stopped');
+      expect(destroy).toHaveBeenCalledTimes(2);
+      expect(events(write).map(({ event }) => event)).toContain('server_stopped');
+    } finally {
+      fake.answerAll();
+      await client.close().catch(() => undefined);
+    }
+  });
 });
 
 describe('the forced exit after shutdown', () => {

@@ -96,8 +96,9 @@ export function createRuntime({ client, limits, delay = timerDelay }: RuntimeDep
         await handle.settled;
         await options.cleanup?.();
       } catch {
-        // Observed, never surfaced. A late descendant failure or a cleanup fault must
-        // not escape as an unhandled rejection and terminate the server.
+        // Observed, never surfaced. `settled` never rejects by the driver's contract, so
+        // this guards an adapter cleanup fault (and a breach of that contract): neither
+        // may escape as an unhandled rejection and terminate the server.
       }
     })().finally(() => {
       active -= 1;
@@ -114,12 +115,14 @@ export function createRuntime({ client, limits, delay = timerDelay }: RuntimeDep
     ];
     if (cancellation !== undefined) contenders.push(cancellation.promise);
     try {
+      // Promise.race subscribes to every contender synchronously, so a result that
+      // rejects after the watchdog or a cancellation has answered is already observed:
+      // it is never surfaced and never unhandled. The race is that rejection's only
+      // observer, so nothing between trackOperation and here may yield or throw.
       return await Promise.race(contenders);
     } finally {
       watchdog.cancel();
       cancellation?.dispose();
-      // A late result rejection is observed, never surfaced and never unhandled.
-      void handle.result.catch(() => undefined);
     }
   }
 

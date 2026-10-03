@@ -216,9 +216,9 @@ const eventNames = (stderr: string): string[] => stderr.split('\n').filter((line
   .map((line) => (JSON.parse(line) as { event: string }).event);
 
 /*
- * Windows has no signal delivery to a child: `kill('SIGINT')` and `kill('SIGTERM')`
- * terminate it unconditionally, so there is no handler to test there. Closing stdin,
- * which is how hosts end a stdio server, runs on every platform.
+ * Node cannot deliver a catchable signal to a child on Windows: `kill('SIGINT')` and
+ * `kill('SIGTERM')` terminate it unconditionally, so there is no handler to test there.
+ * Closing stdin, which is how hosts end a stdio server, runs on every platform.
  */
 const windows = process.platform === 'win32';
 type Ending = readonly [string, (child: ChildProcessWithoutNullStreams) => void];

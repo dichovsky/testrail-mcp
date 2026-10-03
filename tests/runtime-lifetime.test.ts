@@ -141,11 +141,12 @@ const SLOTS = 4;
 /** An aggregate whose own deadline passes long before anything is released. */
 const allProjects = { _mcp: { pagination: 'all', max_duration_ms: 20 } };
 /*
- * Four aggregates must each reach the network before their deadline, or the driver stops
- * them before any request and they hold no slot. The deadline is real time, so 20 ms is
- * too little on a slow runner: a macOS CI run once dispatched one of four in time.
+ * For a test that needs its aggregates to reach the network: an aggregate whose deadline
+ * passes before its lookup or request starts never starts it, so nothing is left holding
+ * its slot. The deadline is real time, so 20 ms is too little on a slow runner: a macOS
+ * CI run once dispatched one of four in time.
  */
-const allProjectsForFour = { _mcp: { pagination: 'all', max_duration_ms: 1_000 } };
+const allProjectsReachingNetwork = { _mcp: { pagination: 'all', max_duration_ms: 1_000 } };
 /** How the driver's aggregate deadline reaches a caller: a bound, never the watchdog's TIMEOUT. */
 const DURATION_STOP = { code: 'PAGINATION_LIMIT', reason: 'max_duration' };
 
@@ -195,7 +196,7 @@ describe('capacity after the driver aggregate deadline', () => {
     });
     try {
       // The watchdog is never fired: every rejection here is the driver's own deadline.
-      const results = await Promise.all(Array.from({ length: SLOTS }, () => call(runtime, getProjects, allProjectsForFour)));
+      const results = await Promise.all(Array.from({ length: SLOTS }, () => call(runtime, getProjects, allProjectsReachingNetwork)));
       expect(upstream.calls).toBe(SLOTS);
       for (const result of results) expect(error(result)).toMatchObject(DURATION_STOP);
 
@@ -321,7 +322,7 @@ describe('deferred DNS', () => {
       limits: configuration.limits, delay: manualDelay().delay,
     });
     try {
-      const results = await Promise.all(Array.from({ length: SLOTS }, () => call(runtime, getProjects, allProjectsForFour)));
+      const results = await Promise.all(Array.from({ length: SLOTS }, () => call(runtime, getProjects, allProjectsReachingNetwork)));
       for (const result of results) expect(error(result)).toMatchObject(DURATION_STOP);
       expect(lookups.calls).toBe(SLOTS);
       expect(lookups.settled).toBe(0);
@@ -442,12 +443,14 @@ describe('deferred body settlement', () => {
 
   it('holds capacity past the aggregate deadline until the body read is cancelled to completion', async () => {
     const body = heldBody(EMPTY_PROJECTS);
+    let requests = 0;
     const runtime = createRuntime({
-      client: driver({ fetch: (() => Promise.resolve(body.response)) }),
+      client: driver({ fetch: (() => { requests += 1; return Promise.resolve(body.response); }) }),
       limits: configuration.limits, delay: manualDelay().delay,
     });
     try {
-      expect(error(await call(runtime, getProjects, allProjects))).toMatchObject(DURATION_STOP);
+      expect(error(await call(runtime, getProjects, allProjectsReachingNetwork))).toMatchObject(DURATION_STOP);
+      expect(requests).toBe(1);
       // The driver gave up on the body and asked for its cancellation, which has not finished.
       await waitFor(() => body.cancelled, 'the body cancellation request');
       await settle();
@@ -472,8 +475,9 @@ describe('deferred body settlement', () => {
     };
     const runtime = createRuntime({ client: driver({ fetch }), limits: configuration.limits, delay: manualDelay().delay });
     try {
-      const outcomes = await Promise.all(bodies.map(() => call(runtime, getProjects, allProjects)));
+      const outcomes = await Promise.all(bodies.map(() => call(runtime, getProjects, allProjectsReachingNetwork)));
       for (const outcome of outcomes) expect(error(outcome)).toMatchObject(DURATION_STOP);
+      expect(requests).toBe(SLOTS);
       await waitFor(() => bodies.every((body) => body.cancelled), 'every body cancellation request');
       await settle();
       expect(runtime.stats().active).toBe(SLOTS);

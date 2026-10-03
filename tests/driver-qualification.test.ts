@@ -135,8 +135,10 @@ describe('F01 published driver qualification', () => {
 
     // The aggregate deadline is the mechanism F01 names. A request timeout cannot stand
     // in for it: the driver delivers that one through the fetch AbortSignal, so it can
-    // never reject ahead of the fetch it is waiting on.
-    const handle = instance.trackOperation(() => instance.projects.getAllProjects({ maxDurationMs: 50 }));
+    // never reject ahead of the fetch it is waiting on. The budget is long enough for
+    // the first request to reach fetch on a slow runner: at 50 ms a macOS runner spent
+    // it before dispatch, leaving no descendant to keep settlement pending.
+    const handle = instance.trackOperation(() => instance.projects.getAllProjects({ maxDurationMs: 1_000 }));
     expect(Object.keys(handle).sort()).toEqual(['result', 'settled']);
 
     let settled = false;
@@ -148,10 +150,12 @@ describe('F01 published driver qualification', () => {
     // The property under test is that result rejects while a descendant continues.
     await expect(handle.result).rejects.toThrow(/maxDurationMs|deadline exceeded/iu);
     await new Promise((resolve) => { setTimeout(resolve, 40); });
+    // The first request reached fetch before the deadline, and the rejected aggregate
+    // started no further upstream work. Checked first, so a budget spent before dispatch
+    // shows up as a missing request rather than as settlement that looks eager.
+    expect(fetches).toBe(1);
     // The descendant fetch is still in flight, so a rejected result is not settlement.
     expect(settled).toBe(false);
-    // The rejected aggregate must not start further upstream work.
-    expect(fetches).toBe(1);
 
     release();
     await expect(handle.settled).resolves.toBeUndefined();
