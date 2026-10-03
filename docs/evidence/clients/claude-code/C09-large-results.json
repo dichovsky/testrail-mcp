@@ -1,0 +1,135 @@
+{
+ "scenario": "C09",
+ "default_permissions": {
+  "session": "c09",
+  "client": "2.1.288",
+  "servers": [
+   {
+    "name": "testrail",
+    "status": "connected"
+   }
+  ],
+  "testrail_tools_listed": 133,
+  "calls": [
+   {
+    "tool": "ToolSearch",
+    "input": {
+     "query": "select:mcp__testrail__testrail_get_cases",
+     "max_results": 1
+    },
+    "is_error": false,
+    "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_get_cases\"}",
+    "result_chars": 76
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_cases",
+    "input": {
+     "project_id": 990900,
+     "_mcp": {
+      "pagination": "page"
+     }
+    },
+    "is_error": false,
+    "result": "Error: result (717,066 characters) exceeds maximum allowed tokens. Output has been saved to <host-saved-result> …",
+    "result_chars": 2362
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_cases",
+    "input": {
+     "project_id": 990901,
+     "_mcp": {
+      "pagination": "page"
+     }
+    },
+    "is_error": true,
+    "result": "{\"error\":{\"code\":\"RESPONSE_TOO_LARGE\",\"message\":\"The result exceeds the configured size budget; narrow the request.\"}}",
+    "result_chars": 118
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_cases",
+    "input": {
+     "project_id": 990901,
+     "_mcp": {
+      "pagination": "all"
+     }
+    },
+    "is_error": true,
+    "result": "{\"error\":{\"code\":\"PAGINATION_LIMIT\",\"message\":\"The aggregate stopped at a configured safety bound; no partial data is returned.\",\"reason\":\"max_bytes\",\"pages_fetched\":1,\"items_fetched\":50}}",
+    "result_chars": 188
+   },
+   {
+    "tool": "Bash",
+    "input": {
+     "command": "f=<host-saved-result> jq -c '{n:(.data|length), first:.data[0].id, last:.data[-1].id, pagination, warnings, keys:keys}' $f"
+    },
+    "is_error": true,
+    "result": "This command requires approval",
+    "result_chars": 30
+   },
+   {
+    "tool": "Read",
+    "input": {
+     "file_path": "<host-saved-result>",
+     "limit": 1
+    },
+    "is_error": true,
+    "result": "File content (707403 tokens) exceeds maximum allowed tokens (25000). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.",
+    "result_chars": 205
+   }
+  ],
+  "final": {
+   "subtype": "success",
+   "turns": 7,
+   "answer": "I only partly completed this. I couldn't read the result for call 1, and calls 2 and 3 both failed.\n\n**Call 1: project 990900, one page of cases**\n- The call returned data, but the response was about 717,066 characters. The tool saved it to a file instead of showing it to me.\n- I could not read that file. My `jq` command was blocked pending approval, and the Read tool refuses it because the whole file is one line of roughly 707k tokens.\n- So I can't give you the case count, the first and last case IDs, or the pagination information and warnings. I'd rather say that than guess. The file reports its pagination as `returned`, `has_more`, `limit` and `offset`, but I haven't seen the values.\n- The file is at `<host-saved-result>\n- If you approve a `jq` command, I can pull the count, first and last IDs, `pagination` and `warnings` from it without making another TestRail call.\n\n**Call 2: project 990901, one page**\nVerbatim response:\n```\n{\"error\":{\"code\":\"RESPONSE_TOO_LARGE\",\"message\":\"The result exceeds the configured size budget; narrow the request.\"}}\n```\n\n**Call 3: project 990901, complete read**\n- I passed `_mcp.pagination: \"all\"`. The tool's input schema only lists `\"page\"` as a valid value"
+  }
+ },
+ "jq_allowed": {
+  "session": "c09-jq",
+  "client": "2.1.288",
+  "servers": [
+   {
+    "name": "testrail",
+    "status": "connected"
+   }
+  ],
+  "testrail_tools_listed": 133,
+  "calls": [
+   {
+    "tool": "ToolSearch",
+    "input": {
+     "query": "select:mcp__testrail__testrail_get_cases",
+     "max_results": 1
+    },
+    "is_error": false,
+    "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_get_cases\"}",
+    "result_chars": 76
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_cases",
+    "input": {
+     "project_id": 990900,
+     "_mcp": {
+      "pagination": "page"
+     }
+    },
+    "is_error": false,
+    "result": "Error: result (717,066 characters) exceeds maximum allowed tokens. Output has been saved to <host-saved-result> …",
+    "result_chars": 2362
+   },
+   {
+    "tool": "Bash",
+    "input": {
+     "command": "F=<host-saved-result> jq -c 'keys, (.data|length), (.data[0].id), (.data[-1].id), .pagination, .warnings' $F"
+    },
+    "is_error": false,
+    "result": "[\"data\",\"pagination\"]\n50\n800000\n800049\n{\"mode\":\"page\",\"source\":\"envelope\",\"returned\":50,\"has_more\":false,\"manual_continuation\":false,\"next_action\":\"none\",\"limit\":50,\"offset\":0,\"driver\":{\"size\":50,\"links\":{\"next\":null,\"prev\":null}}}\nnull",
+    "result_chars": 236
+   }
+  ],
+  "final": {
+   "subtype": "success",
+   "turns": 4,
+   "answer": "I read the whole saved result (717,066 characters) with jq.\n\n- **Cases returned:** 50\n- **First case ID:** 800000\n- **Last case ID:** 800049\n- **Warnings:** none. The response has no `warnings` key, only `data` and `pagination`.\n\n**Pagination, in full:**\n```json\n{\"mode\":\"page\",\"source\":\"envelope\",\"returned\":50,\"has_more\":false,\"manual_continuation\":false,\"next_action\":\"none\",\"limit\":50,\"offset\":0,\"driver\":{\"size\":50,\"links\":{\"next\":null,\"prev\":null}}}\n```\n\n`has_more` is false and both `next` and `prev` links are null. That means the project has exactly 50 cases, or the server reported no further page. This one-page read can't tell those two apart."
+  }
+ }
+}

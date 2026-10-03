@@ -1,0 +1,26 @@
+{
+ "scenario": "C11",
+ "what": "Each headless session starts the server cold and ends it; the attachment restart is in C08.",
+ "sessions": 48,
+ "catalog_per_session": {
+  "133 tools, sha256 a423193aa71240cb0cca5bd0ed54c30fdadfdadb3d61ac297a9afb4afd111724, connected": 48
+ },
+ "server_processes": 53,
+ "server_ends": {
+  "exit code 0 after server_stopped": 52,
+  "other": 1
+ },
+ "not_finished": [
+  {
+   "session": "c10-cancel",
+   "last_events": [
+    "server_started",
+    "tool_call",
+    "server_stopping"
+   ],
+   "exit_recorded": null
+  }
+ ],
+ "orphans_after_all_sessions": "ps listed no testrail-mcp or recorder process once the sessions had ended.",
+ "note": "The one server not seen to finish is the interrupted session in C10: the host ended right after the interrupt, before the drain completed. No process remained."
+}

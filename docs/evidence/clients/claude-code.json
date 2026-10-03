@@ -2,96 +2,113 @@
   "schema_version": 1,
   "surface": "Claude Code",
   "client": {
-    "version": null,
-    "os": null,
-    "arch": null,
-    "node": null,
-    "model": null,
-    "provider": null
+    "version": "2.1.288",
+    "os": "Linux 6.18 (cloud container)",
+    "arch": "x86_64",
+    "node": "22.22.2, the server's runtime; the client is a native binary",
+    "model": "The client's default model on this account, not pinned",
+    "provider": "Anthropic API, reached from the container"
   },
   "server": {
-    "package_version": null,
-    "tarball_integrity": null,
-    "driver_version": null
+    "package_version": "0.1.0-dev.0, packed from commit 6b6021a",
+    "tarball_integrity": "sha512-izLV6SRxj4egICDGmHF/btRLwyO87vdHKLKfYpN3RF7Zo/IVcxOQkleScg0Txd2z2Tno53gpHs/kcTKiSVamQg==",
+    "driver_version": "7.2.0"
   },
   "settings": {
-    "config_scope": null,
-    "discovery_mode": null,
+    "config_scope": "An isolated --mcp-config file, used with --strict-mcp-config",
+    "discovery_mode": "Deferred: all 133 names listed at start, each schema loaded through ToolSearch before a call",
     "negotiated_revisions": {
-      "default": null,
-      "auto": null
+      "default": "2026-07-28",
+      "auto": "2026-07-28"
     },
-    "variables": []
+    "variables": [
+      "TESTRAIL_BASE_URL",
+      "TESTRAIL_EMAIL",
+      "TESTRAIL_API_KEY",
+      "TESTRAIL_ALLOW_INSECURE",
+      "TESTRAIL_ALLOW_PRIVATE_HOSTS",
+      "TESTRAIL_MCP_UPLOAD_ROOTS",
+      "TESTRAIL_MCP_DOWNLOAD_DIR",
+      "MCP_PROTOCOL_NEGOTIATION"
+    ]
   },
   "catalog": {
-    "count": null,
-    "sorted_names_sha256": null
+    "count": 133,
+    "sorted_names_sha256": "a423193aa71240cb0cca5bd0ed54c30fdadfdadb3d61ac297a9afb4afd111724"
   },
-  "provenance": null,
+  "provenance": "fixture_stand_in",
   "testrail_version": null,
-  "tested_on": null,
-  "tester": null,
+  "tested_on": "2026-10-03",
+  "tester": "A Claude Code agent session run for the repository owner, headless",
   "scenarios": {
     "C01": {
-      "status": "not_run",
-      "evidence": null,
-      "notes": null
+      "status": "pass",
+      "evidence": "docs/evidence/clients/claude-code/C01-cold-launch.json",
+      "notes": "Connected on a cold start and listed all 133 tools with the expected hash, by default and with MCP_PROTOCOL_NEGOTIATION=auto; both opened with a server/discover probe at 2026-07-28. The catalog script agrees in both eras with no TestRail request. Neither credential appears in any transcript or server output line."
     },
     "C02": {
-      "status": "not_run",
-      "evidence": null,
-      "notes": null
+      "status": "pass",
+      "evidence": "docs/evidence/clients/claude-code/C02-deferred-discovery.json",
+      "notes": "All 133 tools loaded through ToolSearch select: queries, seven of them, with no TestRail call."
     },
     "C03": {
-      "status": "not_run",
-      "evidence": null,
-      "notes": null
+      "status": "pass",
+      "evidence": "docs/evidence/clients/claude-code/C03-selection.json",
+      "notes": "All 28 tasks chose the intended tool first, with valid arguments and no tool error. 26 match the corpus arguments exactly; get_shared_steps added an explicit page mode, and get_roles asked for all roles. Ten sessions made follow-up calls: next pages, or reads that checked the stand-in's canned replies. None was a retry after an error."
     },
     "C04": {
-      "status": "not_run",
-      "evidence": null,
-      "notes": null
+      "status": "pass",
+      "evidence": "docs/evidence/clients/claude-code/C04-page-continuation.json",
+      "notes": "A get_cases page reached the model whole, about 18.6 KB, with its IDs, custom field, page boundary and continuation. For get_roles, which has no manual continuation, the model read manual_continuation false and next_action all, and did not try the raw link."
     },
     "C05": {
-      "status": "not_run",
-      "evidence": null,
-      "notes": null
+      "status": "pass",
+      "evidence": "docs/evidence/clients/claude-code/C05-fetch-all.json",
+      "notes": "A complete read returned 150 cases with complete true. The host moved the 55 KB result to a file, and the model read it there. Project 990045 stopped with PAGINATION_LIMIT, reason max_duration, after 3 pages, with no partial data, inside the 120-second client timeout."
     },
     "C06": {
-      "status": "not_run",
-      "evidence": null,
-      "notes": null
+      "status": "pass",
+      "evidence": "docs/evidence/clients/claude-code/C06-validation-drift.json",
+      "notes": "An unknown argument reached the server, got INVALID_ARGUMENT, and sent no TestRail request. Drift returned the data with a SCHEMA_DRIFT warning; an unusable reply returned INVALID_RESPONSE with no data. When the model wrote malformed JSON, the client refused it before the server."
     },
     "C07": {
-      "status": "not_run",
-      "evidence": null,
-      "notes": null
+      "status": "pass",
+      "evidence": "docs/evidence/clients/claude-code/C07-mutations.json",
+      "notes": "Create, update, bulk update, close and delete each used their own tool, schema and annotations, and each reached TestRail once. A 400 and a 500 both returned UPSTREAM_ERROR with write_outcome unknown, told apart by http_status. Neither host nor adapter retried."
     },
     "C08": {
-      "status": "not_run",
-      "evidence": null,
-      "notes": null
+      "status": "pass",
+      "evidence": "docs/evidence/clients/claude-code/C08-attachments.json",
+      "notes": "An upload inside the root succeeded; one outside it got FILE_ACCESS_DENIED with not_started and sent nothing. Repeated downloads wrote distinct 19-byte files that survived a restart. A 404 and a timed-out download left no file."
     },
     "C09": {
-      "status": "not_run",
-      "evidence": null,
-      "notes": null
+      "status": "pass",
+      "evidence": "docs/evidence/clients/claude-code/C09-large-results.json",
+      "notes": "A 717 KB page arrived whole in a file the host saved. The model read it fully with jq allowed, and could not without it. A 3 MB page returned RESPONSE_TOO_LARGE; the same list with all returned PAGINATION_LIMIT, reason max_bytes, with no partial data."
     },
     "C10": {
-      "status": "not_run",
-      "evidence": null,
-      "notes": null
+      "status": "pass",
+      "evidence": "docs/evidence/clients/claude-code/C10-timeout-cancellation.json",
+      "notes": "Five parallel calls to a 20-second reply: four held every slot and timed out at the driver's 15 seconds with TIMEOUT, and the fifth got BUSY at once with no request. An interrupt sent notifications/cancelled, which the server recorded as CANCELLED. The aggregate budget is in C05. That capacity returns after settlement is held by the server's tests, not observed here."
     },
     "C11": {
-      "status": "not_run",
-      "evidence": null,
-      "notes": null
+      "status": "pass",
+      "evidence": "docs/evidence/clients/claude-code/C11-restart.json",
+      "notes": "48 sessions each started the server cold and saw the same 133-tool catalog. 52 of 53 server processes stopped cleanly with exit code 0. The other was cut short by the host after the C10 interrupt. No process remained afterwards."
     },
     "C12": {
-      "status": "not_run",
-      "evidence": null,
-      "notes": null
+      "status": "pass",
+      "evidence": "docs/evidence/clients/claude-code/C12-coexistence.json",
+      "notes": "With the reference filesystem server connected too, TestRail still listed 133 tools beside its 14, with no name collision, and calls to both servers worked."
     }
   },
-  "limitations": []
+  "limitations": [
+    "Fixture stand-in only. No live TestRail was contacted, and the stand-in's canned replies do not echo the IDs asked for.",
+    "Headless sessions only (claude -p). The interactive /mcp view and the approval prompts were not exercised.",
+    "Results over 25,000 tokens are moved to a file. The server's result is one line of JSON, which the Read tool cannot page, so recovering a large result needs jq allowed or approved. Raising MAX_MCP_OUTPUT_TOKENS to 100000 did not bring a 54 KB result back inline.",
+    "The server ran under a recorder that passes stdio through unchanged, to read the negotiated revision, rather than being started directly.",
+    "The package is the development version, not a release, and the client model was not pinned.",
+    "One Linux container only; macOS and Windows were not tested.",
+    "Identical in-flight reads are coalesced by the driver, so five parallel reads of one ID sent one request."
+  ]
 }

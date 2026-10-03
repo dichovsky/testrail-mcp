@@ -1,0 +1,198 @@
+{
+ "scenario": "C05",
+ "complete_read_default_host_settings": {
+  "session": "c05-complete-default",
+  "client": "2.1.288",
+  "servers": [
+   {
+    "name": "testrail",
+    "status": "connected"
+   }
+  ],
+  "testrail_tools_listed": 133,
+  "calls": [
+   {
+    "tool": "ToolSearch",
+    "input": {
+     "query": "select:mcp__testrail__testrail_get_cases",
+     "max_results": 1
+    },
+    "is_error": false,
+    "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_get_cases\"}",
+    "result_chars": 76
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_cases",
+    "input": {
+     "project_id": 1,
+     "_mcp": {
+      "pagination": "all"
+     }
+    },
+    "is_error": false,
+    "result": "Error: result (55,136 characters) exceeds maximum allowed tokens. Output has been saved to <host-saved-result>\nFormat: JSON with schema: {data: [{...}], pagination: {mode: string, returned: number, complete:  …",
+    "result_chars": 2270
+   },
+   {
+    "tool": "Bash",
+    "input": {
+     "command": "f=<host-saved-result> jq -c '{n:(.data|length), first:.data[0].id, last:.data[-1].id, ids_sorted:([.data[].id]|(.==sort)), uniq:([.data[].id]|unique|length), pagination, keys:keys, warnings:.warnings}' $f"
+    },
+    "is_error": true,
+    "result": "This command requires approval",
+    "result_chars": 30
+   },
+   {
+    "tool": "Read",
+    "input": {
+     "file_path": "<host-saved-result>"
+    },
+    "is_error": false,
+    "result": "1\t{\"data\":[{\"id\":700000,\"title\":\"Print document history\",\"section_id\":5,\"template_id\":1,\"type_id\":2,\"priority_id\":4,\"milestone_id\":9,\"refs\":\"REQ-1\",\"created_by\":1,\"created_on\":1646317844,\"updated_by\":2,\"updated_on\":1647317844,\"estimate\":\"3m\",\"estimate_forecast\":\"8m 40s\",\"suite_id\":3,\"display_order\":1,\"is_deleted\":0,\"labels\":[{\"id\":11,\"title\":\"login\"}],\"custom_preconds\":null},{\"id\":700001,\"title\":\"Print document history\",\"section_id\":5,\"template_id\":1,\"type_id\":2,\"priority_id\":4,\"milestone_id\":9, …",
+    "result_chars": 44556
+   },
+   {
+    "tool": "Bash",
+    "input": {
+     "command": "tail -c 700 <host-saved-result>"
+    },
+    "is_error": false,
+    "result": "tone_id\":9,\"refs\":\"REQ-1\",\"created_by\":1,\"created_on\":1646317844,\"updated_by\":2,\"updated_on\":1647317844,\"estimate\":\"3m\",\"estimate_forecast\":\"8m 40s\",\"suite_id\":3,\"display_order\":1,\"is_deleted\":0,\"labels\":[{\"id\":11,\"title\":\"login\"}],\"custom_preconds\":null},{\"id\":700149,\"title\":\"Print document history\",\"section_id\":5,\"template_id\":1,\"type_id\":2,\"priority_id\":4,\"milestone_id\":9,\"refs\":\"REQ-1\",\"created_by\":1,\"created_on\":1646317844,\"updated_by\":2,\"updated_on\":1647317844,\"estimate\":\"3m\",\"estimate_for …",
+    "result_chars": 700
+   }
+  ],
+  "final": {
+   "subtype": "success",
+   "turns": 6,
+   "answer": "I fetched every page of project 1 with `_mcp.pagination: \"all\"`. The result was too big to display, so I read the saved output file directly.\n\n- **Total cases:** 150.\n- **First case ID:** 700000.\n- **Last case ID:** 700149.\n- **Complete:** Yes. The result reports `\"complete\": true`.\n- **Pagination information:** `{\"mode\":\"all\",\"returned\":150,\"complete\":true,\"start_offset\":0}`\n\nI read the start of the file (IDs 700000 to 700121, in sequence) and the end (up to 700149). I didn't read the section in between. The 150 count comes from the `returned` field. It matches a contiguous run of 700000 to 700149, but I didn't check that the middle has no gaps or duplicates.\n\nAll the cases I saw have the same content: \"Print document history\", suite 3, section 5. This looks like test or mock data."
+  }
+ },
+ "complete_read_first_attempt_ran_out_of_turns": {
+  "session": "c05-complete",
+  "final": {
+   "subtype": "error_max_turns",
+   "turns": 7,
+   "answer": "None"
+  }
+ },
+ "raised_MAX_MCP_OUTPUT_TOKENS_100000": {
+  "session": "c05-complete-raised",
+  "calls": [
+   {
+    "tool": "ToolSearch",
+    "input": {
+     "query": "select:mcp__testrail__testrail_get_cases",
+     "max_results": 1
+    },
+    "is_error": false,
+    "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_get_cases\"}",
+    "result_chars": 76
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_cases",
+    "input": {
+     "project_id": 1,
+     "query": {
+      "limit": 250
+     }
+    },
+    "is_error": false,
+    "result": "<persisted-output>\nOutput too large (54KB). Full output saved to: <host-saved-result> …",
+    "result_chars": 2408
+   },
+   {
+    "tool": "Bash",
+    "input": {
+     "command": "cd <host-saved-result> && python3 -c \"\nimport json,glob\nd=json.load(open(glob.glob('*.txt')[0]))\nx=d['data'];print(len(x),x[0]['id'],x[-1]['id']);print({k:v for k,v in d.items() if k!='data'})\""
+    },
+    "is_error": true,
+    "result": "This Bash command contains multiple operations. The following parts require approval: cd <host-saved-result> python3 -c '\nimport json,glob\nd=json.load(open(glob.glob('\\''*.txt'\\'' …",
+    "result_chars": 427
+   },
+   {
+    "tool": "Bash",
+    "input": {
+     "command": "python3 -c \"\nimport json\nd=json.load(open('<host-saved-result>'))\nx=d['data'];print(len(x),x[0]['id'],x[-1]['id']);print({k:v for k,v in d.items() if k!='data'})\""
+    },
+    "is_error": true,
+    "result": "This command requires approval",
+    "result_chars": 30
+   },
+   {
+    "tool": "Read",
+    "input": {
+     "file_path": "<host-saved-result>",
+     "offset": 1,
+     "limit": 5
+    },
+    "is_error": true,
+    "result": "File content (26353 tokens) exceeds maximum allowed tokens (25000). Use offset and limit parameters to read specific portions of the file, or search for specific content instead of reading the whole file.",
+    "result_chars": 204
+   },
+   {
+    "tool": "Bash",
+    "input": {
+     "command": "tail -c 600 <host-saved-result>"
+    },
+    "is_error": false,
+    "result": "custom_preconds\":null},{\"id\":700149,\"title\":\"Print document history\",\"section_id\":5,\"template_id\":1,\"type_id\":2,\"priority_id\":4,\"milestone_id\":9,\"refs\":\"REQ-1\",\"created_by\":1,\"created_on\":1646317844,\"updated_by\":2,\"updated_on\":1647317844,\"estimate\":\"3m\",\"estimate_forecast\":\"8m 40s\",\"suite_id\":3,\"dis …",
+    "result_chars": 600
+   },
+   {
+    "tool": "Bash",
+    "input": {
+     "command": "grep -o '\"id\":7[0-9]*,\"title\"' <host-saved-result> | wc -l"
+    },
+    "is_error": false,
+    "result": "150",
+    "result_chars": 3
+   }
+  ],
+  "final": {
+   "subtype": "error_max_turns",
+   "turns": 7,
+   "answer": "None"
+  }
+ },
+ "duration_budget": {
+  "session": "c05-budget",
+  "client": "2.1.288",
+  "servers": [
+   {
+    "name": "testrail",
+    "status": "connected"
+   }
+  ],
+  "testrail_tools_listed": 133,
+  "calls": [
+   {
+    "tool": "ToolSearch",
+    "input": {
+     "query": "select:mcp__testrail__testrail_get_cases",
+     "max_results": 1
+    },
+    "is_error": false,
+    "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_get_cases\"}",
+    "result_chars": 76
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_cases",
+    "input": {
+     "project_id": 990045,
+     "_mcp": {
+      "pagination": "all"
+     }
+    },
+    "is_error": true,
+    "result": "{\"error\":{\"code\":\"PAGINATION_LIMIT\",\"message\":\"The aggregate stopped at a configured safety bound; no partial data is returned.\",\"reason\":\"max_duration\",\"pages_fetched\":3,\"items_fetched\":750}}",
+    "result_chars": 192
+   }
+  ],
+  "final": {
+   "subtype": "success",
+   "turns": 3,
+   "answer": "The call failed, and I did not retry it.\n\n- **Call:** `testrail_get_cases` for project 990045, with `_mcp.pagination: \"all\"`.\n- **Succeeded:** No.\n- **Error code:** `PAGINATION_LIMIT`\n- **Message:** \"The aggregate stopped at a configured safety bound; no partial data is returned.\"\n- **Reason:** `max_duration`. The read hit the tool's configured time limit before it finished.\n- **Fetched before stopping:** 3 pages and 750 items. That matches 250 per page, the maximum page size.\n- **Partial data returned:** None. The 750 items were fetched but not handed back to me, so I have no case data.\n\nI can't say how many cases the project has in total, because the read stopped before the last page.\n\nTo get the data, I can read it in smaller pieces. For example, I can page manually with `limit` and `offset`, or filter by suite or section. Each of those would be a new call, so I'll wait for your go-ahead."
+  }
+ },
+ "stand_in_requests_for_slow_pages": 4
+}

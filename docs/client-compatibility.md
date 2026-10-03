@@ -10,7 +10,7 @@ The release targets local stdio connections from Codex desktop, Codex CLI, Claud
 | --- | --- | --- |
 | Codex desktop | App is available; build/version not recorded | Pending |
 | Codex CLI | Local read-only check reported `codex-cli 0.149.0` | Pending |
-| Claude Code | Executable is available; version not recorded | Pending |
+| Claude Code | 2.1.288 on Linux, run headless against the fixture stand-in | [Fixture run, 2026-10-03: 12 of 12 passed](evidence/clients/claude-code.json); live smoke pending |
 | GitHub Copilot CLI | Local read-only check reported `1.0.67` | Pending |
 
 An installed executable is not evidence of authentication, an available model, or compatibility. Before release, replace the pending results with records naming the exact client version/build, operating system, Node version, model/provider, relevant host settings, package version/integrity, driver version, negotiated MCP revision, test date, and evidence location. Codex desktop and CLI need separate records even when they share configuration. Do not promise support for every historical client version or every provider based on one successful run.

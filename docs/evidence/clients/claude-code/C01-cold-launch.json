@@ -1,0 +1,165 @@
+{
+ "scenario": "C01",
+ "what": "Cold launch with the isolated configuration; discovery of the full catalog; negotiation recorded from the stdio stream.",
+ "default_negotiation": {
+  "session": {
+   "session": "c01-default",
+   "client": "2.1.288",
+   "servers": [
+    {
+     "name": "testrail",
+     "status": "connected"
+    }
+   ],
+   "testrail_tools_listed": 133,
+   "calls": [],
+   "final": {
+    "subtype": "success",
+    "turns": 1,
+    "answer": "READY"
+   }
+  },
+  "host_catalog": {
+   "count": 133,
+   "sorted_names_sha256": "a423193aa71240cb0cca5bd0ed54c30fdadfdadb3d61ac297a9afb4afd111724"
+  },
+  "protocol": [
+   {
+    "messages": [
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:06:34.929Z",
+      "method": "server/discover",
+      "version": "2026-07-28"
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:06:35.689Z",
+      "id": "server-discover-probe-1",
+      "discover_result": [
+       "2026-07-28"
+      ]
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:06:35.718Z",
+      "method": "tools/list",
+      "version": "2026-07-28"
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:06:35.727Z",
+      "id": 0,
+      "tools_listed": 133
+     }
+    ],
+    "diagnostics": [
+     {
+      "event": "server_started",
+      "tools": 133
+     },
+     {
+      "event": "server_stopping"
+     },
+     {
+      "event": "server_stopped"
+     }
+    ],
+    "exit": {
+     "code": 0,
+     "signal": null
+    }
+   }
+  ]
+ },
+ "auto_negotiation": {
+  "variable": "MCP_PROTOCOL_NEGOTIATION=auto",
+  "session": {
+   "session": "c01-auto",
+   "client": "2.1.288",
+   "servers": [
+    {
+     "name": "testrail",
+     "status": "connected"
+    }
+   ],
+   "testrail_tools_listed": 133,
+   "calls": [],
+   "final": {
+    "subtype": "success",
+    "turns": 1,
+    "answer": "READY"
+   }
+  },
+  "host_catalog": {
+   "count": 133,
+   "sorted_names_sha256": "a423193aa71240cb0cca5bd0ed54c30fdadfdadb3d61ac297a9afb4afd111724"
+  },
+  "protocol": [
+   {
+    "messages": [
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:06:52.971Z",
+      "method": "server/discover",
+      "version": "2026-07-28"
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:06:53.616Z",
+      "id": "server-discover-probe-1",
+      "discover_result": [
+       "2026-07-28"
+      ]
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:06:53.679Z",
+      "method": "tools/list",
+      "version": "2026-07-28"
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:06:53.682Z",
+      "id": 0,
+      "tools_listed": 133
+     }
+    ],
+    "diagnostics": [
+     {
+      "event": "server_started",
+      "tools": 133
+     },
+     {
+      "event": "server_stopping"
+     },
+     {
+      "event": "server_stopped"
+     }
+    ],
+    "exit": {
+     "code": 0,
+     "signal": null
+    }
+   }
+  ]
+ },
+ "catalog_hash_script": {
+  "eras": {
+   "legacy": {
+    "protocol": "2025-11-25",
+    "count": 133,
+    "sorted_names_sha256": "a423193aa71240cb0cca5bd0ed54c30fdadfdadb3d61ac297a9afb4afd111724",
+    "duplicates": 0
+   },
+   "2026-07-28": {
+    "protocol": "2026-07-28",
+    "count": 133,
+    "sorted_names_sha256": "a423193aa71240cb0cca5bd0ed54c30fdadfdadb3d61ac297a9afb4afd111724",
+    "duplicates": 0
+   }
+  },
+  "testrail_requests": 0
+ },
+ "credentials_in_output": "The synthetic API key and email do not appear in any session transcript or server stdout line."
+}

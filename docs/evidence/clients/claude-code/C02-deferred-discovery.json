@@ -1,0 +1,58 @@
+{
+ "scenario": "C02",
+ "what": "Every one of the 133 tools loaded through the host discovery tool (ToolSearch select: queries), with no TestRail call.",
+ "probe_showing_deferral": {
+  "session": "c02-probe",
+  "client": "2.1.288",
+  "servers": [
+   {
+    "name": "testrail",
+    "status": "connected"
+   }
+  ],
+  "testrail_tools_listed": 133,
+  "calls": [
+   {
+    "tool": "ToolSearch",
+    "input": {
+     "query": "select:mcp__testrail__testrail_get_project",
+     "max_results": 1
+    },
+    "is_error": false,
+    "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_get_project\"}",
+    "result_chars": 78
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_project",
+    "input": {
+     "project_id": 1
+    },
+    "is_error": false,
+    "result": "{\"data\":{\"id\":7,\"name\":\"Fixture project\",\"announcement\":null,\"show_announcement\":false,\"is_completed\":false,\"completed_on\":null,\"suite_mode\":1,\"url\":\"https://fixture.testrail.test/index.php?/projects/overview/7\"}}",
+    "result_chars": 213
+   }
+  ],
+  "final": {
+   "subtype": "success",
+   "turns": 3,
+   "answer": "The project name is **\"Fixture project\"**.\n\nThe response looks off, though. I asked for project ID 1, and TestRail returned a project with ID 7 (`\"id\": 7`). I don't know why the IDs differ, so you may want to check that this is the project you meant."
+  }
+ },
+ "all_tools": {
+  "session": "c02-discovery",
+  "client": "2.1.288",
+  "servers": [
+   {
+    "name": "testrail",
+    "status": "connected"
+   }
+  ],
+  "testrail_tools_listed": 133,
+  "final": {
+   "subtype": "success",
+   "turns": 8,
+   "answer": "ToolSearch returned 133 distinct tools. I ran 7 `select:` queries of at most 20 names each, and every requested tool came back. I didn't call any TestRail tool."
+  },
+  "toolsearch_queries": 7
+ }
+}
