@@ -1860,7 +1860,7 @@ TestRail effect: `write`. Driver retry policy: `json-write`. Local file behavior
 
 ## testrail_add_result
 
-Record a result against a single TestRail test. The body needs at least one of status_id, comment or assignedto_id. status_id names the outcome and is what changes the test's status; a result with only a comment or only an assignee is recorded with a null status_id. Step results and other custom fields go in the body as flat custom_ properties. Use the bulk tool when recording results for several tests of one run. Required path arguments: test_id. Changes TestRail data.
+Record a result against a single TestRail test. The body needs at least one of status_id, comment or assignedto_id. status_id names the outcome and is what changes the test's status; a result without it is recorded with a null status_id. Step results and other custom fields go in the body as flat custom_ properties. Use the bulk tool when recording results for several tests of one run. Required path arguments: test_id. Changes TestRail data.
 
 REST: `POST add_result/{test_id}`. Driver: `results.addResult`. Family: T05.
 

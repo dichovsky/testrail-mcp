@@ -5,6 +5,7 @@ import { TestRailClient } from '@dichovsky/testrail-api-client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
+import { InputPaths } from '../../src/operations/input-paths.js';
 import { createRuntime } from '../../src/runtime/invocation.js';
 import { executeToolCall } from '../../src/transport/tool-call.js';
 
@@ -101,6 +102,27 @@ describe('T05 bulk result submission', () => {
       expect(error.write_outcome).toBe('acknowledged');
       expect(fetch).toHaveBeenCalledTimes(1);
     } finally { await runtime.shutdown(); }
+  });
+});
+
+/*
+ * The add bodies carry their "status, comment or assignee" rule as an anyOf beside their
+ * properties (#49). Every field stays a path of the advertised input, so a mapping or
+ * audit that walks into the body finds what a client may send.
+ */
+describe('T05 the advertised add-result bodies', () => {
+  it.each([
+    ['testrail_add_result', 'body'],
+    ['testrail_add_result_for_case', 'body'],
+    ['testrail_add_results', 'body.results[]'],
+    ['testrail_add_results_for_cases', 'body.results[]'],
+  ] as const)('keeps every field of %s reachable under its content rule', (tool, prefix) => {
+    const { jsonSchema } = operation(tool);
+    const paths = new InputPaths(jsonSchema);
+    for (const field of ['status_id', 'comment', 'assignedto_id', 'version', 'custom_step_results']) {
+      expect(paths.has(jsonSchema, `${prefix}.${field}`), field).toBe(true);
+    }
+    expect(paths.has(jsonSchema, `${prefix}.unexpected`)).toBe(false);
   });
 });
 

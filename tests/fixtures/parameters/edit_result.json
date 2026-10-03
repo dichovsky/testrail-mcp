@@ -34,7 +34,7 @@
     {
       "id": "driver-schema",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/results.ts",
-      "supports": "AddResultPayloadSchema requires status_id and accepts comment, version, elapsed, defects, assignedto_id and a custom_fields record. The bulk payloads wrap an array of the same fields under results, each entry additionally requiring test_id or case_id. EditResultPayloadSchema makes every field optional, declares custom_step_results outright and carries no custom_fields record; its refinement rejects an empty payload. None of these is parsed by the public method, which forwards the payload as given, so every payload rule is enforced at the MCP boundary alone."
+      "supports": "AddResultPayloadSchema declares status_id required and accepts comment, version, elapsed, defects, assignedto_id and a custom_fields record. The bulk payloads wrap an array of the same fields under results, each entry additionally requiring test_id or case_id. EditResultPayloadSchema makes every field optional, declares custom_step_results outright and carries no custom_fields record; its refinement rejects an empty payload. None of these is parsed by the public method, which forwards the payload as given, so every payload rule is enforced at the MCP boundary alone."
     },
     {
       "id": "driver-common",

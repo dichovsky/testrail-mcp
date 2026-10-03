@@ -8,6 +8,18 @@ export function isRecord(value: unknown): value is Schema {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** One alternative read with its siblings: their properties merged and their requirements joined. */
+function combine(siblings: Schema, alternative: Schema): Schema {
+  const combined: Schema = { ...siblings, ...alternative };
+  if (isRecord(siblings.properties) && isRecord(alternative.properties)) {
+    combined.properties = { ...siblings.properties, ...alternative.properties };
+  }
+  if (Array.isArray(siblings.required) && Array.isArray(alternative.required)) {
+    combined.required = [...new Set<unknown>([...siblings.required as unknown[], ...alternative.required as unknown[]])];
+  }
+  return combined;
+}
+
 /** Walk the emitted schema so mappings describe the input advertised to clients. */
 export class InputPaths {
   private readonly validator = new AjvJsonSchemaValidator();
@@ -27,10 +39,16 @@ export class InputPaths {
       if (target === undefined) throw new Error(`Unresolved input schema reference: ${schema.$ref}`);
       return this.variants(target, visited);
     }
-    const alternatives = schema.anyOf ?? schema.oneOf;
-    return Array.isArray(alternatives)
-      ? alternatives.flatMap((alternative) => this.variants(alternative, visited))
-      : [schema];
+    const { anyOf, oneOf, ...siblings } = schema;
+    const alternatives = anyOf ?? oneOf;
+    if (!Array.isArray(alternatives)) return [schema];
+    // anyOf and oneOf add a condition beside their sibling keywords rather than replacing
+    // them, so each alternative is read together with the properties and requirements
+    // declared next to it. A bare union keeps its alternatives as they are.
+    return alternatives.flatMap((alternative) => this.variants(
+      Object.keys(siblings).length === 0 || !isRecord(alternative) ? alternative : combine(siblings, alternative),
+      visited,
+    ));
   }
 
   private accepts(schema: unknown, value: unknown): boolean {

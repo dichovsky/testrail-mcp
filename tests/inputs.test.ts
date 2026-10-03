@@ -519,10 +519,17 @@ describe('the user email rule', () => {
    * and the widened write parses in the published-driver evidence.
    */
   it('is looser than the dotted format the pinned driver declares, and never applies, on writes', () => {
+    // The control: a dotted address passes both payloads, so each refusal below is the email's alone.
+    expect(UserAddPayloadSchema.safeParse({ name: 'Ada', email: 'ada@example.com' }).success).toBe(true);
+    expect(UserUpdatePayloadSchema.safeParse({ email: 'ada@example.com' }).success).toBe(true);
     for (const address of ['ada@corp', 'user@localhost', 'user@[10.0.0.1]']) {
       expect(emailSchema.safeParse(address).success, address).toBe(true);
-      expect(UserAddPayloadSchema.safeParse({ name: 'Ada', email: address }).success, address).toBe(false);
-      expect(UserUpdatePayloadSchema.safeParse({ email: address }).success, address).toBe(false);
+      for (const parsed of [
+        UserAddPayloadSchema.safeParse({ name: 'Ada', email: address }),
+        UserUpdatePayloadSchema.safeParse({ email: address }),
+      ]) {
+        expect(parsed.error?.issues.map((issue) => issue.path), address).toEqual([['email']]);
+      }
     }
   });
 });
