@@ -16,7 +16,7 @@ The first release: a local stdio MCP server for the complete TestRail 10.7.0 API
 - Uploads confined to configured directories and read through a staged copy, and downloads that always create a new, retained file.
 - At most four calls at a time, a 60-second response wait, and a call's slot held until its TestRail request has really finished.
 - Configuration from the launch environment only, with a startup error that names the variable and never its value.
-- The pinned, qualified driver `@dichovsky/testrail-api-client` 7.2.0.
+- The pinned, qualified driver `@dichovsky/testrail-api-client` 8.0.0, and with it a Node 24 or later requirement.
 
 ### Verification
 

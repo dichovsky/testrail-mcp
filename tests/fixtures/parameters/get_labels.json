@@ -3,10 +3,22 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "7.2.0",
-    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "driver_version": "8.0.0",
+    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-09-20"
+    "reviewed_on": "2026-10-03",
+    "evidence": [
+      {
+        "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/labels.ts", "changed": false },
+          { "path": "src/schemas/labels.ts", "changed": false },
+          { "path": "src/modules/paginated-list.ts", "changed": true, "note": "Changed between the releases: the page request's transport carries the aggregate's intent in place of bypassCache and remainingTimeMs. Which controls are appended, the page and list schemas, and the options each helper copies are unchanged, so the claims cited here stand." },
+          { "path": "src/pagination.ts", "changed": true, "note": "Changed between the releases: an aggregate's page request carries intent 'fresh-read' in place of bypassCache and remainingTimeMs, and a request-budget expiry is reported as max_duration even when the wall clock disagrees. The bounds, defaults, decodePage and stop conditions cited here are unchanged." },
+          { "path": "src/url.ts", "changed": false }
+        ]
+      }
+    ]
   },
   "endpoint": {
     "family_id": "T07",
@@ -18,27 +30,27 @@
   "sources": [
     {
       "id": "driver-module-labels",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/labels.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/labels.ts",
       "supports": "Every method validates its identifier and places it as the only path segment of the matching endpoint. updateLabel additionally validates payload.project_id, and deleteLabels checks that label_ids is a non-empty array and validates every member, so those two payload rules are the driver's rather than the boundary's alone. The reads parse against LabelSchema, the two writes against LabelWriteResponseSchema, and the two deletes pass no schema and resolve with no value."
     },
     {
       "id": "driver-schema-labels",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/labels.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/labels.ts",
       "supports": "LabelSchema carries id, title, name, created_by and created_on, with created_by a union of number and string because the reference quotes it while leaving created_on unquoted. LabelWriteResponseSchema is a union of that flat label and an object wrapping it under a label key, which it transforms to the flat form, so a mutation resolves with one shape whichever TestRail sends. AddLabelPayloadSchema carries a required title, and its comment records that TestRail's 20-character cap is deliberately left to the server. UpdateLabelPayloadSchema requires a positive project_id and a title. DeleteLabelsPayloadSchema requires a non-empty array of positive label_ids."
     },
     {
       "id": "driver-paginated-list",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/paginated-list.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/paginated-list.ts",
       "supports": "The shared executor issues the page request with the caller's controls, and the all helper walks the envelope's next link under the supplied bounds."
     },
     {
       "id": "driver-pagination",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/pagination.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/pagination.ts",
       "supports": "The aggregate bounds maxItems, maxPages, maxBytes and maxDurationMs stop the walk and are never serialized upstream."
     },
     {
       "id": "driver-url",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/url.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/url.ts",
       "supports": "Query parameters are appended path-style after the endpoint token, each value percent encoded."
     },
     {

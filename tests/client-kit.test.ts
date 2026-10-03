@@ -266,10 +266,23 @@ describe('the client evidence records', () => {
     expect(records.flatMap(({ slug, record }) => unsupported(record).map((problem) => `${slug}: ${problem}`))).toEqual([]);
   });
 
+  /** The record as committed before any run: every field empty, so a test states only what it sets. */
+  const unrun = (record: ClientRecord): ClientRecord => {
+    for (const id of SCENARIOS) record.scenarios[id] = { status: 'not_run', evidence: null, notes: null };
+    record.client = { version: null, os: null, arch: null, node: null, model: null, provider: null };
+    record.server = { package_version: null, tarball_integrity: null, driver_version: null };
+    const auto = 'auto' in record.settings.negotiated_revisions ? { auto: null } : {};
+    record.settings = { config_scope: null, discovery_mode: null, negotiated_revisions: { default: null, ...auto }, variables: [] };
+    record.catalog = { count: null, sorted_names_sha256: null };
+    Object.assign(record, { provenance: null, testrail_version: null, tested_on: null, tester: null, limitations: [] });
+    return record;
+  };
+
   /** A Claude Code record of a full, clean C01 pass, which every rule accepts. */
   const complete = (): ClientRecord => {
-    const record = structuredClone(records.find(({ record: candidate }) => candidate.surface === 'Claude Code')?.record);
-    if (record === undefined) throw new Error('no Claude Code record');
+    const found = records.find(({ record: candidate }) => candidate.surface === 'Claude Code')?.record;
+    if (found === undefined) throw new Error('no Claude Code record');
+    const record = unrun(structuredClone(found));
     record.client = { version: '2.1.0', os: 'macOS 15', arch: 'arm64', node: '24.1.0', model: 'a model', provider: 'a provider' };
     record.server = { package_version: '1.0.0', tarball_integrity: `sha512-${'A'.repeat(86)}==`, driver_version: '7.2.0' };
     record.settings = { config_scope: 'user', discovery_mode: 'automatic', negotiated_revisions: { default: 'legacy', auto: '2026-07-28' }, variables: ['TESTRAIL_BASE_URL', 'MCP_PROTOCOL_NEGOTIATION'] };
@@ -288,8 +301,9 @@ describe('the client evidence records', () => {
 
   it('accept a complete record, and a blocked surface that says when, who, which client and why', () => {
     expect(unsupported(complete())).toEqual([]);
-    const blocked = structuredClone(records[0]?.record);
-    if (blocked === undefined) throw new Error('no records');
+    const first = records[0]?.record;
+    if (first === undefined) throw new Error('no records');
+    const blocked = unrun(structuredClone(first));
     blocked.scenarios.C01 = { status: 'blocked', evidence: null, notes: 'No supported model on this account.' };
     Object.assign(blocked, { tested_on: '2026-10-01', tester: 'a tester' });
     Object.assign(blocked.client, { version: '1.0.67', os: 'Linux' });

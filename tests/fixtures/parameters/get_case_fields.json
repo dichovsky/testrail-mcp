@@ -3,10 +3,19 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "7.2.0",
-    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "driver_version": "8.0.0",
+    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-09-26"
+    "reviewed_on": "2026-10-03",
+    "evidence": [
+      {
+        "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/metadata.ts", "changed": false },
+          { "path": "src/schemas/metadata.ts", "changed": false }
+        ]
+      }
+    ]
   },
   "endpoint": {
     "family_id": "T10",
@@ -18,12 +27,12 @@
   "sources": [
     {
       "id": "driver-module-metadata",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/metadata.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/metadata.ts",
       "supports": "getVersion, getStatuses, getPriorities, getResultFields, getCaseFields and getCaseTypes each take no argument and issue one GET to their own endpoint with no path segment, query or body, parsing the reply with the matching schema. getDynamicFilterFields and getTemplates validate the project identifier with validateId and place it as the only path segment. None of them consults another endpoint first, so no call here triggers a version or capability request of its own."
     },
     {
       "id": "driver-schema-metadata",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/metadata.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/metadata.ts",
       "supports": "CaseFieldSchema and ResultFieldSchema require id, system_name, label, name, type_id, display_order, configs, is_active, include_all and template_ids, and admit a nullish description, i18n_custom_id and is_system, the last as a boolean or 0 or 1 because older responses encode it as an integer; CaseFieldSchema also admits a nullish is_indexed. Each config carries a nullish string id, a context whose is_global is a boolean and whose project_ids admits an array of numbers, a string, null or absence, and options whose is_required is a boolean beside nullish default_value, items (a string or an array), format, rows and the step toggles has_expected, has_actual, has_additional and has_reference. The comments record why project_ids is that wide: TestRail sends null or an empty string for a global field, and the normalization that once rewrote those to an empty array was removed, so the parsed shape is the wire shape. Every object is passthrough, so unmodelled keys survive parsing."
     },
     {

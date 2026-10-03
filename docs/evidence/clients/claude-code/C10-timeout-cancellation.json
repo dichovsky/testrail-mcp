@@ -1,0 +1,698 @@
+{
+ "scenario": "C10",
+ "five_parallel_slow_calls": {
+  "session": {
+   "session": "c10-busy",
+   "client": "2.1.288",
+   "servers": [
+    {
+     "name": "testrail",
+     "status": "connected"
+    }
+   ],
+   "testrail_tools_listed": 133,
+   "calls": [
+    {
+     "tool": "ToolSearch",
+     "input": {
+      "query": "select:mcp__testrail__testrail_get_project",
+      "max_results": 1
+     },
+     "is_error": false,
+     "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_get_project\"}",
+     "result_chars": 78
+    },
+    {
+     "tool": "mcp__testrail__testrail_get_project",
+     "input": {
+      "project_id": 990020
+     },
+     "is_error": true,
+     "result": "{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}",
+     "result_chars": 103
+    },
+    {
+     "tool": "mcp__testrail__testrail_get_project",
+     "input": {
+      "project_id": 990020
+     },
+     "is_error": true,
+     "result": "{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}",
+     "result_chars": 103
+    },
+    {
+     "tool": "mcp__testrail__testrail_get_project",
+     "input": {
+      "project_id": 990020
+     },
+     "is_error": true,
+     "result": "{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}",
+     "result_chars": 103
+    },
+    {
+     "tool": "mcp__testrail__testrail_get_project",
+     "input": {
+      "project_id": 990020
+     },
+     "is_error": true,
+     "result": "{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}",
+     "result_chars": 103
+    },
+    {
+     "tool": "mcp__testrail__testrail_get_project",
+     "input": {
+      "project_id": 990020
+     },
+     "is_error": true,
+     "result": "{\"error\":{\"code\":\"BUSY\",\"message\":\"No capacity is available; no request was sent.\"}}",
+     "result_chars": 84
+    }
+   ],
+   "final": {
+    "subtype": "success",
+    "turns": 7,
+    "answer": "I issued the five `testrail_get_project` calls in parallel in one step, all with `project_id` 990020. None of them returned project data, and I did not retry.\n\nResponses, verbatim:\n\n1. `{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}`\n2. `{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}`\n3. `{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}`\n4. `{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}`\n5. `{\"error\":{\"code\":\"BUSY\",\"message\":\"No capacity is available; no request was sent.\"}}`\n\n**Duration:** I can't give you a time for the step. The tool results carry no timing information and I have no clock to measure it with.\n\nThe first four calls timed out, and the fixture may still be processing them. The fifth was rejected as BUSY, and the message says no request was sent for it. `get_project` only reads data, so none of these should have changed anything in TestRail."
+   }
+  },
+  "protocol": [
+   {
+    "messages": [
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:17:13.882Z",
+      "method": "server/discover",
+      "version": "2026-07-28"
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:17:14.443Z",
+      "id": "server-discover-probe-1",
+      "discover_result": [
+       "2026-07-28"
+      ]
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:17:14.458Z",
+      "method": "tools/list",
+      "version": "2026-07-28"
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:17:14.463Z",
+      "id": 0,
+      "tools_listed": 133
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:17:19.109Z",
+      "method": "tools/call",
+      "version": "2026-07-28",
+      "tool": "testrail_get_project"
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:17:19.546Z",
+      "method": "tools/call",
+      "version": "2026-07-28",
+      "tool": "testrail_get_project"
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:17:19.546Z",
+      "method": "tools/call",
+      "version": "2026-07-28",
+      "tool": "testrail_get_project"
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:17:19.549Z",
+      "method": "tools/call",
+      "version": "2026-07-28",
+      "tool": "testrail_get_project"
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:17:19.675Z",
+      "method": "tools/call",
+      "version": "2026-07-28",
+      "tool": "testrail_get_project"
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:17:19.679Z",
+      "id": 5,
+      "structured": {
+       "error": {
+        "code": "BUSY",
+        "message": "No capacity is available; no request was sent."
+       }
+      }
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:17:34.121Z",
+      "id": 1,
+      "structured": {
+       "error": {
+        "code": "TIMEOUT",
+        "message": "The response wait expired; upstream work may still be running."
+       }
+      }
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:17:34.121Z",
+      "id": 2,
+      "structured": {
+       "error": {
+        "code": "TIMEOUT",
+        "message": "The response wait expired; upstream work may still be running."
+       }
+      }
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:17:34.121Z",
+      "id": 3,
+      "structured": {
+       "error": {
+        "code": "TIMEOUT",
+        "message": "The response wait expired; upstream work may still be running."
+       }
+      }
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:17:34.121Z",
+      "id": 4,
+      "structured": {
+       "error": {
+        "code": "TIMEOUT",
+        "message": "The response wait expired; upstream work may still be running."
+       }
+      }
+     }
+    ],
+    "diagnostics": [
+     {
+      "event": "server_started",
+      "tools": 133
+     },
+     {
+      "event": "tool_call",
+      "correlation": "e7c15a7d-e2bd-4268-8124-b3feeb00d4b7",
+      "tool": "testrail_get_project",
+      "outcome": "error",
+      "code": "BUSY",
+      "duration_ms": 0
+     },
+     {
+      "event": "tool_call",
+      "correlation": "d046909e-9d43-4dbf-8006-7e72b0fa6f80",
+      "tool": "testrail_get_project",
+      "outcome": "error",
+      "code": "TIMEOUT",
+      "duration_ms": 15006
+     },
+     {
+      "event": "tool_call",
+      "correlation": "85009f3a-faae-42c0-9a37-8bcff0809fcb",
+      "tool": "testrail_get_project",
+      "outcome": "error",
+      "code": "TIMEOUT",
+      "duration_ms": 14573
+     },
+     {
+      "event": "tool_call",
+      "correlation": "3bbeb692-02ef-4dfe-ac80-6767a8670ab7",
+      "tool": "testrail_get_project",
+      "outcome": "error",
+      "code": "TIMEOUT",
+      "duration_ms": 14572
+     },
+     {
+      "event": "tool_call",
+      "correlation": "a2e1b03a-dd07-493c-ac37-1b8c4fe91c71",
+      "tool": "testrail_get_project",
+      "outcome": "error",
+      "code": "TIMEOUT",
+      "duration_ms": 14570
+     },
+     {
+      "event": "server_stopping"
+     },
+     {
+      "event": "server_stopped"
+     }
+    ],
+    "exit": {
+     "code": 0,
+     "signal": null
+    }
+   }
+  ],
+  "stand_in_requests": [
+   {
+    "method": "GET",
+    "endpoint": "get_project/990020",
+    "status": 200,
+    "abandoned": true
+   }
+  ],
+  "note": "The four admitted reads of one ID shared one driver request, which the stand-in logged as abandoned; their TIMEOUT replies left together, at one shared 15-second driver timeout. The fifth call got BUSY and sent nothing."
+ },
+ "capacity_after_settlement": {
+  "session": {
+   "session": "c10-release",
+   "client": "2.1.288",
+   "servers": [
+    {
+     "name": "testrail",
+     "status": "connected"
+    }
+   ],
+   "testrail_tools_listed": 133,
+   "calls": [
+    {
+     "tool": "ToolSearch",
+     "input": {
+      "query": "select:mcp__testrail__testrail_get_project",
+      "max_results": 1
+     },
+     "is_error": false,
+     "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_get_project\"}",
+     "result_chars": 78
+    },
+    {
+     "tool": "mcp__testrail__testrail_get_project",
+     "input": {
+      "project_id": 990020
+     },
+     "is_error": true,
+     "result": "{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}",
+     "result_chars": 103
+    },
+    {
+     "tool": "mcp__testrail__testrail_get_project",
+     "input": {
+      "project_id": 990020
+     },
+     "is_error": true,
+     "result": "{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}",
+     "result_chars": 103
+    },
+    {
+     "tool": "mcp__testrail__testrail_get_project",
+     "input": {
+      "project_id": 990020
+     },
+     "is_error": true,
+     "result": "{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}",
+     "result_chars": 103
+    },
+    {
+     "tool": "mcp__testrail__testrail_get_project",
+     "input": {
+      "project_id": 990020
+     },
+     "is_error": true,
+     "result": "{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}",
+     "result_chars": 103
+    },
+    {
+     "tool": "mcp__testrail__testrail_get_project",
+     "input": {
+      "project_id": 990020
+     },
+     "is_error": true,
+     "result": "{\"error\":{\"code\":\"BUSY\",\"message\":\"No capacity is available; no request was sent.\"}}",
+     "result_chars": 84
+    },
+    {
+     "tool": "Bash",
+     "input": {
+      "command": "sleep 12",
+      "description": "Sleep 12 seconds"
+     },
+     "is_error": false,
+     "result": "(Bash completed with no output)",
+     "result_chars": 31
+    },
+    {
+     "tool": "mcp__testrail__testrail_get_project",
+     "input": {
+      "project_id": 1
+     },
+     "is_error": false,
+     "result": "{\"data\":{\"id\":7,\"name\":\"Fixture project\",\"announcement\":null,\"show_announcement\":false,\"is_completed\":false,\"completed_on\":null,\"suite_mode\":1,\"url\":\"https://fixture.testrail.test/index.php?/projects/ …",
+     "result_chars": 213
+    }
+   ],
+   "final": {
+    "subtype": "success",
+    "turns": 9,
+    "answer": "All three steps ran. Responses are verbatim.\n\n**Step 1: five parallel `testrail_get_project` calls with project_id 990020, no retries**\n1. `{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}`\n2. `{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}`\n3. `{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}`\n4. `{\"error\":{\"code\":\"TIMEOUT\",\"message\":\"The response wait expired; upstream work may still be running.\"}}`\n5. `{\"error\":{\"code\":\"BUSY\",\"message\":\"No capacity is available; no request was sent.\"}}`\n\n**Step 2: `sleep 12`**\nThe command completed with no output.\n\n**Step 3: `testrail_get_project` with project_id 1**\n`{\"data\":{\"id\":7,\"name\":\"Fixture project\",\"announcement\":null,\"show_announcement\":false,\"is_completed\":false,\"completed_on\":null,\"suite_mode\":1,\"url\":\"https://fixture.testrail.test/index.php?/projects/overview/7\"}}`\n\n- **Project ID mismatch:** I requested project_id 1, but the response has `\"id\":7`. I'm reporting it as returned.\n- **Fifth call never sent:** it returned `BUSY`, which means no request was sent. The other four timed out, and their upstream work may still have been running."
+   }
+  },
+  "protocol": [
+   {
+    "messages": [
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:42:43.587Z",
+      "method": "server/discover",
+      "version": "2026-07-28"
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:42:44.121Z",
+      "id": "server-discover-probe-1",
+      "discover_result": [
+       "2026-07-28"
+      ]
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:42:44.135Z",
+      "method": "tools/list",
+      "version": "2026-07-28"
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:42:44.140Z",
+      "id": 0,
+      "tools_listed": 133
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:42:47.127Z",
+      "method": "tools/call",
+      "version": "2026-07-28",
+      "tool": "testrail_get_project"
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:42:47.469Z",
+      "method": "tools/call",
+      "version": "2026-07-28",
+      "tool": "testrail_get_project"
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:42:47.469Z",
+      "method": "tools/call",
+      "version": "2026-07-28",
+      "tool": "testrail_get_project"
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:42:47.604Z",
+      "method": "tools/call",
+      "version": "2026-07-28",
+      "tool": "testrail_get_project"
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:42:47.750Z",
+      "method": "tools/call",
+      "version": "2026-07-28",
+      "tool": "testrail_get_project"
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:42:47.754Z",
+      "id": 5,
+      "structured": {
+       "error": {
+        "code": "BUSY",
+        "message": "No capacity is available; no request was sent."
+       }
+      }
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:43:02.141Z",
+      "id": 1,
+      "structured": {
+       "error": {
+        "code": "TIMEOUT",
+        "message": "The response wait expired; upstream work may still be running."
+       }
+      }
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:43:02.142Z",
+      "id": 2,
+      "structured": {
+       "error": {
+        "code": "TIMEOUT",
+        "message": "The response wait expired; upstream work may still be running."
+       }
+      }
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:43:02.142Z",
+      "id": 3,
+      "structured": {
+       "error": {
+        "code": "TIMEOUT",
+        "message": "The response wait expired; upstream work may still be running."
+       }
+      }
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:43:02.142Z",
+      "id": 4,
+      "structured": {
+       "error": {
+        "code": "TIMEOUT",
+        "message": "The response wait expired; upstream work may still be running."
+       }
+      }
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:43:16.950Z",
+      "method": "tools/call",
+      "version": "2026-07-28",
+      "tool": "testrail_get_project"
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:43:16.968Z",
+      "id": 6,
+      "structured": {
+       "data": {
+        "id": 7,
+        "name": "Fixture project",
+        "announcement": null,
+        "show_announcement": false,
+        "is_completed": false,
+        "completed_on": null,
+        "suite_mode": 1,
+        "url": "https://fixture.testrail.test/index.php?/projects/overview/7"
+       }
+      }
+     }
+    ],
+    "diagnostics": [
+     {
+      "event": "server_started",
+      "tools": 133
+     },
+     {
+      "event": "tool_call",
+      "correlation": "a658d241-0cbc-4105-a4d1-906357e488d2",
+      "tool": "testrail_get_project",
+      "outcome": "error",
+      "code": "BUSY",
+      "duration_ms": 1
+     },
+     {
+      "event": "tool_call",
+      "correlation": "0c86280b-53be-410b-9176-e4e5d91a918a",
+      "tool": "testrail_get_project",
+      "outcome": "error",
+      "code": "TIMEOUT",
+      "duration_ms": 15010
+     },
+     {
+      "event": "tool_call",
+      "correlation": "c21d6df4-51d0-482e-b595-ae3be9cacca9",
+      "tool": "testrail_get_project",
+      "outcome": "error",
+      "code": "TIMEOUT",
+      "duration_ms": 14670
+     },
+     {
+      "event": "tool_call",
+      "correlation": "cb5a6ca0-9699-4573-9495-45393f8e6571",
+      "tool": "testrail_get_project",
+      "outcome": "error",
+      "code": "TIMEOUT",
+      "duration_ms": 14669
+     },
+     {
+      "event": "tool_call",
+      "correlation": "73c64197-dab3-42e5-a5f1-5e68c723d80e",
+      "tool": "testrail_get_project",
+      "outcome": "error",
+      "code": "TIMEOUT",
+      "duration_ms": 14536
+     },
+     {
+      "event": "tool_call",
+      "correlation": "62b20534-5d8e-4d39-9640-10990327075e",
+      "tool": "testrail_get_project",
+      "outcome": "success",
+      "duration_ms": 17,
+      "warnings": 0
+     },
+     {
+      "event": "server_stopping"
+     },
+     {
+      "event": "server_stopped"
+     }
+    ],
+    "exit": {
+     "code": 0,
+     "signal": null
+    }
+   }
+  ],
+  "stand_in_requests": [
+   {
+    "method": "GET",
+    "endpoint": "get_project/990020",
+    "status": 200,
+    "abandoned": true
+   },
+   {
+    "method": "GET",
+    "endpoint": "get_project/1",
+    "status": 200,
+    "abandoned": false
+   }
+  ],
+  "note": "The same five calls, then a 12-second sleep, then an ordinary call: about 30 seconds after the slow calls began, once the stand-in had sent its 20-second replies, the call was admitted and answered."
+ },
+ "interrupt": {
+  "mechanism": "The session ran with --input-format stream-json, the Agent SDK input channel, and was sent the SDK control message {\"type\":\"control_request\",\"request\":{\"subtype\":\"interrupt\"}} about four seconds after the call began.",
+  "session": {
+   "session": "c10-cancel2",
+   "client": "2.1.288",
+   "servers": [
+    {
+     "name": "testrail",
+     "status": "connected"
+    }
+   ],
+   "testrail_tools_listed": 133,
+   "calls": [
+    {
+     "tool": "ToolSearch",
+     "input": {
+      "query": "select:mcp__testrail__testrail_get_project",
+      "max_results": 1
+     },
+     "is_error": false,
+     "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_get_project\"}",
+     "result_chars": 78
+    },
+    {
+     "tool": "mcp__testrail__testrail_get_project",
+     "input": {
+      "project_id": 990020
+     },
+     "is_error": true,
+     "result": "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.",
+     "result_chars": 225
+    }
+   ],
+   "final": {
+    "subtype": "error_during_execution",
+    "turns": 4,
+    "answer": "None"
+   }
+  },
+  "protocol": [
+   {
+    "messages": [
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:43:31.266Z",
+      "method": "server/discover",
+      "version": "2026-07-28"
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:43:31.888Z",
+      "id": "server-discover-probe-1",
+      "discover_result": [
+       "2026-07-28"
+      ]
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:43:31.903Z",
+      "method": "tools/list",
+      "version": "2026-07-28"
+     },
+     {
+      "dir": "out",
+      "at": "2026-10-03T19:43:31.908Z",
+      "id": 0,
+      "tools_listed": 133
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:43:34.582Z",
+      "method": "tools/call",
+      "version": "2026-07-28",
+      "tool": "testrail_get_project"
+     },
+     {
+      "dir": "in",
+      "at": "2026-10-03T19:43:38.466Z",
+      "method": "notifications/cancelled",
+      "version": "2026-07-28",
+      "requestId": 1
+     }
+    ],
+    "diagnostics": [
+     {
+      "event": "server_started",
+      "tools": 133
+     },
+     {
+      "event": "tool_call",
+      "correlation": "d3549c09-70f5-41c3-861e-d3ff05e400df",
+      "tool": "testrail_get_project",
+      "outcome": "error",
+      "code": "CANCELLED",
+      "duration_ms": 3884
+     },
+     {
+      "event": "server_stopping"
+     }
+    ],
+    "exit": null
+   }
+  ],
+  "stand_in_requests": [
+   {
+    "method": "GET",
+    "endpoint": "get_project/990020",
+    "status": 200,
+    "abandoned": true
+   }
+  ],
+  "note": "The host sent notifications/cancelled for the call, the server recorded it as CANCELLED, and the stand-in logged the request as abandoned. The host then ended the headless session before the server finished its drain. An earlier interrupt run, c10-cancel, behaved the same way, but its stand-in line was not captured."
+ },
+ "aggregate_budget": "See C05-fetch-all.json: PAGINATION_LIMIT with reason max_duration after 3 pages, 45.0 seconds after the call reached the server."
+}

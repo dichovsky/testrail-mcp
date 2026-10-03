@@ -1,0 +1,200 @@
+{
+ "scenario": "C06",
+ "drift_and_unusable": {
+  "session": "c06",
+  "client": "2.1.288",
+  "servers": [
+   {
+    "name": "testrail",
+    "status": "connected"
+   }
+  ],
+  "testrail_tools_listed": 133,
+  "calls": [
+   {
+    "tool": "ToolSearch",
+    "input": {
+     "query": "select:mcp__testrail__testrail_get_project",
+     "max_results": 1
+    },
+    "is_error": false,
+    "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_get_project\"}",
+    "result_chars": 78
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_project",
+    "input": {
+     "__unparsedToolInput": {
+      "raw": "{\"project_id\": seven}",
+      "len": 21
+     }
+    },
+    "is_error": true,
+    "result": "<tool_use_error>InputValidationError: mcp__testrail__testrail_get_project was called with input that could not be parsed as JSON.\nYou sent (first 21 of 21 bytes): {\"project_id\": seven}\nCommon causes: unescaped backslashes in file paths (use / or \\\\), unescaped control characters, or truncated output. Retry with valid JSON.</tool_use_error>",
+    "result_chars": 341
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_project",
+    "input": {
+     "project_id": 990001
+    },
+    "is_error": false,
+    "result": "{\"data\":{\"id\":\"7\",\"name\":42,\"announcement\":null,\"show_announcement\":false,\"is_completed\":false,\"completed_on\":null,\"suite_mode\":\"1\",\"url\":42},\"warnings\":[{\"code\":\"SCHEMA_DRIFT\",\"count\":4}]}",
+    "result_chars": 189
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_project",
+    "input": {
+     "project_id": 990002
+    },
+    "is_error": true,
+    "result": "{\"error\":{\"code\":\"INVALID_RESPONSE\",\"message\":\"The TestRail response could not be used.\"}}",
+    "result_chars": 90
+   }
+  ],
+  "final": {
+   "subtype": "success",
+   "turns": 5,
+   "answer": "I made all three calls once each and didn't retry any. Call 1 never reached TestRail.\n\n**Call 1: `testrail_get_project` with project_id \"seven\"**\n- Response, verbatim:\n```\n<tool_use_error>InputValidationError: mcp__testrail__testrail_get_project was called with input that could not be parsed as JSON.\nYou sent (first 21 of 21 bytes): {\"project_id\": seven}\nCommon causes: unescaped backslashes in file paths (use / or \\\\), unescaped control characters, or truncated output. Retry with valid JSON.</tool_use_error>\n```\n- Data: none came back.\n- Warning or error code: there was no warning and no TestRail error code. The input failed JSON parsing before it was sent. The schema also requires an integer for `project_id`, so a string would have been rejected anyway.\n\n**Call 2: `testrail_get_project` with project_id 990001**\n- Response, verbatim:\n```\n{\"data\":{\"id\":\"7\",\"name\":42,\"announcement\":null,\"show_announcement\":false,\"is_completed\":false,\"completed_on\":null,\"suite_mode\":\"1\",\"url\":42},\"warnings\":[{\"code\":\"SCHEMA_DRIFT\",\"count\":4}]}\n```\n- Data: yes, a project object came back. Some fields look off: `id` and `suite_mode` are strings, and `name` and `url` are the number 42.\n- Warning: yes, `SCHEMA_DRIFT` with a count of 4. There was no error code.\n\n**Call 3: `testrail_get_project` with project_id 990002**\n- Response, verbatim:\n```\n{\"error\":{\"code\":\"INVALID_RESPONSE\",\"message\":\"The TestRail response could not be used.\"}}\n```\n- Data: none came back.\n- Warning or error code: no warnings. T"
+  }
+ },
+ "invalid_arguments": {
+  "session": "c06-invalid",
+  "client": "2.1.288",
+  "servers": [
+   {
+    "name": "testrail",
+    "status": "connected"
+   }
+  ],
+  "testrail_tools_listed": 133,
+  "calls": [
+   {
+    "tool": "ToolSearch",
+    "input": {
+     "query": "select:mcp__testrail__testrail_get_project",
+     "max_results": 1
+    },
+    "is_error": false,
+    "result": "{\"type\": \"tool_reference\", \"tool_name\": \"mcp__testrail__testrail_get_project\"}",
+    "result_chars": 78
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_project",
+    "input": {
+     "__unparsedToolInput": {
+      "raw": "{\"project_id\": seven}",
+      "len": 21
+     }
+    },
+    "is_error": true,
+    "result": "<tool_use_error>InputValidationError: mcp__testrail__testrail_get_project was called with input that could not be parsed as JSON.\nYou sent (first 21 of 21 bytes): {\"project_id\": seven}\nCommon causes: unescaped backslashes in file paths (use / or \\\\), unescaped control characters, or truncated output. Retry with valid JSON.</tool_use_error>",
+    "result_chars": 341
+   },
+   {
+    "tool": "mcp__testrail__testrail_get_project",
+    "input": {
+     "project_id": 1,
+     "unexpected_flag": "true"
+    },
+    "is_error": true,
+    "result": "{\"error\":{\"code\":\"INVALID_ARGUMENT\",\"message\":\"The request arguments did not meet this tool's contract.\"}}",
+    "result_chars": 106
+   }
+  ],
+  "final": {
+   "subtype": "success",
+   "turns": 4,
+   "answer": "I made both calls once and didn't retry either. Both failed.\n\n**Call 1:** `testrail_get_project` with `{\"project_id\": \"seven\"}`\n\nMy call didn't go through as you specified. The tool input was sent as `{\"project_id\": seven}`, with `seven` unquoted, so the harness rejected it as unparseable JSON. The call never reached TestRail, so it doesn't test how the tool handles a quoted string. The response, verbatim:\n\n```\n<tool_use_error>InputValidationError: mcp__testrail__testrail_get_project was called with input that could not be parsed as JSON.\nYou sent (first 21 of 21 bytes): {\"project_id\": seven}\nCommon causes: unescaped backslashes in file paths (use / or \\\\), unescaped control characters, or truncated output. Retry with valid JSON.</tool_use_error>\n```\n\n**Call 2:** `testrail_get_project` with `{\"project_id\": 1, \"unexpected_flag\": true}`\n\nThis call was sent as specified. The response, verbatim:\n\n```\n{\"error\":{\"code\":\"INVALID_ARGUMENT\",\"message\":\"The request arguments did not meet this tool's contract.\"}}\n```\n\nThe tool's schema has `additionalProperties: false`, so the call 2 error matches the extra `unexpected_flag` being rejected.\n\nCall 1 is not a valid test of the string `project_id` case. If you want it checked properly, I'd need to send it again with the string quoted, and I haven't done that since you said not to retry."
+  }
+ },
+ "server_side_invalid_call": [
+  {
+   "messages": [
+    {
+     "dir": "in",
+     "at": "2026-10-03T19:13:57.299Z",
+     "method": "server/discover",
+     "version": "2026-07-28"
+    },
+    {
+     "dir": "out",
+     "at": "2026-10-03T19:13:57.804Z",
+     "id": "server-discover-probe-1",
+     "discover_result": [
+      "2026-07-28"
+     ]
+    },
+    {
+     "dir": "in",
+     "at": "2026-10-03T19:13:57.823Z",
+     "method": "tools/list",
+     "version": "2026-07-28"
+    },
+    {
+     "dir": "out",
+     "at": "2026-10-03T19:13:57.828Z",
+     "id": 0,
+     "tools_listed": 133
+    },
+    {
+     "dir": "in",
+     "at": "2026-10-03T19:14:01.859Z",
+     "method": "tools/call",
+     "version": "2026-07-28",
+     "tool": "testrail_get_project"
+    },
+    {
+     "dir": "out",
+     "at": "2026-10-03T19:14:01.864Z",
+     "id": 1,
+     "structured": {
+      "error": {
+       "code": "INVALID_ARGUMENT",
+       "message": "The request arguments did not meet this tool's contract."
+      }
+     }
+    }
+   ],
+   "diagnostics": [
+    {
+     "event": "server_started",
+     "tools": 133
+    },
+    {
+     "event": "tool_call",
+     "correlation": "9adb28a1-1ae6-4439-9690-1ad9b91142e9",
+     "tool": "testrail_get_project",
+     "outcome": "error",
+     "code": "INVALID_ARGUMENT",
+     "duration_ms": 0
+    },
+    {
+     "event": "server_stopping"
+    },
+    {
+     "event": "server_stopped"
+    }
+   ],
+   "exit": {
+    "code": 0,
+    "signal": null
+   }
+  }
+ ],
+ "stand_in_requests": [
+  {
+   "method": "GET",
+   "endpoint": "get_project/990001",
+   "status": 200,
+   "abandoned": false
+  },
+  {
+   "method": "GET",
+   "endpoint": "get_project/990002",
+   "status": 200,
+   "abandoned": false
+  }
+ ],
+ "note": "The unknown-key call reached the server and sent no TestRail request; the string ID was written by the model as malformed JSON and the host refused it before the server."
+}

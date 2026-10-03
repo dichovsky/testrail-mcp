@@ -1,6 +1,6 @@
 # MCP client setup and release verification
 
-Status: the server is implemented, and all 133 tools are verified offline (see [coverage reports](coverage-reports.md)). No client compatibility test has run yet; that is [R02](https://github.com/dichovsky/testrail-mcp/issues/23). The client research below dates from 2026-09-09. The configuration examples are release documentation, not changes to your client settings.
+Status: the server is implemented, and all 133 tools are verified offline (see [coverage reports](coverage-reports.md)). Claude Code has a fixture-run record; the other surfaces, and every live smoke check, are pending under [R02](https://github.com/dichovsky/testrail-mcp/issues/23). The client research below dates from 2026-09-09. The configuration examples are release documentation, not changes to your client settings.
 
 ## Required surfaces and evidence
 
@@ -10,7 +10,7 @@ The release targets local stdio connections from Codex desktop, Codex CLI, Claud
 | --- | --- | --- |
 | Codex desktop | App is available; build/version not recorded | Pending |
 | Codex CLI | Local read-only check reported `codex-cli 0.149.0` | Pending |
-| Claude Code | Executable is available; version not recorded | Pending |
+| Claude Code | 2.1.288 on Linux, run headless against the fixture stand-in | [Fixture run, 2026-10-03: 12 of 12 passed](evidence/clients/claude-code.json); live smoke pending |
 | GitHub Copilot CLI | Local read-only check reported `1.0.67` | Pending |
 
 An installed executable is not evidence of authentication, an available model, or compatibility. Before release, replace the pending results with records naming the exact client version/build, operating system, Node version, model/provider, relevant host settings, package version/integrity, driver version, negotiated MCP revision, test date, and evidence location. Codex desktop and CLI need separate records even when they share configuration. Do not promise support for every historical client version or every provider based on one successful run.
@@ -19,7 +19,7 @@ Keep all 133 endpoint tools registered and enabled. Host deferral controls when 
 
 ## SDK and protocol baseline
 
-The npm registry reported `@modelcontextprotocol/server@2.0.0` and `@modelcontextprotocol/client@2.0.0` as their respective `latest` packages during this check. Both specify Node >=20; the selected runtime must also satisfy the stricter TestRail driver requirement. Pin the verified dependencies and retain a lockfile. Sources: [server registry metadata](https://registry.npmjs.org/@modelcontextprotocol%2fserver/latest), [client registry metadata](https://registry.npmjs.org/@modelcontextprotocol%2fclient/latest).
+The npm registry reported `@modelcontextprotocol/server@2.0.0` and `@modelcontextprotocol/client@2.0.0` as their respective `latest` packages during this check, the original baseline; the package now pins 2.3.0 of both. Both specify Node >=20; the selected runtime must also satisfy the stricter TestRail driver requirement. Pin the verified dependencies and retain a lockfile. Sources: [server registry metadata](https://registry.npmjs.org/@modelcontextprotocol%2fserver/latest), [client registry metadata](https://registry.npmjs.org/@modelcontextprotocol%2fclient/latest).
 
 Use `serveStdio(factory)` from `@modelcontextprotocol/server/stdio`. The released implementation accepts legacy clients by default and also serves MCP 2026-07-28. Do not set `legacy: 'reject'`. Modern discovery and legacy initialization must both be tested; installing SDK v2 does not imply that every host uses the modern protocol. Source: [released v2 stdio implementation](https://raw.githubusercontent.com/modelcontextprotocol/typescript-sdk/@modelcontextprotocol%2Fserver@2.0.0/packages/server/src/server/serveStdio.ts).
 
@@ -97,7 +97,9 @@ This is a project `.mcp.json` example. Use the equivalent user/local scope when 
 }
 ```
 
-Use normal automatic discovery: leave `alwaysLoad` and `ENABLE_TOOL_SEARCH` unset. Current docs describe default deferred search, subject to model/provider/settings exceptions, and no fixed per-server tool cap. Keep individual tool descriptions and server instructions under 2 KiB. Check the connected catalog in `/mcp`. The per-server `timeout` is in milliseconds.
+Use normal automatic discovery: leave `alwaysLoad` and `ENABLE_TOOL_SEARCH` unset.
+
+Large results: Claude Code moves an MCP result of more than 25,000 tokens into a file and gives the model its path. The server's result is one line of JSON, which the client's `Read` tool cannot page, so allow `jq`, for example `Bash(jq:*)`, or approve it when asked, to let the model query a large result there. The 2026-10-03 fixture run recovered a 717 KB page that way; see [its record](evidence/clients/claude-code.json). Current docs describe default deferred search, subject to model/provider/settings exceptions, and no fixed per-server tool cap. Keep individual tool descriptions and server instructions under 2 KiB. Check the connected catalog in `/mcp`. The per-server `timeout` is in milliseconds.
 
 First test the client's default stdio negotiation. Where the installed runtime supports it, additionally test `MCP_PROTOCOL_NEGOTIATION=auto` on the Claude process. Record the negotiated revision instead of inferring it from the runtime version. Current docs distinguish the v2 runtime from its separate stdio protocol-probing setting. Source: [Claude Code MCP reference](https://code.claude.com/docs/en/mcp).
 
