@@ -164,7 +164,7 @@ Sources and implementation-ready setup/test instructions are recorded in [client
 
 ## Verification and release acceptance
 
-Build deterministic tests around the real driver with injected HTTP/DNS dependencies. Cover all 133 endpoint bindings, supported parameters, input validation, wrappers, warning/error behavior, and special identifiers. Separately test actual packaged stdio startup, both protocol generations, full-catalog discovery, and subprocess lifecycle. Use the client verification matrix for model-facing behavior and live TestRail 10.7.0 smoke evidence.
+Build deterministic tests around the real driver with injected HTTP/DNS dependencies. Cover all 133 endpoint bindings, supported parameters, input validation, wrappers, warning/error behavior, and special identifiers. Separately test actual packaged stdio startup, both protocol generations, full-catalog discovery, and subprocess lifecycle. Use the client verification matrix for model-facing behavior and live TestRail 10.8.1 smoke evidence.
 
 Release acceptance requires:
 
