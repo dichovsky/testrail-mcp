@@ -168,14 +168,19 @@ describe('discovery', () => {
     } finally { await session.close(); }
   });
 
-  it('builds at most one server per connection and never a second driver', async () => {
-    const session = await connect(() => Promise.resolve(json({})));
+  it('runs the server factory while a connection opens, never once per request', async () => {
+    const session = await connect(() => Promise.resolve(json({ id: 1, name: 'Project' })));
     try {
+      // The SDK may run the factory more than once while it negotiates an era. After
+      // that, the connection keeps its server: requests never build another one.
+      const opened = session.factoryCalls();
+      expect(opened).toBeGreaterThanOrEqual(1);
       await session.client.listTools();
       await session.client.listTools();
-      // The factory may run more than once during an opening, but the driver and
-      // runtime are closed over, so neither is duplicated.
-      expect(session.factoryCalls()).toBeGreaterThanOrEqual(1);
+      expect((await session.client.callTool({ name: 'testrail_get_project', arguments: { project_id: 1 } })).isError).toBeFalsy();
+      expect(session.factoryCalls()).toBe(opened);
+      // This factory is the test's own. That startServer's factory builds no second
+      // driver or budget is held through startServer in tests/transport/composition.test.ts.
       expect(session.runtime.stats().accepting).toBe(true);
     } finally { await session.close(); }
   });

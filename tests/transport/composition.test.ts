@@ -54,9 +54,11 @@ function upstream() {
   };
 }
 
+type Negotiation = 'legacy' | { readonly pin: string };
+
 interface Composed {
   readonly started: StartedServer;
-  readonly connect: () => Promise<{ client: Client; close: () => Promise<void> }>;
+  readonly connect: (negotiation?: Negotiation) => Promise<{ client: Client; close: () => Promise<void> }>;
 }
 
 /**
@@ -76,7 +78,7 @@ async function compose(fake: ReturnType<typeof upstream>): Promise<Composed> {
   const started = await startServer(environment(), {
     registerSignals: false, serve, driver: { fetch: fake.fetch, dnsLookup: fake.dnsLookup },
   });
-  const connect = async () => {
+  const connect = async (negotiation?: Negotiation) => {
     let transport = pending.shift();
     let handle: { close: () => Promise<void> } | undefined;
     if (transport === undefined) {
@@ -85,7 +87,10 @@ async function compose(fake: ReturnType<typeof upstream>): Promise<Composed> {
       transport = clientSide;
       handle = serveStdio(factory, { transport: serverSide });
     }
-    const client = new Client({ name: 'composition-test', version: '1.0.0' });
+    const client = new Client(
+      { name: 'composition-test', version: '1.0.0' },
+      negotiation === undefined ? {} : { versionNegotiation: { mode: negotiation } },
+    );
     await client.connect(transport);
     return {
       client,
@@ -171,6 +176,42 @@ describe('the composition root', () => {
     } finally {
       await first.close();
       await second.close();
+      await started.shutdown();
+    }
+  });
+
+  it('gives a legacy and a 2026-07-28 consumer one driver identity and one budget of four calls', async () => {
+    const fake = upstream();
+    const { started, connect } = await compose(fake);
+    // serveStdio passes the negotiated era to the factory, so a composition could build
+    // a driver per era. Each consumer here runs the factory in a different era.
+    const legacy = await connect('legacy');
+    const modern = await connect({ pin: '2026-07-28' });
+    try {
+      expect(legacy.client.getProtocolEra()).toBe('legacy');
+      expect(modern.client.getProtocolEra()).toBe('modern');
+      const call = (session: typeof legacy, id: number) =>
+        session.client.callTool({ name: 'testrail_get_project', arguments: { project_id: id } });
+      const instances = new Set<TestRailClient>();
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- re-bound to each instance with apply below.
+      const track = TestRailClient.prototype.trackOperation;
+      vi.spyOn(TestRailClient.prototype, 'trackOperation').mockImplementation(function (this: TestRailClient, ...args) {
+        instances.add(this);
+        return track.apply(this, args);
+      });
+      const inflight = [call(legacy, 1), call(legacy, 2), call(modern, 3), call(modern, 4)];
+      await waitFor(() => fake.calls === 4, 'four requests from two eras');
+
+      expect(errorOf(await call(legacy, 5))).toMatchObject({ code: 'BUSY' });
+      expect(errorOf(await call(modern, 6))).toMatchObject({ code: 'BUSY' });
+      expect(fake.calls).toBe(4);
+      expect(instances.size).toBe(1);
+
+      fake.answerAll();
+      for (const result of await Promise.all(inflight)) expect(result.isError).toBeFalsy();
+    } finally {
+      await legacy.close();
+      await modern.close();
       await started.shutdown();
     }
   });
