@@ -306,9 +306,9 @@ export async function runQualification({
       const { data, message, writeOutcome, ...classified } = classify(result);
       const outcome = retries > 0 ? { ...classified, retries } : classified;
       // A write that may have reached TestRail may have created what the run cannot delete;
-      // one TestRail refused with a 4xx, or never received, did not. A 408 is no refusal: the
-      // driver raises one itself when TestRail has not answered in time, and TestRail may
-      // still have acted.
+      // one TestRail refused with a 4xx, or never received, did not. When the driver gives up
+      // waiting, the error is TIMEOUT with no status, and TestRail may still have acted. A
+      // 408 reply is not counted as a refusal either, which errs toward listing it.
       const refused = outcome.http_status !== undefined && outcome.http_status >= 400 && outcome.http_status < 500 && outcome.http_status !== 408;
       if (step.unconfirmed !== undefined && outcome.status !== 'pass' && writeOutcome !== 'not_started' && !refused) c.residue(`possible ${step.unconfirmed}`);
       if (outcome.status === 'pass' && step.capture !== undefined) {

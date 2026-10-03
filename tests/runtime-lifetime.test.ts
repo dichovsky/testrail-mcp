@@ -299,14 +299,17 @@ describe('classifying a timeout inside an aggregate', () => {
   });
 
   it.each([
-    // The driver's full timeouts were not clipped, so the budget did not end them.
-    ['an unclipped request timeout', new TestRailApiError(408, 'Request timeout after 15000ms'), 'UPSTREAM_ERROR'],
-    ['an unclipped body timeout', new TestRailApiError(0, 'Body read timeout', 'body read exceeded 15000ms before the response body finished streaming'), 'INVALID_RESPONSE'],
+    // The driver's full timeouts were not clipped, so the budget did not end them: the
+    // request's own timeout did, which is TIMEOUT here as on a single call.
+    ['an unclipped request timeout', new TestRailApiError(408, 'Request timeout after 15000ms'), 'TIMEOUT', undefined],
+    ['an unclipped body timeout', new TestRailApiError(0, 'Body read timeout', 'body read exceeded 15000ms before the response body finished streaming'), 'TIMEOUT', undefined],
     // A response did arrive: an upstream may send any reason phrase, and its status stands.
-    ['a real 408 carrying the deadline phrase', new TestRailApiError(408, 'Aggregate request deadline exceeded', ''), 'UPSTREAM_ERROR'],
-    ['a real 408 carrying a timeout phrase', new TestRailApiError(408, 'Request timeout after 20ms', '{"error":"slow"}'), 'UPSTREAM_ERROR'],
-  ] as const)('does not report %s as the duration bound', (_label, raised, expected) => {
-    expect(classifyError(raised, aggregate).code).toBe(expected);
+    ['a real 408 carrying the deadline phrase', new TestRailApiError(408, 'Aggregate request deadline exceeded', ''), 'UPSTREAM_ERROR', 408],
+    ['a real 408 carrying a timeout phrase', new TestRailApiError(408, 'Request timeout after 20ms', '{"error":"slow"}'), 'UPSTREAM_ERROR', 408],
+  ] as const)('does not report %s as the duration bound', (_label, raised, expected, status) => {
+    const safe = classifyError(raised, aggregate);
+    expect(safe.code).toBe(expected);
+    expect(safe.http_status).toBe(status);
   });
 });
 

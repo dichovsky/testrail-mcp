@@ -59,7 +59,7 @@ A missing or invalid value stops startup with a message naming the variable, nev
 | `max_all_bytes` | 1048576 (1 MiB) | 8388608 (8 MiB) |
 | `max_all_duration_ms` | 45000 | 45000 |
 
-`max_all_bytes` may not exceed `max_data_bytes`. Each TestRail request has its own 15-second request and body timeouts, and a call that gets no answer within 60 seconds is reported as `TIMEOUT` while its request finishes in the background.
+`max_all_bytes` may not exceed `max_data_bytes`. Each TestRail request has its own 15-second request and body timeouts, and a request that passes either is reported as `TIMEOUT`. A call that gets no answer within 60 seconds is reported as `TIMEOUT` too, while its request finishes in the background.
 
 ## Connect a client
 

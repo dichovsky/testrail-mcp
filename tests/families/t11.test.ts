@@ -160,13 +160,14 @@ describe('T11 every report run reaches TestRail exactly once', () => {
    * A network error or a 5xx may come after TestRail has begun generating, so a retry
    * could produce a second report and a second email. The production driver retries
    * ordinary reads three times; a run must still reach TestRail once, and its error must
-   * not claim that nothing happened.
+   * not claim that nothing happened. A status TestRail sent is kept, a real 408
+   * included.
    */
   it.each(GENERATORS.flatMap(([tool, , , method]) => [
-    [tool, 'a network error', method, () => Promise.reject(new TypeError('fetch failed'))],
+    [tool, 'a network error', method, { code: 'INVALID_RESPONSE' }, () => Promise.reject(new TypeError('fetch failed'))],
     ...[408, 500, 501, 502, 503, 504, 505, 599].map((status) =>
-      [tool, `a ${status}`, method, () => Promise.resolve(json({ error: 'upstream' }, status))] as const),
-  ] as const))('%s is not retried after %s, and its outcome stays unknown', async (tool, _label, method, respond) => {
+      [tool, `a ${status}`, method, { code: 'UPSTREAM_ERROR', http_status: status }, () => Promise.resolve(json({ error: 'upstream' }, status))] as const),
+  ] as const))('%s is not retried after %s, and its outcome stays unknown', async (tool, _label, method, expected, respond) => {
     const fetch = vi.fn().mockImplementation(respond);
     const driver = driverFor(fetch);
     // Counted at the driver method too, so a re-invocation above the wire cannot hide.
@@ -177,14 +178,15 @@ describe('T11 every report run reaches TestRail exactly once', () => {
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(invoked).toHaveBeenCalledTimes(1);
       expect(result.isError).toBe(true);
-      expect(errorOf(result).write_outcome).toBe('unknown');
+      expect(errorOf(result)).toEqual({ ...expected, message: expect.any(String) as unknown, write_outcome: 'unknown' });
     } finally { await runtime.shutdown(); }
   });
 
   /*
    * The driver's own request timeout is not an HTTP 408 reply: it aborts the fetch and
-   * reports a timeout of its own. A run that times out may still be generating upstream,
-   * so it must not be sent again either.
+   * reports a timeout of its own, which reaches the caller as TIMEOUT with no status. A
+   * run that times out may still be generating upstream, so it must not be sent again
+   * either.
    */
   it.each(GENERATORS)('%s is not retried after the driver\'s own timeout', async (tool, _endpoint, _urls, method) => {
     const fetch = vi.fn().mockImplementation((_url: unknown, init?: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
@@ -201,7 +203,7 @@ describe('T11 every report run reaches TestRail exactly once', () => {
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(invoked).toHaveBeenCalledTimes(1);
       expect(result.isError).toBe(true);
-      expect(errorOf(result).write_outcome).toBe('unknown');
+      expect(errorOf(result)).toEqual({ code: 'TIMEOUT', message: expect.any(String) as unknown, write_outcome: 'unknown' });
     } finally { await runtime.shutdown(); }
   });
 

@@ -88,7 +88,7 @@ const BOUND_REASONS = new Set(['max_pages', 'max_items', 'max_bytes', 'max_durat
  * Only the driver raises these: an error built from a received response always carries
  * its body text, and a status of 0 never comes from HTTP. A request or body timeout is the
  * deadline only when the driver clipped it below its full length, which only the aggregate
- * budget does; an unclipped one is a slow request like any other.
+ * budget does; an unclipped one is that request's own timeout, as on a single call.
  */
 function clippedBelow(text: unknown, pattern: RegExp, full: number): boolean {
   const match = typeof text === 'string' ? pattern.exec(text) : null;
@@ -103,6 +103,24 @@ function isAggregateDeadline(error: unknown): boolean {
   }
   return error.status === 0 && error.statusText === 'Body read timeout'
     && clippedBelow(error.response, /^body read exceeded (\d+)ms /u, BODY_TIMEOUT_MS);
+}
+
+/*
+ * The driver gave up waiting on one request: its header timeout aborted the fetch, or its
+ * body timeout stopped reading a body that had started. Neither error's status is one
+ * TestRail sent, so the caller is told the wait expired, not that TestRail answered 408
+ * or that its response was unusable. As above, an error built from a received response
+ * always carries its body text, so a real 408 keeps its status. Any length matches, since
+ * the text is the driver's own whatever timeout it was built with; inside an aggregate,
+ * the clipped spellings are claimed first as the duration bound.
+ */
+function isDriverTimeout(error: unknown): boolean {
+  if (!(error instanceof TestRailApiError)) return false;
+  if (error.status === 408 && error.response === undefined) {
+    return /^Request timeout after \d+ms$/u.test(error.statusText);
+  }
+  return error.status === 0 && error.statusText === 'Body read timeout'
+    && typeof error.response === 'string' && /^body read exceeded \d+ms /u.test(error.response);
 }
 
 function classifyApi(error: TestRailApiError): ErrorCode {
@@ -127,7 +145,9 @@ function codeFor(error: unknown): ErrorCode {
   }
   if (error instanceof TestRailApiError) return classifyApi(error);
   // Inputs are validated before invocation, so a driver parameter rejection here
-  // means the adapter mapped them wrongly. That is ours, not TestRail's.
+  // means the adapter mapped them wrongly. That is ours, not TestRail's. A host the
+  // driver refuses to reach (a failed, empty or private lookup) is the same class and
+  // also lands here, kept as INTERNAL_ERROR on 2026-10-03; see docs/results-and-errors.md.
   if (error instanceof TestRailValidationError) return 'INTERNAL_ERROR';
   return 'INTERNAL_ERROR';
 }
@@ -145,13 +165,15 @@ function writeOutcome(context: ErrorContext): WriteOutcome | undefined {
 
 export function classifyError(error: unknown, context: ErrorContext): SafeError {
   const deadline = context.aggregate === true && isAggregateDeadline(error);
-  const code = deadline ? 'PAGINATION_LIMIT' : codeFor(error);
+  const timedOut = !deadline && isDriverTimeout(error);
+  const code = deadline ? 'PAGINATION_LIMIT' : timedOut ? 'TIMEOUT' : codeFor(error);
   const safe: {
     -readonly [K in keyof SafeError]: SafeError[K];
   } = { code, message: MESSAGES[code] };
 
   if (deadline) safe.reason = 'max_duration';
-  else if (error instanceof TestRailApiError && error.status > 0) safe.http_status = error.status;
+  // A driver timeout carries no status TestRail sent, so none is reported.
+  else if (!timedOut && error instanceof TestRailApiError && error.status > 0) safe.http_status = error.status;
   if (error instanceof TestRailPaginationError) {
     safe.reason = error.reason;
     if (Number.isSafeInteger(error.pagesFetched)) safe.pages_fetched = error.pagesFetched;

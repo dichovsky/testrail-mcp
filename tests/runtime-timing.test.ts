@@ -112,12 +112,11 @@ describe('timing budgets on a fake clock, with production driver options', () =>
       expect(call.settled()).toBe(false);
       await vi.advanceTimersByTimeAsync(1);
       expect(call.settled()).toBe(true);
-      /*
-       * Pinned as it is today, not endorsed: the driver's own header timeout reaches the
-       * caller as a TestRail 408, which a real 408 reply also produces. See
-       * docs/results-and-errors.md; whether to report it as TIMEOUT is an open decision.
-       */
-      expect(errorOf(await call.result)).toMatchObject({ code: 'UPSTREAM_ERROR', http_status: 408 });
+      // The driver gave up waiting, and TestRail sent no status: TIMEOUT, not a 408
+      // (decided 2026-10-03; docs/results-and-errors.md).
+      const error = errorOf(await call.result);
+      expect(error).toMatchObject({ code: 'TIMEOUT' });
+      expect(error).not.toHaveProperty('http_status');
       expect(call.fetchTimes).toEqual([20_000]);
     } finally { await call.runtime.shutdown(); }
   });
@@ -130,7 +129,8 @@ describe('timing budgets on a fake clock, with production driver options', () =>
       expect(call.settled()).toBe(false);
       await vi.advanceTimersByTimeAsync(1);
       expect(call.settled()).toBe(true);
-      expect(errorOf(await call.result)).toMatchObject({ code: 'INVALID_RESPONSE' });
+      // The driver stopped reading: the wait expired, not an unusable response.
+      expect(errorOf(await call.result)).toMatchObject({ code: 'TIMEOUT' });
       expect(call.fetchTimes).toEqual([0]);
     } finally { await call.runtime.shutdown(); }
   });

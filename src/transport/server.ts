@@ -3,12 +3,14 @@ import { tmpdir } from 'node:os';
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio, type StdioServerHandle } from '@modelcontextprotocol/server/stdio';
 import { loadConfiguration, type Configuration, type Environment } from '../config/environment.js';
+import { AdapterError, classifyError } from '../contracts/errors.js';
+import { errorResult, type ToolResult } from '../contracts/results.js';
 import { createConfiguredDriver, type DriverSeams } from '../driver/configuration.js';
 import { createStagingArea, recoverAbandonedStaging } from '../files/staging.js';
 import { operationRegistry } from '../operations/catalog.js';
 import type { Operation, OperationRegistry } from '../operations/registry.js';
 import { createRuntime, type Runtime } from '../runtime/invocation.js';
-import { logEvent } from './diagnostics.js';
+import { correlationId, logEvent } from './diagnostics.js';
 import { executeToolCall } from './tool-call.js';
 
 /**
@@ -93,6 +95,26 @@ export interface ServerDependencies {
 }
 
 /**
+ * The answer to a call whose pipeline rejected. `executeToolCall` is built never to
+ * reject, so this cannot happen today, but if it ever did the SDK would send the raw
+ * error message as the tool result, with no error code and no write outcome. Instead the
+ * call fails as an internal fault like any other. Whether the driver was entered is not
+ * known here, so a write or report run is reported as `unknown`, the conservative answer,
+ * and its diagnostic is logged because the pipeline may not have logged one.
+ */
+function handlerFailure(operation: Operation, started: number): ToolResult {
+  const safe = classifyError(new AdapterError('INTERNAL_ERROR'), {
+    mutates: operation.effects.testRail !== 'read', dispatched: true, acknowledged: false,
+  });
+  logEvent('tool_call', {
+    correlation: correlationId(), tool: operation.tool, outcome: 'error',
+    code: safe.code, duration_ms: Date.now() - started,
+    ...(safe.write_outcome === undefined ? {} : { write_outcome: safe.write_outcome }),
+  });
+  return errorResult(safe);
+}
+
+/**
  * Build one MCP server instance.
  *
  * This is the factory body, and it must stay cheap and side-effect free: the stdio
@@ -112,12 +134,19 @@ export function buildServer(dependencies: ServerDependencies): McpServer {
       inputSchema: advertiseInput(operation.jsonSchema),
       outputSchema: advertiseOutput(),
       annotations: { ...operation.annotations },
-    }, (async (args: unknown, ctx: { mcpReq: { signal: AbortSignal } }) => executeToolCall(operation, args, {
-      runtime: dependencies.runtime,
-      configuration: dependencies.configuration,
-      signal: ctx.mcpReq.signal,
-      stagingDirectory: dependencies.stagingDirectory,
-    })) as never);
+    }, (async (args: unknown, ctx: { mcpReq: { signal: AbortSignal } }) => {
+      const started = Date.now();
+      try {
+        return await executeToolCall(operation, args, {
+          runtime: dependencies.runtime,
+          configuration: dependencies.configuration,
+          signal: ctx.mcpReq.signal,
+          stagingDirectory: dependencies.stagingDirectory,
+        });
+      } catch {
+        return handlerFailure(operation, started);
+      }
+    }) as never);
   }
   return server;
 }
@@ -145,6 +174,16 @@ export interface StartOptions {
  * itself first.
  */
 export const EXIT_GRACE_MS = 250;
+
+/**
+ * A transport error's class name, for its diagnostic. The name is whatever the thrower
+ * set, so only a plain identifier, such as `SyntaxError` or `ZodError`, is logged; any
+ * other name could carry a host, a path or a message, and is logged as `Error`.
+ */
+function errorClassName(error: unknown): string {
+  const name: unknown = typeof error === 'object' && error !== null ? (error as { name?: unknown }).name : undefined;
+  return typeof name === 'string' && /^[A-Za-z][A-Za-z0-9]{0,63}$/u.test(name) ? name : 'Error';
+}
 
 /** Call back once everything already written to stdout has been handed to the host. */
 function stdoutFlushed(done: () => void): void {
@@ -211,7 +250,7 @@ export async function startServer(
       configuration, runtime, registry,
       stagingDirectory: async () => (await stagingArea()).directory,
     }),
-    { onerror: (error: Error) => { logEvent('transport_error', { code: error.name }); } },
+    { onerror: (error: Error) => { logEvent('transport_error', { code: errorClassName(error) }); } },
   );
 
   // Every caller shares one shutdown, so a second request waits for the first to

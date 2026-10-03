@@ -144,7 +144,7 @@ describe('T12 get_attachment writes a new local file on every call', () => {
     expect(description).toContain('Creates a unique persistent local file in the configured download directory on each call');
     expect(description).toContain('the result carries no original filename or media type');
     expect(description).toContain('Only one download runs at a time, from its request until its file is written: a call made while another is in progress is refused as BUSY before anything is sent');
-    expect(description).toContain('An attachment larger than this server\'s configured file limit, at most 100 MiB, is refused while it is read, as INVALID_RESPONSE, and nothing is written; so is a reply whose body does not arrive within this server\'s 15-second body timeout, after headers that must arrive within its 15-second request timeout');
+    expect(description).toContain('An attachment larger than this server\'s configured file limit, at most 100 MiB, is refused while it is read, as INVALID_RESPONSE, and nothing is written. A reply whose headers do not arrive within this server\'s 15-second request timeout, or whose body does not arrive within its 15-second body timeout, is reported as TIMEOUT, and nothing is written either');
     expect(operation('testrail_get_attachment').retry).toBe('ordinary-read');
   });
 
@@ -398,16 +398,21 @@ describe('T12 get_attachment writes a new local file on every call', () => {
     expect(driverOptions(env.configuration)).toMatchObject({ timeout: 15_000, bodyTimeout: 15_000 });
   });
 
-  it('refuses a download whose body does not arrive in time and writes nothing', async () => {
-    const env = await environment();
-    const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response(new ReadableStream({
+  // The driver stopped waiting, for the headers or for the rest of the body: the wait expired.
+  it.each([
+    ['headers do not', { timeout: 100 }, (_url: unknown, init?: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => { reject(new DOMException('aborted', 'AbortError')); });
+    })],
+    ['body does not', { bodyTimeout: 100 }, () => Promise.resolve(new Response(new ReadableStream({
       start(controller) { controller.enqueue(new TextEncoder().encode('partial')); },
-    }), { headers: { 'content-type': 'application/octet-stream' } })));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch, { bodyTimeout: 100 }), limits: env.configuration.limits });
+    }), { headers: { 'content-type': 'application/octet-stream' } }))],
+  ] as const)('refuses a download whose %s arrive in time as TIMEOUT, and writes nothing', async (_label, overrides, respond) => {
+    const env = await environment();
+    const fetch = vi.fn().mockImplementation(respond);
+    const runtime = createRuntime({ client: driverFor(env.configuration, fetch, overrides), limits: env.configuration.limits });
     try {
       const result = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
-      expect(errorOf(result).code).toBe('INVALID_RESPONSE');
-      expect(errorOf(result).write_outcome).toBeUndefined();
+      expect(errorOf(result)).toEqual({ code: 'TIMEOUT', message: 'The response wait expired; upstream work may still be running.' });
       expect(await readdir(env.downloads)).toEqual([]);
     } finally { await runtime.shutdown(); }
   });
@@ -694,19 +699,23 @@ describe('T12 uploads', () => {
    * for creating one, so neither this server nor its driver sends it twice, whatever the
    * failure. A 429 is included on purpose: the driver's JSON writes re-send one, but its
    * uploads do not. The driver's own timeout is included because it is the classic
-   * ambiguous outcome for an upload.
+   * ambiguous outcome for an upload. Each code is pinned too: a status TestRail sent is
+   * kept, a real 408 included, while the driver's own timeout claims none.
    */
   it.each(UPLOADS.flatMap(([tool, ids, , method]) => [
-    [tool, 'a network error', ids, method, () => Promise.reject(new TypeError('fetch failed'))],
-    [tool, 'the driver\'s own timeout', ids, method, (_url: unknown, init?: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
+    [tool, 'a network error', ids, method, { code: 'INVALID_RESPONSE' }, () => Promise.reject(new TypeError('fetch failed'))],
+    [tool, 'the driver\'s own timeout', ids, method, { code: 'TIMEOUT' }, (_url: unknown, init?: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
       init?.signal?.addEventListener('abort', () => {
         const reason: unknown = init.signal?.reason;
         reject(reason instanceof Error ? reason : new DOMException('aborted', 'AbortError'));
       });
     })],
-    ...[400, 403, 404, 408, 429, 500, 501, 502, 503, 504].map((status) =>
-      [tool, `a ${status}`, ids, method, () => Promise.resolve(json({ error: 'upstream' }, status, { 'retry-after': '0' }))] as const),
-  ] as const))('%s is not retried after %s, and its outcome stays unknown', async (tool, _label, ids, method, respond) => {
+    ...([
+      [400, 'UPSTREAM_ERROR'], [403, 'PERMISSION_DENIED'], [404, 'NOT_FOUND'], [408, 'UPSTREAM_ERROR'], [429, 'RATE_LIMITED'],
+      [500, 'UPSTREAM_ERROR'], [501, 'UPSTREAM_ERROR'], [502, 'UPSTREAM_ERROR'], [503, 'UPSTREAM_ERROR'], [504, 'UPSTREAM_ERROR'],
+    ] as const).map(([status, code]) =>
+      [tool, `a ${status}`, ids, method, { code, http_status: status }, () => Promise.resolve(json({ error: 'upstream' }, status, { 'retry-after': '0' }))] as const),
+  ] as const))('%s is not retried after %s, and its outcome stays unknown', async (tool, _label, ids, method, expected, respond) => {
     const env = await environment();
     const fetch = vi.fn().mockImplementation(respond);
     const driver = driverFor(env.configuration, fetch, { timeout: 100 });
@@ -716,7 +725,7 @@ describe('T12 uploads', () => {
       const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
         { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
       expect(result.isError).toBe(true);
-      expect(errorOf(result).write_outcome).toBe('unknown');
+      expect(errorOf(result)).toEqual({ ...expected, message: expect.any(String) as unknown, write_outcome: 'unknown' });
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(invoked).toHaveBeenCalledTimes(1);
       await runtime.shutdown();
@@ -828,7 +837,7 @@ describe('T12 uploads', () => {
   });
 
   // The driver's own timeout covers sending the file; an upload it cuts off stays unknown.
-  it.each(UPLOADS)('%s reports an upload TestRail does not answer in time as a 408 of unknown outcome', async (tool, ids) => {
+  it.each(UPLOADS)('%s reports an upload TestRail does not answer in time as a TIMEOUT of unknown outcome', async (tool, ids) => {
     const env = await environment();
     const fetch = vi.fn().mockImplementation((_url: unknown, init?: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
       init?.signal?.addEventListener('abort', () => {
@@ -840,7 +849,8 @@ describe('T12 uploads', () => {
     try {
       const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
         { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
-      expect(errorOf(result)).toEqual(expect.objectContaining({ code: 'UPSTREAM_ERROR', http_status: 408, write_outcome: 'unknown' }));
+      // No status arrived, so none is claimed.
+      expect(errorOf(result)).toEqual({ code: 'TIMEOUT', message: 'The response wait expired; upstream work may still be running.', write_outcome: 'unknown' });
       expect(fetch).toHaveBeenCalledTimes(1);
     } finally { await runtime.shutdown(); await env.staging.dispose(); }
   });

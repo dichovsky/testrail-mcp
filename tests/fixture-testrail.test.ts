@@ -81,9 +81,9 @@ const EXPECTED = [
     outcome: '`INVALID_RESPONSE`, no data (C06)',
   },
   {
-    id: 990020, name: 'slow', code: 'UPSTREAM_ERROR', http: 408, routes: 'any', note: '; the kit\'s test uses `testrail_get_project`',
+    id: 990020, name: 'slow', code: 'TIMEOUT', routes: 'any', note: '; the kit\'s test uses `testrail_get_project`',
     reply: 'The reply after 20 seconds',
-    outcome: 'The driver\'s 15-second request timeout: `UPSTREAM_ERROR` with `http_status` 408. Four such calls hold every slot until then, so a fifth gets `BUSY` (C10)',
+    outcome: 'The driver\'s 15-second request timeout: `TIMEOUT`, with no `http_status`. Four such calls hold every slot until then, so a fifth gets `BUSY` (C10)',
   },
   {
     id: 990045, name: 'slowPages', code: 'PAGINATION_LIMIT', routes: 'any', note: ', and its paged lists for `"all"`; the kit\'s test uses `testrail_get_cases`',
@@ -376,7 +376,8 @@ describe('the stand-in\'s reserved IDs', () => {
       const timed = (promise: Promise<{ structuredContent?: unknown }>) => promise.then((result) => ({ error: payload(result).error, after: performance.now() - begun }));
       const results = await Promise.all(Array.from({ length: 5 }, () => timed(call('testrail_get_project', { project_id: ID.slow }, production, settings))));
       const busy = results.filter(({ error }) => error?.code === 'BUSY');
-      const timeouts = results.filter(({ error }) => error?.code === 'UPSTREAM_ERROR' && error.http_status === 408);
+      // The driver gave up waiting, so no status is claimed.
+      const timeouts = results.filter(({ error }) => error?.code === 'TIMEOUT' && error.http_status === undefined);
       expect(busy).toHaveLength(1);
       expect(busy[0]?.after).toBeLessThan(5_000);
       expect(timeouts).toHaveLength(4);

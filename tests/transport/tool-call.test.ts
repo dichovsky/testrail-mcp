@@ -287,10 +287,10 @@ describe('staged uploads', () => {
       const result = await executeToolCall(addAttachment, { case_id: 1, file_path: source, filename: 'dns.txt' }, {
         runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory),
       });
-      // Today's behaviour, pinned so any change is deliberate: the driver raises a
+      // Decided 2026-10-03 and stated in docs/results-and-errors.md: the driver raises a
       // validation error for the failed lookup, which maps to an internal fault with an
-      // unknown write outcome although nothing was sent. Whether it should is an open
-      // question on the F05 error contract.
+      // unknown write outcome although nothing was sent. The taxonomy has no code for an
+      // unreachable TestRail, and the adapter cannot prove that nothing was sent.
       expect(result.structuredContent).toEqual({
         error: { code: 'INTERNAL_ERROR', message: 'The server failed to complete the call.', write_outcome: 'unknown' },
       });

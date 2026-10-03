@@ -30,7 +30,7 @@ Anything still present is listed in `cleanup.residue`, as is anything unverified
 
 A second Ctrl-C abandons that cleanup. The runner removes its temporary files, names what may be left, and exits with 2 without writing evidence.
 
-TestRail's API cannot delete users or case fields. With `--instance-writes`, one inactive user and one case field stay behind, and the evidence lists them. When TestRail's answer to creating one is unknown, it lists it as possible, and so it does for the project and the group. A request the driver gave up waiting on counts as unknown, although its status is 408, since TestRail may still have acted on it. The user's name and the case field's label start with `testrail-mcp qualification`; the case field's system name is `tmq_<id>_f`, and the user's address ends in `@example.invalid`.
+TestRail's API cannot delete users or case fields. With `--instance-writes`, one inactive user and one case field stay behind, and the evidence lists them. When TestRail's answer to creating one is unknown, it lists it as possible, and so it does for the project and the group. A request the driver gave up waiting on is a `TIMEOUT` with `write_outcome: "unknown"`, and counts as possible, since TestRail may still have acted on it; so does a 408 that TestRail sent. The user's name and the case field's label start with `testrail-mcp qualification`; the case field's system name is `tmq_<id>_f`, and the user's address ends in `@example.invalid`.
 
 ## Running it
 
