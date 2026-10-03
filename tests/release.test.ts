@@ -219,18 +219,32 @@ describe('the release workflow', () => {
  * F10's networked re-check of the driver release ledger. It is the only workflow that
  * reaches the driver's repository or the npm registry for the ledger, it runs only when
  * what it checks changes, and it holds nothing but read access. The last test keeps the
- * ledger audit and any clone of the driver out of CI, the release workflow and npm's
- * scripts; it does not read the test files `npm test` runs.
+ * ledger audit, and any mention of the driver's repository, out of CI, the release
+ * workflow and npm's scripts; it does not read the test files `npm test` runs.
  */
 describe('the driver ledger workflow', () => {
   /**
-   * Each step's keys, name, action and inline run command, in order. The keys are read
-   * with the step's first one, so an added `if:` or `continue-on-error:` shows.
+   * The lines under a step's `with:`, each trimmed, in order; undefined when the step has
+   * no `with:` block. An input added, removed or changed shows, such as a `ref:` or
+   * `repository:` that would check out something other than the commit under test.
+   */
+  const inputs = (step: string): string[] | undefined => {
+    const lines = `        ${step}`.split('\n');
+    const start = lines.indexOf('        with:');
+    if (start === -1) return undefined;
+    const end = lines.findIndex((line, index) => index > start && /^ {0,8}\S/u.test(line));
+    return lines.slice(start + 1, end === -1 ? undefined : end).filter((line) => line.trim() !== '').map((line) => line.trim());
+  };
+
+  /**
+   * Each step's keys, name, action, action inputs and inline run command, in order. The
+   * keys are read with the step's first one, so an added `if:` or `continue-on-error:` shows.
    */
   const steps = (text: string) => text.slice(text.indexOf('\n    steps:\n')).split(/\n {6}- /u).slice(1).map((step) => ({
     keys: keys(`        ${step}`, 8),
     name: /^name: (.+)$/mu.exec(step)?.[1],
     uses: /^ {8}uses: (.+)$/mu.exec(step)?.[1],
+    with: inputs(step),
     run: /^ {8}run: (.+)$/mu.exec(step)?.[1],
   }));
 
@@ -257,21 +271,33 @@ describe('the driver ledger workflow', () => {
     const action = ['name', 'uses', 'with'];
     const command = ['name', 'run'];
     expect(steps(job(driverLedger, 'audit'))).toEqual([
-      { keys: action, name: 'Check out repository', uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1', run: undefined },
-      { keys: action, name: 'Set up Node.js', uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0', run: undefined },
       {
-        keys: command, name: 'Clone the driver without file contents', uses: undefined,
+        keys: action, name: 'Check out repository', uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
+        with: ['persist-credentials: false'], run: undefined,
+      },
+      {
+        keys: action, name: 'Set up Node.js', uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0',
+        with: ['node-version: \'24\'', 'package-manager-cache: false'], run: undefined,
+      },
+      {
+        keys: command, name: 'Clone the driver without file contents', uses: undefined, with: undefined,
         run: 'git clone --filter=blob:none --no-checkout https://github.com/dichovsky/testrail-api-client.git "$RUNNER_TEMP/driver"',
       },
-      { keys: command, name: 'Audit the ledger against the driver\'s history and npm', uses: undefined, run: 'node scripts/audit-driver-ledger.mjs "$RUNNER_TEMP/driver"' },
+      {
+        keys: command, name: 'Audit the ledger against the driver\'s history and npm', uses: undefined, with: undefined,
+        run: 'node scripts/audit-driver-ledger.mjs "$RUNNER_TEMP/driver"',
+      },
     ]);
     for (const { uses } of steps(job(driverLedger, 'audit'))) if (uses !== undefined) expect([...pins], uses).toContain(uses);
   });
 
   it('keeps the ledger audit and the driver clone out of CI, the release workflow and npm\'s scripts', () => {
     for (const [name, text] of [['ci.yml', ci], ['release.yml', release], ['package.json scripts', JSON.stringify(packageJson.scripts)]] as const) {
-      // A clone by https or ssh, with or without `.git`, names the repository this way.
-      expect(text, name).not.toMatch(/audit-driver-ledger|github\.com[/:]dichovsky\/testrail-api-client/u);
+      // A clone or checkout of the driver names its repository: an https or ssh URL, with
+      // or without `.git`, the checkout action's `repository:`, or `gh repo clone`, with the
+      // owner written out or taken from an expression. Only the npm package, which is
+      // `@dichovsky/testrail-api-client`, may be named. A name assembled from variables passes.
+      expect(text, name).not.toMatch(/audit-driver-ledger|(?<!@dichovsky\/)testrail-api-client(?![\w-])/iu);
     }
   });
 });
