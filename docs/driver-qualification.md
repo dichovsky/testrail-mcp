@@ -1,8 +1,19 @@
 # Driver qualification
 
-F01 is qualified. The MCP package pins the published release `@dichovsky/testrail-api-client@7.2.0`, and its acceptance checks run as standing tests in [`tests/driver-qualification.test.ts`](../tests/driver-qualification.test.ts) against the installed artifact rather than a sibling checkout.
+F01 is qualified. The MCP package pins the published release `@dichovsky/testrail-api-client@8.0.0`, and its acceptance checks run as standing tests in [`tests/driver-qualification.test.ts`](../tests/driver-qualification.test.ts) against the installed artifact rather than a sibling checkout.
 
-## Qualified release — 7.2.0, verified 2026-09-17
+## Qualified release — 8.0.0, verified 2026-10-03
+
+- [Release 8.0.0](https://github.com/dichovsky/testrail-api-client/releases/tag/release/8.0.0), tag commit `7680ab6c0d1973749e3178016a3d133af27bfb0a`, published from [upstream PR #294](https://github.com/dichovsky/testrail-api-client/pull/294).
+- npm integrity `sha512-1f7zBc6owy08SCCdLADc5LmwDgtMuhb8drYbgORUhn4LbKjJJE2K28K/3KOEtuIJ8jxZ81jBx5WGGBF4FNM8mw==`, matching the committed lockfile. The pin and integrity are asserted by test, so a drifted lockfile fails CI.
+- It requires Node 24 or later (`engines.node: ">=24"`), so this package's engine range narrowed to `>=24` with it.
+- Every check of the 7.2.0 qualification below was repeated against the installed 8.0.0 artifact and passes unchanged: all 133 endpoint bindings and 48 page/all helpers resolve; `trackOperation` keeps `settled` pending while a descendant is in flight after a lost deadline; sequential and concurrent report runs each reach TestRail, with caching off and on; and a report run is not retried on a network error, 500 or 503 while an ordinary read is.
+- What changed underneath: 8.0.0 derives each request's retry policy from its shape (`deriveRetryPolicy`) instead of taking it from the call site. A multipart body always gets the no-retry policy, a binary download the `binaryGet` policy, and a method declaring `intent: 'side-effecting-read'`, which the two report runs now do in place of `bypassCache: true` and `retry: 'rateLimitOnly'`, gets no cache key and the rate-limit-only policy. The multipart builder moved from `client-core.ts` to a new `upload-source.ts`. The behavior the standing tests observe is the same.
+- The accepted rate-limited report retry below still holds and is still asserted.
+- All 133 parameter manifests and the shared domain library were re-reviewed against `7680ab6`. Each carries an evidence step from `cc7751c`; ten cited files changed, and each changed file has a note saying what changed and why the claim stands or how it was reworded. See [driver provenance evidence](parameter-manifest.md#driver-provenance-evidence).
+- Not repeated: the live TestRail 10.8.1 run ([live qualification](live-qualification.md)) was recorded with 7.2.0 and has to be repeated with 8.0.0 before release.
+
+## Previously qualified release — 7.2.0, verified 2026-09-17
 
 - [Release 7.2.0](https://github.com/dichovsky/testrail-api-client/releases/tag/release/7.2.0), tag commit `cc7751c01c3d3956d061073283bee6b23bf33422`, published from [upstream PR #275](https://github.com/dichovsky/testrail-api-client/pull/275) (merged as `9d402e589d8937dda62b69fe74eac113b075a3f9`).
 - npm integrity `sha512-OAVJ1uJtxC0Wzh0jaafBRRcJFhwis/jAPZP3u1441a6wGrtKiZ4JsGtPVERl2wcenKVhqHnxwjkJJExPUB6HHQ==`, matching the committed lockfile. The pin and integrity are asserted by test, so a drifted lockfile fails CI.
@@ -13,7 +24,7 @@ F01 is qualified. The MCP package pins the published release `@dichovsky/testrai
 
 ### Accepted behavior: rate-limited report retries
 
-7.2.0 handles 429 in the rate limiter, above the per-method retry policy, so a rate-limited `runReport` is re-sent. This was reviewed on 2026-09-17 and accepted; the F01 criterion, originally written as "zero retries on network, 429 and 5xx", was amended to exempt 429.
+7.2.0 handles 429 in the rate limiter, above the per-method retry policy, so a rate-limited `runReport` is re-sent; 8.0.0 does the same through the rate-limit-only policy it derives for a side-effecting read. This was reviewed on 2026-09-17 and accepted; the F01 criterion, originally written as "zero retries on network, 429 and 5xx", was amended to exempt 429.
 
 TestRail rejects a rate-limited request before handling it, so the re-send cannot generate the report twice or send a duplicate template-configured email — the harm the retry ban exists to prevent. A 5xx is not exempt, because the server may already have begun generating. The behavior is asserted by test, so an upstream change to it fails CI.
 
@@ -25,9 +36,10 @@ That comparison is now data the manifest audit checks rather than prose. Each of
 
 ## Superseded audits
 
+- **7.2.0, 2026-09-17.** Qualified and pinned until 2026-10-03, when 8.0.0 replaced it. Its record is kept above.
 - **7.1.0, 2026-09-10.** Included the network-guard fixes from [upstream PR #266](https://github.com/dichovsky/testrail-api-client/pull/266) and all 181 endpoint/helper bindings, but had no `trackOperation`, and two sequential `reports.runReport` calls made only one upstream request. Not qualified.
 - **7.0.0.** The original development baseline, release commit `71a80d984aea14713d8eeaf6ac9a0d41c1fba12b`, without the network-guard fixes.
 
 ## Remaining release dependencies
 
-Qualification covers the driver contract only. R03 also requires live TestRail 10.8.1 evidence, and a later driver upgrade requires an exact dependency review, inventory/parameter diff and a repeat of the checks above against the newly installed artifact.
+Qualification covers the driver contract only. R03 also requires live TestRail 10.8.1 evidence, and a later driver upgrade requires an exact dependency review, inventory/parameter diff and a repeat of the checks above against the newly installed artifact. The 8.0.0 upgrade did that on 2026-10-03; its live run is still owed.

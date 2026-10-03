@@ -13,7 +13,7 @@
     "url": "https://github.com/dichovsky/testrail-mcp/issues"
   },
   "engines": {
-    "node": "^22.13.0 || >=24"
+    "node": ">=24"
   },
   "bin": {
     "testrail-mcp": "dist/cli.js"
@@ -31,29 +31,31 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node node_modules/@typescript/native/bin/tsc --noEmit",
+    "typecheck:ts6": "node node_modules/typescript/bin/tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
     "test:package": "node scripts/verify-package.mjs",
     "registry:check": "node scripts/check-registry.mjs --complete",
     "registry:generate": "npm run build && node scripts/check-registry.mjs --write",
-    "check": "npm run build && npm run registry:check && npm run typecheck && npm run lint && npm test && npm run test:package",
+    "check": "npm run build && npm run registry:check && npm run typecheck && npm run typecheck:ts6 && npm run lint && npm test && npm run test:package",
     "prepack": "npm run build",
     "prepublishOnly": "node scripts/check-publish.mjs"
   },
   "dependencies": {
-    "@dichovsky/testrail-api-client": "7.2.0",
-    "@modelcontextprotocol/server": "2.0.0",
-    "zod": "4.6.1"
+    "@dichovsky/testrail-api-client": "8.0.0",
+    "@modelcontextprotocol/server": "2.3.0",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@modelcontextprotocol/client": "2.0.0",
-    "@types/node": "22.20.2",
-    "eslint": "10.10.0",
-    "globals": "17.12.0",
+    "@modelcontextprotocol/client": "2.3.0",
+    "@types/node": "24.19.1",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "eslint": "10.12.0",
+    "globals": "17.13.0",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.70.0",
-    "vitest": "4.1.11"
+    "typescript-eslint": "8.71.0",
+    "vitest": "5.0.3"
   }
 }

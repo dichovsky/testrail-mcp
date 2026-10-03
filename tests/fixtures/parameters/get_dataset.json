@@ -3,10 +3,19 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "7.2.0",
-    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "driver_version": "8.0.0",
+    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-09-21"
+    "reviewed_on": "2026-10-03",
+    "evidence": [
+      {
+        "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/datasets.ts", "changed": false },
+          { "path": "src/schemas/datasets.ts", "changed": false }
+        ]
+      }
+    ]
   },
   "endpoint": {
     "family_id": "T09",
@@ -18,12 +27,12 @@
   "sources": [
     {
       "id": "driver-module-datasets",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/datasets.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/datasets.ts",
       "supports": "getDataset validates the identifier and places it as the only path segment of get_dataset/{dataset_id}, parsing the reply with DatasetSchema. It sends no query and no body, and issues exactly one request: nothing resolves the variable identifiers the reply carries into a second call."
     },
     {
       "id": "driver-schema-datasets",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/datasets.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/datasets.ts",
       "supports": "DatasetSchema declares id and name as required scalars and variables as a nullish array, so a dataset that omits the key parses. Each entry declares id and name as required scalars and value as nullable, which is how an unset variable is modelled. zObject's passthrough preserves any forward-compatible key the server adds."
     },
     {

@@ -3,10 +3,19 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "7.2.0",
-    "driver_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
+    "driver_version": "8.0.0",
+    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-09-21"
+    "reviewed_on": "2026-10-03",
+    "evidence": [
+      {
+        "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/variables.ts", "changed": false },
+          { "path": "src/schemas/variables.ts", "changed": false }
+        ]
+      }
+    ]
   },
   "endpoint": {
     "family_id": "T09",
@@ -18,12 +27,12 @@
   "sources": [
     {
       "id": "driver-module-variables",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/modules/variables.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/variables.ts",
       "supports": "addVariable validates the project identifier, posts to add_variable/{project_id} with the payload as the JSON body and parses the reply with VariableSchema. The payload is passed through unexamined: no public method parses AddVariablePayloadSchema, so every payload rule is enforced at the MCP boundary alone."
     },
     {
       "id": "driver-schema-variables",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/cc7751c01c3d3956d061073283bee6b23bf33422/src/schemas/variables.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/variables.ts",
       "supports": "AddVariablePayloadSchema declares a single required name of type string and nothing else. VariableSchema declares the reply as exactly two required non-nullable fields, id and name; there is no value field, because a value belongs to a dataset."
     },
     {
