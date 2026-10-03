@@ -44,7 +44,7 @@ Dependencies describe completion prerequisites. An implementer may prepare fixtu
 2. **Shared adapter:** after F02, F04 registry/input work can proceed while F01 qualifies the enhanced driver. F03 runtime/configuration may be prepared in parallel, but completes only after both F01 and F02; it adopts the qualified package and uses its settlement handle. F05 results/errors follows both; F06 pagination, F07 files and F08 stdio can then proceed alongside one another.
 3. **Endpoint families:** implement T01–T12 in parallel as their shared dependencies are ready. Keep the public registry stable and partition edits by family. T03/T12 share F07, and T11 depends on F01. Each family owns its complete independent parameter manifest and fixtures, not only a handler list.
 4. **Integrated qualification:** R01 assembles exhaustive endpoint/parameter/protocol gates. R02 verifies the required client surfaces and setup documentation against the packed candidate.
-5. **Release:** R03 verifies the dedicated TestRail 10.7.0 baseline and final candidate, then publishes through the repository release process when authorized. All 133 operations and all required evidence must be complete before the full release is ready.
+5. **Release:** R03 verifies the TestRail 10.8.1 baseline and final candidate, then publishes through the repository release process when authorized. All 133 operations and all required evidence must be complete before the full release is ready.
 
 ## Common definition of done
 
@@ -63,7 +63,7 @@ Dependencies describe completion prerequisites. An implementer may prepare fixtu
 | Runtime and local files | Bounded calls/downloads, per-caller warnings, complete-result byte caps, honest cancellation/write outcomes, staging cleanup after actual descendant settlement, persistent completed downloads and accurate local-effect annotations | F03, F05–F07, R01 |
 | Protocol and packaging | Legacy initialization plus MCP 2026-07-28 discovery; protocol-only stdout; tarball install and executable checks on Node 24 across Linux/macOS/Windows | F02, F08, R01 |
 | Required clients | Exact versions/builds, models/providers, settings and C01–C12 results for Codex desktop, Codex CLI, Claude Code and Copilot CLI | R02 |
-| TestRail 10.7.0 | Dedicated disposable environment, required features/licenses/permissions, operation-level live evidence and truthful availability reporting | R03 |
+| TestRail 10.8.1 | Dedicated disposable environment, required features/licenses/permissions, operation-level live evidence and truthful availability reporting | R03 |
 | Published artifact | Tested version/tag/lockfile/provenance, authorized npm release and post-publication install verification | R03 |
 
 The deterministic suite needs no live credentials. Live qualification and model-facing client tests require available accounts, clients and a dedicated TestRail environment during implementation. Their absence is a recorded outstanding prerequisite, not a reason to claim a pass or reduce API coverage. Destructive fixtures and live cleanup target disposable test data. Report templates used in live tests must have deliberate notification settings.

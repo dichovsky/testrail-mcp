@@ -156,7 +156,7 @@ Protocol success establishes the adapter contract. It does not substitute for ho
 
 ### 2. Required-client checks
 
-Use an isolated client configuration and the fixture-backed test launcher for repeatable host checks. Then perform the packaged production-executable smoke checks against a designated TestRail 10.7.0 test instance as part of release verification. Keep fixture and live evidence separate. Any unavailable account, client surface, or instance remains explicitly unverified.
+Use an isolated client configuration and the fixture-backed test launcher for repeatable host checks. Then perform the packaged production-executable smoke checks against a designated TestRail 10.8.1 test instance as part of release verification. Keep fixture and live evidence separate. Any unavailable account, client surface, or instance remains explicitly unverified.
 
 #### The fixture-backed kit
 
