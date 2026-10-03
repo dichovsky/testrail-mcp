@@ -42,6 +42,34 @@ function reply(response: Extract<Fixture['expect'], { kind: 'accepted' }>['upstr
   return { status: 200, body: response.utf8, type: 'application/octet-stream' };
 }
 
+/** A reply whose connection breaks after its first chunk: the headers arrived, the rest of the body never did. */
+function breaking(status: number, start: string): Response {
+  let sent = false;
+  return new Response(new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (sent) { controller.error(new TypeError('terminated')); return; }
+      sent = true;
+      controller.enqueue(new TextEncoder().encode(start));
+    },
+  }), { status, headers: { 'content-type': 'application/json' } });
+}
+
+/**
+ * A key no driver schema names, added to every object, nested ones included. When a reply
+ * matches the driver's schema, the driver hands back its parsed output rather than the
+ * reply, so an unknown field survives only while each schema it applies passes unknown
+ * keys through. An upgrade re-records the release ledger's hashes, so the ledger cannot
+ * tell whether a new schema stopped passing unknown keys.
+ */
+const UNKNOWN_KEY = 'zz_unknown_f05';
+
+function withUnknownKey(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withUnknownKey);
+  if (typeof value !== 'object' || value === null) return value;
+  const copy = Object.fromEntries(Object.entries(value).map(([key, item]) => [key, withUnknownKey(item)]));
+  return { ...copy, [UNKNOWN_KEY]: true };
+}
+
 function isAll(fixture: Fixture): boolean {
   const control = fixture.input._mcp;
   return typeof control === 'object' && control !== null && !Array.isArray(control) && control.pagination === 'all';
@@ -172,7 +200,8 @@ describe('every tool\'s result, as a connected client receives it', () => {
     const directory = join(base, tool);
     await mkdir(directory, { recursive: true });
     const paths = await materializeFiles(manifest, directory);
-    next = reply(fixture.expect.upstream_response);
+    const upstream = fixture.expect.upstream_response;
+    next = upstream.kind === 'json' ? json(withUnknownKey(upstream.body)) : reply(upstream);
     const result = await client.callTool({ name: tool, arguments: substituteTokens(fixture.input, paths) });
     expect(result.isError, JSON.stringify(result.structuredContent)).not.toBe(true);
     const outputSchema = advertised.get(tool)?.outputSchema;
@@ -189,16 +218,18 @@ describe('every tool\'s result, as a connected client receives it', () => {
     // A paged list says how much of the dataset it returned; nothing else claims to.
     expect(Object.hasOwn(result.structuredContent ?? {}, 'pagination')).toBe(operation.pagination.kind !== 'none');
     // The data is what the driver returned, unchanged: the manifest's hand-written driver
-    // result, its items for a page, and null for a void method. A download returns the
-    // written file's description instead, whose path cannot be known in advance.
+    // result, its items for a page, and null for a void method, with the unknown key kept
+    // wherever the reply carried it. A download returns the written file's description
+    // instead, whose path cannot be known in advance.
     if (operation.files.kind !== 'download') {
       const expected = fixture.expect.driver_result;
       const data = (result.structuredContent as { data: unknown }).data;
       if (expected.kind === 'void') expect(data).toBeNull();
       else if (expected.kind === 'json') {
+        const value = withUnknownKey(expected.value);
         expect(data).toEqual(operation.pagination.kind !== 'none' && _mode === 'page'
-          ? (expected.value as { items: unknown }).items
-          : expected.value);
+          ? (value as { items: unknown }).items
+          : value);
       }
     }
   });
@@ -457,9 +488,20 @@ describe('F05 result evidence through registered tools', () => {
 
   /* Production retry settings: the driver re-sends a write after nothing but a 429. */
   it.each([
+    // Deliberately INVALID_RESPONSE, like the driver's other status-zero errors: the
+    // taxonomy has no code for an unreachable TestRail (docs/results-and-errors.md).
     ['a network error', () => Promise.reject(new TypeError('fetch failed')), { code: 'INVALID_RESPONSE' }],
     ['a 500 reply', () => Promise.resolve(new Response('{"error":"x"}', { status: 500, headers: { 'content-type': 'application/json' } })), { code: 'UPSTREAM_ERROR', http_status: 500 }],
     ['a 200 reply that is not JSON', () => Promise.resolve(new Response('<html>ok</html>', { status: 200, headers: { 'content-type': 'application/json' } })), { code: 'INVALID_RESPONSE' }],
+    /*
+     * A connection that breaks after the headers. The driver keeps an error reply's status
+     * and drops only its text, so the status decides the code: a whole licence text sent
+     * before the break is lost, and the reply is a plain 403. A success body that breaks
+     * reaches the adapter as the raw fetch error.
+     */
+    ['a 500 reply whose body breaks', () => Promise.resolve(breaking(500, '{"error":"x"}')), { code: 'UPSTREAM_ERROR', http_status: 500 }],
+    ['a 403 licence reply whose body breaks', () => Promise.resolve(breaking(403, '{"error":"Not an Enterprise license/subscription."}')), { code: 'PERMISSION_DENIED', http_status: 403 }],
+    ['a 200 reply whose body breaks', () => Promise.resolve(breaking(200, '{"id":')), { code: 'INTERNAL_ERROR' }],
   ] as const)('reports a JSON write whose reply is lost to %s as unknown, sent once', async (_label, respond, error) => {
     const fetch = vi.fn(respond);
     const client = new TestRailClient({

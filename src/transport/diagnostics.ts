@@ -9,7 +9,10 @@ export interface DiagnosticFields {
   readonly correlation?: string;
   readonly tool?: string;
   readonly outcome?: 'success' | 'error';
-  /** A code from the fixed error taxonomy, never a driver message. */
+  /**
+   * For `tool_call`, a code from the fixed error taxonomy. For `transport_error`, the
+   * error's class name, limited to a plain identifier. Never a driver or error message.
+   */
   readonly code?: string;
   /**
    * Whether a failed write reached TestRail. It is repeated here because the result that
@@ -31,9 +34,14 @@ export function correlationId(): string {
  * One JSON object per line on stderr.
  *
  * Standard output carries protocol messages only, so nothing here may write there.
- * Fields are restricted to fixed codes, tool names, counts and durations. Tool
- * results legitimately contain TestRail data and local file paths; diagnostics must
- * not, which is why arguments, response bodies and paths are never accepted here.
+ * The fields' names are fixed by `DiagnosticFields`, but `code` and `tool` are typed as
+ * any string, so what they carry is up to each caller. Tool results legitimately contain
+ * TestRail data and local file paths; diagnostics must not, so callers pass only fixed
+ * codes, tool names, counts and durations, never arguments, response bodies or paths.
+ * Tests hold each caller to that: tests/result-contract.test.ts for the pipeline's
+ * `tool_call`, tests/transport/handler-failure.test.ts for the one the server logs when
+ * the pipeline rejects, and tests/transport/diagnostic-events.test.ts for every server
+ * lifecycle event.
  */
 export function logEvent(event: EventCode, fields: DiagnosticFields = {}): void {
   process.stderr.write(`${JSON.stringify({ event, ...fields })}\n`);

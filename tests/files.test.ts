@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { mkdtemp, mkdir, open, readdir, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdtemp, mkdir, open, readdir, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -51,6 +51,16 @@ async function source(name: string, content: string): Promise<string> {
   const path = join(root, name);
   await writeFile(path, content);
   return path;
+}
+
+/**
+ * A handle's stat that reports a different size. Staging asks for BigInt stats, so the
+ * options are forwarded and the size given in the type asked for.
+ */
+function statReporting(handle: Awaited<ReturnType<typeof actual.open>>, size: number): typeof handle.stat {
+  const originalStat = handle.stat.bind(handle) as (options?: { bigint?: boolean }) => Promise<object>;
+  return (async (options?: { bigint?: boolean }) =>
+    Object.assign(await originalStat(options), { size: options?.bigint === true ? BigInt(size) : size })) as typeof handle.stat;
 }
 
 describe('containment', () => {
@@ -147,8 +157,7 @@ describe('upload staging', () => {
       const handle = await actual.open(...args);
       opens += 1;
       if (opens === 1) {
-        const originalStat = handle.stat.bind(handle);
-        handle.stat = (async () => Object.assign(await originalStat(), { size: 10 })) as typeof handle.stat;
+        handle.stat = statReporting(handle, 10);
       } else {
         const originalWrite = handle.write.bind(handle) as (b: Buffer, o: number, l: number) => Promise<{ bytesWritten: number }>;
         handle.write = (async (buffer: Buffer, offset: number, length: number) => {
@@ -248,6 +257,24 @@ describe('upload staging', () => {
     await staged.dispose();
     await expect(stat(staged.path)).rejects.toThrow();
     await expect(staged.dispose()).resolves.toBeUndefined();
+    await area.dispose();
+  });
+
+  it('empties a staged copy before removing it, so a descriptor left open on it holds no data', async () => {
+    const area = await createStagingArea(staging);
+    const staged = await stageUpload(await source('lingering.bin', 'q'.repeat(100 * 1024)), { roots: [root], maxBytes: 1_024 * 1_024, stagingDirectory: area.directory });
+    // Stands in for the descriptor Node's file-backed Blob keeps until garbage collection
+    // after a request body is abandoned mid-read. An unlinked file keeps its blocks while
+    // any descriptor is open, so removal alone would leave all 100 KiB held.
+    const lingering = await actual.open(staged.path, 'r');
+    try {
+      expect((await lingering.stat()).size).toBe(100 * 1024);
+      await staged.dispose();
+      expect((await lingering.stat()).size).toBe(0);
+    } finally { await lingering.close(); }
+    // Listed only once the handle is closed, so a platform that defers deleting an open
+    // file cannot affect it.
+    expect(await readdir(area.directory)).toEqual(['owner.json']);
     await area.dispose();
   });
 
@@ -370,10 +397,7 @@ describe('upload staging', () => {
       const index = closes.push(0) - 1;
       const originalClose = handle.close.bind(handle);
       handle.close = async () => { closes[index] = (closes[index] ?? 0) + 1; return originalClose(); };
-      if (sizeLie !== undefined && index === 0) {
-        const originalStat = handle.stat.bind(handle);
-        handle.stat = (async () => Object.assign(await originalStat(), { size: sizeLie })) as typeof handle.stat;
-      }
+      if (sizeLie !== undefined && index === 0) handle.stat = statReporting(handle, sizeLie);
       return handle;
     });
     // Refused by its measured size: only the source is open, and it is closed once.
@@ -403,8 +427,14 @@ describe('upload staging', () => {
     ['a write that makes no progress', 'stuck', [1, 1]],
     // Windows cannot open a directory as a file, so nothing is opened to close there.
     ...(WINDOWS ? [] : [['a non-regular source', 'directory', [1]]] as const),
-    // Windows refuses to replace a file that is open, so this race cannot be staged there.
+    // Windows refuses to rename over a file that is open, so this fixture cannot run there.
     ...(WINDOWS ? [] : [['a path that names another file once open', 'inode', [1]]] as const),
+    /*
+     * Where O_NOFOLLOW exists the open itself refuses the link and nothing is opened. On
+     * Windows the open follows it, the identity check refuses, and the source handle must
+     * still be closed once: this is the Windows replacement-race case for close counting.
+     */
+    ['a final component swapped for a symlink', 'symlink', constants.O_NOFOLLOW === undefined ? [1] : []],
   ] as const)('closes each handle exactly once on %s', async (_label, fault, expected) => {
     const area = await createStagingArea(staging);
     const path = fault === 'directory' ? join(root, 'closes-a-directory') : await source(`closes-${fault}.txt`, 'content');
@@ -417,6 +447,14 @@ describe('upload staging', () => {
       vi.mocked(randomUUID).mockReturnValueOnce(taken);
     }
     vi.mocked(open).mockImplementation(async (...args: Parameters<typeof actual.open>) => {
+      if (fault === 'symlink' && !swapped) {
+        // Between containment and the source's open, the file becomes a link out of the root.
+        const secret = join(outside, 'closes-symlink-secret.txt');
+        await writeFile(secret, 'OUTSIDE SECRET');
+        await rm(path);
+        await symlink(secret, path);
+        swapped = true;
+      }
       const handle = await actual.open(...args);
       const index = closes.push(0) - 1;
       const originalClose = handle.close.bind(handle);
@@ -437,11 +475,12 @@ describe('upload staging', () => {
     await expect(stageUpload(path, { roots: [root], maxBytes: 1_024, stagingDirectory: area.directory }))
       .rejects.toMatchObject({ code: 'FILE_ACCESS_DENIED' });
     expect(closes).toEqual(expected);
-    if (fault === 'inode') expect(swapped).toBe(true);
+    if (fault === 'inode' || fault === 'symlink') expect(swapped).toBe(true);
     await area.dispose();
   });
 
-  // Windows refuses to replace a file that is open, so this race cannot be staged there.
+  // Windows refuses to rename over a file that is open, so this fixture cannot run there; on
+  // Windows the symlink-swap and 2^53 identity tests below exercise the identity check.
   it.skipIf(WINDOWS)('refuses a source whose path names another file once it is open', async () => {
     const area = await createStagingArea(staging);
     const path = await source('replaced.txt', 'opened');
@@ -490,6 +529,84 @@ describe('upload staging', () => {
       expect(refusedBy).toBe('ELOOP');
     }
     expect(await readdir(area.directory)).toEqual(['owner.json']);
+    await area.dispose();
+  });
+
+  /*
+   * A file ID is 64 bits. NTFS keeps a sequence number in the top 16 bits, so Windows IDs
+   * routinely reach 2^53, past which a JavaScript number loses the low bits. Runs on every
+   * platform: the IDs are reported by the fixture, BigInt when asked and rounded otherwise,
+   * as Node reports them.
+   */
+  it('compares file identities exactly, even beyond 2^53', async () => {
+    const held = 2n ** 60n + 1n;
+    // As numbers the two IDs below are the same; only the lowest bit tells them apart.
+    expect(Number(held)).toBe(Number(2n ** 60n));
+    const area = await createStagingArea(staging);
+    const path = await source('wide-identity.txt', 'content');
+
+    const reporting = (named: bigint) => {
+      vi.mocked(open).mockImplementationOnce(async (...args: Parameters<typeof actual.open>) => {
+        const handle = await actual.open(...args);
+        const originalStat = handle.stat.bind(handle) as (options?: { bigint?: boolean }) => Promise<object>;
+        handle.stat = (async (options?: { bigint?: boolean }) =>
+          Object.assign(await originalStat(options), { ino: options?.bigint === true ? held : Number(held) })) as typeof handle.stat;
+        return handle;
+      });
+      vi.mocked(lstat).mockImplementationOnce((async (target: string, options?: { bigint?: boolean }) =>
+        Object.assign(await actual.lstat(target, options as never), { ino: options?.bigint === true ? named : Number(named) })) as typeof lstat);
+    };
+
+    // The same 64-bit ID on both sides passes, so the fixture alone refuses nothing.
+    reporting(held);
+    const staged = await stageUpload(path, { roots: [root], maxBytes: 1_024, stagingDirectory: area.directory });
+    expect(await readFile(staged.path, 'utf8')).toBe('content');
+    await staged.dispose();
+
+    // One bit apart: a different file, though the two round to the same number.
+    reporting(2n ** 60n);
+    await expect(stageUpload(path, { roots: [root], maxBytes: 1_024, stagingDirectory: area.directory }))
+      .rejects.toMatchObject({ code: 'FILE_ACCESS_DENIED' });
+    expect(vi.mocked(lstat).mock.calls.map(([, options]) => options)).toEqual([{ bigint: true }, { bigint: true }]);
+    expect(await readdir(area.directory)).toEqual(['owner.json']);
+    await area.dispose();
+  });
+
+  it('stops copying between chunks once its signal aborts, and leaves nothing staged', async () => {
+    const area = await createStagingArea(staging);
+    // Four chunks, so a copy that ignored the signal would read on past the first.
+    const path = await source('abandoned.bin', 'z'.repeat(200 * 1024));
+    const abandon = new AbortController();
+    let reads = 0;
+    const closes: number[] = [];
+    vi.mocked(open).mockImplementation(async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args);
+      const index = closes.push(0) - 1;
+      const originalClose = handle.close.bind(handle);
+      handle.close = async () => { closes[index] = (closes[index] ?? 0) + 1; return originalClose(); };
+      if (index === 0) {
+        const originalRead = handle.read.bind(handle) as (...a: unknown[]) => Promise<{ bytesRead: number }>;
+        handle.read = (async (...a: unknown[]) => {
+          reads += 1;
+          // The call is abandoned while the first chunk is being read.
+          if (reads === 1) abandon.abort();
+          return originalRead(...a);
+        }) as unknown as typeof handle.read;
+      }
+      return handle;
+    });
+    await expect(stageUpload(path, { roots: [root], maxBytes: 1_024 * 1_024, stagingDirectory: area.directory, signal: abandon.signal }))
+      .rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(reads).toBe(1);
+    // The source and the partial copy, each closed once, and the copy removed.
+    expect(closes).toEqual([1, 1]);
+    expect(await readdir(area.directory)).toEqual(['owner.json']);
+
+    // A call abandoned before staging begins opens nothing at all.
+    vi.mocked(open).mockClear();
+    await expect(stageUpload(path, { roots: [root], maxBytes: 1_024 * 1_024, stagingDirectory: area.directory, signal: AbortSignal.abort() }))
+      .rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(vi.mocked(open)).not.toHaveBeenCalled();
     await area.dispose();
   });
 });

@@ -216,9 +216,9 @@ const eventNames = (stderr: string): string[] => stderr.split('\n').filter((line
   .map((line) => (JSON.parse(line) as { event: string }).event);
 
 /*
- * Windows has no signal delivery to a child: `kill('SIGINT')` and `kill('SIGTERM')`
- * terminate it unconditionally, so there is no handler to test there. Closing stdin,
- * which is how hosts end a stdio server, runs on every platform.
+ * Node cannot deliver a catchable signal to a child on Windows: `kill('SIGINT')` and
+ * `kill('SIGTERM')` terminate it unconditionally, so there is no handler to test there.
+ * Closing stdin, which is how hosts end a stdio server, runs on every platform.
  */
 const windows = process.platform === 'win32';
 type Ending = readonly [string, (child: ChildProcessWithoutNullStreams) => void];
@@ -342,7 +342,11 @@ describe('packaged server shutdown after a staging failure', () => {
       await rm(temporary, { recursive: true, force: true });
       upload(2);
       await waitFor(() => session.out().includes('"id":2'), 'the failed upload');
-      expect(session.out()).toContain('INTERNAL_ERROR');
+      const failed = session.out().split('\n').filter((line) => line.trim() !== '')
+        .map((line) => JSON.parse(line) as { id?: number; result?: { structuredContent?: { error?: unknown } } })
+        .find((message) => message.id === 2);
+      // The staging area could not be created, so nothing was sent.
+      expect(failed?.result?.structuredContent?.error).toMatchObject({ code: 'INTERNAL_ERROR', write_outcome: 'not_started' });
       expect(testRail.requests).toHaveLength(0);
 
       // A failure is not remembered: once the directory is back, the next upload stages and is sent.

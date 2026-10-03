@@ -15,6 +15,24 @@ const releaseFileSchema = z.strictObject({
   package_sha256: z.string().regex(/^[0-9a-f]{64}$/).nullable(),
 });
 
+/**
+ * A reviewed fixture's record of each driver advance: one step per advance, chained from
+ * its authored_commit to its driver_commit. Each step names every driver file the fixture
+ * cites and whether it changed; the audit checks the claim against the recorded release
+ * hashes rather than taking it on trust. Parameter manifests and the shared domain
+ * library both carry it.
+ */
+export const provenanceEvidenceSchema = z.array(z.strictObject({
+  from_commit: commit,
+  to_commit: commit,
+  reviewed_on: z.iso.date(),
+  files: z.array(z.strictObject({
+    path: z.string().min(1),
+    changed: z.boolean(),
+    note: z.string().min(1).optional(),
+  })).min(1),
+})).min(1);
+
 export const DriverReleasesSchema = z.strictObject({
   schema_version: z.literal(1),
   repository: z.url(),

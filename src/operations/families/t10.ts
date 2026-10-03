@@ -196,6 +196,9 @@ export const getResultFields = defineOperation({
  * of its own. As with the other response-driven lists, the aggregate walks the envelope's
  * next link, a continuation carrying only the offset and limit TestRail put there, and a
  * complete read that stops at a safety bound cannot be resumed from where it stopped.
+ * A bare array carries no link, so the driver reads one as the end of the list; the
+ * summary says so, as the plan and run attachment lists do, without their next-offset
+ * advice, which a list that takes no offset cannot follow.
  */
 const getCaseStatusesInput = createListInput({ path: {}, pagination: 'response-driven' });
 
@@ -205,7 +208,7 @@ export const getCaseStatuses = defineOperation({
   route: 'get_case_statuses',
   family: 'T10',
   driverBinding: 'metadata.getCaseStatuses',
-  summary: 'List the TestRail case statuses: the statuses of test cases themselves, such as Draft or Approved, identified by case_status_id. is_approved marks an approved status and is_default the default status for test cases. These are not the execution statuses a test result records, which testrail_get_statuses lists. TestRail documents this endpoint as requiring TestRail Enterprise 7.3 or later. TestRail documents no paging controls for it, so this server sends none of its own and TestRail chooses each page; a complete read follows TestRail\'s next link, and one that stops at one of its bounds cannot be resumed from where it stopped, and needs a larger bound instead.',
+  summary: 'List the TestRail case statuses: the statuses of test cases themselves, such as Draft or Approved, identified by case_status_id. is_approved marks an approved status and is_default the default status for test cases. These are not the execution statuses a test result records, which testrail_get_statuses lists. TestRail documents this endpoint as requiring TestRail Enterprise 7.3 or later. TestRail documents no paging controls for it, so this server sends none of its own and TestRail chooses each page; a complete read follows TestRail\'s next link, and one that stops at one of its bounds cannot be resumed from where it stopped, and needs a larger bound instead. TestRail\'s reference example, however, shows the reply as a bare array, which carries no continuation: a reply in that form is read as the whole list, with has_more false in page mode, and all mode stops after it while reporting complete, with no way to tell whether TestRail holds more.',
   inputSchema: getCaseStatusesInput,
   argumentMap: [...safetyControlMappings(0)],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: CaseStatusSchema },

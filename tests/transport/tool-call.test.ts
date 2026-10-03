@@ -215,7 +215,7 @@ describe('download identifiers', () => {
 });
 
 describe('staged uploads', () => {
-  it('leaves no staged copy behind when the call is refused at admission', async () => {
+  it('stages nothing for a call refused at admission', async () => {
     const source = join(roots, 'upload.txt');
     await writeFile(source, 'approved content');
     const area = await createStagingArea(base);
@@ -230,9 +230,10 @@ describe('staged uploads', () => {
       limits: configuration.limits,
     });
 
+    let stagings = 0;
     const dependencies = {
       runtime, configuration,
-      stagingDirectory: () => Promise.resolve(area.directory),
+      stagingDirectory: () => { stagings += 1; return Promise.resolve(area.directory); },
     };
 
     try {
@@ -248,13 +249,15 @@ describe('staged uploads', () => {
         dependencies,
       );
       expect(refused.isError).toBe(true);
-      expect((refused.structuredContent as { error: { code: string } }).error.code).toBe('BUSY');
+      expect((refused.structuredContent as { error: object }).error)
+        .toMatchObject({ code: 'BUSY', write_outcome: 'not_started' });
 
       /*
-       * The runtime rejects BUSY before it creates the slot that runs cleanup, so
-       * without an explicit disposal the copy would sit in the staging directory for
-       * the life of the process. Only the ownership marker may remain.
+       * Staging runs inside the slot, so a call refused at admission never reaches it:
+       * the staging area is not even asked for, and nothing is copied that would then
+       * have to be disposed of outside any slot.
        */
+      expect(stagings).toBe(0);
       expect(await readdir(area.directory)).toEqual(['owner.json']);
 
       release();
@@ -284,10 +287,10 @@ describe('staged uploads', () => {
       const result = await executeToolCall(addAttachment, { case_id: 1, file_path: source, filename: 'dns.txt' }, {
         runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory),
       });
-      // Today's behaviour, pinned so any change is deliberate: the driver raises a
+      // Decided 2026-10-03 and stated in docs/results-and-errors.md: the driver raises a
       // validation error for the failed lookup, which maps to an internal fault with an
-      // unknown write outcome although nothing was sent. Whether it should is an open
-      // question on the F05 error contract.
+      // unknown write outcome although nothing was sent. The taxonomy has no code for an
+      // unreachable TestRail, and the adapter cannot prove that nothing was sent.
       expect(result.structuredContent).toEqual({
         error: { code: 'INTERNAL_ERROR', message: 'The server failed to complete the call.', write_outcome: 'unknown' },
       });

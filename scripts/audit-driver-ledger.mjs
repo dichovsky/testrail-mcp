@@ -1,7 +1,10 @@
 // Re-check every entry of tests/fixtures/driver-releases.json against its sources: each
-// git blob ID against a clone of the driver, and each integrity and shipped-file SHA-256
-// against the tarball npm serves. This needs git, npm and a network, so it is a manual
-// audit rather than part of `npm run check`, which holds only the installed release.
+// release's commit against its release/<version> tag and each git blob ID against a clone
+// of the driver, and each integrity and shipped-file SHA-256 against the tarball npm
+// serves. This needs git, npm and a network, so it is not part of `npm run check`, which
+// holds only the installed release offline. .github/workflows/driver-ledger.yml runs it
+// when the ledger, this script or the workflow changes, or when started by hand; it can
+// also be run locally.
 //
 // Usage: node scripts/audit-driver-ledger.mjs <path to a clone of testrail-api-client>
 import { execFileSync } from 'node:child_process';
@@ -17,6 +20,15 @@ const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const mismatches = [];
 let checked = 0;
 
+// The commit a release tag names, or null when the clone has no such tag.
+function tagged(version) {
+  try {
+    return execFileSync('git', ['-C', clone, 'rev-parse', '-q', '--verify', `refs/tags/release/${version}^{commit}`], { encoding: 'utf8' }).trim();
+  } catch {
+    return null;
+  }
+}
+
 function blob(commit, path) {
   try {
     return execFileSync('git', ['-C', clone, 'rev-parse', '-q', '--verify', `${commit}:${path}`], { encoding: 'utf8' }).trim();
@@ -26,6 +38,13 @@ function blob(commit, path) {
 }
 
 for (const release of ledger.releases) {
+  // Blob claims are judged at release.commit and hashes by release.version, so the two
+  // must name the same release: a commit off the tag would be compared with the wrong
+  // source whenever its blobs happen to match.
+  const tag = tagged(release.version);
+  if (tag !== release.commit) {
+    mismatches.push(`${release.version}: commit ${release.commit.slice(0, 8)} is not tag release/${release.version} (${tag === null ? 'missing' : tag.slice(0, 8)})`);
+  }
   const work = await mkdtemp(join(tmpdir(), 'driver-ledger-'));
   try {
     const report = JSON.parse(execFileSync(npm, ['pack', '--json', '--pack-destination', work, `@dichovsky/testrail-api-client@${release.version}`], {
@@ -62,5 +81,5 @@ if (mismatches.length > 0) {
   console.error(mismatches.join('\n'));
   process.exitCode = 1;
 } else {
-  console.log(`Driver ledger matches: ${ledger.releases.length} releases, ${checked} files, blob IDs, shipped-file hashes and integrities.`);
+  console.log(`Driver ledger matches: ${ledger.releases.length} releases, ${checked} files, release tags, blob IDs, shipped-file hashes and integrities.`);
 }

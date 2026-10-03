@@ -160,6 +160,28 @@ function twoPages(tool: string, route: string, manifest: ParameterManifest) {
   return { first, second, next, fetch, urls };
 }
 
+/**
+ * A list served as a bare array, which carries no continuation. Alone, every request gets
+ * the whole bare array. After an envelope, the first request gets the list's own envelope
+ * linking on to offset 1, and the request for offset 1 gets a bare array.
+ */
+function bareArray(tool: string, route: string, manifest: ParameterManifest, afterEnvelope: boolean) {
+  const key = COLLECTION[tool];
+  if (key === undefined) throw new Error(`${tool}: no collection key`);
+  const token = route.split('/')[0] ?? '';
+  const first = sampleItem(manifest, key);
+  const second = another(first);
+  const envelope = { offset: 0, limit: 1, size: 1, _links: { next: `/api/v2/${token}&limit=1&offset=1`, prev: null }, [key]: [first] };
+  const fetch = vi.fn((target: unknown) => {
+    const url = typeof target === 'string' ? target : target instanceof URL ? target.href : (target as Request).url;
+    const body = !afterEnvelope ? [first, second]
+      : /[?&]offset=1(?:&|$)/u.test(url) ? [second]
+        : NESTED.has(tool) ? [envelope] : envelope;
+    return Promise.resolve(new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } }));
+  });
+  return { first, second, fetch };
+}
+
 function runtimeFor(fetch: ReturnType<typeof vi.fn>) {
   const client = new TestRailClient({
     ...driverOptions(configuration),
@@ -263,6 +285,62 @@ describe('every paged list through the tool-call path', () => {
       expect(payload.error).not.toHaveProperty('write_outcome');
       // The first page was fetched and then withheld; the second was never asked for.
       expect(server.fetch).toHaveBeenCalledTimes(1);
+    } finally { await runtime.shutdown(); }
+  });
+
+  /*
+   * A bare array carries no continuation, so the driver reads one as the end of the list
+   * on every list, the case history's nested decoder included. The page describes only
+   * what it holds, inventing no limit or offset, and the aggregate stops after it and
+   * reports complete, because it cannot tell the end of the list from a reply that stopped
+   * short. Three lists' descriptions say so (tests/pagination-disclosure.test.ts).
+   */
+  it.each(rows)('%s: a bare first reply is the whole list, in page mode and in all mode', async (tool, route, kind) => {
+    const manifest = manifestFor(tool);
+    const page = bareArray(tool, route, manifest, false);
+    let runtime = runtimeFor(page.fetch);
+    try {
+      const result = await executeToolCall(registered(tool), pageFixture(manifest).input, { runtime, configuration });
+      expect(result.isError, JSON.stringify(result.structuredContent)).toBeUndefined();
+      const { data, pagination, warnings } = structured(result);
+      expect(data).toEqual([page.first, page.second]);
+      expect(warnings).toBeUndefined();
+      expect(pagination).toEqual({
+        mode: 'page', source: 'legacy_array', returned: 2, has_more: false,
+        manual_continuation: false, next_action: 'none', driver: { size: 2 },
+      });
+    } finally { await runtime.shutdown(); }
+    const all = bareArray(tool, route, manifest, false);
+    runtime = runtimeFor(all.fetch);
+    try {
+      const result = await executeToolCall(registered(tool), allFixture(manifest).input, { runtime, configuration });
+      expect(result.isError, JSON.stringify(result.structuredContent)).toBeUndefined();
+      const { data, pagination, warnings } = structured(result);
+      expect(data).toEqual([all.first, all.second]);
+      expect(warnings).toBeUndefined();
+      expect(pagination).toEqual({ mode: 'all', returned: 2, complete: true, ...(kind === 'controlled' ? { start_offset: 0 } : {}) });
+      expect(all.fetch).toHaveBeenCalledTimes(1);
+    } finally { await runtime.shutdown(); }
+  });
+
+  /*
+   * The driver checks the offset only of an envelope, so a bare array after one is joined
+   * as the last page without an offset check. This pins what the driver does today, so
+   * docs/pagination.md cannot fall out of date; it does not endorse it. A driver that
+   * refuses this shape fails these rows, and the docs change with them.
+   */
+  it.each(rows)('%s: all mode ends at a bare array that follows an envelope and reports it complete', async (tool, route, kind) => {
+    const manifest = manifestFor(tool);
+    const server = bareArray(tool, route, manifest, true);
+    const runtime = runtimeFor(server.fetch);
+    try {
+      const result = await executeToolCall(registered(tool), allFixture(manifest).input, { runtime, configuration });
+      expect(result.isError, JSON.stringify(result.structuredContent)).toBeUndefined();
+      const { data, pagination, warnings } = structured(result);
+      expect(data).toEqual([server.first, server.second]);
+      expect(warnings).toBeUndefined();
+      expect(pagination).toEqual({ mode: 'all', returned: 2, complete: true, ...(kind === 'controlled' ? { start_offset: 0 } : {}) });
+      expect(server.fetch).toHaveBeenCalledTimes(2);
     } finally { await runtime.shutdown(); }
   });
 });

@@ -1,0 +1,55 @@
+name: Driver ledger
+
+# Re-checks tests/fixtures/driver-releases.json against the driver's git history and the
+# tarballs npm serves: each release's tag commit, every recorded git blob ID, shipped-file
+# SHA-256 and integrity. The offline gate can hold only the installed release to real
+# bytes, and cannot recompute git blob IDs at all, so this is the one mechanical check
+# of a historical entry, and of any entry's blob IDs and release tag. It needs github.com
+# and registry.npmjs.org, so it runs only when the ledger, the audit script or this
+# workflow changes, or by hand; neither CI nor `npm test` runs it.
+on:
+  pull_request:
+    paths:
+      - tests/fixtures/driver-releases.json
+      - scripts/audit-driver-ledger.mjs
+      - .github/workflows/driver-ledger.yml
+  push:
+    branches: [main]
+    paths:
+      - tests/fixtures/driver-releases.json
+      - scripts/audit-driver-ledger.mjs
+      - .github/workflows/driver-ledger.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: audit the driver release ledger
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      # Commits and trees only: the audit reads blob IDs from trees and never needs a blob.
+      - name: Clone the driver without file contents
+        run: git clone --filter=blob:none --no-checkout https://github.com/dichovsky/testrail-api-client.git "$RUNNER_TEMP/driver"
+
+      # The script uses only Node built-ins, git and npm, so no dependencies are installed.
+      - name: Audit the ledger against the driver's history and npm
+        run: node scripts/audit-driver-ledger.mjs "$RUNNER_TEMP/driver"

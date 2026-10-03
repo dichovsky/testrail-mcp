@@ -881,11 +881,12 @@ describe('a run that cannot finish', () => {
     expect(unusable.evidence.cleanup.residue).toEqual([{ kind: 'possible project', count: 1 }]);
   });
 
-  it('lists what a write may have created when the driver\'s own deadline ends it, though its status is 408', async () => {
-    // The driver raises a 408 of its own when TestRail has not answered in time; TestRail may still have acted.
+  it('lists what a write may have created when the driver\'s own deadline ends it, or TestRail answers 408', async () => {
+    // The driver gives up when TestRail has not answered in time, with no status; TestRail may still have acted.
     const context = { mutates: true, dispatched: true, acknowledged: false };
     const deadline: ToolResult = { isError: true, structuredContent: { error: classifyError(new TestRailApiError(408, `Request timeout after ${String(REQUEST_TIMEOUT_MS)}ms`), context) } };
-    expect(deadline.structuredContent).toMatchObject({ error: { http_status: 408, write_outcome: 'unknown' } });
+    expect(deadline.structuredContent).toMatchObject({ error: { code: 'TIMEOUT', write_outcome: 'unknown' } });
+    expect((deadline.structuredContent as { error: object }).error).not.toHaveProperty('http_status');
     // TestRail creates the project, and its answer is lost.
     const project = await qualify([], async (tool, input, real) => {
       if (tool !== 'testrail_add_project') return real(tool, input);
@@ -897,6 +898,11 @@ describe('a run that cannot finish', () => {
       const { evidence } = await qualify(FULL, (name, input, real) => (name === tool ? Promise.resolve(deadline) : real(name, input)));
       expect(evidence.cleanup.residue, tool).toContainEqual({ kind, count: 1 });
     }
+    // A 408 that did arrive is not counted as a refusal either, which errs toward listing it.
+    const answered408: ToolResult = { isError: true, structuredContent: { error: classifyError(new TestRailApiError(408, 'Request Timeout', ''), context) } };
+    expect(answered408.structuredContent).toMatchObject({ error: { code: 'UPSTREAM_ERROR', http_status: 408, write_outcome: 'unknown' } });
+    const answered = await qualify([], (tool, input, real) => (tool === 'testrail_add_project' ? Promise.resolve(answered408) : real(tool, input)));
+    expect(answered.evidence.cleanup.residue).toEqual([{ kind: 'possible project', count: 1 }]);
     // A 4xx TestRail sent is a refusal, and leaves nothing.
     const refusal: ToolResult = { isError: true, structuredContent: { error: classifyError(new TestRailApiError(400, 'Bad Request', '{"error":"Field :name is required."}'), context) } };
     expect(refusal.structuredContent).toMatchObject({ error: { http_status: 400, write_outcome: 'unknown' } });

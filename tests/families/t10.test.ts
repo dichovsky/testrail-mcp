@@ -182,6 +182,8 @@ describe('T10 case statuses in the shapes the driver reads', () => {
     } finally { await runtime.shutdown(); }
   });
 
+  // Nothing in this reply says whether TestRail holds more, so the aggregate reports it
+  // complete, and the description must say that is all the word means here.
   it('reads the documented bare array in a complete read with one request', async () => {
     const fetch = replying([APPROVED, DRAFT]);
     const runtime = runtimeFor(fetch);
@@ -191,6 +193,9 @@ describe('T10 case statuses in the shapes the driver reads', () => {
       expect(result.isError).toBeUndefined();
       expect(data(result)).toEqual([APPROVED, DRAFT]);
       expect(fetch).toHaveBeenCalledTimes(1);
+      // No start_offset: a response-driven list has no caller-chosen start to report.
+      expect((result.structuredContent as { pagination: unknown }).pagination).toEqual({ mode: 'all', returned: 2, complete: true });
+      expect(operation('testrail_get_case_statuses').description).toContain('TestRail\'s reference example, however, shows the reply as a bare array, which carries no continuation: a reply in that form is read as the whole list, with has_more false in page mode, and all mode stops after it while reporting complete, with no way to tell whether TestRail holds more.');
     } finally { await runtime.shutdown(); }
   });
 

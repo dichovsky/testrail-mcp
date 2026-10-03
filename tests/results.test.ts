@@ -251,6 +251,39 @@ describe('error classification', () => {
     expect(classifyError(new TestRailApiError(0, ''), read).http_status).toBeUndefined();
   });
 
+  /*
+   * The driver's own header and body timeouts carry no status TestRail sent, so they are
+   * the wait expiring, not a TestRail 408 or an unusable response. They are constructed
+   * here exactly as the pinned driver constructs them; a response that did arrive always
+   * carries its body text, so a real 408 keeps its status whatever its reason phrase,
+   * unless the driver abandons its body at one of its limits and raises its own status-0
+   * error instead (tests/families/t11.test.ts holds that through the real driver).
+   */
+  it.each([
+    ['the driver\'s header timeout', new TestRailApiError(408, 'Request timeout after 15000ms')],
+    ['a shorter header timeout', new TestRailApiError(408, 'Request timeout after 100ms')],
+    ['the driver\'s body timeout', new TestRailApiError(0, 'Body read timeout', 'body read exceeded 15000ms before the response body finished streaming')],
+    ['a shorter body timeout', new TestRailApiError(0, 'Body read timeout', 'body read exceeded 100ms before the response body finished streaming')],
+  ] as const)('reports %s as TIMEOUT with no status, and unknown on a write', (_label, raised) => {
+    expect(classifyError(raised, read)).toEqual({ code: 'TIMEOUT', message: 'The response wait expired; upstream work may still be running.' });
+    expect(classifyError(raised, write())).toEqual({
+      code: 'TIMEOUT', message: 'The response wait expired; upstream work may still be running.', write_outcome: 'unknown',
+    });
+  });
+
+  it.each([
+    ['a real 408 whose reason phrase is the driver\'s', new TestRailApiError(408, 'Request timeout after 15000ms', '{"error":"slow"}'), 'UPSTREAM_ERROR', 408],
+    ['a real 408 with an empty body', new TestRailApiError(408, 'Request Timeout', ''), 'UPSTREAM_ERROR', 408],
+    ['a 408 with no response and another phrase', new TestRailApiError(408, 'Request Timeout'), 'UPSTREAM_ERROR', 408],
+    ['a status-zero body timeout with other detail', new TestRailApiError(0, 'Body read timeout', 'other'), 'INVALID_RESPONSE', undefined],
+    ['a status-zero body timeout with no detail', new TestRailApiError(0, 'Body read timeout'), 'INVALID_RESPONSE', undefined],
+    ['a body over the size cap', new TestRailApiError(0, 'Response body too large', 'response body exceeded 1048576 bytes'), 'INVALID_RESPONSE', undefined],
+  ] as const)('keeps %s as it was', (_label, raised, code, status) => {
+    const safe = classifyError(raised, read);
+    expect(safe.code).toBe(code);
+    expect(safe.http_status).toBe(status);
+  });
+
   it('carries adapter and runtime codes through unchanged', () => {
     expect(classifyError(new AdapterError('RESPONSE_TOO_LARGE'), read).code).toBe('RESPONSE_TOO_LARGE');
     expect(classifyError(new RuntimeError('BUSY', 'x'), read).code).toBe('BUSY');

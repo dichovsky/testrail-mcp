@@ -25,6 +25,8 @@ const lf = (text: string): string => text.replace(/\r\n/gu, '\n');
 const read = async (path: string): Promise<string> => lf(await readFile(new URL(path, import.meta.url), 'utf8'));
 const run = promisify(execFile);
 const release = await read('../.github/workflows/release.yml');
+const ci = await read('../.github/workflows/ci.yml');
+const driverLedger = await read('../.github/workflows/driver-ledger.yml');
 const releaseDoc = await read('../docs/release.md');
 const changelog = await read('../CHANGELOG.md');
 const packageJson = JSON.parse(await read('../package.json')) as { name: string; version: string; dependencies: Record<string, string>; scripts: Record<string, string> };
@@ -213,11 +215,102 @@ describe('the release workflow', () => {
   });
 });
 
+/*
+ * F10's networked re-check of the driver release ledger. It is the only workflow that
+ * reaches the driver's repository or the npm registry for the ledger, it runs only when
+ * what it checks changes, and it holds nothing but read access. The last test keeps the
+ * ledger audit, and any mention of the driver's repository, out of CI, the release
+ * workflow and npm's scripts; it does not read the test files `npm test` runs.
+ */
+describe('the driver ledger workflow', () => {
+  /**
+   * The lines under a step's `with:`, each trimmed, in order; undefined when the step has
+   * no `with:` block. An input added, removed or changed shows, such as a `ref:` or
+   * `repository:` that would check out something other than the commit under test.
+   */
+  const inputs = (step: string): string[] | undefined => {
+    const lines = `        ${step}`.split('\n');
+    const start = lines.indexOf('        with:');
+    if (start === -1) return undefined;
+    // Comment lines, at any indentation, neither end the block nor count as inputs.
+    const end = lines.findIndex((line, index) => index > start && /^ {0,8}[^\s#]/u.test(line));
+    return lines
+      .slice(start + 1, end === -1 ? undefined : end)
+      .map((line) => line.trim())
+      .filter((line) => line !== '' && !line.startsWith('#'));
+  };
+
+  /**
+   * Each step's keys, name, action, action inputs and inline run command, in order. The
+   * keys are read with the step's first one, so an added `if:` or `continue-on-error:` shows.
+   */
+  const steps = (text: string) => text.slice(text.indexOf('\n    steps:\n')).split(/\n {6}- /u).slice(1).map((step) => ({
+    keys: keys(`        ${step}`, 8),
+    name: /^name: (.+)$/mu.exec(step)?.[1],
+    uses: /^ {8}uses: (.+)$/mu.exec(step)?.[1],
+    with: inputs(step),
+    run: /^ {8}run: (.+)$/mu.exec(step)?.[1],
+  }));
+
+  it('runs only when the ledger, its audit script or the workflow changes, or by hand', () => {
+    const paths = ['    paths:', '      - tests/fixtures/driver-releases.json', '      - scripts/audit-driver-ledger.mjs', '      - .github/workflows/driver-ledger.yml'];
+    expect(driverLedger.slice(driverLedger.indexOf('\non:\n') + 1, driverLedger.indexOf('\npermissions:'))).toBe([
+      'on:', '  pull_request:', ...paths, '  push:', '    branches: [main]', ...paths, '  workflow_dispatch:', '',
+    ].join('\n'));
+  });
+
+  it('holds read access alone, and runs one job on Linux', () => {
+    expect(keys(driverLedger, 0)).toEqual(['name', 'on', 'permissions', 'concurrency', 'jobs']);
+    expect(permissions(driverLedger, 0)).toEqual(['contents: read']);
+    expect(driverLedger.match(/permissions\s*:/gu)).toHaveLength(1);
+    expect(keys(driverLedger.slice(driverLedger.indexOf('\njobs:\n')), 2)).toEqual(['audit']);
+    const audit = job(driverLedger, 'audit');
+    expect(keys(audit, 4)).toEqual(['name', 'runs-on', 'timeout-minutes', 'steps']);
+    expect(audit).toMatch(/^ {4}runs-on: ubuntu-latest$/mu);
+    expect(driverLedger).not.toMatch(/secrets\.|environment:|matrix/u);
+  });
+
+  it('pins exactly the action commits CI pins, and audits a blobless driver clone without installing anything', () => {
+    const pins = new Set(steps(job(ci, 'verify')).map(({ uses }) => uses).filter((uses) => uses !== undefined));
+    const action = ['name', 'uses', 'with'];
+    const command = ['name', 'run'];
+    expect(steps(job(driverLedger, 'audit'))).toEqual([
+      {
+        keys: action, name: 'Check out repository', uses: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
+        with: ['persist-credentials: false'], run: undefined,
+      },
+      {
+        keys: action, name: 'Set up Node.js', uses: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0',
+        with: ['node-version: \'24\'', 'package-manager-cache: false'], run: undefined,
+      },
+      {
+        keys: command, name: 'Clone the driver without file contents', uses: undefined, with: undefined,
+        run: 'git clone --filter=blob:none --no-checkout https://github.com/dichovsky/testrail-api-client.git "$RUNNER_TEMP/driver"',
+      },
+      {
+        keys: command, name: 'Audit the ledger against the driver\'s history and npm', uses: undefined, with: undefined,
+        run: 'node scripts/audit-driver-ledger.mjs "$RUNNER_TEMP/driver"',
+      },
+    ]);
+    for (const { uses } of steps(job(driverLedger, 'audit'))) if (uses !== undefined) expect([...pins], uses).toContain(uses);
+  });
+
+  it('keeps the ledger audit and the driver clone out of CI, the release workflow and npm\'s scripts', () => {
+    for (const [name, text] of [['ci.yml', ci], ['release.yml', release], ['package.json scripts', JSON.stringify(packageJson.scripts)]] as const) {
+      // A clone or checkout of the driver names its repository: an https or ssh URL, with
+      // or without `.git`, the checkout action's `repository:`, or `gh repo clone`, with the
+      // owner written out or taken from an expression. Only the npm package, which is
+      // `@dichovsky/testrail-api-client`, may be named. A name assembled from variables passes.
+      expect(text, name).not.toMatch(/audit-driver-ledger|(?<!@dichovsky\/)testrail-api-client(?![\w-])/iu);
+    }
+  });
+});
+
 describe('every workflow', () => {
   it('pins each action to a full commit, with the version it stands for', async () => {
     const directory = new URL('../.github/workflows/', import.meta.url);
     const workflows = (await readdir(directory)).filter((name) => /\.ya?ml$/u.test(name));
-    expect(workflows.sort()).toEqual(['ci.yml', 'release.yml']);
+    expect(workflows.sort()).toEqual(['ci.yml', 'driver-ledger.yml', 'release.yml']);
     for (const name of workflows) {
       const text = lf(await readFile(new URL(name, directory), 'utf8'));
       const uses = [...text.matchAll(/^\s*(?:- )?uses: (\S+)(.*)$/gmu)];

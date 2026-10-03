@@ -120,8 +120,13 @@ function carriesCount(value: unknown, counters: readonly string[]): boolean {
  *
  * `dispatched` and `acknowledged` are recorded as they actually happen rather than
  * inferred afterwards, because they decide what the caller is told about a write. The
- * flag is set on entering the driver callback, not once bytes reach the network, which
- * errs toward `unknown` and never toward a false `not_started`.
+ * flag is set immediately before the driver method is called, after any upload staging,
+ * not once bytes reach the network, which errs toward `unknown` and never toward a false
+ * `not_started`.
+ *
+ * Upload staging runs inside the runtime's slot, so it is admitted, bounded by the
+ * response watchdog and cancellable like the request itself. A call refused at
+ * admission copies nothing.
  */
 export async function executeToolCall(
   operation: Operation,
@@ -140,6 +145,16 @@ export async function executeToolCall(
   let staged: StagedUpload | undefined;
   // Set once this call has answered with an error, so a download reply arriving after it writes nothing.
   let abandoned = false;
+  /*
+   * Aborted once this call has answered with an error; `stop` also follows the caller's
+   * own cancellation. Staging stops before its next chunk, and an upload whose staging
+   * finishes after either is never sent: the caller has been, or is about to be, told
+   * that nothing was.
+   */
+  const abandon = new AbortController();
+  const stop = dependencies.signal === undefined
+    ? abandon.signal
+    : AbortSignal.any([abandon.signal, dependencies.signal]);
 
   try {
     // Validate before anything is staged or dispatched. The original value is kept:
@@ -149,23 +164,16 @@ export async function executeToolCall(
     mode = selectMode(operation, input);
     if (mode === 'all') refuseBoundsAboveLimits(controls(input), limits);
     const call = selectCall(operation, mode);
-    let upload: CallContext['upload'];
+    let request: ReturnType<typeof uploadRequest>;
+    let stagingDirectory: (() => Promise<string>) | undefined;
 
     if (operation.files.kind === 'upload') {
-      const request = uploadRequest(input);
-      if (request === undefined || dependencies.stagingDirectory === undefined) {
+      request = uploadRequest(input);
+      stagingDirectory = dependencies.stagingDirectory;
+      if (request === undefined || stagingDirectory === undefined) {
         throw new AdapterError('FILE_ACCESS_DENIED');
       }
-      staged = await stageUpload(request.path, {
-        roots: configuration.uploadRoots,
-        maxBytes: limits.max_file_bytes,
-        stagingDirectory: await dependencies.stagingDirectory(),
-      });
-      // A path, never a descriptor: the driver's fallback behaviour makes descriptor
-      // ownership impossible to guarantee across platforms.
-      upload = { path: staged.path, ...(request.mediaType === undefined ? {} : { type: request.mediaType }) };
     }
-    const context: CallContext = upload === undefined ? { limits } : { upload, limits };
 
     const download = operation.files.kind === 'download';
     const identifier = download ? attachmentId(input) : undefined;
@@ -174,7 +182,25 @@ export async function executeToolCall(
     if (download && identifier === undefined) throw new AdapterError('INTERNAL_ERROR');
 
     const value = await runtime.invoke(
-      (client: TestRailClient) => {
+      async (client: TestRailClient) => {
+        let context: CallContext = { limits };
+        if (request !== undefined && stagingDirectory !== undefined) {
+          staged = await stageUpload(request.path, {
+            roots: configuration.uploadRoots,
+            maxBytes: limits.max_file_bytes,
+            stagingDirectory: await stagingDirectory(),
+            signal: stop,
+          });
+          // The wait may have ended while the copy finished: sending now would
+          // contradict the `not_started` the caller was given. Settlement disposes it.
+          if (stop.aborted) throw new AdapterError('CANCELLED');
+          // A path, never a descriptor: the driver's fallback behaviour makes descriptor
+          // ownership impossible to guarantee across platforms.
+          context = {
+            upload: { path: staged.path, ...(request.mediaType === undefined ? {} : { type: request.mediaType }) },
+            limits,
+          };
+        }
         dispatched = true;
         const reply = call.invoke(client, input, context);
         if (identifier === undefined) return reply;
@@ -196,8 +222,12 @@ export async function executeToolCall(
       {
         binary: download,
         ...(dependencies.signal === undefined ? {} : { signal: dependencies.signal }),
-        // Staging is retained until settlement, not until the result resolves.
-        ...(staged === undefined ? {} : { cleanup: staged.dispose }),
+        /*
+         * The staged copy is retained until settlement, not until the result resolves,
+         * and this is its only disposer. It runs only once the slot exists, so a call
+         * refused at admission, which has staged nothing, never needs it.
+         */
+        ...(request === undefined ? {} : { cleanup: () => staged?.dispose() ?? Promise.resolve() }),
       },
     );
     /*
@@ -250,13 +280,12 @@ export async function executeToolCall(
   } catch (error) {
     abandoned = true;
     /*
-     * Dispose the staged copy here only if the driver was never entered. The runtime
-     * rejects BUSY and pre-dispatch cancellation before it creates the slot that would
-     * run cleanup, so a call refused at admission would otherwise leave its copy in the
-     * staging directory until the process exits. Once dispatched, that slot disposes it
-     * after the request settles: a cancelled or timed-out upload may still be reading it.
+     * Aborted in the same synchronous step that reads `dispatched` below, and the driver
+     * callback checks `stop` and sets `dispatched` in one synchronous step too. Whichever
+     * runs first decides: an upload is either never sent and reported `not_started`, or
+     * already dispatched and reported `unknown`.
      */
-    if (staged !== undefined && !dispatched) await staged.dispose().catch(() => undefined);
+    abandon.abort();
     const safe = classifyError(error, { mutates, dispatched, acknowledged, aggregate: mode === 'all' });
     logEvent('tool_call', {
       correlation, tool: operation.tool, outcome: 'error',
