@@ -1,6 +1,6 @@
 # Live TestRail qualification
 
-`scripts/live-qualification.mjs` drives every one of the 133 tools against a real TestRail instance and writes one evidence record. It is R03's live qualification: offline fixtures show what the server sends, and this run shows what TestRail does with it. Its first live run was against TestRail 10.8.1, on 2026-09-29.
+`scripts/live-qualification.mjs` drives every one of the 133 tools against a real TestRail instance and writes one evidence record. It is R03's live qualification: offline fixtures show what the server sends, and this run shows what TestRail does with it. It has run twice against TestRail 10.8.1, the baseline: on 2026-09-29, and on 2026-10-03 with the cleanup checks.
 
 ## What it touches
 
@@ -56,7 +56,7 @@ TestRail's API cannot delete users or case fields. With `--instance-writes`, one
 3. Run it:
 
    ```sh
-   node scripts/live-qualification.mjs --create-qualification-project --out docs/evidence/live/testrail-10.7.json
+   node scripts/live-qualification.mjs --create-qualification-project --out docs/evidence/live/testrail-10.8.1.json
    ```
 
 | Option | Effect |
@@ -85,7 +85,7 @@ It prints one line per step, with the error code and the server's message for an
 | Status | Meaning |
 | --- | --- |
 | `pass` | Every step of the tool that ran succeeded. |
-| `fail` | TestRail or the server returned an error, other than a missing licence or permission, the reply lacked what the next steps need, or the guard refused the call. On the 10.7.0 baseline, a failure is a finding. |
+| `fail` | TestRail or the server returned an error, other than a missing licence or permission, the reply lacked what the next steps need, or the guard refused the call. On the 10.8.1 baseline, a failure is a finding. |
 | `blocked` | The instance lacks a licensed feature (`LICENSE_REQUIRED`) or the user a permission (`PERMISSION_DENIED`). A step whose prerequisite was blocked or failed is blocked too, and names what it needed. A blocked tool is never counted as a pass. |
 | `not_run` | Left out, with the reason: an option not given, nothing in the instance to act on (a group read where there are no groups), or the run stopped, including a step Ctrl-C cut short. |
 
@@ -116,7 +116,7 @@ If any of them appears, it refuses to write the file.
 }
 ```
 
-Version 1, the first live run's record, has no `cleanup.verified`: that runner did not ask TestRail again after cleanup.
+Version 1 has no `cleanup.verified`: that runner did not ask TestRail again after cleanup. The first live run's record was version 1; the second run's replaced it, and it stays in commit `51dd910`.
 
 `driver_version` is the driver installed beside the runner, which its own server loads. With `--command` it is `null`: the runner cannot see which driver another server loads, and `package_version` names the release, which pins one driver.
 

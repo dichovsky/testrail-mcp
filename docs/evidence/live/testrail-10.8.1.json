@@ -1,7 +1,7 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "provenance": "live_testrail",
-  "tested_on": "2026-09-29",
+  "tested_on": "2026-10-03",
   "testrail_version": "10.8.1.1049",
   "server": {
     "package_version": "0.1.0-dev.0",
@@ -15,10 +15,10 @@
   },
   "stopped": null,
   "summary": {
-    "pass": 97,
+    "pass": 98,
     "not_run": 8,
     "blocked": 27,
-    "fail": 1
+    "fail": 0
   },
   "tools": {
     "testrail_add_attachment_to_case": {
@@ -437,8 +437,29 @@
       "status": "pass",
       "steps": [
         {
-          "label": null,
+          "label": "run attachment",
           "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "case attachment",
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "result attachment",
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "plan attachment",
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "entry attachment",
+          "status": "not_run",
+          "reason": "no entry attachment was made",
           "warnings": []
         }
       ]
@@ -1429,13 +1450,11 @@
       ]
     },
     "testrail_update_shared_step": {
-      "status": "fail",
+      "status": "pass",
       "steps": [
         {
           "label": null,
-          "status": "fail",
-          "code": "UPSTREAM_ERROR",
-          "http_status": 500,
+          "status": "pass",
           "warnings": []
         }
       ]
@@ -1498,6 +1517,11 @@
   "cleanup": {
     "project": "deleted",
     "group": "not_created",
+    "verified": {
+      "gone": 5,
+      "present": 0,
+      "unverified": 0
+    },
     "residue": []
   }
 }

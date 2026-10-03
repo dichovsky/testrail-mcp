@@ -12,7 +12,7 @@ Versions follow semantic versioning, applied to what a client and its model depe
 | A tool, optional input or optional result field added; a limit ceiling raised; a new TestRail version qualified | Minor |
 | A fix that makes behaviour match the documentation; a dependency update with no behaviour change | Patch |
 
-- **TestRail.** 10.7.0 is the full-coverage baseline. Older versions are best effort: a tool the instance does not support fails with TestRail's own error, and the server never hides it.
+- **TestRail.** The tools cover TestRail's 10.7.0 API reference. 10.8.1 is the baseline, the version the live qualification runs against. Older versions are best effort: a tool the instance does not support fails with TestRail's own error, and the server never hides it.
 - **Node.** CI runs the newest 24 release on Linux, macOS and Windows. The package's engine range also admits 22.13 and later in the 22 series, and later majors; those are untested and best effort.
 - **Driver.** Each release pins one exact, qualified driver version. The pin changes only with the review that [driver qualification](driver-qualification.md) describes.
 
@@ -58,7 +58,7 @@ The release workflow publishes a packed tarball, which runs no package scripts, 
 1. **Gates.**
    - CI passes on `main`.
    - Every record in [client evidence](evidence/clients/) holds the required-client results.
-   - The live TestRail qualification evidence is complete: a [live qualification](live-qualification.md) record for 10.7.0 with no `fail`, and every `blocked` or `not_run` tool explained.
+   - The live TestRail qualification evidence is complete: a [live qualification](live-qualification.md) record for 10.8.1 with no `fail`, and every `blocked` or `not_run` tool explained.
    - [Client configuration](client-compatibility.md) and the [release gates](implementation-plan.md#release-gates-and-evidence) list what each must contain.
 2. **Version pull request.** Set `version` in `package.json` and `package-lock.json`, then replace `Unreleased` with the release date in that version's [changelog](../CHANGELOG.md) section. Merge it once CI passes.
 3. **Tag.** Tag the merge commit on `main` as `vX.Y.Z` and push the tag.

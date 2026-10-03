@@ -30,4 +30,4 @@ That comparison is now data the manifest audit checks rather than prose. Each of
 
 ## Remaining release dependencies
 
-Qualification covers the driver contract only. R03 still requires live TestRail 10.7.0 evidence, and a later driver upgrade requires an exact dependency review, inventory/parameter diff and a repeat of the checks above against the newly installed artifact.
+Qualification covers the driver contract only. R03 also requires live TestRail 10.8.1 evidence, and a later driver upgrade requires an exact dependency review, inventory/parameter diff and a repeat of the checks above against the newly installed artifact.

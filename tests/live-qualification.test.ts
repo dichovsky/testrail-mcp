@@ -92,8 +92,8 @@ const stepSchema = z.strictObject({
 });
 const count = z.number().int().nonnegative();
 const deletion = z.enum(['not_created', 'deleted', 'deleted_in_cleanup', 'left_behind']);
-const residueSchema = z.array(z.strictObject({ kind: z.string().min(1), count: z.number().int().positive() }));
-const evidenceFields = {
+const evidenceSchema = z.strictObject({
+  schema_version: z.literal(2),
   provenance: z.literal('live_testrail'),
   tested_on: z.iso.date(),
   testrail_version: z.string().min(1).nullable(),
@@ -102,23 +102,14 @@ const evidenceFields = {
   stopped: z.string().min(1).nullable(),
   summary: z.strictObject({ pass: count, not_run: count, blocked: count, fail: count }),
   tools: z.record(z.string(), z.strictObject({ status: z.enum(STATUSES), steps: z.array(stepSchema).min(1) })),
-};
-const evidenceSchema = z.strictObject({
-  schema_version: z.literal(2),
-  ...evidenceFields,
   cleanup: z.strictObject({
     project: deletion, group: deletion,
     // What TestRail answered when asked again, after cleanup, for the project, group and attachments.
     verified: z.strictObject({ gone: count, present: count, unverified: count }),
-    residue: residueSchema,
+    residue: z.array(z.strictObject({ kind: z.string().min(1), count: z.number().int().positive() })),
   }),
 });
 type Evidence = z.infer<typeof evidenceSchema>;
-// Version 1, before the runner asked TestRail again after cleanup: the first live run's record.
-const recordedEvidenceSchema = z.discriminatedUnion('schema_version', [
-  evidenceSchema,
-  z.strictObject({ schema_version: z.literal(1), ...evidenceFields, cleanup: z.strictObject({ project: deletion, group: deletion, residue: residueSchema }) }),
-]);
 
 function registered(tool: string): Operation {
   const operation = operationRegistry.get(tool);
@@ -1046,7 +1037,7 @@ describe('the live evidence in the repository', () => {
     const files = (await readdir(directory)).filter((name) => name.endsWith('.json'));
     expect(files).not.toEqual([]);
     for (const name of files) {
-      const evidence = recordedEvidenceSchema.parse(JSON.parse(await readFile(new URL(name, directory), 'utf8')));
+      const evidence = evidenceSchema.parse(JSON.parse(await readFile(new URL(name, directory), 'utf8')));
       expect(Object.keys(evidence.tools).sort(), name).toEqual(operationRegistry.entries.map(({ tool }) => tool).sort());
       const summary = { pass: 0, not_run: 0, blocked: 0, fail: 0 };
       for (const { status } of Object.values(evidence.tools)) summary[status] += 1;

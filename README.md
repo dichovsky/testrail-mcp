@@ -2,7 +2,7 @@
 
 A local stdio MCP server for the complete TestRail 10.7.0 API, powered by [`@dichovsky/testrail-api-client`](https://github.com/dichovsky/testrail-api-client).
 
-It exposes **133 tools, one per TestRail REST endpoint**, across all 28 API resources, every one enabled by default, including writes, administration and deletes. It preserves TestRail's own field names and custom fields, pages lists with bounded fetch-all, uploads attachment and BDD files only from directories you configure, and saves downloaded attachments only to the directory you name. It targets Codex desktop and CLI, Claude Code and GitHub Copilot CLI. TestRail 10.7.0 is the baseline; older versions are best effort.
+It exposes **133 tools, one per TestRail REST endpoint**, across all 28 API resources, every one enabled by default, including writes, administration and deletes. It preserves TestRail's own field names and custom fields, pages lists with bounded fetch-all, uploads attachment and BDD files only from directories you configure, and saves downloaded attachments only to the directory you name. It targets Codex desktop and CLI, Claude Code and GitHub Copilot CLI. It covers TestRail's 10.7.0 API, and TestRail 10.8.1, the version its live qualification runs against, is the baseline; older versions are best effort.
 
 ## Status
 
@@ -11,7 +11,7 @@ It exposes **133 tools, one per TestRail REST endpoint**, across all 28 API reso
 | Endpoint tools | All 133 registered, each with a complete independent parameter manifest ([coverage reports](docs/coverage-reports.md)) |
 | Offline verification | Fixture contracts for every endpoint, both MCP protocol eras (legacy `initialize` and 2026-07-28), and the packed executable on Node 24 across Linux, macOS and Windows |
 | Client qualification | Pending: [R02](https://github.com/dichovsky/testrail-mcp/issues/23) |
-| Live TestRail 10.7 qualification and npm release | Pending: [R03](https://github.com/dichovsky/testrail-mcp/issues/24). **No release is on npm yet**; the only version there is a deprecated placeholder, `0.0.0-bootstrap.0` |
+| Live TestRail 10.8.1 qualification and npm release | Pending: [R03](https://github.com/dichovsky/testrail-mcp/issues/24). The [live run](docs/evidence/live/testrail-10.8.1.json) on 10.8.1 has no failures: 98 tools pass, 27 are blocked by the instance's licence or the API user's permissions, and 8 were left out. **No release is on npm yet**; the only version there is a deprecated placeholder, `0.0.0-bootstrap.0` |
 
 ## Install
 
