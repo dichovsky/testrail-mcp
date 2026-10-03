@@ -1,6 +1,7 @@
 import {
   AddResultPayloadSchema, AddResultsForCasesPayloadSchema, AddResultsPayloadSchema,
   EditResultPayloadSchema, ResultSchema,
+  type AddResultPayload, type AddResultsForCasesPayload, type AddResultsPayload,
   type GetResultsForRunOptions, type GetResultsOptions,
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
@@ -202,14 +203,25 @@ export const getResultsForRun = defineOperation({
  * driver forwards any number for them, and the nested custom_fields container the
  * payload declares is refused: TestRail reads custom values only as flat custom_ names,
  * including the step results, so forwarding the container would drop them silently.
+ *
+ * TestRail records a result that carries a status, a comment or an assignee, any one of
+ * them, so status_id is optional and at least one of the three is required. Driver 8.0.0
+ * still declares status_id required on these payload types, but its methods forward the
+ * body without parsing it; the type is corrected upstream from 9.0.0
+ * (dichovsky/testrail-api-client#305). Until the pin moves, the four add calls assert
+ * the body to the declared type, and those assertions go with the upgrade.
  */
 const resultBodyFields = {
-  status_id: positiveIdSchema,
+  status_id: positiveIdSchema.optional(),
   assignedto_id: positiveIdSchema.optional(),
   custom_fields: z.never().optional(),
 };
 
-const resultBody = payloadInput(AddResultPayloadSchema, { extensions: 'custom', fields: resultBodyFields });
+const resultContent = ['status_id', 'comment', 'assignedto_id'] as const;
+
+const resultBody = payloadInput(AddResultPayloadSchema, {
+  extensions: 'custom', fields: resultBodyFields, requireOneOf: resultContent,
+});
 
 const addResultInput = strictObject({ test_id: positiveIdSchema, body: resultBody });
 
@@ -219,7 +231,7 @@ export const addResult = defineOperation({
   route: 'add_result/{test_id}',
   family: 'T05',
   driverBinding: 'results.addResult',
-  summary: 'Record a result against a single TestRail test. body.status_id names the outcome, and step results and other custom fields go in the body as flat custom_ properties. Adding a result is what changes a test\'s status. Use the bulk tool when recording results for several tests of one run.',
+  summary: 'Record a result against a single TestRail test. The body needs at least one of status_id, comment or assignedto_id. status_id names the outcome and is what changes the test\'s status; a result with only a comment or only an assignee is recorded with a null status_id. Step results and other custom fields go in the body as flat custom_ properties. Use the bulk tool when recording results for several tests of one run.',
   inputSchema: addResultInput,
   argumentMap: [
     { input: 'test_id', call: 'single', argument: 0, serialization: 'path' },
@@ -228,7 +240,8 @@ export const addResult = defineOperation({
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: ResultSchema },
   pagination: {
     kind: 'none',
-    single: driverCall(addResultInput, 'results.addResult', (method, input) => method(input.test_id, input.body)),
+    single: driverCall(addResultInput, 'results.addResult',
+      (method, input) => method(input.test_id, input.body as AddResultPayload)),
   },
   files: { kind: 'none' },
   // Each call records another result; the test's history keeps both.
@@ -259,7 +272,7 @@ export const addResultForCase = defineOperation({
   pagination: {
     kind: 'none',
     single: driverCall(addResultForCaseInput, 'results.addResultForCase',
-      (method, input) => method(input.run_id, input.case_id, input.body)),
+      (method, input) => method(input.run_id, input.case_id, input.body as AddResultPayload)),
   },
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: false, idempotent: false },
@@ -279,12 +292,14 @@ const resultsForTests = payloadArray(AddResultsPayloadSchema.shape.results,
   payloadInput(AddResultsPayloadSchema.shape.results.element, {
     extensions: 'custom',
     fields: { test_id: positiveIdSchema, ...resultBodyFields },
+    requireOneOf: resultContent,
   })).min(1);
 
 const resultsForCases = payloadArray(AddResultsForCasesPayloadSchema.shape.results,
   payloadInput(AddResultsForCasesPayloadSchema.shape.results.element, {
     extensions: 'custom',
     fields: { case_id: positiveIdSchema, ...resultBodyFields },
+    requireOneOf: resultContent,
   })).min(1);
 
 const addResultsInput = strictObject({
@@ -298,7 +313,7 @@ export const addResults = defineOperation({
   route: 'add_results/{run_id}',
   family: 'T05',
   driverBinding: 'results.addResults',
-  summary: 'Record results for several tests of one TestRail run in a single call. Each entry of body.results names its test and takes the same fields as add_result. Every test must belong to the named run, and TestRail returns the created results in the order they were sent.',
+  summary: 'Record results for several tests of one TestRail run in a single call. Each entry of body.results names its test and takes the same fields as add_result, including at least one of status_id, comment or assignedto_id. Every test must belong to the named run, and TestRail returns the created results in the order they were sent.',
   inputSchema: addResultsInput,
   argumentMap: [
     { input: 'run_id', call: 'single', argument: 0, serialization: 'path' },
@@ -307,7 +322,8 @@ export const addResults = defineOperation({
   response: { shape: 'array', outerSchema: z.array(z.unknown()), entitySchema: ResultSchema },
   pagination: {
     kind: 'none',
-    single: driverCall(addResultsInput, 'results.addResults', (method, input) => method(input.run_id, input.body)),
+    single: driverCall(addResultsInput, 'results.addResults',
+      (method, input) => method(input.run_id, input.body as AddResultsPayload)),
   },
   files: { kind: 'none' },
   // Each call records another result for every entry; nothing is replaced.
@@ -326,7 +342,7 @@ export const addResultsForCases = defineOperation({
   route: 'add_results_for_cases/{run_id}',
   family: 'T05',
   driverBinding: 'results.addResultsForCases',
-  summary: 'Record results for several cases of one TestRail run in a single call, naming each case rather than the test it became. Each entry of body.results takes the same fields as add_result.',
+  summary: 'Record results for several cases of one TestRail run in a single call, naming each case rather than the test it became. Each entry of body.results takes the same fields as add_result, including at least one of status_id, comment or assignedto_id.',
   inputSchema: addResultsForCasesInput,
   argumentMap: [
     { input: 'run_id', call: 'single', argument: 0, serialization: 'path' },
@@ -336,7 +352,7 @@ export const addResultsForCases = defineOperation({
   pagination: {
     kind: 'none',
     single: driverCall(addResultsForCasesInput, 'results.addResultsForCases',
-      (method, input) => method(input.run_id, input.body)),
+      (method, input) => method(input.run_id, input.body as AddResultsForCasesPayload)),
   },
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: false, idempotent: false },

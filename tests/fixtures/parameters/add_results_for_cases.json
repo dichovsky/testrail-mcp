@@ -34,7 +34,7 @@
     {
       "id": "driver-schema",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/results.ts",
-      "supports": "AddResultPayloadSchema requires status_id and accepts comment, version, elapsed, defects, assignedto_id and a custom_fields record. The bulk payloads wrap an array of the same fields under results, each entry additionally requiring test_id or case_id. EditResultPayloadSchema makes every field optional, declares custom_step_results outright and carries no custom_fields record; its refinement rejects an empty payload. None of these is parsed by the public method, which forwards the payload as given, so every payload rule is enforced at the MCP boundary alone."
+      "supports": "AddResultPayloadSchema declares status_id required and accepts comment, version, elapsed, defects, assignedto_id and a custom_fields record. The bulk payloads wrap an array of the same fields under results, each entry additionally requiring test_id or case_id. EditResultPayloadSchema makes every field optional, declares custom_step_results outright and carries no custom_fields record; its refinement rejects an empty payload. None of these is parsed by the public method, which forwards the payload as given, so every payload rule is enforced at the MCP boundary alone."
     },
     {
       "id": "driver-common",
@@ -44,7 +44,7 @@
     {
       "id": "testrail-results",
       "url": "https://support.testrail.com/hc/en-us/articles/7077819312404-Results",
-      "supports": "add_result/{test_id} records a result against one test and takes status_id, comment, version, elapsed, defects and assignedto_id, plus custom fields submitted with their system name prefixed with custom_, of which the step results are one. add_result_for_case/{run_id}/{case_id} takes the same fields while naming the case rather than the test. add_results/{run_id} and add_results_for_cases/{run_id} wrap an array of those entries under results, each naming its test or case, and every referenced test must belong to the named run; TestRail returns the created results in the order they were sent. The documentation states that each entry needs at least one of the status, comment or assignee fields, while the driver's payload type declares status_id required, so a comment-only or assignment-only result cannot be recorded through this client; the driver itself parses no payload, so that is a type contract rather than a runtime check."
+      "supports": "add_result/{test_id} records a result against one test and takes status_id, comment, version, elapsed, defects and assignedto_id, plus custom fields submitted with their system name prefixed with custom_, of which the step results are one. add_result_for_case/{run_id}/{case_id} takes the same fields while naming the case rather than the test. add_results/{run_id} and add_results_for_cases/{run_id} wrap an array of those entries under results, each naming its test or case, and every referenced test must belong to the named run; TestRail returns the created results in the order they were sent. The documentation states that each result needs at least one of the status, comment or assignee fields, and TestRail returns a result recorded without a status with status_id null. The driver's 8.0.0 payload type declares status_id required, but the driver parses no payload, so that is a type contract rather than a runtime check, and the boundary enforces the documented rule instead."
     }
   ],
   "input_policy": {
@@ -72,6 +72,11 @@
       "id": "custom-fields-container",
       "kind": "invalid",
       "description": "Reject the driver's nested custom_fields object in any entry. TestRail reads custom values only as flat custom_ properties, the step results among them."
+    },
+    {
+      "id": "result-content",
+      "kind": "invalid",
+      "description": "Reject an entry carrying none of status_id, comment or assignedto_id before driver invocation, even when the other entries carry one. TestRail records a result only with at least one of them."
     },
     {
       "id": "no-split",
@@ -261,10 +266,10 @@
         "status_id"
       ],
       "scope": "body",
-      "requiredness": "required",
+      "requiredness": "conditional",
       "domain_ref": "positive_id",
       "rejected_by": "adapter",
-      "semantics": "The outcome for that entry. TestRail's documentation lists it alongside comment and assignedto_id as alternatives while the driver's payload type declares it required, so a comment-only entry is not reachable through this client. The driver does not check the payload at runtime, so this is the declared type being honoured at the boundary rather than a rule the driver enforces. The driver forwards any number, so the boundary holds it to the identifier domain.",
+      "semantics": "The outcome for that entry. TestRail records a result that carries a status, a comment or an assignee, any one of them, so status_id is required only when the entry supplies neither comment nor assignedto_id, and a result recorded without it comes back with status_id null. Driver 8.0.0 still declares status_id required on these payload types, but no public method parses the payload, so the boundary states TestRail's rule rather than the declared type; the type is corrected upstream from driver 9.0.0 (dichovsky/testrail-api-client#305). The driver forwards any number, so the boundary holds it to the identifier domain.",
       "driver": {
         "argument": 1,
         "path": [
@@ -294,11 +299,11 @@
         "comment"
       ],
       "scope": "body",
-      "requiredness": "optional",
+      "requiredness": "conditional",
       "domain": {
         "type": "string"
       },
-      "semantics": "The comment or error message for that entry. No coercion; TestRail owns the format.",
+      "semantics": "The comment or error message for that entry. No coercion; TestRail owns the format. It is one of the result contents: the entry needs at least one of status_id, comment or assignedto_id.",
       "driver": {
         "argument": 1,
         "path": [
@@ -518,10 +523,10 @@
         "assignedto_id"
       ],
       "scope": "body",
-      "requiredness": "optional",
+      "requiredness": "conditional",
       "domain_ref": "positive_id",
       "rejected_by": "adapter",
-      "semantics": "The user that test is assigned to. The driver forwards any number, so the boundary holds it to the identifier domain.",
+      "semantics": "The user that test is assigned to. The driver forwards any number, so the boundary holds it to the identifier domain. It is one of the result contents: the entry needs at least one of status_id, comment or assignedto_id.",
       "driver": {
         "argument": 1,
         "path": [
@@ -1150,13 +1155,18 @@
       }
     },
     {
-      "id": "missing-status",
+      "id": "comment-and-assignee-only",
       "input": {
         "run_id": 1,
         "body": {
           "results": [
             {
-              "case_id": 101
+              "case_id": 1,
+              "comment": "Retested on build 3725"
+            },
+            {
+              "case_id": 2,
+              "assignedto_id": 5
             }
           ]
         }
@@ -1165,7 +1175,126 @@
         {
           "parameter": "body[].status_id",
           "requirements": [
-            "required"
+            "omitted"
+          ]
+        },
+        {
+          "parameter": "body[].comment",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        },
+        {
+          "parameter": "body[].assignedto_id",
+          "requirements": [
+            "mapping",
+            "valid"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "results.addResultsForCases",
+          "arguments": [
+            1,
+            {
+              "results": [
+                {
+                  "case_id": 1,
+                  "comment": "Retested on build 3725"
+                },
+                {
+                  "case_id": 2,
+                  "assignedto_id": 5
+                }
+              ]
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_results_for_cases/1",
+          "json": {
+            "results": [
+              {
+                "case_id": 1,
+                "comment": "Retested on build 3725"
+              },
+              {
+                "case_id": 2,
+                "assignedto_id": 5
+              }
+            ]
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": [
+            {
+              "id": 3,
+              "test_id": 101,
+              "status_id": null,
+              "comment": "Retested on build 3725",
+              "created_by": 1,
+              "created_on": 1393851801
+            },
+            {
+              "id": 4,
+              "test_id": 102,
+              "status_id": null,
+              "assignedto_id": 5,
+              "created_by": 1,
+              "created_on": 1393851801
+            }
+          ]
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": [
+            {
+              "id": 3,
+              "test_id": 101,
+              "status_id": null,
+              "comment": "Retested on build 3725",
+              "created_by": 1,
+              "created_on": 1393851801
+            },
+            {
+              "id": 4,
+              "test_id": 102,
+              "status_id": null,
+              "assignedto_id": 5,
+              "created_by": 1,
+              "created_on": 1393851801
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "no-result-content",
+      "input": {
+        "run_id": 1,
+        "body": {
+          "results": [
+            {
+              "case_id": 1,
+              "status_id": 1
+            },
+            {
+              "case_id": 2,
+              "version": "1.0 RC1"
+            }
+          ]
+        }
+      },
+      "covers": [
+        {
+          "parameter": "$input",
+          "requirements": [
+            "result-content"
           ]
         }
       ],

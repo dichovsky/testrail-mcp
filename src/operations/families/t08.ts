@@ -4,7 +4,7 @@ import {
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
 import {
-  createListInput, lookupEmailSchema, payloadInput, positiveIdSchema, strictObject, writeEmailSchema,
+  createListInput, emailSchema, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
 import { driverAllOptions } from '../../contracts/pagination.js';
 import { driverCall } from '../driver-call.js';
@@ -59,7 +59,7 @@ export const getUser = defineOperation({
  * The address is a query parameter rather than a path segment, so it lives under query
  * as every non-path scalar in this server does.
  */
-const getUserByEmailInput = strictObject({ query: strictObject({ email: lookupEmailSchema }) });
+const getUserByEmailInput = strictObject({ query: strictObject({ email: emailSchema }) });
 
 export const getUserByEmail = defineOperation({
   token: 'get_user_by_email',
@@ -67,7 +67,7 @@ export const getUserByEmail = defineOperation({
   route: 'get_user_by_email',
   family: 'T08',
   driverBinding: 'users.getUserByEmail',
-  summary: 'Look a TestRail user up by email address. The address is checked only for shape, one @ with no whitespace, so a single-label or literal domain from a self-hosted, LDAP or SSO instance reaches TestRail rather than being refused here. Note that the user write tools require a stricter, dotted address than this lookup accepts.',
+  summary: 'Look a TestRail user up by email address. The address is checked only for shape, one @ with no whitespace, so a single-label or literal domain from a self-hosted, LDAP or SSO instance reaches TestRail rather than being refused here.',
   inputSchema: getUserByEmailInput,
   argumentMap: [{ input: 'query.email', call: 'single', argument: 0, serialization: 'query-scalar' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: UserSchema },
@@ -119,7 +119,7 @@ export const getUsers = defineOperation({
 const addUserInput = strictObject({
   body: payloadInput(UserAddPayloadSchema, {
     fields: {
-      email: writeEmailSchema,
+      email: emailSchema,
       role_id: positiveIdSchema.optional(),
       group_ids: z.array(positiveIdSchema).optional(),
       assigned_projects: z.array(positiveIdSchema).optional(),
@@ -133,7 +133,7 @@ export const addUser = defineOperation({
   route: 'add_user',
   family: 'T08',
   driverBinding: 'users.addUser',
-  summary: 'Create a TestRail user (TestRail 7.3 or later). body.name and body.email are required, and the address must carry a dotted domain, which is stricter than the lookup tool accepts. TestRail defaults is_active to false, so a new user is created inactive unless the field is sent.',
+  summary: 'Create a TestRail user (TestRail 7.3 or later). body.name and body.email are required, and the address is checked only for shape, as the lookup tool checks it, so a single-label or literal domain reaches TestRail, which owns the rule. TestRail defaults is_active to false, so a new user is created inactive unless the field is sent.',
   inputSchema: addUserInput,
   argumentMap: [{ input: 'body', call: 'single', argument: 0, serialization: 'json-body' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: UserSchema },
@@ -151,7 +151,7 @@ const updateUserInput = strictObject({
   user_id: positiveIdSchema,
   body: payloadInput(UserUpdatePayloadSchema, {
     fields: {
-      email: writeEmailSchema.optional(),
+      email: emailSchema.optional(),
       role_id: positiveIdSchema.optional(),
       group_ids: z.array(positiveIdSchema).optional(),
       assigned_projects: z.array(positiveIdSchema).optional(),

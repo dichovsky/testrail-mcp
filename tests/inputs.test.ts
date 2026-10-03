@@ -10,6 +10,7 @@ import {
   MoveSectionPayloadSchema,
   UpdateProjectUserAssignmentPayloadSchema,
   UserAddPayloadSchema,
+  UserUpdatePayloadSchema,
   type TestRailClient,
 } from '@dichovsky/testrail-api-client';
 import type { JsonSchemaType } from '@modelcontextprotocol/server';
@@ -33,9 +34,7 @@ import {
   positiveIdSchema,
   refsSchema,
   strictObject,
-  lookupEmailSchema,
-  writeEmailPattern,
-  writeEmailSchema,
+  emailSchema,
 } from '../src/contracts/inputs.js';
 
 const validator = new AjvJsonSchemaValidator();
@@ -336,6 +335,31 @@ describe('strict reuse of public driver payload schemas', () => {
     }), [{ body: { comment: 'corrected', custom_flag: false } }], [{ body: {} }, { body: { unexpected: true } }]);
   });
 
+  /*
+   * A result needs a status, a comment or an assignee (#49). The rule is the adapter's,
+   * since driver 8.0.0 declares status_id required instead, and it must read the same in
+   * Zod and in the advertised JSON Schema, alongside the custom_* name policy it is
+   * combined with on every result body.
+   */
+  it('requires at least one of the named fields, in Zod and JSON Schema alike', () => {
+    const body = payloadInput(AddResultPayloadSchema, {
+      extensions: 'custom',
+      fields: { status_id: z.number().int().positive().optional() },
+      requireOneOf: ['status_id', 'comment', 'assignedto_id'],
+    });
+    const input = strictObject({ body });
+    acceptsBoth(input, [
+      { body: { status_id: 1 } }, { body: { comment: '' } }, { body: { assignedto_id: 2 } },
+      { body: { comment: 'note', custom_actual: 'ok' } },
+    ], [
+      { body: {} }, { body: { version: '1.0' } }, { body: { custom_actual: 'ok' } },
+      { body: { comment: 'note', unexpected: 1 } },
+    ]);
+    expect(inputJsonSchema(input).properties?.body).toMatchObject({
+      anyOf: [{ required: ['status_id'] }, { required: ['comment'] }, { required: ['assignedto_id'] }],
+    });
+  });
+
   it('retains known payload fields and explicit override types for public driver calls', () => {
     const schema = strictObject({
       section_id: positiveIdSchema,
@@ -473,49 +497,32 @@ describe('structural page/all input discrimination', () => {
 });
 
 /*
- * The user write payloads ask for an email format by selecting Zod's built-in validator,
- * whose regular expression carries no flags while this server requires the Unicode flag
- * for JSON Schema parity. The pattern is therefore restated in src/contracts/inputs.ts,
- * and a restatement is a duplicate until something holds the two together.
- *
- * This does, against both kinds of drift: the driver swapping that format for another,
- * and the validator it selected changing underneath it on a dependency bump. Either way
- * what a write accepts changes, and either way this fails rather than the change passing
- * unnoticed.
+ * Every user tool takes one address rule, the shape check the driver applies to
+ * get_user_by_email. Driver 8.0.0 also declares a stricter, dotted-domain format on its
+ * user write payloads but never applies it, because addUser and updateUser forward the
+ * payload unparsed; the published-driver evidence in tests/parameter-manifest.test.ts
+ * drives a single-label address through both to the wire.
  */
-describe('the restated user email format', () => {
-  const driverPattern = (() => {
-    const definition = UserAddPayloadSchema.shape.email._zod.def as {
-      checks?: { _zod: { def: { pattern?: RegExp } } }[];
-    };
-    const found = (definition.checks ?? []).map((check) => check._zod.def.pattern).find((p) => p instanceof RegExp);
-    if (!found) throw new Error('The driver no longer declares an email pattern on its user write payload');
-    return found;
-  })();
-
-  it('restates the source the driver\'s selected format resolves to, differing only by the Unicode flag', () => {
-    expect(writeEmailPattern.source).toBe(driverPattern.source);
-    expect(writeEmailPattern.flags).toBe('u');
-    expect(driverPattern.flags).toBe('');
-  });
-
+describe('the user email rule', () => {
   it.each([
-    'ada@example.com', 'a.b+c@sub.example.co.uk', 'o\'brien@x.io', 'a_b@x.io', 'ADA@EXAMPLE.COM',
-    'ada@corp', 'user@localhost', 'user@[10.0.0.1]', 'nope', 'a@@b', ' ada@example.com', 'ada@example.com\n',
-    'ada@example.c', 'ada@.com', '@example.com',
-  ])('agrees with the driver on %j', (address) => {
-    expect(writeEmailPattern.test(address)).toBe(driverPattern.test(address));
+    ['ada@example.com', true], ['a.b+c@sub.example.co.uk', true], ['ADA@EXAMPLE.COM', true],
+    ['ada@corp', true], ['user@localhost', true], ['user@[10.0.0.1]', true],
+    ['nope', false], ['a@@b', false], ['ada@a@b', false], ['@example.com', false], ['ada@', false],
+    [' ada@example.com', false], ['ada@example.com\n', false], ['', false],
+  ])('judges %j by shape alone: %s', (address, accepted) => {
+    expect(emailSchema.safeParse(address).success).toBe(accepted);
   });
 
   /*
-   * The lookup is deliberately looser than the write. Stating it here keeps the gap
-   * visible: an address this server can look a user up by may still be one it cannot
-   * create or update that user with.
+   * The alarm for the upgrade. Driver 9.0.0 declares the lookup's rule on the writes, so
+   * when the pin moves this fails, and with it go the comment in src/contracts/inputs.ts
+   * and the widened write parses in the published-driver evidence.
    */
-  it('is stricter than the lookup form, which the driver intends', () => {
+  it('is looser than the dotted format the pinned driver declares, and never applies, on writes', () => {
     for (const address of ['ada@corp', 'user@localhost', 'user@[10.0.0.1]']) {
-      expect(lookupEmailSchema.safeParse(address).success, address).toBe(true);
-      expect(writeEmailSchema.safeParse(address).success, address).toBe(false);
+      expect(emailSchema.safeParse(address).success, address).toBe(true);
+      expect(UserAddPayloadSchema.safeParse({ name: 'Ada', email: address }).success, address).toBe(false);
+      expect(UserUpdatePayloadSchema.safeParse({ email: address }).success, address).toBe(false);
     }
   });
 });

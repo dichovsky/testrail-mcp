@@ -34,7 +34,7 @@
     {
       "id": "driver-schema-users",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/users.ts",
-      "supports": "UserSchema is the reply shape and is permissive: role_id, is_admin, group_ids and the enterprise fields are all nullish because older servers omit them and get_current_user returns a reduced record, and mfa_required admits an integer because TestRail Cloud wire-encodes it as 0 or 1. UserAddPayloadSchema requires a non-empty name and an email in a dotted-domain format, and declares role_id, group_ids and assigned_projects as positive integers; UserUpdatePayloadSchema makes every field optional. GroupSchema carries id, name and a nullish user_ids. AddGroupPayloadSchema requires name; UpdateGroupPayloadSchema makes it optional and its comment records that TestRail accepts an empty update body. RoleSchema carries id, name, is_default and a nullish is_project_admin."
+      "supports": "UserSchema is the reply shape and is permissive: role_id, is_admin, group_ids and the enterprise fields are all nullish because older servers omit them and get_current_user returns a reduced record, and mfa_required admits an integer because TestRail Cloud wire-encodes it as 0 or 1. UserAddPayloadSchema requires a non-empty name and an email, for which it declares a dotted-domain format that addUser and updateUser never apply, since they forward the payload unparsed. It declares role_id, group_ids and assigned_projects as positive integers; UserUpdatePayloadSchema makes every field optional. GroupSchema carries id, name and a nullish user_ids. AddGroupPayloadSchema requires name; UpdateGroupPayloadSchema makes it optional and its comment records that TestRail accepts an empty update body. RoleSchema carries id, name, is_default and a nullish is_project_admin."
     },
     {
       "id": "driver-url",
@@ -50,7 +50,7 @@
   "input_policy": {
     "ordinary_fields": "reject",
     "custom_fields": "reject",
-    "notes": "The address is the only input and it is a query parameter rather than a path segment. The shape rule below is the driver's own and is deliberately loose; the same address may still be refused by the user write tools, whose payload type demands a dotted domain. That asymmetry is the driver's and is recorded rather than smoothed over."
+    "notes": "The address is the only input and it is a query parameter rather than a path segment. The shape rule below is the driver's own and is deliberately loose, and the user write tools apply the same rule, so an address a user can be looked up by is one that user can be created or updated with."
   },
   "outer_result": {
     "driver": "record",

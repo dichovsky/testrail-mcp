@@ -34,7 +34,7 @@
     {
       "id": "driver-schema-users",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/users.ts",
-      "supports": "UserSchema is the reply shape and is permissive: role_id, is_admin, group_ids and the enterprise fields are all nullish because older servers omit them and get_current_user returns a reduced record, and mfa_required admits an integer because TestRail Cloud wire-encodes it as 0 or 1. UserAddPayloadSchema requires a non-empty name and an email in a dotted-domain format, and declares role_id, group_ids and assigned_projects as positive integers; UserUpdatePayloadSchema makes every field optional. GroupSchema carries id, name and a nullish user_ids. AddGroupPayloadSchema requires name; UpdateGroupPayloadSchema makes it optional and its comment records that TestRail accepts an empty update body. RoleSchema carries id, name, is_default and a nullish is_project_admin."
+      "supports": "UserSchema is the reply shape and is permissive: role_id, is_admin, group_ids and the enterprise fields are all nullish because older servers omit them and get_current_user returns a reduced record, and mfa_required admits an integer because TestRail Cloud wire-encodes it as 0 or 1. UserAddPayloadSchema requires a non-empty name and an email, for which it declares a dotted-domain format that addUser and updateUser never apply, since they forward the payload unparsed. It declares role_id, group_ids and assigned_projects as positive integers; UserUpdatePayloadSchema makes every field optional. GroupSchema carries id, name and a nullish user_ids. AddGroupPayloadSchema requires name; UpdateGroupPayloadSchema makes it optional and its comment records that TestRail accepts an empty update body. RoleSchema carries id, name, is_default and a nullish is_project_admin."
     },
     {
       "id": "driver-common",
@@ -192,9 +192,9 @@
       "requiredness": "required",
       "domain": {
         "type": "string",
-        "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+        "pattern": "^[^\\s@]+@[^\\s@]+(?![\\s\\S])"
       },
-      "semantics": "The user's address, which TestRail requires. The format is stricter than the lookup tool's and demands a dotted domain. No coercion; TestRail owns the format.",
+      "semantics": "The user's address, which TestRail requires. The boundary checks only its shape, exactly one @ with non-empty whitespace-free parts on either side, the rule the driver applies to get_user_by_email, so a single-label domain or domain literal, which a self-hosted, LDAP, AD or SSO instance legitimately stores, reaches TestRail, which owns the authoritative rule. Driver 8.0.0's write payload declares a stricter dotted-domain format, but addUser forwards the payload unparsed, so that declaration is not applied; driver 9.0.0 declares the lookup's rule on writes as well (dichovsky/testrail-api-client#305). No coercion and no trimming.",
       "driver": {
         "argument": 0,
         "path": [
@@ -229,9 +229,24 @@
           "description": "Reject a non-string value before driver invocation."
         },
         {
-          "id": "dotted-domain",
+          "id": "single-label-domain",
+          "kind": "valid",
+          "description": "Accept a single-label domain, as the lookup tool does; a self-hosted or directory instance legitimately stores one."
+        },
+        {
+          "id": "domain-literal",
+          "kind": "valid",
+          "description": "Accept a bracketed domain literal and send it unchanged in the JSON body."
+        },
+        {
+          "id": "not-an-address",
           "kind": "invalid",
-          "description": "Reject an address whose domain carries no dot, although the lookup tool accepts one. The driver's write payload declares the stricter format and this boundary honours it; the consequence is that a user a self-hosted or directory instance stores may be readable here and not writable."
+          "description": "Reject a string with no @ before driver invocation."
+        },
+        {
+          "id": "whitespace",
+          "kind": "invalid",
+          "description": "Reject an address with leading or trailing whitespace rather than trimming it."
         },
         {
           "id": "required",
@@ -1539,7 +1554,178 @@
         {
           "parameter": "body.email",
           "requirements": [
-            "dotted-domain"
+            "single-label-domain"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.addUser",
+          "arguments": [
+            {
+              "name": "Ada",
+              "email": "ada@corp"
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_user",
+          "json": {
+            "name": "Ada",
+            "email": "ada@corp"
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@corp",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@corp",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        }
+      }
+    },
+    {
+      "id": "domain-literal",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": "ada@[192.168.1.1]"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.email",
+          "requirements": [
+            "domain-literal"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "accepted",
+        "driver": {
+          "binding": "users.addUser",
+          "arguments": [
+            {
+              "name": "Ada",
+              "email": "ada@[192.168.1.1]"
+            }
+          ]
+        },
+        "wire": {
+          "method": "POST",
+          "endpoint": "add_user",
+          "json": {
+            "name": "Ada",
+            "email": "ada@[192.168.1.1]"
+          }
+        },
+        "upstream_response": {
+          "kind": "json",
+          "body": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@[192.168.1.1]",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        },
+        "driver_result": {
+          "kind": "json",
+          "value": {
+            "id": 1,
+            "name": "Ada Lovelace",
+            "email": "ada@[192.168.1.1]",
+            "is_active": true,
+            "role_id": 3,
+            "role": "Tester",
+            "is_admin": false,
+            "email_notifications": true,
+            "group_ids": [
+              7
+            ],
+            "mfa_required": 0,
+            "sso_enabled": null,
+            "assigned_projects": null
+          }
+        }
+      }
+    },
+    {
+      "id": "no-at-sign",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": "not-an-address"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.email",
+          "requirements": [
+            "not-an-address"
+          ]
+        }
+      ],
+      "expect": {
+        "kind": "rejected",
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "id": "leading-space",
+      "input": {
+        "body": {
+          "name": "Ada",
+          "email": " ada@example.com"
+        }
+      },
+      "covers": [
+        {
+          "parameter": "body.email",
+          "requirements": [
+            "whitespace"
           ]
         }
       ],

@@ -53,6 +53,9 @@ import {
   UpdateDatasetPayloadSchema,
   UpdateVariablePayloadSchema,
   AddCaseFieldPayloadSchema,
+  type AddResultPayload,
+  type AddResultsForCasesPayload,
+  type AddResultsPayload,
 } from '@dichovsky/testrail-api-client';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -990,19 +993,19 @@ describe('independent parameter manifest format', () => {
     const results = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_add_results');
     const update = manifests.find(({ endpoint }) => endpoint.tool === 'testrail_update_case');
     if (!results || !update) throw new Error('Required add_results and update_case manifests are missing');
-    const missing = results.cases.find(({ id }) => id === 'body[].status_id:missing');
+    const missing = results.cases.find(({ id }) => id === 'body[].test_id:missing');
     if (missing === undefined) throw new Error('Required derived omission is missing');
     // The derivation removes the field from the first member only, and that is enough.
     expect(auditParameterManifests([results])).toEqual([]);
     const refilled = structuredClone(missing);
-    const [first] = (refilled.input.body as { results: { status_id?: number }[] }).results;
-    if (first !== undefined) first.status_id = 5;
+    const [first] = (refilled.input.body as { results: { test_id?: number }[] }).results;
+    if (first !== undefined) first.test_id = 101;
     expect(auditParameterManifests([{ ...results, cases: results.cases.map((fixture) => fixture === missing ? refilled : fixture) }]))
-      .toEqual(['testrail_add_results: Case body[].status_id:missing does not leave out only body[].status_id, so its refusal is not evidence for body[].status_id/required']);
+      .toEqual(['testrail_add_results: Case body[].test_id:missing does not leave out only body[].test_id, so its refusal is not evidence for body[].test_id/required']);
     // With no array to hold members, the fault is the array's, not a member's.
     for (const body of [{}, { results: {} }]) {
       expect(auditParameterManifests([{ ...results, cases: results.cases.map((fixture) => fixture === missing ? { ...fixture, input: { run_id: 1, body } } : fixture) }]))
-        .toContain('testrail_add_results: Case body[].status_id:missing does not leave out only body[].status_id, so its refusal is not evidence for body[].status_id/required');
+        .toContain('testrail_add_results: Case body[].test_id:missing does not leave out only body[].test_id, so its refusal is not evidence for body[].test_id/required');
     }
     // An unknown body key covers the custom_* rule by being outside the prefix, not by a value.
     expect(update.cases.find(({ id }) => id === 'unknown-body')?.covers)
@@ -1231,6 +1234,25 @@ function present<T extends object>(value: T): { [K in keyof T]: Exclude<T[K], un
   };
 }
 
+/*
+ * Driver 8.0.0 declares two payload rules its public methods never apply: status_id is
+ * required on the four add-result payloads, and user writes require a dotted email
+ * domain. The adapter states TestRail's rules instead (#49, #55), so a fixture may carry
+ * a comment-only result or a single-label address. These parse the literal arguments
+ * with only those two declarations widened, so each such case is driven through the real
+ * method, which forwards the payload unparsed; driver 9.0.0 corrects both declarations.
+ */
+const resultEntry = <Shape extends z.ZodObject>(schema: Shape) => schema.partial({ status_id: true });
+const addResultArgument = resultEntry(AddResultPayloadSchema);
+const addResultsArgument = AddResultsPayloadSchema.extend({
+  results: z.array(resultEntry(AddResultsPayloadSchema.shape.results.element)),
+});
+const addResultsForCasesArgument = AddResultsForCasesPayloadSchema.extend({
+  results: z.array(resultEntry(AddResultsForCasesPayloadSchema.shape.results.element)),
+});
+const addUserArgument = UserAddPayloadSchema.extend({ email: z.string() });
+const updateUserArgument = UserUpdatePayloadSchema.extend({ email: z.string().optional() });
+
 // This explicitly invokes the pinned public API. It is not an endpoint adapter:
 // the literal expected driver arguments already live in independently authored fixtures.
 async function invokeDriver(client: TestRailClient, expected: Extract<ParameterFixture['expect'], { kind: 'accepted' }>): Promise<unknown> {
@@ -1328,20 +1350,20 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
       return client.results.getAllResultsForRun(runId, present(options));
     }
     case 'results.addResult': {
-      const [testId, payload] = z.tuple([z.number(), AddResultPayloadSchema]).parse(expected.driver.arguments);
-      return client.results.addResult(testId, payload);
+      const [testId, payload] = z.tuple([z.number(), addResultArgument]).parse(expected.driver.arguments);
+      return client.results.addResult(testId, payload as AddResultPayload);
     }
     case 'results.addResultForCase': {
-      const [runId, caseId, payload] = z.tuple([z.number(), z.number(), AddResultPayloadSchema]).parse(expected.driver.arguments);
-      return client.results.addResultForCase(runId, caseId, payload);
+      const [runId, caseId, payload] = z.tuple([z.number(), z.number(), addResultArgument]).parse(expected.driver.arguments);
+      return client.results.addResultForCase(runId, caseId, payload as AddResultPayload);
     }
     case 'results.addResults': {
-      const [runId, payload] = z.tuple([z.number(), AddResultsPayloadSchema]).parse(expected.driver.arguments);
-      return client.results.addResults(runId, payload);
+      const [runId, payload] = z.tuple([z.number(), addResultsArgument]).parse(expected.driver.arguments);
+      return client.results.addResults(runId, payload as AddResultsPayload);
     }
     case 'results.addResultsForCases': {
-      const [runId, payload] = z.tuple([z.number(), AddResultsForCasesPayloadSchema]).parse(expected.driver.arguments);
-      return client.results.addResultsForCases(runId, payload);
+      const [runId, payload] = z.tuple([z.number(), addResultsForCasesArgument]).parse(expected.driver.arguments);
+      return client.results.addResultsForCases(runId, payload as AddResultsForCasesPayload);
     }
     case 'results.editResult': {
       const [resultId, payload] = z.tuple([z.number(), EditResultPayloadSchema]).parse(expected.driver.arguments);
@@ -1790,11 +1812,11 @@ async function invokeDriver(client: TestRailClient, expected: Extract<ParameterF
       return projectId === undefined ? client.users.getUsers() : client.users.getUsers(projectId);
     }
     case 'users.addUser': {
-      const [payload] = z.tuple([UserAddPayloadSchema]).parse(expected.driver.arguments);
+      const [payload] = z.tuple([addUserArgument]).parse(expected.driver.arguments);
       return client.users.addUser(payload);
     }
     case 'users.updateUser': {
-      const [userId, payload] = z.tuple([z.number(), UserUpdatePayloadSchema]).parse(expected.driver.arguments);
+      const [userId, payload] = z.tuple([z.number(), updateUserArgument]).parse(expected.driver.arguments);
       return client.users.updateUser(userId, payload);
     }
     case 'users.getGroup': {

@@ -106,11 +106,11 @@ describe('T08 the two forms of the user list', () => {
 });
 
 /*
- * The lookup is deliberately looser than the write. An address a directory instance
- * stores must reach TestRail rather than being refused here, and it must reach it
+ * Every user tool checks an address for shape alone. An address a directory instance
+ * stores must reach TestRail rather than being refused here, and a lookup must send it
  * encoded, since an unescaped one would address a different query.
  */
-describe('T08 the address a lookup accepts', () => {
+describe('T08 the address every user tool accepts', () => {
   it.each([
     ['a plus tag', 'ada+test@example.com', 'email=ada%2Btest%40example.com'],
     ['a single-label domain', 'ada@corp', 'email=ada%40corp'],
@@ -144,22 +144,25 @@ describe('T08 the address a lookup accepts', () => {
   });
 
   /*
-   * The gap between the two rules is the driver's, not this server's, and it is real:
-   * the same address is usable for a lookup and refused for a write.
+   * The writes take the lookup's rule (#55). Driver 8.0.0 declares a dotted domain on its
+   * write payloads but never applies it, so a user this server can look up by a
+   * directory address is one it can also create or update with it, and the address
+   * reaches TestRail in the body unchanged.
    */
-  it('accepts for a lookup an address the write tools refuse', async () => {
-    const fetch = vi.fn().mockResolvedValue(json(USER));
+  it.each([
+    ['testrail_add_user', 'ada@corp', { body: { name: 'Ada', email: 'ada@corp' } }],
+    ['testrail_update_user', 'ada@[192.168.1.1]', { user_id: 1, body: { email: 'ada@[192.168.1.1]' } }],
+  ] as const)('lets %s write the address %j a lookup accepts', async (tool, address, input) => {
+    const fetch = vi.fn().mockImplementation(() => Promise.resolve(json(USER)));
     const runtime = runtimeFor(fetch);
     try {
       const lookup = await executeToolCall(operation('testrail_get_user_by_email'),
-        { query: { email: 'ada@corp' } }, { runtime, configuration });
+        { query: { email: address } }, { runtime, configuration });
       expect(lookup.isError).toBeUndefined();
-      const write = await executeToolCall(operation('testrail_add_user'),
-        { body: { name: 'Ada', email: 'ada@corp' } }, { runtime, configuration });
-      expect(write.isError).toBe(true);
-      expect((write.structuredContent as { error: { code: string } }).error.code).toBe('INVALID_ARGUMENT');
-      // One request for the lookup; the write never reached the wire.
-      expect(fetch).toHaveBeenCalledTimes(1);
+      const write = await executeToolCall(operation(tool), input, { runtime, configuration });
+      expect(write.isError).toBeUndefined();
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(sentBody(fetch, 1)).toEqual(input.body);
     } finally { await runtime.shutdown(); }
   });
 });
