@@ -232,8 +232,12 @@ describe('the driver ledger workflow', () => {
     const lines = `        ${step}`.split('\n');
     const start = lines.indexOf('        with:');
     if (start === -1) return undefined;
-    const end = lines.findIndex((line, index) => index > start && /^ {0,8}\S/u.test(line));
-    return lines.slice(start + 1, end === -1 ? undefined : end).filter((line) => line.trim() !== '').map((line) => line.trim());
+    // Comment lines, at any indentation, neither end the block nor count as inputs.
+    const end = lines.findIndex((line, index) => index > start && /^ {0,8}[^\s#]/u.test(line));
+    return lines
+      .slice(start + 1, end === -1 ? undefined : end)
+      .map((line) => line.trim())
+      .filter((line) => line !== '' && !line.startsWith('#'));
   };
 
   /**

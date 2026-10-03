@@ -255,7 +255,9 @@ describe('error classification', () => {
    * The driver's own header and body timeouts carry no status TestRail sent, so they are
    * the wait expiring, not a TestRail 408 or an unusable response. They are constructed
    * here exactly as the pinned driver constructs them; a response that did arrive always
-   * carries its body text, so a real 408 keeps its status whatever its reason phrase.
+   * carries its body text, so a real 408 keeps its status whatever its reason phrase,
+   * unless the driver abandons its body at one of its limits and raises its own status-0
+   * error instead (tests/families/t11.test.ts holds that through the real driver).
    */
   it.each([
     ['the driver\'s header timeout', new TestRailApiError(408, 'Request timeout after 15000ms')],

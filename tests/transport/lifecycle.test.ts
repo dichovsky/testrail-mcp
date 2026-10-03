@@ -342,7 +342,11 @@ describe('packaged server shutdown after a staging failure', () => {
       await rm(temporary, { recursive: true, force: true });
       upload(2);
       await waitFor(() => session.out().includes('"id":2'), 'the failed upload');
-      expect(session.out()).toContain('INTERNAL_ERROR');
+      const failed = session.out().split('\n').filter((line) => line.trim() !== '')
+        .map((line) => JSON.parse(line) as { id?: number; result?: { structuredContent?: { error?: unknown } } })
+        .find((message) => message.id === 2);
+      // The staging area could not be created, so nothing was sent.
+      expect(failed?.result?.structuredContent?.error).toMatchObject({ code: 'INTERNAL_ERROR', write_outcome: 'not_started' });
       expect(testRail.requests).toHaveLength(0);
 
       // A failure is not remembered: once the directory is back, the next upload stages and is sent.

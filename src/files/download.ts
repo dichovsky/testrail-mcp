@@ -20,8 +20,10 @@ export interface DownloadResult {
  *
  * The result is returned only after the bytes are written and the handle is closed,
  * so a reported path always refers to a complete file. A failure part-way removes the
- * partial output; once committed the file is kept even if delivery later fails, since
- * the user now owns it and silently deleting their data would be worse than an orphan.
+ * partial output. A process exit can cut a write short before that cleanup runs, as at
+ * shutdown once the drain gives up, and then leaves a partial file that nothing reports.
+ * Once committed the file is kept even if delivery later fails, since the user now owns
+ * it and silently deleting their data would be worse than an orphan.
  *
  * The driver returns only bytes, so no original filename or media type is invented.
  */
