@@ -2,6 +2,8 @@
 
 Every CI job publishes R01's machine-readable reports as an artifact named `coverage-reports-<os>-node<version>`. They record what the deterministic suite verified for that build and which package and driver it ran against. They are offline evidence only, and each file says so.
 
+These reports describe endpoint and parameter coverage. Source coverage is separate: `npm run test:coverage` measures it with V8 and fails below 99% for lines, statements, functions or branches of `src/`. CI enforces it on Linux, and its output stays in the job log, not in these artifacts.
+
 ## What the reports claim
 
 Every file opens with the same header:
