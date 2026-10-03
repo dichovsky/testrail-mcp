@@ -1,15 +1,16 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TestRailClient, TestRailValidationError } from '@dichovsky/testrail-api-client';
 import { describe, expect, it } from 'vitest';
-import type { z } from 'zod';
+import { z } from 'zod';
 import {
   aggregateLimitDefaults, caseIdsSchema, entryIdSchema, idFilterSchema, nonnegativeIntegerSchema, positiveIdSchema,
 } from '../src/contracts/inputs.js';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
-import { auditDomainLibrary, loadDomainLibrary, type ParameterDomain } from './contracts/domains.js';
-import { loadParameterManifests, type ParameterManifest } from './contracts/parameter-manifest.js';
+import { auditDomainLibrary, loadDomainLibrary, type DomainLibrary, type ParameterDomain } from './contracts/domains.js';
+import { loadDriverReleases } from './contracts/driver-releases.js';
+import { auditDomainProvenance, loadParameterManifests, type ParameterManifest } from './contracts/parameter-manifest.js';
 import { materializeFiles, substituteTokens } from './contracts/uploads.js';
 
 const library = await loadDomainLibrary();
@@ -96,11 +97,6 @@ describe('shared parameter domains', () => {
     expect(auditDomainLibrary(library)).toEqual([]);
   });
 
-  it('records the driver release it was reviewed against', () => {
-    expect(library.review.driver_version).toBe('7.2.0');
-    expect(library.review.driver_commit).toBe('cc7751c01c3d3956d061073283bee6b23bf33422');
-  });
-
   const entries = Object.entries(library.domains);
 
   /*
@@ -174,6 +170,97 @@ describe('shared parameter domains', () => {
       // refuse it downstream.
       expect(schema.safeParse(invalid.value).success, `${name}/${invalid.id}`).toBe(false);
     }
+  });
+});
+
+const rawDriverMetadata: unknown = JSON.parse(await readFile(
+  new URL('../package.json', import.meta.resolve('@dichovsky/testrail-api-client')), 'utf8',
+));
+const driverVersion = z.object({ version: z.string() }).parse(rawDriverMetadata).version;
+const release700 = '71a80d984aea14713d8eeaf6ac9a0d41c1fba12b';
+const release720 = 'cc7751c01c3d3956d061073283bee6b23bf33422';
+const driverBlob = 'https://github.com/dichovsky/testrail-api-client/blob/';
+
+/*
+ * The library is a reviewed fixture with driver citations of its own, and most manifests
+ * reach the driver's validation source only through it: a manifest's evidence covers the
+ * files it cites itself, not the ones behind its domain references. These hold the
+ * library to the release ledger by the same audit a manifest gets, so a stale, unpinned
+ * or nonexistent citation here, or a driver bump without evidence, fails.
+ */
+describe('domain library provenance', () => {
+  function edited(edit: (copy: DomainLibrary) => void): DomainLibrary {
+    const copy = structuredClone(library);
+    edit(copy);
+    return copy;
+  }
+
+  function cite(copy: DomainLibrary, name: string, url: string): void {
+    const domain = copy.domains[name];
+    if (!domain) throw new Error(`Required ${name} domain is missing`);
+    domain.source.url = url;
+  }
+
+  it('audits the committed library clean', () => {
+    expect(auditDomainProvenance(library)).toEqual([]);
+  });
+
+  it('records the installed driver release, and pins the commit it was authored at', () => {
+    expect(library.review.driver_version).toBe(driverVersion);
+    // authored_commit is declared, not derived, so the gate alone cannot tell a moved one
+    // from an honest one: moving it along with driver_commit would need no evidence. Pin
+    // it here, as the manifests' are pinned, so that has to edit this test too.
+    expect(library.review.authored_commit).toBe(release720);
+  });
+
+  it('refuses a domain citing anything but a driver blob pinned at the library commit', () => {
+    for (const url of [
+      `${driverBlob}${release700}/src/utils.ts`,
+      `${driverBlob}main/src/utils.ts`,
+      // Stricter than a manifest's rule: a domain's one source has to be the driver.
+      'https://support.testrail.com/hc/en-us/articles/7077292642580-Cases',
+    ]) {
+      expect(auditDomainProvenance(edited((copy) => { cite(copy, 'id_filter', url); })), url)
+        .toEqual(['Domain id_filter does not cite a driver blob pinned at cc7751c0']);
+    }
+  });
+
+  it('refuses a driver link in any other form, through the manifests\' own rule', () => {
+    const raw = `https://raw.githubusercontent.com/dichovsky/testrail-api-client/${release720}/src/utils.ts`;
+    expect(auditDomainProvenance(edited((copy) => { cite(copy, 'id_filter', raw); }))).toEqual([
+      'Domain id_filter does not cite a driver blob pinned at cc7751c0',
+      'Source id_filter cites the driver outside a blob URL pinned at cc7751c0',
+    ]);
+  });
+
+  it('requires the ledger to record every cited driver file at the library commit', () => {
+    expect(auditDomainProvenance(edited((copy) => { cite(copy, 'id_filter', `${driverBlob}${release720}/src/not-a-file.ts`); })))
+      .toEqual(['Release ledger does not record cited file src/not-a-file.ts at cc7751c0']);
+  });
+
+  it('requires evidence covering every cited file once the driver commit advances', async () => {
+    const cited = ['src/modules/cases.ts', 'src/pagination.ts', 'src/utils.ts', 'src/validation.ts'];
+    const step = (paths: readonly string[]) => [{
+      from_commit: release700, to_commit: release720, reviewed_on: '2026-09-18',
+      files: paths.map((path) => ({ path, changed: false })),
+    }];
+    const backdated = edited((copy) => { copy.review.authored_commit = release700; });
+    expect(auditDomainProvenance(backdated)).toEqual(['Driver commit advanced from 71a80d98 to cc7751c0 without evidence']);
+    const evidenced = edited((copy) => { Object.assign(copy.review, { authored_commit: release700, evidence: step(cited) }); });
+    expect(auditDomainProvenance(evidenced)).toEqual([]);
+    // The case that matters most: most manifests do not cite src/validation.ts, so only
+    // the library's own evidence makes a bump re-review the domains built on it.
+    const partial = edited((copy) => {
+      Object.assign(copy.review, { authored_commit: release700, evidence: step(cited.filter((path) => path !== 'src/validation.ts')) });
+    });
+    expect(auditDomainProvenance(partial)).toEqual(['Evidence 71a80d98..cc7751c0 does not cover cited file src/validation.ts']);
+    const changed = await loadDriverReleases();
+    const validation = changed.releases.find(({ commit }) => commit === release720)?.files['src/validation.ts'];
+    if (!validation) throw new Error('The ledger has no src/validation.ts at 7.2.0');
+    validation.git_blob = '0'.repeat(40);
+    expect(auditDomainProvenance(evidenced, changed)).toEqual([
+      'Evidence 71a80d98..cc7751c0 claims src/validation.ts unchanged, but the release ledger records it changed',
+    ]);
   });
 });
 

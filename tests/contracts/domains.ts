@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
+import { provenanceEvidenceSchema } from './driver-releases.js';
 
 const identifier = z.string().min(1);
 
@@ -59,10 +60,19 @@ const domainSchema = z.strictObject({
 
 export const DomainLibrarySchema = z.strictObject({
   schema_version: z.literal(1),
+  /**
+   * The same provenance review a parameter manifest carries, held to the release ledger
+   * by the same audit. A manifest's evidence covers only the driver files it cites
+   * itself, so what a domain claims about the driver is re-reviewed here or nowhere.
+   */
   review: z.strictObject({
     driver_version: identifier,
     driver_commit: z.string().regex(/^[0-9a-f]{40}$/),
+    // The driver commit the library was first reviewed against. It never moves, so a
+    // driver_commit that differs from it has advanced and must carry evidence.
+    authored_commit: z.string().regex(/^[0-9a-f]{40}$/),
     reviewed_on: z.iso.date(),
+    evidence: provenanceEvidenceSchema.optional(),
   }),
   domains: z.record(z.string(), domainSchema),
 });
@@ -78,6 +88,8 @@ export async function loadDomainLibrary(): Promise<DomainLibrary> {
 /**
  * Internal consistency only. This does not certify a domain against the driver; the
  * probe test does that, and a domain that merely agrees with itself is an assertion.
+ * The library's driver citations are held to the release ledger separately, by
+ * `auditDomainProvenance` in parameter-manifest.ts.
  */
 export function auditDomainLibrary(library: DomainLibrary): string[] {
   const errors: string[] = [];

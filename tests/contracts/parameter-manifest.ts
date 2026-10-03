@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
 import { z } from 'zod';
 import { loadDomainLibrary, type DomainLibrary } from './domains.js';
-import { fileChanged, loadDriverReleases, type DriverReleases } from './driver-releases.js';
+import { fileChanged, loadDriverReleases, provenanceEvidenceSchema, type DriverReleases } from './driver-releases.js';
 
 const identifier = z.string().min(1);
 const jsonObject = z.record(z.string(), z.json());
@@ -65,16 +65,7 @@ export const ParameterManifestSchema = z.strictObject({
     // One step per advance, chained from authored_commit to driver_commit. Each names
     // every driver file the manifest cites and whether it changed; the audit checks the
     // claim against the recorded release hashes rather than taking it on trust.
-    evidence: z.array(z.strictObject({
-      from_commit: z.string().regex(/^[0-9a-f]{40}$/),
-      to_commit: z.string().regex(/^[0-9a-f]{40}$/),
-      reviewed_on: z.iso.date(),
-      files: z.array(z.strictObject({
-        path: identifier,
-        changed: z.boolean(),
-        note: identifier.optional(),
-      })).min(1),
-    })).min(1).optional(),
+    evidence: provenanceEvidenceSchema.optional(),
   }),
   endpoint: z.strictObject({
     family_id: z.string().regex(/^T\d{2}$/),
@@ -421,14 +412,20 @@ function citesDriver(url: string): boolean {
   return owner === 'dichovsky' && (repository === 'testrail-api-client' || repository === 'testrail-api-client.git');
 }
 
+/** What the provenance audit reads from a reviewed fixture: a manifest or the domain library. */
+interface ProvenanceSubject {
+  review: Pick<ParameterManifest['review'], 'driver_version' | 'driver_commit' | 'authored_commit' | 'reviewed_on' | 'evidence'>;
+  sources: readonly { id: string; url: string }[];
+}
+
 /**
- * Hold a manifest's driver provenance to the release ledger. A driver_commit that has
- * moved off authored_commit needs an unbroken chain of evidence steps, each covering
- * every driver file the manifest cites, and each changed or unchanged claim has to agree
+ * Hold a reviewed fixture's driver provenance to the release ledger. A driver_commit that
+ * has moved off authored_commit needs an unbroken chain of evidence steps, each covering
+ * every driver file the fixture cites, and each changed or unchanged claim has to agree
  * with the ledger's hashes for both commits. A bare pointer bump therefore fails, and
  * so does evidence that calls a changed file unchanged.
  */
-function auditProvenance(manifest: ParameterManifest, ledger: DriverReleases, fail: (message: string) => void): void {
+function auditProvenance(manifest: ProvenanceSubject, ledger: DriverReleases, fail: (message: string) => void): void {
   const { review } = manifest;
   const releases = new Map(ledger.releases.map((release) => [release.commit, release]));
   const short = (commit: string): string => commit.slice(0, 8);
@@ -516,6 +513,29 @@ function auditProvenance(manifest: ParameterManifest, ledger: DriverReleases, fa
     }
   }
   if (at !== review.driver_commit) fail(`Evidence ends at ${short(at)}, not at driver commit ${short(review.driver_commit)}`);
+}
+
+/**
+ * Hold the shared domain library's driver provenance to the release ledger, as a
+ * manifest's is. A manifest's evidence covers only the files it cites itself, and most
+ * manifests reach the driver's validation source only through a `domain_ref`, so
+ * without this a stale, unpinned or nonexistent library citation would pass every gate.
+ *
+ * Each domain has exactly one source and is authored from the driver's own code, so
+ * every domain must cite a driver blob pinned at the library's driver_commit; that is
+ * stricter than a manifest, which needs only one pinned driver source among several.
+ * Messages name the domain rather than the source ID, which repeats across domains.
+ */
+export function auditDomainProvenance(library: DomainLibrary, releases: DriverReleases = sharedReleases): string[] {
+  const errors: string[] = [];
+  const fail = (message: string): void => { errors.push(message); };
+  const pinned = `${driverSourcePrefix}${library.review.driver_commit}/`;
+  const sources = Object.entries(library.domains).map(([name, { source }]) => ({ id: name, url: source.url }));
+  for (const { id, url } of sources) {
+    if (!url.startsWith(pinned)) fail(`Domain ${id} does not cite a driver blob pinned at ${library.review.driver_commit.slice(0, 8)}`);
+  }
+  auditProvenance({ review: library.review, sources }, releases, fail);
+  return errors;
 }
 
 const validators = new WeakMap<object, (value: unknown) => boolean>();
