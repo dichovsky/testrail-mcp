@@ -334,12 +334,16 @@ describe('the forced exit, with the process defaults', () => {
     const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     const flush = vi.spyOn(process.stdout, 'write');
     const timer = await exitAfterGrace();
-    // The flush is an empty write whose callback starts the grace.
-    expect(flush).toHaveBeenCalledWith('', expect.any(Function));
-    expect(exit).not.toHaveBeenCalled();
-    expect(timer.hasRef()).toBe(false);
-    await vi.waitFor(() => { expect(exit).toHaveBeenCalledTimes(1); }, { timeout: EXIT_GRACE_MS * 8 });
-    expect(exit).toHaveBeenCalledWith();
+    // The default exit looks up process.exit when it fires, so a timer left behind by a
+    // failed assertion would outlive the spy and could end the worker.
+    try {
+      // The flush is an empty write whose callback starts the grace.
+      expect(flush).toHaveBeenCalledWith('', expect.any(Function));
+      expect(exit).not.toHaveBeenCalled();
+      expect(timer.hasRef()).toBe(false);
+      await vi.waitFor(() => { expect(exit).toHaveBeenCalledTimes(1); }, { timeout: EXIT_GRACE_MS * 8 });
+      expect(exit).toHaveBeenCalledWith();
+    } finally { clearTimeout(timer); }
   });
 
   it('still schedules the exit when writing to stdout throws', async () => {

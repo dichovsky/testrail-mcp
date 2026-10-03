@@ -330,7 +330,9 @@ describe('a download reply that arrives after the call was answered', () => {
       // TestRail answers after all: the bytes are dropped rather than written.
       deliver(new Uint8Array([1, 2, 3]).buffer);
       await held;
-      await new Promise((resolve) => { setTimeout(resolve, 20); });
+      // The slot is released only once the tracked call, including any file write, has
+      // settled, so the directory is final once nothing is active.
+      await vi.waitFor(() => { expect(runtime.stats().active).toBe(0); });
       expect(await readdir(base)).toEqual(before);
     } finally {
       await runtime.shutdown();
