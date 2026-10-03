@@ -86,9 +86,10 @@ const BOUND_REASONS = new Set(['max_pages', 'max_items', 'max_bytes', 'max_durat
  * the same bound, not an upstream failure, and no response arrived to give it a status.
  *
  * Only the driver raises these: an error built from a received response always carries
- * its body text, and a status of 0 never comes from HTTP. A request or body timeout is the
- * deadline only when the driver clipped it below its full length, which only the aggregate
- * budget does; an unclipped one is that request's own timeout, as on a single call.
+ * a response text, its body or 'Unknown error' when the body broke, and a status of 0
+ * never comes from HTTP. A request or body timeout is the deadline only when the driver
+ * clipped it below its full length, which only the aggregate budget does; an unclipped
+ * one is that request's own timeout, as on a single call.
  */
 function clippedBelow(text: unknown, pattern: RegExp, full: number): boolean {
   const match = typeof text === 'string' ? pattern.exec(text) : null;
@@ -110,9 +111,12 @@ function isAggregateDeadline(error: unknown): boolean {
  * body timeout stopped reading a body that had started. Neither error's status is one
  * TestRail sent, so the caller is told the wait expired, not that TestRail answered 408
  * or that its response was unusable. As above, an error built from a received response
- * always carries its body text, so a real 408 keeps its status. Any length matches, since
- * the text is the driver's own whatever timeout it was built with; inside an aggregate,
- * the clipped spellings are claimed first as the duration bound.
+ * always carries a response text, so a real 408 keeps its status, unless the driver
+ * abandons its body at one of its limits: a body that stalls is abandoned at the body
+ * timeout, which the driver raises in place of the reply, so a stalled 408 is TIMEOUT
+ * too. Any length matches, since the text is the driver's own whatever timeout it was
+ * built with; inside an aggregate, the clipped spellings are claimed first as the
+ * duration bound.
  */
 function isDriverTimeout(error: unknown): boolean {
   if (!(error instanceof TestRailApiError)) return false;

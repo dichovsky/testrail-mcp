@@ -66,6 +66,14 @@ function replying(body: unknown, status = 200): ReturnType<typeof vi.fn> {
   return vi.fn().mockImplementation(() => Promise.resolve(json(body, status)));
 }
 
+/** A reply whose headers arrive and whose body starts but never finishes. */
+function stalling(status: number): Response {
+  const opening = status === 200 ? '{"report_url":' : '{"error":';
+  return new Response(new ReadableStream({
+    start(controller) { controller.enqueue(new TextEncoder().encode(opening)); },
+  }), { status, headers: { 'content-type': 'application/json' } });
+}
+
 function requested(fetch: ReturnType<typeof vi.fn>, index = 0): string {
   return String(fetch.mock.calls[index]?.[0]);
 }
@@ -267,6 +275,27 @@ describe('T11 every report run reaches TestRail exactly once', () => {
   });
 
   /*
+   * The driver stops reading an error body at its own limits, a stall past the body
+   * timeout or a size over its JSON limit, and raises its own status-0 error before it
+   * looks at the status. So it does not retry the read above after that 500, nor after a
+   * 429, and the caller is told what the driver saw, not what TestRail answered.
+   */
+  it.each([
+    [500, 'stalls', 'TIMEOUT', () => stalling(500)],
+    [429, 'stalls', 'TIMEOUT', () => stalling(429)],
+    [500, 'is over the driver\'s JSON limit', 'INVALID_RESPONSE',
+      () => json({ error: 'x'.repeat(configuration.limits.max_json_response_bytes) }, 500)],
+  ] as const)('does not retry an ordinary template read whose %i reply\'s body %s, and reports %s with no status', async (_status, _label, code, reply) => {
+    const fetch = vi.fn().mockImplementation(() => Promise.resolve(reply()));
+    const runtime = runtimeFor(fetch, { maxRetries: 1, bodyTimeout: 100 });
+    try {
+      const result = await executeToolCall(operation('testrail_get_reports'), { project_id: 7 }, { runtime, configuration });
+      expect(errorOf(result)).toEqual({ code, message: expect.any(String) as unknown });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    } finally { await runtime.shutdown(); }
+  });
+
+  /*
    * The declared retry policy is published to clients, so it is held to what the driver
    * does: under the production budget a run TestRail keeps rate-limiting is sent once and
    * re-sent up to maxRetries times, and never more.
@@ -394,19 +423,23 @@ describe('T11 what a run returns', () => {
     } finally { await runtime.shutdown(); }
   });
 
-  // A body that starts and never finishes is abandoned by the driver, which cannot say whether the run happened.
-  it.each(GENERATORS)('%s reports a reply whose body stalls as an unknown outcome', async (tool) => {
-    const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response(new ReadableStream({
-      start(controller) { controller.enqueue(new TextEncoder().encode('{"report_url":')); },
-    }), { status: 200, headers: { 'content-type': 'application/json' } })));
-    const runtime = runtimeFor(fetch, { bodyTimeout: 100 });
-    try {
-      const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
-      expect(result.isError).toBe(true);
-      expect(errorOf(result).write_outcome).toBe('unknown');
-      expect(fetch).toHaveBeenCalledTimes(1);
-    } finally { await runtime.shutdown(); }
-  });
+  /*
+   * A body that starts and never finishes is abandoned by the driver, which cannot say
+   * whether the run happened. It abandons an error reply's body the same way and raises its
+   * own body timeout in place of the status that reply carried, a real 408 included, so
+   * every stall reaches the caller as TIMEOUT with no status.
+   */
+  it.each(GENERATORS.flatMap(([tool]) => [200, 408, 500].map((status) => [tool, status] as const)))(
+    '%s reports a %i reply whose body stalls as TIMEOUT with no status, and an unknown outcome', async (tool, status) => {
+      const fetch = vi.fn().mockImplementation(() => Promise.resolve(stalling(status)));
+      const runtime = runtimeFor(fetch, { bodyTimeout: 100 });
+      try {
+        const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+        expect(result.isError).toBe(true);
+        expect(errorOf(result)).toEqual({ code: 'TIMEOUT', message: expect.any(String) as unknown, write_outcome: 'unknown' });
+        expect(fetch).toHaveBeenCalledTimes(1);
+      } finally { await runtime.shutdown(); }
+    });
 
   it.each(GENERATORS)('%s is refused before any request when the template id is not an identifier', async (tool, _endpoint, urls) => {
     const fetch = replying(urls);
