@@ -1,6 +1,6 @@
 import * as fileSystem from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { TestRailClient, TestRailConfigSchema } from '@dichovsky/testrail-api-client';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { parseCommandLine } from '../src/config/command-line.js';
@@ -81,17 +81,19 @@ describe('command-line parsing', () => {
 describe('Windows drive-relative directory refusal', () => {
   /*
    * On Windows, isAbsolute accepts "\\dir", which is rooted on whatever drive is current.
-   * The loader refuses such a root before resolving anything. node:path keeps the host's
-   * flavour, so on POSIX hosts every absolute path parses with root "/", which is exactly
-   * the drive-relative shape this guard exists to refuse once the platform is win32.
+   * The loader refuses such a root before resolving anything. `${sep}dir` is absolute and
+   * parses with a bare-separator root on every host ("\\dir" on Windows, "/dir" on POSIX),
+   * which is exactly the shape this guard refuses once the platform is win32. It need not
+   * exist: the refusal happens before any filesystem call.
    */
+  const driveRelative = `${sep}testrail-mcp-drive-relative`;
   function onPlatform(platform: NodeJS.Platform): void {
     vi.spyOn(process, 'platform', 'get').mockReturnValue(platform);
   }
 
   it('refuses an upload root rooted on the current drive without resolving it', async () => {
     onPlatform('win32');
-    await expect(loadConfiguration(environment())).rejects.toEqual(
+    await expect(loadConfiguration(environment({ TESTRAIL_MCP_UPLOAD_ROOTS: JSON.stringify([driveRelative]) }))).rejects.toEqual(
       new ConfigurationError('TESTRAIL_MCP_UPLOAD_ROOTS'),
     );
     expect(fileSystem.realpath).not.toHaveBeenCalled();
@@ -99,14 +101,14 @@ describe('Windows drive-relative directory refusal', () => {
 
   it('refuses a download directory rooted on the current drive without probing it', async () => {
     onPlatform('win32');
-    await expect(loadConfiguration(environment({ TESTRAIL_MCP_UPLOAD_ROOTS: '[]' }))).rejects.toEqual(
+    await expect(loadConfiguration(environment({ TESTRAIL_MCP_UPLOAD_ROOTS: '[]', TESTRAIL_MCP_DOWNLOAD_DIR: driveRelative }))).rejects.toEqual(
       new ConfigurationError('TESTRAIL_MCP_DOWNLOAD_DIR'),
     );
     expect(fileSystem.realpath).not.toHaveBeenCalled();
     expect(fileSystem.open).not.toHaveBeenCalled();
   });
 
-  it('accepts the same rooted directories on a POSIX platform', async () => {
+  it('accepts the configured directories on a non-Windows platform', async () => {
     onPlatform('linux');
     const configuration = await loadConfiguration(environment());
     expect(configuration.uploadRoots).toEqual([await fileSystem.realpath(uploadDirectory)]);
