@@ -35,12 +35,12 @@
     {
       "id": "driver-client",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/client-core.ts",
-      "supports": "request() gives a GET carrying an intent no cache key, so neither the cache nor in-flight coalescing serves a side-effecting read and every explicit call reaches TestRail: each one generates a new report, and the template may email it."
+      "supports": "request() gives a GET carrying an intent no cache key, so neither the cache nor in-flight coalescing serves a side-effecting read and every explicit call reaches TestRail."
     },
     {
       "id": "driver-retry",
       "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/retry-policy.ts",
-      "supports": "deriveRetryPolicy selects the rateLimitOnly policy for a side-effecting read, which re-sends only after a 429: the rate limiter rejects before execution, so nothing was generated. A 5xx or a network error is not retried."
+      "supports": "deriveRetryPolicy selects the rateLimitOnly policy for a side-effecting read, which re-sends only after a 429. Its comment gives the reason: a run_report GET builds a new report and the template may email it, so a 5xx or a network error leaves an ambiguous outcome and is not retried, while the rate limiter rejects a 429 before execution, so nothing was generated."
     },
     {
       "id": "driver-schema-reports",

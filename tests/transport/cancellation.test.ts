@@ -77,14 +77,16 @@ interface Session {
   readonly runtime: Runtime;
   /** Every message the server wrote to the client, in order. */
   readonly sent: { readonly id?: unknown }[];
+  /** Every message the client wrote to the server, in order. */
+  readonly received: { readonly id?: unknown; readonly method?: unknown }[];
   readonly close: () => Promise<void>;
 }
 
 /**
  * The production catalog over a linked in-memory pair: the protocol runs for real.
  *
- * A session discovers before it calls, as a host does. That also keeps the tool call off
- * request id 0, which the SDK cannot cancel; see the last test in this file.
+ * A session discovers before it calls, as a host does, so its tool call is not request
+ * id 0; the last test in this file opts out to cancel id 0 itself.
  */
 async function connect(
   fetch: typeof globalThis.fetch,
@@ -106,6 +108,12 @@ async function connect(
     sent.push(message as { id?: unknown });
     return send(message, options);
   };
+  const received: { id?: unknown; method?: unknown }[] = [];
+  const receive = clientTransport.send.bind(clientTransport);
+  clientTransport.send = (message, options) => {
+    received.push(message);
+    return receive(message, options);
+  };
   const handle = serveStdio(() => buildServer({
     configuration, runtime, registry: operationRegistry,
     stagingDirectory: () => Promise.resolve(directory),
@@ -115,7 +123,7 @@ async function connect(
   await client.connect(clientTransport);
   if (discover) await client.listTools();
   return {
-    client, runtime, sent,
+    client, runtime, sent, received,
     close: async () => {
       await client.close().catch(() => undefined);
       await handle.close().catch(() => undefined);
@@ -281,6 +289,8 @@ describe('a cancelled first request on a 2026-07-28 connection', () => {
         { signal: cancel.signal },
       );
       await waitFor(() => upstream.calls === 1, 'the dispatched request');
+      // The case under test: the tool call is this connection's request id 0.
+      expect(session.received.filter(({ method }) => method === 'tools/call').map(({ id }) => id)).toEqual([0]);
       cancel.abort('caller gave up');
       await expect(call).rejects.toThrow();
       await waitFor(() => vi.mocked(executeToolCall).mock.results.length > 0, 'the handler call');
