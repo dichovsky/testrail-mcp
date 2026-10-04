@@ -1,12 +1,12 @@
 {
   "schema_version": 2,
   "provenance": "live_testrail",
-  "tested_on": "2026-10-03",
+  "tested_on": "2026-10-04",
   "testrail_version": "10.8.1.1049",
   "server": {
     "package_version": "0.1.0-dev.0",
     "protocol": "2025-11-25",
-    "driver_version": "7.2.0"
+    "driver_version": "9.0.0"
   },
   "options": {
     "instance_writes": false,
@@ -269,6 +269,11 @@
       "steps": [
         {
           "label": null,
+          "status": "pass",
+          "warnings": []
+        },
+        {
+          "label": "comment only",
           "status": "pass",
           "warnings": []
         }

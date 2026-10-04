@@ -11,7 +11,7 @@ It exposes **133 tools, one per TestRail REST endpoint**, across all 28 API reso
 | Endpoint tools | All 133 registered, each with a complete independent parameter manifest ([coverage reports](docs/coverage-reports.md)) |
 | Offline verification | Fixture contracts for every endpoint, both MCP protocol eras (legacy `initialize` and 2026-07-28), and the packed executable on Node 24 across Linux, macOS and Windows |
 | Client qualification | Pending: [R02](https://github.com/dichovsky/testrail-mcp/issues/23) |
-| Live TestRail 10.8.1 qualification and npm release | Pending: [R03](https://github.com/dichovsky/testrail-mcp/issues/24). The [live run](docs/evidence/live/testrail-10.8.1.json) on 10.8.1 has no failures: 98 tools pass, 27 are blocked by the instance's licence or the API user's permissions, and 8 were left out. That run used driver 7.2.0, so it has to be repeated with the release's driver, 9.0.0, before release. **No release is on npm yet**; the only version there is a deprecated placeholder, `0.0.0-bootstrap.0` |
+| Live TestRail 10.8.1 qualification and npm release | Pending: [R03](https://github.com/dichovsky/testrail-mcp/issues/24). The [live run](docs/evidence/live/testrail-10.8.1.json) on 10.8.1 with the release's driver, 9.0.0, on 2026-10-04, has no failures: 98 tools pass, 27 are blocked by the instance's licence or the API user's permissions, and 8 were left out. Those 35 are documented limitations, not passes. **No release is on npm yet**; the only version there is a deprecated placeholder, `0.0.0-bootstrap.0` |
 
 ## Install
 
