@@ -24,3 +24,15 @@ The first release: a local stdio MCP server for the complete TestRail 10.7.0 API
 
 - Every endpoint's hand-authored parameter manifest runs through the registered tool and the real driver. Registry, protocol, result-contract, paging and runtime-lifetime gates run in CI on Node 24 across Linux, macOS and Windows, and CI publishes coverage reports as artifacts. CI on Linux also requires at least 99% line, statement, function and branch coverage of the source.
 - Client qualification (R02) and live TestRail 10.8.1 qualification (R03) are recorded before this section is dated.
+
+### Known limitations
+
+The live qualification on TestRail 10.8.1 with driver 9.0.0 ([record](docs/evidence/live/testrail-10.8.1.json)) has no failures, but 35 of the 133 tools have no live pass. Their offline contract tests pass, which is not a live pass.
+
+- **Blocked by the instance's licence (10).** `get_case_statuses`, `get_datasets` and `get_variables`, and `add_dataset` and `add_variable`, answered `LICENSE_REQUIRED`. `get_dataset`, `update_dataset`, `delete_dataset`, `update_variable` and `delete_variable` then had no dataset or variable to work on.
+- **Blocked by the API user's permissions (17).** `get_cross_project_reports`, `add_config_group`, `delete_milestone`, `delete_plan` and `delete_run` answered `PERMISSION_DENIED`. Twelve tools then had nothing to work on:
+  - the configuration tools `add_config`, `update_config`, `delete_config`, `update_config_group` and `delete_config_group`;
+  - the plan-entry tools `add_plan_entry`, `update_plan_entry`, `add_run_to_plan_entry`, `update_run_in_plan_entry`, `delete_run_from_plan_entry`, `get_attachments_for_plan_entry` and `add_attachment_to_plan_entry`.
+- **Not run, by the owner's choice (8).**
+  - The writes outside a project: `add_user`, `update_user`, `add_group`, `update_group`, `delete_group` and `add_case_field`. TestRail cannot delete users or case fields.
+  - `run_report` and `run_cross_project_report`, which generate reports and can send email.
