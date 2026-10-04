@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { McpServer } from '@modelcontextprotocol/server';
+import { McpServer, SERVER_INFO_META_KEY, type ServerContext } from '@modelcontextprotocol/server';
 import { serveStdio, type StdioServerHandle } from '@modelcontextprotocol/server/stdio';
 import { loadConfiguration, type Configuration, type Environment } from '../config/environment.js';
+import { FIXED_BUDGETS } from '../config/limits.js';
 import { AdapterError, classifyError } from '../contracts/errors.js';
-import { errorResult, type ToolResult } from '../contracts/results.js';
+import { errorResult, type ProtocolResultFields, type ToolResult } from '../contracts/results.js';
 import { createConfiguredDriver, type DriverSeams } from '../driver/configuration.js';
 import { createStagingArea, recoverAbandonedStaging } from '../files/staging.js';
 import { operationRegistry } from '../operations/catalog.js';
@@ -102,7 +103,7 @@ export interface ServerDependencies {
  * known here, so a write or report run is reported as `unknown`, the conservative answer,
  * and its diagnostic is logged because the pipeline may not have logged one.
  */
-function handlerFailure(operation: Operation, started: number): ToolResult {
+function handlerFailure(operation: Operation, started: number, protocol: ProtocolResultFields): ToolResult {
   const safe = classifyError(new AdapterError('INTERNAL_ERROR'), {
     mutates: operation.effects.testRail !== 'read', dispatched: true, acknowledged: false,
   });
@@ -111,7 +112,7 @@ function handlerFailure(operation: Operation, started: number): ToolResult {
     code: safe.code, duration_ms: Date.now() - started,
     ...(safe.write_outcome === undefined ? {} : { write_outcome: safe.write_outcome }),
   });
-  return errorResult(safe);
+  return errorResult(safe, protocol);
 }
 
 /**
@@ -124,27 +125,39 @@ function handlerFailure(operation: Operation, started: number): ToolResult {
  * Registration contacts nothing, so discovery makes no TestRail request.
  */
 export function buildServer(dependencies: ServerDependencies): McpServer {
+  const identity = Object.freeze({ name: 'testrail-mcp', version: packageVersion() });
   const server = new McpServer(
-    { name: 'testrail-mcp', version: packageVersion() },
+    identity,
     { capabilities: { tools: { listChanged: false } }, instructions: SERVER_INSTRUCTIONS },
   );
+  // The 2026-07-28 codec preserves these when already present. Supplying the same
+  // identity used above makes the bytes counted by the result builders the bytes
+  // the SDK sends. The legacy codec adds neither field. Transport boundary tests
+  // hold this projection to the pinned SDK instead of assuming a fixed byte cost.
+  const modernResultFields: ProtocolResultFields = Object.freeze({
+    resultType: 'complete',
+    _meta: Object.freeze({ [SERVER_INFO_META_KEY]: identity }),
+  });
   for (const operation of dependencies.registry.entries) {
     server.registerTool(operation.tool, {
       description: operation.description,
       inputSchema: advertiseInput(operation.jsonSchema),
       outputSchema: advertiseOutput(),
       annotations: { ...operation.annotations },
-    }, (async (args: unknown, ctx: { mcpReq: { signal: AbortSignal } }) => {
+    }, (async (args: unknown, ctx: ServerContext) => {
       const started = Date.now();
+      const version = server.server.getNegotiatedProtocolVersion();
+      const protocolResultFields = version === '2026-07-28' ? modernResultFields : {};
       try {
         return await executeToolCall(operation, args, {
           runtime: dependencies.runtime,
           configuration: dependencies.configuration,
           signal: ctx.mcpReq.signal,
+          protocolResultFields,
           stagingDirectory: dependencies.stagingDirectory,
         });
       } catch {
-        return handlerFailure(operation, started);
+        return handlerFailure(operation, started, protocolResultFields);
       }
     }) as never);
   }
@@ -264,8 +277,25 @@ export async function startServer(
     stopping ??= (async () => {
       logEvent('server_stopping');
       await handle.close().catch(() => undefined);
+      const drainStarted = performance.now();
       await runtime.shutdown().catch(() => undefined);
-      await staging?.then((area) => area.dispose()).catch(() => undefined);
+      if (staging !== undefined) {
+        // Creation and removal can hang on a stalled filesystem too. Cleanup shares
+        // the drain's deadline rather than extending it. Keep observing the promise:
+        // a late-created area is still disposed, and a late rejection stays handled.
+        const cleanup = staging.then((area) => area.dispose()).catch(() => undefined);
+        const remaining = Math.max(0, FIXED_BUDGETS.shutdown_drain_ms - (performance.now() - drainStarted));
+        let timer: NodeJS.Timeout | undefined;
+        const expired = new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, remaining);
+          timer.unref();
+        });
+        try {
+          await Promise.race([cleanup, expired]);
+        } finally {
+          clearTimeout(timer);
+        }
+      }
       logEvent('server_stopped');
     })();
     return stopping;
