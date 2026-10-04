@@ -182,6 +182,16 @@ describe('the qualification plan', () => {
     expect(update?.input?.(context)).toMatchObject({ body: { title: expect.any(String) as unknown, custom_steps_separated: [{ content: expect.any(String) as unknown }] } });
   });
 
+  it('adds a result with a comment and no status to a test of its own (#49)', () => {
+    const step = runner.PLAN.find(({ tool, label }) => tool === 'add_result' && label === 'comment only');
+    const named: string[] = [];
+    const context = { id: (name: string) => { named.push(name); return 1; } } as unknown as Context;
+    const input = step?.input?.(context) as { body: Record<string, unknown> } | undefined;
+    expect(step?.scope).toBe('own');
+    expect(input?.body).toEqual({ comment: expect.any(String) as unknown });
+    expect(named).toEqual(['second test']);
+  });
+
   it('calls every registered tool, and nothing else', () => {
     expect([...new Set(tools)].sort()).toEqual(operationRegistry.entries.map(({ tool }) => tool).sort());
   });

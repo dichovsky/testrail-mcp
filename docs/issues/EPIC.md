@@ -43,7 +43,7 @@ The 23 implementation items have explicit dependencies and acceptance tests. Ada
 
 Architecture and engineering decisions: [architecture](https://github.com/dichovsky/testrail-mcp/blob/codex/testrail-mcp-plan/docs/architecture.md), [contracts](https://github.com/dichovsky/testrail-mcp/blob/codex/testrail-mcp-plan/docs/implementation-contracts.md), [implementation plan](https://github.com/dichovsky/testrail-mcp/blob/codex/testrail-mcp-plan/docs/implementation-plan.md), [coverage](https://github.com/dichovsky/testrail-mcp/blob/codex/testrail-mcp-plan/docs/api-coverage.md), [clients](https://github.com/dichovsky/testrail-mcp/blob/codex/testrail-mcp-plan/docs/client-compatibility.md).
 
-## Progress — 2026-10-03
+## Progress — 2026-10-04
 
 Every implementation item except R02 and R03 is closed, and its box above is ticked to match: F01 to F08, T01 to T12 and R01. F02 and F04 were already ticked. Two items added after this checklist was written are closed too: F09 (#30) and F10 (#31).
 

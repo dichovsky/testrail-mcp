@@ -1,6 +1,6 @@
 # Live TestRail qualification
 
-`scripts/live-qualification.mjs` drives every one of the 133 tools against a real TestRail instance and writes one evidence record. It is R03's live qualification: offline fixtures show what the server sends, and this run shows what TestRail does with it. It has run twice against TestRail 10.8.1, the baseline: on 2026-09-29, and on 2026-10-03 with the cleanup checks.
+`scripts/live-qualification.mjs` drives every one of the 133 tools against a real TestRail instance and writes one evidence record. It is R03's live qualification: offline fixtures show what the server sends, and this run shows what TestRail does with it. It has run three times against TestRail 10.8.1, the baseline: on 2026-09-29, on 2026-10-03 with the cleanup checks, and on 2026-10-04 with driver 9.0.0.
 
 ## What it touches
 
@@ -116,7 +116,7 @@ If any of them appears, it refuses to write the file.
 }
 ```
 
-Version 1 has no `cleanup.verified`: that runner did not ask TestRail again after cleanup. The first live run's record was version 1; the second run's replaced it, and it stays in commit `51dd910`.
+Version 1 has no `cleanup.verified`: that runner did not ask TestRail again after cleanup. The first live run's record was version 1; the second run's replaced it, and it stays in commit `51dd910`. The third run's record replaced the second's, which stays in commit `2088cb1`.
 
 `driver_version` is the driver installed beside the runner, which its own server loads. With `--command` it is `null`: the runner cannot see which driver another server loads, and `package_version` names the release, which pins one driver.
 
