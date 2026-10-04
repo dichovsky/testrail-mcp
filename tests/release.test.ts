@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -8,29 +8,30 @@ import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 /*
- * R03's release pipeline, held before it ever runs. The release workflow may publish only
- * from a version tag, through npm trusted publishing in the protected environment the npm
- * configuration names, with no stored token, and once. Each job holds only the permission
- * it needs, and the one that can mint an npm token installs and runs no package code.
- * Every action in every workflow is pinned to a commit. The release notes come from a
- * dated changelog section for exactly the tagged version. The dependency inventory lists
- * what a user's install gets. The post-publish check installs the artifact, compares it
- * with the registry and drives it over MCP. A publish typed by hand from the working tree
- * cannot publish the development version or put a pre-release under `latest`, and a build
- * against an install older than the lockfile stops and says so.
+ * R03's release pipeline, held before it ever runs. It is the driver's: the Publish
+ * workflow runs for a published GitHub Release of a release/X.Y.Z tag, checks that the
+ * release, the tag and the checked-out commit are one commit on main before any repository
+ * code runs, runs every gate, and hands only the tested build to the job that publishes it
+ * through npm trusted publishing in the protected environment, with no stored token. That
+ * job runs no repository or dependency code, and checks what npm then serves. Its preflight
+ * is held in tests/release-preflight.test.ts. Every action in every workflow is pinned to a
+ * commit. The release notes come from a dated changelog section for exactly the tagged
+ * version. The post-publication check installs the artifact, compares it with the registry
+ * and drives it over MCP. A publish typed by hand from the working tree cannot publish the
+ * development version or put a pre-release under `latest`, and a build against an install
+ * older than the lockfile stops and says so.
  */
 
 // Windows checkouts may carry CRLF line endings; the checks read files as LF.
 const lf = (text: string): string => text.replace(/\r\n/gu, '\n');
 const read = async (path: string): Promise<string> => lf(await readFile(new URL(path, import.meta.url), 'utf8'));
 const run = promisify(execFile);
-const release = await read('../.github/workflows/release.yml');
+const publish = await read('../.github/workflows/publish.yml');
 const ci = await read('../.github/workflows/ci.yml');
 const driverLedger = await read('../.github/workflows/driver-ledger.yml');
 const releaseDoc = await read('../docs/release.md');
 const changelog = await read('../CHANGELOG.md');
 const packageJson = JSON.parse(await read('../package.json')) as { name: string; version: string; dependencies: Record<string, string>; scripts: Record<string, string> };
-const lockfile = JSON.parse(await read('../package-lock.json')) as { packages: Record<string, { version?: string; dev?: boolean; devOptional?: boolean }> };
 const script = (name: string): string => fileURLToPath(new URL(`../scripts/${name}`, import.meta.url));
 const projectRoot = fileURLToPath(new URL('..', import.meta.url));
 
@@ -42,6 +43,9 @@ const { checkRegistry, viewField } = (await import(new URL('../scripts/verify-pu
 const { publishRefusal } = (await import(new URL('../scripts/check-publish.mjs', import.meta.url).href)) as { publishRefusal: (version: string, tag: string | undefined) => string | undefined };
 const { staleDependencies } = (await import(new URL('../scripts/check-install.mjs', import.meta.url).href)) as { staleDependencies: (root?: URL) => string[] };
 const { npmCommand } = (await import(new URL('../scripts/npm-command.mjs', import.meta.url).href)) as { npmCommand: () => [string, string[]] };
+const { validateNewStableVersion } = (await import(new URL('../scripts/release-preflight.mjs', import.meta.url).href)) as {
+  validateNewStableVersion: (input: { candidateVersion: string; publishedVersions: string[]; latestVersion: string }) => void;
+};
 
 /** The lines of one job, from its key to the next key at a job's indent or less, comments aside. */
 function job(workflow: string, name: string): string {
@@ -76,141 +80,216 @@ function permissions(block: string, indent: number): string[] | undefined {
   return entries;
 }
 
-/** Each job the workflow may have, with the only permissions it may hold. */
-const JOBS: Record<string, string[] | undefined> = {
-  verify: undefined,
-  build: undefined,
-  publish: ['id-token: write'],
-  'verify-published': undefined,
-  release: ['contents: write'],
+/** Each job the workflow has, with the only permissions it may hold. */
+const JOBS: Record<string, string[]> = {
+  verify: ['contents: read'],
+  publish: ['contents: read', 'id-token: write'],
 };
 
-describe('the release workflow', () => {
-  it('runs only for a version tag', () => {
-    expect(release).toMatch(/^on:\n {2}push:\n {4}tags: \['v\[0-9\]\+\.\[0-9\]\+\.\[0-9\]\+'\]\n\n/mu);
-    expect(release).not.toMatch(/pull_request|workflow_dispatch|branches:/u);
+describe('the Publish workflow', () => {
+  const verify = job(publish, 'verify');
+  const publishJob = job(publish, 'publish');
+  const gateOf = (text: string): string | undefined => /- name: Verify source provenance before repository code runs\n([\s\S]*?)\n\n/u.exec(text)?.[1];
+  const positions = (text: string, marks: string[]): number[] => marks.map((mark) => text.indexOf(mark));
+  const ascending = (values: number[]): boolean => values.every((value, index) => value >= 0 && (index === 0 || value > (values[index - 1] ?? -1)));
+
+  it('runs only for a published GitHub Release', () => {
+    expect(publish).toMatch(/^on:\n {2}release:\n {4}types: \[published\]\n\n/mu);
+    expect(publish).not.toMatch(/pull_request|workflow_dispatch|branches:|^ {2}push:/mu);
   });
 
   it('gives each job only the permissions it needs, and the environment to the publish job alone', () => {
-    expect(permissions(release, 0)).toEqual(['contents: read']);
-    expect(keys(release.slice(release.indexOf('\njobs:\n')), 2)).toEqual(Object.keys(JOBS));
-    for (const [name, granted] of Object.entries(JOBS)) expect(permissions(job(release, name), 4), name).toEqual(granted);
+    expect(permissions(publish, 0)).toEqual(['contents: read']);
+    expect(keys(publish.slice(publish.indexOf('\njobs:\n')), 2)).toEqual(Object.keys(JOBS));
+    for (const [name, granted] of Object.entries(JOBS)) expect(permissions(job(publish, name), 4), name).toEqual(granted);
     // Nowhere else, in any form: the workflow's grant and the two jobs' own are all there are.
-    expect(release.match(/permissions\s*:/gu)).toHaveLength(3);
-    expect(Object.keys(JOBS).filter((name) => keys(job(release, name), 4).includes('environment'))).toEqual(['publish']);
-    expect(job(release, 'publish')).toMatch(/^ {4}environment: npm-release$/mu);
+    expect(publish.match(/permissions\s*:/gu)).toHaveLength(3);
+    expect(publish.match(/id-token: write/gu)).toHaveLength(1);
+    expect(Object.keys(JOBS).filter((name) => keys(job(publish, name), 4).includes('environment'))).toEqual(['publish']);
+    expect(publishJob).toMatch(/^ {4}environment: npm-publish$/mu);
+    expect(publishJob).toMatch(/^ {4}needs: verify$/mu);
+    expect(publishJob).toMatch(/^ {4}if: needs\.verify\.outputs\.already-published == 'false'$/mu);
+    expect(publish).not.toMatch(/secrets\.|NPM_TOKEN:|NODE_AUTH_TOKEN:|attestations: write/u);
   });
 
-  it('runs the jobs in order: verify, build, publish, check the published package, then the release', () => {
-    expect(job(release, 'verify')).not.toMatch(/^ {4}needs:/mu);
-    expect(job(release, 'build')).toMatch(/^ {4}needs: verify$/mu);
-    expect(job(release, 'publish')).toMatch(/^ {4}needs: build$/mu);
-    expect(job(release, 'verify-published')).toMatch(/^ {4}needs: \[build, publish\]$/mu);
-    expect(job(release, 'release')).toMatch(/^ {4}needs: \[build, verify-published\]$/mu);
-  });
-
-  it('publishes through trusted publishing with provenance, never a stored token, and runs no package code while it can', () => {
-    expect(release).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN|secrets\./u);
-    const publish = job(release, 'publish');
-    expect(publish).toContain("registry-url: 'https://registry.npmjs.org'");
-    /*
-     * The job that can mint an npm token does exactly this and nothing else: it fetches the
-     * built files, sets up Node, checks npm's version and publishes. It checks out, installs
-     * and runs no package code. Changing what it runs means changing this list.
-     */
-    expect(keys(publish, 4)).toEqual(['name', 'needs', 'runs-on', 'timeout-minutes', 'environment', 'permissions', 'steps']);
-    const steps = publish.slice(publish.indexOf('\n    steps:\n')).split(/\n {6}- /u).slice(1);
-    expect(steps.map((step) => /^name: (.+)$/mu.exec(step)?.[1])).toEqual([
-      'Fetch the release files', 'Set up Node.js', 'Require an npm that supports trusted publishing', 'Publish the packed tarball, with provenance, once',
-    ]);
-    expect(steps.map((step) => /^ {8}uses: ([^@\s]+)@/mu.exec(step)?.[1])).toEqual(['actions/download-artifact', 'actions/setup-node', undefined, undefined]);
-    expect(steps.map((step) => [/^([^\s:]+):/u.exec(step)?.[1], ...keys(step, 8)])).toEqual([
-      ['name', 'uses', 'with'], ['name', 'uses', 'with'], ['name', 'run'], ['name', 'env', 'run'],
-    ]);
-    expect(steps.map((step) => /^ {8}env:\n((?: {10}.*\n)*)/mu.exec(`${step}\n`)?.[1]?.split('\n').map((line) => line.trim()).filter(Boolean))).toEqual([
-      undefined, undefined, undefined,
-      ['TARBALL: ${{ needs.build.outputs.tarball }}', 'INTEGRITY: ${{ needs.build.outputs.integrity }}', 'VERSION: ${{ needs.build.outputs.version }}'],
-    ]);
-    const scripts = steps.map((step) => {
-      const [, inline = '', block = ''] = /^ {8}run: (.*)\n((?: {10}.*\n| *\n)*)/mu.exec(`${step}\n`) ?? [];
-      return [inline, ...block.split('\n')].map((line) => line.trim()).filter((line) => !['', '|', '>', '>-'].includes(line));
-    });
-    expect(scripts).toEqual([
-      [],
-      [],
-      [`node -e "const [a,b,c]=process.argv[1].split('.').map(Number); if (a<11||(a===11&&(b<5||(b===5&&c<1)))) { console.error('npm '+process.argv[1]+' is older than 11.5.1'); process.exit(1); }" "$(npm --version)"`],
-      [
-        'served="$(npm view "@dichovsky/testrail-mcp@$VERSION" dist.integrity 2>/dev/null || true)"',
-        'if [ -n "$served" ]; then',
-        'if [ "$served" = "$INTEGRITY" ]; then echo "$VERSION is already published from this tarball."; exit 0; fi',
-        'echo "::error::$VERSION is already published from a different tarball."; exit 1',
-        'fi',
-        'npm publish "./$TARBALL" --access public --provenance --ignore-scripts',
-      ],
-    ]);
-  });
-
-  it('builds the notes, tarball and inventory before publishing, and checks the published package before the release', () => {
-    const verify = job(release, 'verify');
-    expect(verify).toContain('os: [ubuntu-latest, macos-latest, windows-latest]');
-    expect(verify).toContain("node: ['24']");
-    expect(verify).toContain('run: npm run check');
-    const build = job(release, 'build');
-    const order = ['scripts/release-notes.mjs "$GITHUB_REF_NAME"', 'npm pack --json', 'scripts/release-sbom.mjs', 'actions/upload-artifact'].map((step) => build.indexOf(step));
-    expect(order.every((position) => position >= 0)).toBe(true);
-    expect(order).toEqual([...order].sort((left, right) => left - right));
-    expect(job(release, 'verify-published')).toMatch(/scripts\/verify-published\.mjs "@dichovsky\/testrail-mcp@\$VERSION"\n\s+--version "\$VERSION" --integrity "\$INTEGRITY" --require-provenance/u);
-    expect(job(release, 'release')).toContain('gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag');
-  });
-
-  it('refuses an npm older than 11.5.1, which trusted publishing needs', async () => {
-    const check = /node -e "(.+)" "\$\(npm --version\)"/u.exec(job(release, 'publish'))?.[1];
-    if (check === undefined) throw new Error('no npm version check');
-    for (const version of ['10.9.7', '11.4.9', '11.5.0']) {
-      await expect(run(process.execPath, ['-e', check, version]), version).rejects.toMatchObject({ stderr: expect.stringContaining('older than 11.5.1') as unknown });
+  it('checks the release identity in both jobs before any repository code runs', () => {
+    const gate = gateOf(verify);
+    expect(gate).toContain('if [[ ! "$RELEASE_TAG" =~ ^release/(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$ ]]; then');
+    expect(gate).toContain('if [[ "$RELEASE_DRAFT" != \'false\' || "$RELEASE_PRERELEASE" != \'false\' ]]; then');
+    expect(gate).toContain('git merge-base --is-ancestor "$GITHUB_SHA" origin/main');
+    expect(gateOf(publishJob)).toBe(gate);
+    for (const [name, text] of [['verify', verify], ['publish', publishJob]] as const) {
+      const before = text.slice(0, text.indexOf('Verify source provenance before repository code runs')).replace(/^\s*#.*$/gmu, '');
+      expect(before, name).toContain('ref: ${{ github.sha }}');
+      expect(before, name).toContain('fetch-depth: 0');
+      expect(before, name).toContain('run: git fetch --no-tags origin main:refs/remotes/origin/main');
+      expect(before, name).not.toMatch(/setup-node|npm |node /u);
     }
-    for (const version of ['11.5.1', '11.6.0', '12.0.0']) await expect(run(process.execPath, ['-e', check, version]), version).resolves.toBeDefined();
+    expect(publish.match(/node-version: '24\.19\.0'/gu)).toHaveLength(2);
+    expect(publish.match(/package-manager-cache: false/gu)).toHaveLength(2);
   });
 
-  it.skipIf(process.platform === 'win32')('publishes a version once: a re-run with the same tarball goes on, and a different one stops', async () => {
-    const step = /- name: Publish the packed tarball, with provenance, once\n[\s\S]*?run: \|\n([\s\S]*?)\n\n/u.exec(`${job(release, 'publish')}\n\n`)?.[1];
-    if (step === undefined) throw new Error('no publish step');
-    const base = await mkdtemp(join(tmpdir(), 'testrail-mcp-publish-'));
+  it('runs every release gate in the verify job, the TypeScript 7 check before the TypeScript 6 one', () => {
+    expect(ascending(positions(verify, [
+      'run: npm ci --ignore-scripts --registry=https://registry.npmjs.org/',
+      'run: node scripts/release-preflight.mjs context',
+      'run: node scripts/release-notes.mjs "$RELEASE_TAG" > /dev/null',
+      'run: npm run build',
+      'run: npm run registry:check',
+      'run: npm run typecheck\n',
+      'run: npm run typecheck:ts6',
+      'run: npm run lint',
+      'run: npm run test:coverage',
+      'run: npm audit --omit=dev --audit-level=moderate',
+      'run: npm run test:package',
+      'run: node scripts/release-preflight.mjs registry',
+    ]))).toBe(true);
+    // Every check `npm run check` runs is a gate here too, the tests with coverage.
+    for (const part of (packageJson.scripts.check ?? '').split(' && ')) expect(verify, part).toContain(`run: ${part === 'npm test' ? 'npm run test:coverage' : part}`);
+  });
+
+  it('hands only the tested build to the publish job, with its digest', () => {
+    expect(verify).toContain('dist-sha256: ${{ steps.release-artifact.outputs.sha256 }}');
+    expect(verify.match(/if: steps\.preflight\.outputs\.already-published == 'false'/gu)).toHaveLength(2);
+    // Archived after the last gate that builds, so it is the build the gates tested.
+    expect(verify.indexOf('tar -cf release-dist.tar -C dist .')).toBeGreaterThan(verify.indexOf('run: npm run test:package'));
+    expect(publish.match(/name: npm-release-dist/gu)).toHaveLength(2);
+    expect(verify).toContain('if-no-files-found: error');
+    expect(publishJob).toContain('sha256sum .release-artifact/release-dist.tar');
+    expect(publish.match(/find dist -mindepth 1 ! -type f ! -type d/gu)).toHaveLength(2);
+    expect(publishJob).toContain('test -f dist/cli.js');
+  });
+
+  it('runs no repository or dependency code in the job that can mint an npm credential', () => {
+    expect(ascending(positions(publishJob, [
+      'Verify source provenance before repository code runs', 'actions/download-artifact@', 'Set up the release Node.js', 'npm publish "$GITHUB_WORKSPACE"',
+    ]))).toBe(true);
+    expect(publishJob).not.toMatch(/npm ci|npm run|node scripts\/|npx /u);
+  });
+
+  it('publishes with an isolated npm configuration, and keeps npm\'s own guard on `latest`', () => {
+    for (const flag of ['--provenance', '--access=public', '--ignore-scripts', '--registry=https://registry.npmjs.org/', '--userconfig="$USER_CONFIG"', '--globalconfig="$GLOBAL_CONFIG"']) {
+      expect(publishJob, flag).toContain(flag);
+    }
+    const command = publishJob.slice(publishJob.indexOf('npm publish "$GITHUB_WORKSPACE"'), publishJob.indexOf('VERIFIED=false'));
+    expect(command).not.toContain('--tag');
+    expect(publishJob).toContain('NPM_CONFIG_* | NODE_AUTH_TOKEN | NPM_TOKEN | NPM_ID_TOKEN');
+    expect(publishJob).toContain("PACKAGE_NAME='@dichovsky/testrail-mcp'");
+    expect(publishJob).toContain('manifest.name !== "@dichovsky/testrail-mcp"');
+  });
+
+  it('re-checks the registry right before publishing, then verifies what npm serves', () => {
+    expect(ascending(positions(publishJob, ['EXACT_OUTPUT=', 'registry-state.json', 'npm publish "$GITHUB_WORKSPACE"', 'VERIFIED=false', 'DIFF_VERIFIED=false']))).toBe(true);
+    expect(publishJob).toContain('timeout --signal=KILL "${METADATA_REMAINING}s" npm view');
+    expect(publishJob).toContain('--fetch-retries=0 --fetch-timeout=10000');
+    expect(publishJob).toContain('dist-tags.latest dist.attestations');
+    expect(publishJob).toContain('https://slsa.dev/provenance/v1');
+    expect(publishJob.match(/for ATTEMPT in \{1\.\.10\}; do/gu)).toHaveLength(1);
+    expect(publishJob).toContain('--cache="$ISOLATED_NPM_DIRECTORY/npm-diff-cache-$ATTEMPT"');
+  });
+
+  /** The workflow's own last-moment version rule, run on a registry state. */
+  const registryRule = /registry-state\.json\n\s*EXPECTED_VERSION="\$EXPECTED_VERSION" node --input-type=module --eval '\n([\s\S]*?)\n\s*'\n/u.exec(publishJob)?.[1];
+
+  it.each([
+    ['the first stable release after the placeholder', '1.0.0', ['0.0.0-bootstrap.0'], '0.0.0-bootstrap.0', true],
+    ['the first stable release after its own release candidate', '1.0.0', ['0.0.0-bootstrap.0', '1.0.0-rc.1'], '1.0.0-rc.1', true],
+    ['the next patch', '1.0.1', ['0.0.0-bootstrap.0', '1.0.0'], '1.0.0', true],
+    ['numbers beyond double precision', '9007199254740993.0.0', ['9007199254740992.999999999999999999.999999999999999999'], '9007199254740992.999999999999999999.999999999999999999', true],
+    ['a version already published', '1.0.0', ['0.0.0-bootstrap.0', '1.0.0'], '1.0.0', false],
+    ['a version below latest', '0.9.0', ['0.0.0-bootstrap.0', '1.0.0'], '1.0.0', false],
+    ['a version below a stable one latest does not name', '5.4.0', ['5.3.0', '6.0.0'], '5.3.0', false],
+    ['a version below a pre-release latest', '1.0.0', ['2.0.0-rc.1'], '2.0.0-rc.1', false],
+    ['a pre-release latest once stable versions exist', '6.0.0', ['5.3.0', '6.0.0-rc.1'], '6.0.0-rc.1', false],
+    ['a latest missing from the versions', '1.0.0', ['0.0.0-bootstrap.0'], '0.0.1', false],
+  ])('agrees with the preflight on %s', async (_label, candidate, versions, latest, valid) => {
+    if (registryRule === undefined) throw new Error('no registry rule in the publish job');
+    const directory = await mkdtemp(join(tmpdir(), 'testrail-mcp-registry-rule-'));
     try {
-      /*
-       * An npm stand-in that answers only the one lookup the step should make: the integrity
-       * the registry serves, or E404 for a version it does not have. `publish` is recorded;
-       * anything else fails.
-       */
-      await writeFile(join(base, 'npm'), [
-        '#!/bin/sh',
-        'if [ "$*" = "view @dichovsky/testrail-mcp@1.0.0 dist.integrity" ]; then',
-        '  if [ -z "$SERVED" ]; then echo "npm error code E404" >&2; exit 1; fi',
-        '  printf "%s\\n" "$SERVED"; exit 0',
-        'fi',
-        'if [ "$1" = publish ]; then echo "$@" >> "$PUBLISHED"; exit 0; fi',
-        'echo "unexpected npm $*" >&2; exit 1',
-        '',
-      ].join('\n'));
-      await chmod(join(base, 'npm'), 0o755);
-      const publishes = async (served: string) => {
-        const published = join(base, `published-${String(Math.random()).slice(2)}`);
-        await writeFile(published, '');
-        const env = { PATH: `${base}:${process.env.PATH ?? ''}`, SERVED: served, PUBLISHED: published, TARBALL: 'x.tgz', INTEGRITY: 'sha512-this', VERSION: '1.0.0' };
-        const outcome = await run('bash', ['-e', '-c', step.replace(/^ {10}/gmu, '')], { env }).then(() => 'ok', () => 'failed');
-        return { outcome, published: (await readFile(published, 'utf8')).trim() };
-      };
-      expect(await publishes('')).toEqual({ outcome: 'ok', published: 'publish ./x.tgz --access public --provenance --ignore-scripts' });
-      expect(await publishes('sha512-this')).toEqual({ outcome: 'ok', published: '' });
-      expect(await publishes('sha512-other')).toEqual({ outcome: 'failed', published: '' });
+      await writeFile(join(directory, 'registry-state.json'), JSON.stringify({ versions, 'dist-tags.latest': latest }));
+      const outcome = await run(process.execPath, ['--input-type=module', '--eval', registryRule], { cwd: directory, env: { ...process.env, EXPECTED_VERSION: candidate } }).then(() => true, () => false);
+      expect(outcome).toBe(valid);
+      const preflight = (() => { try { validateNewStableVersion({ candidateVersion: candidate, publishedVersions: versions, latestVersion: latest }); return true; } catch { return false; } })();
+      expect(preflight).toBe(valid);
     } finally {
-      await rm(base, { recursive: true, force: true });
+      await rm(directory, { recursive: true, force: true });
     }
+  });
+
+  /*
+   * The workflow's real wait for npm's metadata, run with only npm, timeout and sleep
+   * replaced: sleep advances bash's elapsed-time clock, so the five-minute deadline needs
+   * no real wait.
+   */
+  describe.skipIf(process.platform === 'win32')('after npm accepts the publication', () => {
+    const verification = publishJob.slice(publishJob.indexOf('VERIFIED=false'), publishJob.indexOf('DIFF_VERIFIED=false'));
+    const VERSION = '1.0.0';
+    const RELEASE_SHA = '1234567890abcdef1234567890abcdef12345678';
+    const metadata = {
+      version: VERSION, gitHead: RELEASE_SHA, 'dist-tags.latest': VERSION,
+      'dist.attestations': { provenance: { predicateType: 'https://slsa.dev/provenance/v1' } },
+    };
+
+    const wait = async (unavailable: number, response: typeof metadata) => {
+      const directory = await mkdtemp(join(tmpdir(), 'testrail-mcp-publication-wait-'));
+      try {
+        const program = `set -euo pipefail
+printf '0' > attempts
+timeout() {
+  [[ "$1" == '--signal=KILL' ]]
+  printf '%s\\n' "$2" >> timeouts
+  shift 2
+  "$@"
+}
+npm() {
+  [[ "$1" == 'view' ]] || return 99
+  local calls
+  calls="$(cat attempts)"
+  calls=$((calls + 1))
+  printf '%s' "$calls" > attempts
+  if (( calls <= MOCK_UNAVAILABLE_ATTEMPTS )); then return 1; fi
+  printf '%s' "$MOCK_METADATA"
+}
+sleep() { SECONDS=$((SECONDS + $1)); }
+${verification}`;
+        const env = {
+          PATH: process.env.PATH ?? '', EXPECTED_VERSION: VERSION, GITHUB_SHA: RELEASE_SHA, PACKAGE_SPEC: `@dichovsky/testrail-mcp@${VERSION}`,
+          USER_CONFIG: '/dev/null', GLOBAL_CONFIG: '/dev/null', MOCK_UNAVAILABLE_ATTEMPTS: String(unavailable), MOCK_METADATA: JSON.stringify(response),
+        };
+        const { status, stderr } = await run('bash', ['-c', program], { cwd: directory, env, timeout: 30_000 })
+          .then(({ stderr: text }) => ({ status: 0, stderr: text }), (error: { code?: number; stderr?: string }) => ({ status: error.code ?? -1, stderr: error.stderr ?? '' }));
+        const timeouts = (await readFile(join(directory, 'timeouts'), 'utf8')).trim().split('\n').map((line) => Number(line.slice(0, -1)));
+        return { status, stderr, attempts: Number(await readFile(join(directory, 'attempts'), 'utf8')), timeouts };
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    };
+
+    it('accepts matching metadata after more than ten unavailable registry reads', async () => {
+      const result = await wait(11, metadata);
+      expect(result.status).toBe(0);
+      expect(result.attempts).toBe(12);
+      expect(result.stderr).toContain('npm accepted the publication');
+      expect(result.timeouts.every((seconds) => seconds > 0 && seconds <= 300)).toBe(true);
+    }, 60_000);
+
+    it.each([
+      ['unavailable metadata', 100, metadata],
+      ['a mismatched identity', 0, { ...metadata, gitHead: 'a'.repeat(40) }],
+    ])('stops at the deadline for %s without accepting the release', async (_label, unavailable, response) => {
+      const result = await wait(unavailable, response);
+      expect(result.status).toBe(1);
+      expect(result.attempts).toBeGreaterThan(10);
+      expect(result.attempts).toBeLessThanOrEqual(30);
+      expect(result.timeouts.every((seconds, index) => seconds > 0 && seconds <= 300 && (index === 0 || seconds < (result.timeouts[index - 1] ?? 0)))).toBe(true);
+      expect(result.stderr).toContain('metadata did not converge within 300 seconds');
+      expect(result.stderr).toContain('rerun the entire workflow, including verify; do not publish again');
+    }, 60_000);
   });
 
   it('names the workflow file and environment that the npm setup in docs/release.md names', () => {
-    expect(releaseDoc).toContain('| Workflow filename | `release.yml` |');
-    expect(releaseDoc).toContain('| Environment name | `npm-release` |');
+    expect(releaseDoc).toContain('| Workflow filename | `publish.yml` |');
+    expect(releaseDoc).toContain('| Environment name | `npm-publish` |');
     expect(releaseDoc).toContain('| Repository | `testrail-mcp` |');
   });
 });
@@ -219,7 +298,7 @@ describe('the release workflow', () => {
  * F10's networked re-check of the driver release ledger. It is the only workflow that
  * reaches the driver's repository or the npm registry for the ledger, it runs only when
  * what it checks changes, and it holds nothing but read access. The last test keeps the
- * ledger audit, and any mention of the driver's repository, out of CI, the release
+ * ledger audit, and any mention of the driver's repository, out of CI, the Publish
  * workflow and npm's scripts; it does not read the test files `npm test` runs.
  */
 describe('the driver ledger workflow', () => {
@@ -295,8 +374,8 @@ describe('the driver ledger workflow', () => {
     for (const { uses } of steps(job(driverLedger, 'audit'))) if (uses !== undefined) expect([...pins], uses).toContain(uses);
   });
 
-  it('keeps the ledger audit and the driver clone out of CI, the release workflow and npm\'s scripts', () => {
-    for (const [name, text] of [['ci.yml', ci], ['release.yml', release], ['package.json scripts', JSON.stringify(packageJson.scripts)]] as const) {
+  it('keeps the ledger audit and the driver clone out of CI, the Publish workflow and npm\'s scripts', () => {
+    for (const [name, text] of [['ci.yml', ci], ['publish.yml', publish], ['package.json scripts', JSON.stringify(packageJson.scripts)]] as const) {
       // A clone or checkout of the driver names its repository: an https or ssh URL, with
       // or without `.git`, the checkout action's `repository:`, or `gh repo clone`, with the
       // owner written out or taken from an expression. Only the npm package, which is
@@ -310,7 +389,7 @@ describe('every workflow', () => {
   it('pins each action to a full commit, with the version it stands for', async () => {
     const directory = new URL('../.github/workflows/', import.meta.url);
     const workflows = (await readdir(directory)).filter((name) => /\.ya?ml$/u.test(name));
-    expect(workflows.sort()).toEqual(['ci.yml', 'driver-ledger.yml', 'release.yml']);
+    expect(workflows.sort()).toEqual(['ci.yml', 'driver-ledger.yml', 'publish.yml']);
     for (const name of workflows) {
       const text = lf(await readFile(new URL(name, directory), 'utf8'));
       const uses = [...text.matchAll(/^\s*(?:- )?uses: (\S+)(.*)$/gmu)];
@@ -338,22 +417,22 @@ describe('the release notes', () => {
   const dated = '# Changelog\n\n## [2.0.0] - 2026-10-01\n\n### Added\n\n- Two.\n\n## [1.0.0] - 2026-09-30\n\n- One.\n';
 
   it('prints exactly the tagged version\'s dated section', async () => {
-    await expect(notes('v2.0.0', dated, '2.0.0')).resolves.toMatchObject({ stdout: '### Added\n\n- Two.\n' });
-    await expect(notes('v1.0.0', dated, '1.0.0')).resolves.toMatchObject({ stdout: '- One.\n' });
+    await expect(notes('release/2.0.0', dated, '2.0.0')).resolves.toMatchObject({ stdout: '### Added\n\n- Two.\n' });
+    await expect(notes('release/1.0.0', dated, '1.0.0')).resolves.toMatchObject({ stdout: '- One.\n' });
     // Neither a longer version nor a mention of this one in a later section is its heading.
     const near = '## [1.0.10] - 2026-10-03\n\n- Ten.\n\n## [1.0.2] - 2026-10-02\n\n- Replaces 1.0.1.\n\n## [1.0.1] - 2026-10-01\n\n- One.\n';
-    await expect(notes('v1.0.1', near, '1.0.1')).resolves.toMatchObject({ stdout: '- One.\n' });
+    await expect(notes('release/1.0.1', near, '1.0.1')).resolves.toMatchObject({ stdout: '- One.\n' });
   });
 
   it('points relative links at the tagged tree of the repository package.json names', async () => {
     const linked = '## [1.0.0] - 2026-10-04\n\n- See [the guide](docs/guide.md#setup), [the record](docs/record.json), [npm](https://www.npmjs.com/), [below](#notes) and [the root](/README.md).\n';
-    const expected = '- See [the guide](https://github.com/owner/repo/blob/v1.0.0/docs/guide.md#setup), [the record](https://github.com/owner/repo/blob/v1.0.0/docs/record.json), [npm](https://www.npmjs.com/), [below](#notes) and [the root](/README.md).\n';
+    const expected = '- See [the guide](https://github.com/owner/repo/blob/release/1.0.0/docs/guide.md#setup), [the record](https://github.com/owner/repo/blob/release/1.0.0/docs/record.json), [npm](https://www.npmjs.com/), [below](#notes) and [the root](/README.md).\n';
     for (const repository of [{ type: 'git', url: 'git+https://github.com/owner/repo.git' }, 'https://github.com/owner/repo']) {
-      await expect(notes('v1.0.0', linked, '1.0.0', script('release-notes.mjs'), repository)).resolves.toMatchObject({ stdout: expected });
+      await expect(notes('release/1.0.0', linked, '1.0.0', script('release-notes.mjs'), repository)).resolves.toMatchObject({ stdout: expected });
     }
     // Without a GitHub repository there is no tree to point at, so the links stay as written.
     for (const repository of [undefined, 'git@example.com:owner/repo.git']) {
-      await expect(notes('v1.0.0', linked, '1.0.0', script('release-notes.mjs'), repository)).resolves.toMatchObject({ stdout: linked.slice(linked.indexOf('- See')) });
+      await expect(notes('release/1.0.0', linked, '1.0.0', script('release-notes.mjs'), repository)).resolves.toMatchObject({ stdout: linked.slice(linked.indexOf('- See')) });
     }
   });
 
@@ -363,10 +442,11 @@ describe('the release notes', () => {
   });
 
   it.each([
-    ['a tag that does not match package.json', 'v2.0.0', dated, '1.0.0', /does not match package\.json version 1\.0\.0/u],
-    ['a version with no section', 'v3.0.0', dated, '3.0.0', /no section for 3\.0\.0/u],
-    ['an undated section', 'v1.0.0', '## [1.0.0] - Unreleased\n\n- One.\n', '1.0.0', /must be dated/u],
-    ['an empty section', 'v1.0.0', '## [1.0.0] - 2026-09-30\n\n## [0.9.0] - 2026-09-01\n\n- Old.\n', '1.0.0', /is empty/u],
+    ['a tag that does not match package.json', 'release/2.0.0', dated, '1.0.0', /does not match package\.json version 1\.0\.0/u],
+    ['a version with no section', 'release/3.0.0', dated, '3.0.0', /no section for 3\.0\.0/u],
+    ['an undated section', 'release/1.0.0', '## [1.0.0] - Unreleased\n\n- One.\n', '1.0.0', /must be dated/u],
+    ['an empty section', 'release/1.0.0', '## [1.0.0] - 2026-09-30\n\n## [0.9.0] - 2026-09-01\n\n- Old.\n', '1.0.0', /is empty/u],
+    ['a tag that is not a release tag', 'v1.0.0', dated, '1.0.0', /Give the release tag/u],
     ['a tag that is not a version', 'release-1', dated, '1.0.0', /Give the release tag/u],
   ])('refuses %s', async (_label, tag, log, version, message) => {
     await expect(notes(tag, log, version)).rejects.toMatchObject({ stderr: expect.stringMatching(message) as unknown });
@@ -375,7 +455,7 @@ describe('the release notes', () => {
   it.skipIf(process.platform === 'win32')('still refuses when run through a symlinked path', async () => {
     const link = join(base, 'linked-scripts');
     await symlink(fileURLToPath(new URL('../scripts/', import.meta.url)), link);
-    await expect(notes('v2.0.0', dated, '1.0.0', join(link, 'release-notes.mjs'))).rejects.toMatchObject({ stderr: expect.stringMatching(/does not match/u) as unknown });
+    await expect(notes('release/2.0.0', dated, '1.0.0', join(link, 'release-notes.mjs'))).rejects.toMatchObject({ stderr: expect.stringMatching(/does not match/u) as unknown });
   });
 
   /**
@@ -384,7 +464,7 @@ describe('the release notes', () => {
    */
   const readiness = async (version: string, log: string): Promise<void> => {
     if (/^\d+\.\d+\.\d+$/u.test(version)) {
-      await notes(`v${version}`, log, version);
+      await notes(`release/${version}`, log, version);
       return;
     }
     expect(version).toMatch(/-dev\.\d+$/u);
@@ -497,25 +577,6 @@ describe('the release files', () => {
         .rejects.toMatchObject({ stderr: expect.stringContaining('give a registry spec, not a tarball') as unknown });
     }
   }, 480_000);
-
-  it('inventories exactly the production packages a user\'s install gets, with their dependency graph', async () => {
-    const out = join(base, 'sbom.cdx.json');
-    await run(process.execPath, [script('release-sbom.mjs'), join(base, tarball), out], { timeout: 300_000 });
-    const sbom = JSON.parse(await readFile(out, 'utf8')) as {
-      metadata: { component: { name: string; version: string; 'bom-ref': string } };
-      components: { name: string; version: string }[];
-      dependencies: { ref: string; dependsOn?: string[] }[];
-    };
-    const production = Object.entries(lockfile.packages)
-      .filter(([path, entry]) => path !== '' && entry.dev !== true && entry.devOptional !== true)
-      .map(([path, entry]) => `${path.slice(path.lastIndexOf('node_modules/') + 'node_modules/'.length)}@${String(entry.version)}`);
-    expect(sbom.components.map(({ name, version: at }) => `${name}@${at}`).sort()).toEqual(production.sort());
-    // Among them, the two a dev dependency also needs, which `npm sbom --omit dev` leaves out.
-    expect(production.map((entry) => entry.replace(/@[^@]+$/u, ''))).toEqual(expect.arrayContaining(['zod', '@modelcontextprotocol/core']));
-    expect(sbom.metadata.component).toMatchObject({ name: '@dichovsky/testrail-mcp', version });
-    const direct = sbom.dependencies.find(({ ref }) => ref === sbom.metadata.component['bom-ref'])?.dependsOn ?? [];
-    expect(direct.sort()).toEqual(Object.entries(packageJson.dependencies).map(([name, at]) => `${name}@${at}`).sort());
-  }, 300_000);
 });
 
 

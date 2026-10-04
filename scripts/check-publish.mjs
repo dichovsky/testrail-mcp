@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 /*
  * npm runs this as prepublishOnly before a publish from the working tree, ahead of
- * prepack's build. The release workflow publishes a packed tarball, which runs no
+ * prepack's build. The Publish workflow publishes with --ignore-scripts, which runs no
  * package scripts, so this guards only a publish typed by hand.
  */
 
@@ -16,7 +16,7 @@ export function publishRefusal(version, tag) {
   const prerelease = /^\d+\.\d+\.\d+-([0-9A-Za-z.-]+)/u.exec(version)?.[1];
   if (prerelease === undefined) return undefined;
   if (prerelease.split('.')[0] === 'dev') {
-    return `${version} is this repository's development version and is never published. The release workflow publishes each release from its vX.Y.Z tag; see docs/release.md.`;
+    return `${version} is this repository's development version and is never published. The Publish workflow publishes each release from its GitHub Release for the release/X.Y.Z tag; see docs/release.md.`;
   }
   if (tag === undefined || tag === 'latest') {
     return `${version} is a pre-release. Publish it with a --tag other than latest, such as --tag next, so that it does not become what npm install gets.`;
