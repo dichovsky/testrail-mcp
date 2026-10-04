@@ -1,6 +1,6 @@
 # Releases
 
-This is how `@dichovsky/testrail-mcp` is versioned, published, upgraded and rolled back. 1.0.0 is the first release. Before it, npm held only the deprecated placeholder `0.0.0-bootstrap.0`.
+This is how `@dichovsky/testrail-mcp` is versioned, published, upgraded and rolled back. 1.0.0, published on 2026-10-04, is the first release. Before it, npm held only the deprecated placeholder `0.0.0-bootstrap.0`.
 
 ## Versioning and compatibility
 
@@ -36,6 +36,7 @@ gh api repos/dichovsky/testrail-mcp/environments/npm-publish --jq '.protection_r
 | Repository | `testrail-mcp` |
 | Workflow filename | `publish.yml` |
 | Environment name | `npm-publish` |
+| Permissions | `npm publish` allowed. A relationship that allows only `npm stage publish` refuses the workflow's `npm publish`, as the first 1.0.0 attempt found |
 
 npm allows a trusted publisher only on a package that already exists, so the very first version had to be published another way. The owner published the deprecated placeholder `0.0.0-bootstrap.0` on 2026-10-02 for that: it was published under the `bootstrap` tag, but npm points `latest` at a package's first version whatever its tag, so `latest` names the placeholder until 1.0.0. The workflow's registry check accepts a pre-release `latest` only while no stable version is published, which is that case alone. After the trusted publisher is configured, revoke any token used for the bootstrap.
 
