@@ -330,9 +330,9 @@ describe('the release notes', () => {
   beforeAll(async () => { base = await mkdtemp(join(tmpdir(), 'testrail-mcp-release-')); });
   afterAll(async () => { await rm(base, { recursive: true, force: true }); });
 
-  const notes = async (tag: string, log: string, version: string, via = script('release-notes.mjs')) => {
+  const notes = async (tag: string, log: string, version: string, via = script('release-notes.mjs'), repository?: unknown) => {
     await writeFile(join(base, 'CHANGELOG.md'), log);
-    await writeFile(join(base, 'package.json'), JSON.stringify({ version }));
+    await writeFile(join(base, 'package.json'), JSON.stringify({ version, repository }));
     return run(process.execPath, [via, tag, '--changelog', join(base, 'CHANGELOG.md'), '--package', join(base, 'package.json')]);
   };
   const dated = '# Changelog\n\n## [2.0.0] - 2026-10-01\n\n### Added\n\n- Two.\n\n## [1.0.0] - 2026-09-30\n\n- One.\n';
@@ -343,6 +343,23 @@ describe('the release notes', () => {
     // Neither a longer version nor a mention of this one in a later section is its heading.
     const near = '## [1.0.10] - 2026-10-03\n\n- Ten.\n\n## [1.0.2] - 2026-10-02\n\n- Replaces 1.0.1.\n\n## [1.0.1] - 2026-10-01\n\n- One.\n';
     await expect(notes('v1.0.1', near, '1.0.1')).resolves.toMatchObject({ stdout: '- One.\n' });
+  });
+
+  it('points relative links at the tagged tree of the repository package.json names', async () => {
+    const linked = '## [1.0.0] - 2026-10-04\n\n- See [the guide](docs/guide.md#setup), [the record](docs/record.json), [npm](https://www.npmjs.com/), [below](#notes) and [the root](/README.md).\n';
+    const expected = '- See [the guide](https://github.com/owner/repo/blob/v1.0.0/docs/guide.md#setup), [the record](https://github.com/owner/repo/blob/v1.0.0/docs/record.json), [npm](https://www.npmjs.com/), [below](#notes) and [the root](/README.md).\n';
+    for (const repository of [{ type: 'git', url: 'git+https://github.com/owner/repo.git' }, 'https://github.com/owner/repo']) {
+      await expect(notes('v1.0.0', linked, '1.0.0', script('release-notes.mjs'), repository)).resolves.toMatchObject({ stdout: expected });
+    }
+    // Without a GitHub repository there is no tree to point at, so the links stay as written.
+    for (const repository of [undefined, 'git@example.com:owner/repo.git']) {
+      await expect(notes('v1.0.0', linked, '1.0.0', script('release-notes.mjs'), repository)).resolves.toMatchObject({ stdout: linked.slice(linked.indexOf('- See')) });
+    }
+  });
+
+  it('points this repository\'s notes at its own tagged tree', async () => {
+    const { githubRepository } = (await import(script('release-notes.mjs'))) as { githubRepository: (packageJson: unknown) => string | undefined };
+    expect(githubRepository(packageJson)).toBe('https://github.com/dichovsky/testrail-mcp');
   });
 
   it.each([

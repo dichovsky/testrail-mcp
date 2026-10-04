@@ -2,7 +2,7 @@
 
 All notable changes to `@dichovsky/testrail-mcp` are recorded here. Versions follow [semantic versioning](https://semver.org/) as [docs/release.md](docs/release.md#versioning-and-compatibility) defines it for this server. A section stays `Unreleased` until its release is cut; the release workflow refuses to publish a version whose section is not dated.
 
-## [1.0.0] - Unreleased
+## [1.0.0] - 2026-10-04
 
 The first release: a local stdio MCP server for the complete TestRail 10.7.0 API.
 
@@ -23,7 +23,7 @@ The first release: a local stdio MCP server for the complete TestRail 10.7.0 API
 ### Verification
 
 - Every endpoint's hand-authored parameter manifest runs through the registered tool and the real driver. Registry, protocol, result-contract, paging and runtime-lifetime gates run in CI on Node 24 across Linux, macOS and Windows, and CI publishes coverage reports as artifacts. CI on Linux also requires at least 99% line, statement, function and branch coverage of the source.
-- Client qualification (R02) and live TestRail 10.8.1 qualification (R03) are recorded before this section is dated.
+- Claude Code passed all twelve client scenarios against the fixture stand-in, and the live qualification on TestRail 10.8.1 with driver 9.0.0 has no failures. What neither covers is listed below.
 
 ### Known limitations
 
@@ -36,3 +36,11 @@ The live qualification on TestRail 10.8.1 with driver 9.0.0 ([record](docs/evide
 - **Not run, by the owner's choice (8).**
   - The writes outside a project: `add_user`, `update_user`, `add_group`, `update_group`, `delete_group` and `add_case_field`. TestRail cannot delete users or case fields.
   - `run_report` and `run_cross_project_report`, which generate reports and can send email.
+
+The client checks ([client configuration](docs/client-compatibility.md#required-surfaces-and-evidence)) cover two of the four targeted clients, and only against the fixture stand-in, never a live TestRail instance.
+
+- **Claude Code** 2.1.288 passed all twelve scenarios, headless on Linux, with an earlier development build of this server and driver 7.2.0 ([record](docs/evidence/clients/claude-code.json)).
+- **Codex CLI** 0.160.0 passed 10 of 12, as the owner reported; its record is not in the repository.
+  - It chose the wrong tool for 2 of 28 natural-language tasks: closing a run, and listing case types.
+  - It never tells the server that a call was cancelled, neither on Esc nor at its own tool timeout. The server finishes such a call within its budgets, so a write cancelled in Codex may still be applied.
+- **Codex desktop** and **GitHub Copilot CLI** were not tested.

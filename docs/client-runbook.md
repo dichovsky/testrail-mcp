@@ -233,6 +233,6 @@ cd "$R2" && zip -r r02-out.zip out
 
 Before you share the zip, open `out/codex-sessions`. Remove any session that is not part of this run.
 
-**Do not attach the zip to a GitHub issue, because the repository is public.** Upload it to your Google Drive, and tell Claude, in the session that is driving R02, the file's name.
+**Do not attach the zip to a GitHub issue, because the repository is public.** Keep it private. The session writing the records needs the files themselves, not a path on your machine: a cloud session cannot read your disk, so share the zip through a private channel that session can reach.
 
 The credentials in it are synthetic, so nothing needs redacting for them. Local paths, user names and the stand-in's address are replaced with placeholders when the records are written, and the raw files are not committed.

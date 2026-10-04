@@ -1,6 +1,6 @@
 # MCP client setup and release verification
 
-Status: the server is implemented, and all 133 tools are verified offline (see [coverage reports](coverage-reports.md)). Claude Code has a fixture-run record; the other surfaces, and every live smoke check, are pending under [R02](https://github.com/dichovsky/testrail-mcp/issues/23). The client research below dates from 2026-09-09. The configuration examples are release documentation, not changes to your client settings.
+Status: the server is implemented, and all 133 tools are verified offline (see [coverage reports](coverage-reports.md)). Claude Code has a fixture-run record. The owner ran Codex CLI on 2026-10-04 and reported 10 of 12 scenarios passed; that record is not in the repository. Codex desktop and Copilot CLI were not tested: the owner closed [R02](https://github.com/dichovsky/testrail-mcp/issues/23) on 2026-10-04 without them, and no client ran against a live TestRail instance. The client research below dates from 2026-09-09. The configuration examples are release documentation, not changes to your client settings.
 
 ## Required surfaces and evidence
 
@@ -8,12 +8,12 @@ The release targets local stdio connections from Codex desktop, Codex CLI, Claud
 
 | Surface | Existing observation | Release verification |
 | --- | --- | --- |
-| Codex desktop | App is available; build/version not recorded | Pending |
-| Codex CLI | Local read-only check reported `codex-cli 0.149.0` | Pending |
+| Codex desktop | App is available; build/version not recorded | Not tested for 1.0.0, by the owner's choice |
+| Codex CLI | Local read-only check reported `codex-cli 0.149.0` | Owner-reported, 2026-10-04, `codex-cli 0.160.0` against the fixture stand-in: 10 of 12 passed. C03 chose the wrong tool for 2 of 28 tasks, closing a run and listing case types, and C10 failed because Codex sends no cancellation ([below](#codex-desktop-and-cli)). No record in the repository |
 | Claude Code | 2.1.288 on Linux, run headless against the fixture stand-in | [Fixture run, 2026-10-03: 12 of 12 passed](evidence/clients/claude-code.json); live smoke pending |
-| GitHub Copilot CLI | Local read-only check reported `1.0.67` | Pending |
+| GitHub Copilot CLI | Local read-only check reported `1.0.67` | Not tested for 1.0.0, by the owner's choice |
 
-An installed executable is not evidence of authentication, an available model, or compatibility. Before release, replace the pending results with records naming the exact client version/build, operating system, Node version, model/provider, relevant host settings, package version/integrity, driver version, negotiated MCP revision, test date, and evidence location. Codex desktop and CLI need separate records even when they share configuration. Do not promise support for every historical client version or every provider based on one successful run.
+An installed executable is not evidence of authentication, an available model, or compatibility. Before release, replace the pending results with records naming the exact client version/build, operating system, Node version, model/provider, relevant host settings, package version/integrity, driver version, negotiated MCP revision, test date, and evidence location. Codex desktop and CLI need separate records even when they share configuration. Do not promise support for every historical client version or every provider based on one successful run. For 1.0.0 the owner accepted the results above: a surface marked not tested is not claimed to work, and an owner-reported result without its record is not evidence a later check can rely on.
 
 Keep all 133 endpoint tools registered and enabled. Host deferral controls when definitions enter model context; it must not reduce the server's `tools/list` catalog. Host permission prompts remain the host's responsibility and are not evidence that the server added a confirmation requirement.
 
@@ -25,7 +25,7 @@ Use `serveStdio(factory)` from `@modelcontextprotocol/server/stdio`. The release
 
 ## Shared installation and environment
 
-Package: `@dichovsky/testrail-mcp`. Executable: `testrail-mcp`. No release is on npm yet, only a deprecated placeholder; until the first release, install it from a packed checkout as the [README](../README.md#install) describes.
+Package: `@dichovsky/testrail-mcp`. Executable: `testrail-mcp`. Install an exact version from npm as the [README](../README.md#install) describes; to try an unreleased change, install a packed checkout instead.
 
 For release verification, build and pack the candidate, install that tarball into an isolated prefix, and use the installed executable. Verify the published, exact version through npm once publication is part of the release workflow. The examples below assume `testrail-mcp` is on the host's executable path. When it is not, replace `command` with the absolute path of that same installed executable; check this separately for the desktop launch environment.
 
@@ -72,6 +72,8 @@ enabled = true
 ```
 
 Codex documents shared MCP configuration for local desktop/CLI surfaces, command-launched stdio, environment forwarding, and configurable startup/call timeouts. Reconnect or restart the client after changes. Check server state with `/mcp`, and record the actual automatic tool-discovery behavior rather than assuming a specific model context strategy. Keep the first 512 characters of server instructions self-contained. Source: [official Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+
+**Cancellation.** Codex does not tell the server that a call was cancelled. Neither Esc nor `tool_timeout_sec` sends `notifications/cancelled`: Codex drops the call on its side, and the server finishes it within its own budgets, 15 seconds per TestRail request and 45 seconds for a complete fetch, holding its slot until then. Treat a write cancelled in Codex as possibly applied, and check before retrying it. The owner saw this with `codex-cli` 0.160.0 on 2026-10-04. In Codex's source at commit `afb436d`, a turn's cancellation reaches only a pending approval prompt, and the call timeout drops the request without a notification. Claude Code does send one, and the server stops waiting for that call (C10 in its [record](evidence/clients/claude-code.json)).
 
 ## Claude Code
 
@@ -216,7 +218,7 @@ Record each surface's results in its file under [`docs/evidence/clients/`](evide
 - Live evidence names the TestRail version.
 - Records hold variable names only, the `TESTRAIL_` variables and `MCP_PROTOCOL_NEGOTIATION`, never values. They hold no credential header, email address, local path, variable value or key-like token, and no link that carries a credential. Links, package specs, repository paths and versions are fine.
 
-The status table at the top of this guide must read `Pending` for a surface with no run scenario. Otherwise it must link that surface's record.
+The status table at the top of this guide must not link a record for a surface with no run scenario, and says whether that surface is pending, not tested, or owner-reported without a record. Otherwise it must link that surface's record.
 
 Run the following scenarios for each required surface, starting with automatic discovery and its normal built-in tools enabled. Do not force all schemas into context to make a discovery test pass.
 
