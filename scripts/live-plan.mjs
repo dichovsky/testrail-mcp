@@ -318,6 +318,12 @@ export const PLAN = [
     capture: (data, c) => { c.own('result', idOf(data)); },
   },
   {
+    // A result with a comment and no status, which TestRail records (#49).
+    tool: 'add_result', label: 'comment only', scope: 'own',
+    input: (c) => ({ test_id: c.id('second test'), body: { comment: 'Qualification comment, with no status.' } }),
+    capture: (data, c) => { c.own('result', idOf(data), 'comment-only result'); },
+  },
+  {
     tool: 'add_result_for_case', scope: 'own',
     input: (c) => ({ run_id: c.id('run'), case_id: c.id('case'), body: { status_id: c.value('passed'), comment: 'Qualification result for the case.' } }),
     capture: (data, c) => { c.own('result', idOf(data), 'result for case'); },

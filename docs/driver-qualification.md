@@ -13,7 +13,7 @@ F01 is qualified. The MCP package pins the published release `@dichovsky/testrai
   - **Connections go direct, by default.** Each request connects through a dispatcher pinned to the DNS answers the private-host guard approved. Global proxy and agent settings, `HTTP_PROXY`/`HTTPS_PROXY` with `NODE_USE_ENV_PROXY`, and a global Undici dispatcher are no longer used for TestRail. `NODE_EXTRA_CA_CERTS` still adds trust for a private certificate authority. The server injects no transport, so a TestRail reachable only through a proxy cannot be used that way. With `TESTRAIL_ALLOW_PRIVATE_HOSTS=true` the guard does not run and nothing is pinned, so Node's own connection settings apply, a configured proxy included; `tests/driver-configuration.test.ts` holds both cases. The private-host guard also refuses three more IPv4 ranges: `198.18.0.0/15`, `224.0.0.0/4` and `240.0.0.0/4`.
   - The `User-Agent` is now the single token `testrail-api-client/9.0.0`.
 - All 133 parameter manifests and the shared domain library were re-reviewed against `a5ccffb`, each with an evidence step from `7680ab6`. Every cited file's shipped build changed, because 9.0.0 drops source maps, and eight sources changed; each change has a note. See [driver provenance evidence](parameter-manifest.md#driver-provenance-evidence).
-- The live TestRail 10.8.1 run ([live qualification](live-qualification.md)) was recorded with 7.2.0, so it has to be repeated with 9.0.0 before release.
+- The live TestRail 10.8.1 run ([live qualification](live-qualification.md)) was repeated with 9.0.0 on 2026-10-04: nothing failed, the same 98 tools pass, 27 are blocked and 8 left out as with 7.2.0, and a new comment-only result step passes too.
 
 ## Previously qualified release — 8.0.0, verified 2026-10-03
 
@@ -56,4 +56,4 @@ That comparison is now data the manifest audit checks rather than prose. Each of
 
 ## Remaining release dependencies
 
-Qualification covers the driver contract only. R03 also requires live TestRail 10.8.1 evidence, and a later driver upgrade requires an exact dependency review, inventory/parameter diff and a repeat of the checks above against the newly installed artifact. The 8.0.0 and 9.0.0 upgrades did that on 2026-10-03; the live run on 9.0.0 is still owed.
+Qualification covers the driver contract only. R03 also requires live TestRail 10.8.1 evidence, and a later driver upgrade requires an exact dependency review, inventory/parameter diff and a repeat of the checks above against the newly installed artifact. The 8.0.0 and 9.0.0 upgrades did that on 2026-10-03, and the live run on 9.0.0 followed on 2026-10-04.

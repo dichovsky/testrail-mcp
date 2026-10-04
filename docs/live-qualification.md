@@ -89,7 +89,7 @@ It prints one line per step, with the error code and the server's message for an
 | `blocked` | The instance lacks a licensed feature (`LICENSE_REQUIRED`) or the user a permission (`PERMISSION_DENIED`). A step whose prerequisite was blocked or failed is blocked too, and names what it needed. A blocked tool is never counted as a pass. |
 | `not_run` | Left out, with the reason: an option not given, nothing in the instance to act on (a group read where there are no groups), or the run stopped, including a step Ctrl-C cut short. |
 
-A tool with several steps takes its worst status, except that a step left out does not outweigh a pass. `testrail_get_group`, for example, reads an existing group, when the instance has one, and, with `--instance-writes`, the run's own.
+A tool with several steps takes its worst status, except that a step left out does not outweigh a pass. `testrail_get_group`, for example, reads an existing group, when the instance has one, and, with `--instance-writes`, the run's own. `testrail_add_result` records a second result with a comment and no status (#49).
 
 ## The evidence
 
