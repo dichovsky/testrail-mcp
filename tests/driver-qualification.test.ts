@@ -15,8 +15,8 @@ const inventory = parseInventory(
 );
 
 const qualified = {
-  version: '8.0.0',
-  integrity: 'sha512-1f7zBc6owy08SCCdLADc5LmwDgtMuhb8drYbgORUhn4LbKjJJE2K28K/3KOEtuIJ8jxZ81jBx5WGGBF4FNM8mw==',
+  version: '9.0.0',
+  integrity: 'sha512-CfGOEAkrEfrJTHaVY57YqzUBla3V0FP0cXXFyEfY7FcW+PdMJBp0Ro39MS9qLdz748X7fKOhdy971mZQ/rzkmg==',
 };
 
 function client(fetch: typeof globalThis.fetch, overrides: Record<string, unknown> = {}): TestRailClient {
@@ -117,7 +117,7 @@ describe('F01 published driver qualification', () => {
   it('retries a rate-limited report generation, which F01 accepts as safe', async () => {
     // A rate-limited report generation is re-sent: 7.2.0 named the rateLimitOnly policy on
     // the report methods, and 8.0.0 derives it from their side-effecting-read intent.
-    // Accepted 2026-09-17, and unchanged at the 8.0.0 re-qualification on 2026-10-03: TestRail rejects a rate-limited
+    // Accepted 2026-09-17, and unchanged at the 8.0.0 and 9.0.0 re-qualifications on 2026-10-03: TestRail rejects a rate-limited
     // request before handling it, so a re-send cannot generate the report twice or send a
     // duplicate template email. A 5xx stays non-retryable because generation may have
     // begun. Asserted so that an upstream change to this returns for a fresh decision.

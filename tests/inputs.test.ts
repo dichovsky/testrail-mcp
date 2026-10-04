@@ -3,6 +3,8 @@ import {
   AddCasesBulkPayloadSchema,
   AddDatasetPayloadSchema,
   AddPlanPayloadSchema,
+  AddResultForCasePayloadSchema,
+  AddResultForTestPayloadSchema,
   AddResultPayloadSchema,
   DeleteCasesPayloadSchema,
   DynamicFiltersPayloadSchema,
@@ -313,7 +315,7 @@ describe('strict reuse of public driver payload schemas', () => {
     ], [{ body: { parent_id: '0' } }]);
   });
 
-  it('represents the two exported driver payload refinements in JSON Schema', () => {
+  it('represents the exported driver payload refinements in JSON Schema', () => {
     acceptsBoth(strictObject({ body: payloadInput(DeleteCasesPayloadSchema) }), [
       { body: { case_ids: [1] } },
     ], [{ body: { case_ids: [1], soft: 1 } }]);
@@ -336,24 +338,27 @@ describe('strict reuse of public driver payload schemas', () => {
   });
 
   /*
-   * A result needs a status, a comment or an assignee (#49). The rule is the adapter's,
-   * since driver 8.0.0 declares status_id required instead, and it must read the same in
-   * Zod and in the advertised JSON Schema, alongside the custom_* name policy it is
-   * combined with on every result body.
+   * A result needs a status, a comment or an assignee (#49). The driver states that as a
+   * refinement on its three result payloads, and it must read the same in Zod and in the
+   * advertised JSON Schema, alongside the custom_* name policy it is combined with on
+   * every result body and bulk entry.
    */
-  it('requires at least one of the named fields, in Zod and JSON Schema alike', () => {
-    const body = payloadInput(AddResultPayloadSchema, {
+  it.each([
+    ['AddResultPayloadSchema', AddResultPayloadSchema, {}],
+    ['AddResultForTestPayloadSchema', AddResultForTestPayloadSchema, { test_id: 1 }],
+    ['AddResultForCasePayloadSchema', AddResultForCasePayloadSchema, { case_id: 1 }],
+  ] as const)('represents the result-content refinement of %s', (_name, source, id) => {
+    const body = payloadInput(source, {
       extensions: 'custom',
       fields: { status_id: z.number().int().positive().optional() },
-      requireOneOf: ['status_id', 'comment', 'assignedto_id'],
     });
     const input = strictObject({ body });
     acceptsBoth(input, [
-      { body: { status_id: 1 } }, { body: { comment: '' } }, { body: { assignedto_id: 2 } },
-      { body: { comment: 'note', custom_actual: 'ok' } },
+      { body: { ...id, status_id: 1 } }, { body: { ...id, comment: '' } }, { body: { ...id, assignedto_id: 2 } },
+      { body: { ...id, comment: 'note', custom_actual: 'ok' } },
     ], [
-      { body: {} }, { body: { version: '1.0' } }, { body: { custom_actual: 'ok' } },
-      { body: { comment: 'note', unexpected: 1 } },
+      { body: { ...id } }, { body: { ...id, version: '1.0' } }, { body: { ...id, custom_actual: 'ok' } },
+      { body: { ...id, comment: 'note', unexpected: 1 } },
     ]);
     expect(inputJsonSchema(input).properties?.body).toMatchObject({
       anyOf: [{ required: ['status_id'] }, { required: ['comment'] }, { required: ['assignedto_id'] }],
@@ -498,10 +503,7 @@ describe('structural page/all input discrimination', () => {
 
 /*
  * Every user tool takes one address rule, the shape check the driver applies to
- * get_user_by_email. Driver 8.0.0 also declares a stricter, dotted-domain format on its
- * user write payloads but never applies it, because addUser and updateUser forward the
- * payload unparsed; the published-driver evidence in tests/parameter-manifest.test.ts
- * drives a single-label address through both to the wire.
+ * get_user_by_email and declares on its user write payloads.
  */
 describe('the user email rule', () => {
   it.each([
@@ -514,15 +516,17 @@ describe('the user email rule', () => {
   });
 
   /*
-   * The alarm for the upgrade. Driver 9.0.0 declares the lookup's rule on the writes, so
-   * when the pin moves this fails, and with it go the comment in src/contracts/inputs.ts
-   * and the widened write parses in the published-driver evidence.
+   * The driver's write payloads check the address with the same shape rule, which this
+   * server restates only to carry the Unicode flag. They must agree on every address,
+   * or a write the boundary accepts would be refused by a driver that parses it, or the
+   * other way round.
    */
-  it('is looser than the dotted format the pinned driver declares, and never applies, on writes', () => {
-    for (const address of ['ada@corp', 'user@localhost', 'user@[10.0.0.1]']) {
-      expect(emailSchema.safeParse(address).success, address).toBe(true);
-      expect(UserAddPayloadSchema.safeParse({ name: 'Ada', email: address }).success, address).toBe(false);
-      expect(UserUpdatePayloadSchema.safeParse({ email: address }).success, address).toBe(false);
-    }
+  it.each([
+    'ada@example.com', 'ada@corp', 'user@localhost', 'user@[10.0.0.1]', 'a.b+c@sub.example.co.uk',
+    'nope', 'a@@b', 'ada@a@b', '@example.com', 'ada@', ' ada@example.com', 'ada@example.com\n', '',
+  ])('agrees with the driver\'s user write payloads on %j', (address) => {
+    const accepted = emailSchema.safeParse(address).success;
+    expect(UserAddPayloadSchema.safeParse({ name: 'Ada', email: address }).success).toBe(accepted);
+    expect(UserUpdatePayloadSchema.safeParse({ email: address }).success).toBe(accepted);
   });
 });

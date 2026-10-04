@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -16,6 +16,16 @@
           { "path": "src/pagination.ts", "changed": true, "note": "Changed between the releases: an aggregate's page request carries intent 'fresh-read' in place of bypassCache and remainingTimeMs, and a request-budget expiry is reported as max_duration even when the wall clock disagrees. The bounds, defaults, decodePage and stop conditions cited here are unchanged." },
           { "path": "src/url.ts", "changed": false },
           { "path": "src/schemas/sharedSteps.ts", "changed": false }
+        ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/sharedSteps.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/sharedSteps.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/modules/paginated-list.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/paginated-list.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/pagination.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/pagination.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/url.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/url.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/schemas/sharedSteps.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/sharedSteps.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
       }
     ]
@@ -30,27 +40,27 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/sharedSteps.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/sharedSteps.ts",
       "supports": "The history executor is declared without request controls and its prepare step contributes only the path, so neither the page helper nor the aggregate sends a limit or an offset. getSharedStepHistoryPage takes the identifier alone and getAllSharedStepHistory takes it with the safety bounds. The envelope collection is named step_history rather than history."
     },
     {
       "id": "driver-paginated-list",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/paginated-list.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/paginated-list.ts",
       "supports": "This executor is declared without request controls, so the page helper appends neither a limit nor an offset and the aggregate is built on the envelope-only branch, whose options type excludes pageSize and startOffset outright. The all helper copies only maxPages, maxItems, maxDurationMs and maxBytes."
     },
     {
       "id": "driver-pagination",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/pagination.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts",
       "supports": "collectAllPages validates every bound before the first request and stops when _links.next is null. On the envelope-only branch it requests no page size and no start offset, so the page size default of 250 and the first-offset check that govern a controlled list do not apply here."
     },
     {
       "id": "driver-url",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/url.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/url.ts",
       "supports": "buildEndpoint appends controls path-style after an ampersand and skips undefined values, so an endpoint whose executor sends no controls carries none."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/sharedSteps.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/sharedSteps.ts",
       "supports": "AddSharedStepPayloadSchema requires title and accepts an optional custom_steps_separated array whose entries are open records; the update payload makes both optional. SharedStepSchema requires only id and title, because the list form of the endpoint returns just those two. StepHistoryEntrySchema accepts id and user_id as either an integer or a string, since TestRail Cloud returns integers where the documentation says string."
     },
     {

@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -14,6 +14,14 @@
           { "path": "src/modules/cases.ts", "changed": false },
           { "path": "src/schemas/cases.ts", "changed": false },
           { "path": "src/schemas/common.ts", "changed": false }
+        ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/cases.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/cases.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/schemas/cases.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/cases.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/schemas/common.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/common.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
       }
     ]
@@ -28,17 +36,17 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/cases.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/cases.ts",
       "supports": "addCases validates the section ID, sends it as the only path segment of add_cases, wraps the array as { cases: [...] } in one JSON request, unwraps TestRail's { cases: [...] } reply, and fails closed with a status-200 API error when a successful reply has any other shape, because the write may already have happened. The wire shape is recorded there as confirmed by a live probe on 2026-06-21: a bare array is rejected with 400 'Field :cases is a required field.'"
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/cases.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/cases.ts",
       "supports": "AddCasesBulkPayloadSchema is an array of AddCasePayloadSchema with at least one item, so each item declares title, template_id, type_id, priority_id, estimate, milestone_id, refs, labels (numbers or strings), is_legacy and a legacy custom_fields record. These are the exported type's declarations; the public method forwards the payload without parsing it, so every payload rule here is enforced at the MCP boundary alone."
     },
     {
       "id": "driver-common",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/common.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/common.ts",
       "supports": "zObject uses passthrough, so the declared item type admits unknown and custom_* properties alike; the MCP boundary must reject ordinary unknown names separately."
     },
     {

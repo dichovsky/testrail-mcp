@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -17,6 +17,17 @@
           { "path": "src/url.ts", "changed": false },
           { "path": "src/validation.ts", "changed": false },
           { "path": "src/schemas/attachments.ts", "changed": false }
+        ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/attachments.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/attachments.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/modules/paginated-list.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/paginated-list.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/pagination.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/pagination.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/url.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/url.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/validation.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/validation.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/schemas/attachments.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/attachments.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
       }
     ]
@@ -31,32 +42,32 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/attachments.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/attachments.ts",
       "supports": "getAttachmentsForPlanPage and getAllAttachmentsForPlan validate the plan ID and place it as the only path segment of get_attachments_for_plan; the executor is declared with the attachments collection key and an envelope response, with request controls."
     },
     {
       "id": "driver-paginated-list",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/paginated-list.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/paginated-list.ts",
       "supports": "The executor validates limit and offset before dispatch and appends them after the path. The page helper decodes with the strict page schema; the all helper copies only pageSize, startOffset, maxPages, maxItems, maxDurationMs and maxBytes from its options and runs collectAllPages with request controls."
     },
     {
       "id": "driver-pagination",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/pagination.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts",
       "supports": "decodePage returns a bare array as a legacy-array page and an envelope with its offset, limit, size and _links. collectAllPages defaults pageSize to 250 and startOffset to 0, requires an envelope's offset to equal the offset it asked for, and ends at a legacy array or a null next link."
     },
     {
       "id": "driver-url",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/url.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/url.ts",
       "supports": "buildEndpoint appends controls path-style after an ampersand, skips undefined values and percent-encodes each key and value."
     },
     {
       "id": "driver-validation",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/validation.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/validation.ts",
       "supports": "validateId accepts any positive integer: it tests Number.isInteger and has no safe-integer bound, so the largest-safe-integer ceiling on these identifiers is this server's own. validateEntryId accepts only a UUID, case-insensitively, with nothing before or after it; validatePaginationParams holds limit to 1..250 and offset to a non-negative integer."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/attachments.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/attachments.ts",
       "supports": "AttachmentSchema is one passthrough object for every attachment shape TestRail documents: the upload reply, the legacy case and test entries, the plan, plan-entry and run entries with entity_attachments_id and icon_name, and the 7.1 cloud entries whose id is a UUID string. Every field is nullish and id and entity_id admit a number or a string, so each documented entity parses unchanged."
     },
     {

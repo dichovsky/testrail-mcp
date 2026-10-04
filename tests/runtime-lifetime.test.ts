@@ -223,8 +223,10 @@ describe('capacity after the driver aggregate deadline', () => {
  * remains: the request's abort timer, a race against the deadline, and the body read.
  * Any of them can fire a moment before the wall clock reaches the deadline, and the
  * aggregate then rethrows that timer's own error instead of its duration stop. In local
- * loops that happened in a few percent of runs. Freezing the clock makes the ordering
- * certain: the timers still fire, and the clock never reaches the deadline.
+ * loops that happened in a few percent of runs on driver 8.0.0; from 9.0.0 the driver
+ * labels its abort timer and deadline race as the stop itself, and only a clipped body
+ * read timeout still escapes. Freezing the clock makes the ordering certain: the timers
+ * still fire, and the clock never reaches the deadline.
  */
 describe('the aggregate deadline, however the driver raises it', () => {
   async function frozen(fetch: typeof globalThis.fetch) {

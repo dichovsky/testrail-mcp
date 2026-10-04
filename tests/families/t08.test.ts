@@ -144,10 +144,9 @@ describe('T08 the address every user tool accepts', () => {
   });
 
   /*
-   * The writes take the lookup's rule (#55). Driver 8.0.0 declares a dotted domain on its
-   * write payloads but never applies it, so a user this server can look up by a
-   * directory address is one it can also create or update with it, and the address
-   * reaches TestRail in the body unchanged.
+   * The writes take the lookup's rule (#55), which the driver declares on its write
+   * payloads too, so a user this server can look up by a directory address is one it can
+   * also create or update with it, and the address reaches TestRail in the body unchanged.
    */
   it.each([
     ['testrail_add_user', 'ada@corp', { body: { name: 'Ada', email: 'ada@corp' } }],

@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -13,6 +13,13 @@
         "files": [
           { "path": "src/modules/plans.ts", "changed": false },
           { "path": "src/schemas/plans.ts", "changed": false }
+        ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/plans.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/plans.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/schemas/plans.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/plans.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
       }
     ]
@@ -27,12 +34,12 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/plans.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/plans.ts",
       "supports": "Every method validates its identifiers, an entry identifier through the UUID validator, and places them as the path segments of the matching endpoint before forwarding any JSON payload unchanged. The list executor builds its query as created_after, created_before, created_by, is_completed, milestone_id and refs ahead of the paging controls, converting the completion flag to 1 or 0 and joining the two lists with commas; the envelope collection is named plans."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/plans.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/plans.ts",
       "supports": "AddPlanPayloadSchema requires name and accepts description, milestone_id, start_on, due_on, refs and an entries array whose items carry suite_id, name, description, assignedto_id, include_all, case_ids, config_ids, a runs array, dynamic_filters, start_on, due_on and refs. UpdatePlanPayloadSchema is the same without entries and with name optional. AddPlanEntryPayloadSchema matches an entry item, and its comments record that suite_id is required only for projects using multiple suites or baselines. UpdatePlanEntryPayloadSchema deliberately omits config_ids and runs, which TestRail does not accept there, and omits suite_id, which is not in the endpoint's request body. AddRunToPlanEntryPayloadSchema requires config_ids and deliberately omits name, which TestRail derives from the configuration; UpdateRunInPlanEntryPayloadSchema omits both config_ids and name. None of these is parsed by the public method, so every payload rule is enforced at the MCP boundary alone."
     },
     {

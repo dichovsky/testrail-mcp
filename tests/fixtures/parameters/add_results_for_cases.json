@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -14,6 +14,14 @@
           { "path": "src/modules/results.ts", "changed": false },
           { "path": "src/schemas/results.ts", "changed": false },
           { "path": "src/schemas/common.ts", "changed": false }
+        ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/results.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/results.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/schemas/results.ts", "changed": true, "note": "Changed between the releases: status_id is optional on the three add payloads, which now carry a refinement requiring at least one of status_id, comment or assignedto_id, and through them the bulk entries. The claim is rewritten for the refinement, which the boundary represents in JSON Schema as anyOf over single-name required lists. EditResultPayloadSchema is unchanged." },
+          { "path": "src/schemas/common.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/common.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
       }
     ]
@@ -28,23 +36,23 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/results.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/results.ts",
       "supports": "addResultsForCases validates the run ID, places it as the only path segment of add_results_for_cases, forwards the JSON payload unchanged in one request and parses the reply as an array of results."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/results.ts",
-      "supports": "AddResultPayloadSchema declares status_id required and accepts comment, version, elapsed, defects, assignedto_id and a custom_fields record. The bulk payloads wrap an array of the same fields under results, each entry additionally requiring test_id or case_id. EditResultPayloadSchema makes every field optional, declares custom_step_results outright and carries no custom_fields record; its refinement rejects an empty payload. None of these is parsed by the public method, which forwards the payload as given, so every payload rule is enforced at the MCP boundary alone."
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/results.ts",
+      "supports": "AddResultPayloadSchema makes every field optional, accepting status_id, comment, version, elapsed, defects, assignedto_id and a custom_fields record, and refines the payload to need at least one of status_id, comment or assignedto_id. The bulk payloads wrap an array of the same fields under results, each entry additionally requiring test_id or case_id and carrying the same refinement. EditResultPayloadSchema makes every field optional, declares custom_step_results outright and carries no custom_fields record; its refinement rejects an empty payload. None of these is parsed by the public method, which forwards the payload as given, so every payload rule is enforced at the MCP boundary alone."
     },
     {
       "id": "driver-common",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/common.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/common.ts",
       "supports": "zObject uses passthrough, so the declared payload type admits unknown and custom_ properties alike; the MCP boundary must reject ordinary unknown names separately."
     },
     {
       "id": "testrail-results",
       "url": "https://support.testrail.com/hc/en-us/articles/7077819312404-Results",
-      "supports": "add_result/{test_id} records a result against one test and takes status_id, comment, version, elapsed, defects and assignedto_id, plus custom fields submitted with their system name prefixed with custom_, of which the step results are one. add_result_for_case/{run_id}/{case_id} takes the same fields while naming the case rather than the test. add_results/{run_id} and add_results_for_cases/{run_id} wrap an array of those entries under results, each naming its test or case, and every referenced test must belong to the named run; TestRail returns the created results in the order they were sent. The documentation states that each result needs at least one of the status, comment or assignee fields, and TestRail returns a result recorded without a status with status_id null. The driver's 8.0.0 payload type declares status_id required, but the driver parses no payload, so that is a type contract rather than a runtime check, and the boundary enforces the documented rule instead."
+      "supports": "add_result/{test_id} records a result against one test and takes status_id, comment, version, elapsed, defects and assignedto_id, plus custom fields submitted with their system name prefixed with custom_, of which the step results are one. add_result_for_case/{run_id}/{case_id} takes the same fields while naming the case rather than the test. add_results/{run_id} and add_results_for_cases/{run_id} wrap an array of those entries under results, each naming its test or case, and every referenced test must belong to the named run; TestRail returns the created results in the order they were sent. The documentation states that each result needs at least one of the status, comment or assignee fields, and TestRail returns a result recorded without a status with status_id null. The driver's payloads state the same rule as a refinement; the driver parses no payload itself, so the boundary enforces it."
     }
   ],
   "input_policy": {
@@ -269,7 +277,7 @@
       "requiredness": "conditional",
       "domain_ref": "positive_id",
       "rejected_by": "adapter",
-      "semantics": "The outcome for that entry. TestRail records a result that carries a status, a comment or an assignee, any one of them, so status_id is required only when the entry supplies neither comment nor assignedto_id, and a result recorded without it comes back with status_id null. Driver 8.0.0 still declares status_id required on these payload types, but no public method parses the payload, so the boundary states TestRail's rule rather than the declared type; the type is corrected upstream from driver 9.0.0 (dichovsky/testrail-api-client#305). The driver forwards any number, so the boundary holds it to the identifier domain.",
+      "semantics": "The outcome for that entry. TestRail records a result that carries a status, a comment or an assignee, any one of them, so status_id is required only when the entry supplies neither comment nor assignedto_id, and a result recorded without it comes back with status_id null. The driver's payloads state the same rule as a refinement, but no public method parses the payload, so the boundary enforces it. The driver forwards any number, so the boundary holds it to the identifier domain.",
       "driver": {
         "argument": 1,
         "path": [

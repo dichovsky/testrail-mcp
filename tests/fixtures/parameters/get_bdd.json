@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -13,6 +13,13 @@
         "files": [
           { "path": "src/modules/bdd.ts", "changed": true, "note": "Changed between the releases: the BDD upload no longer passes retry: 'none', since 8.0.0 derives the policy from the multipart body. Validation, paths, queries and parsing are unchanged, so the claims cited here stand." },
           { "path": "src/client-core.ts", "changed": true, "note": "Changed between the releases: request() derives the retry policy instead of taking it from the call site, a per-call request budget replaces the deadline plumbing, and the multipart builder moved to src/upload-source.ts. executeText still returns the body as read, unparsed, so the claim stands." }
+        ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/bdd.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/bdd.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/client-core.ts", "changed": true, "note": "Changed between the releases: request() now starts the attempt timer before the host guard's DNS lookup and races it, connects through a dispatcher pinned to the validated DNS answers when the guard runs (not with allowPrivateHosts), labels a timer the aggregate budget owns as its duration stop, normalizes a fetch rejection that is not an Error, watches a multipart upload's transport so an aborted upload closes its part cleanly, and sends a single-token User-Agent. The text pipeline cited here still returns the raw response body unparsed." }
         ]
       }
     ]
@@ -27,12 +34,12 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/bdd.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/bdd.ts",
       "supports": "getBdd validates the case ID, places it as the only path segment and dispatches with responseKind 'text', which keeps the retry, rate-limit and timeout pipeline of a JSON read but reads the body as text. The method is documented as returning the feature file body, an empty string when the case has no scenario."
     },
     {
       "id": "driver-client",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/client-core.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/client-core.ts",
       "supports": "The text pipeline returns the raw response body without parsing it, so nothing between TestRail and the caller can alter the Gherkin."
     },
     {

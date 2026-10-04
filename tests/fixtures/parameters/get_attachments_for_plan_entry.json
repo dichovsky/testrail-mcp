@@ -3,8 +3,8 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "8.0.0",
-    "driver_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a",
+    "driver_version": "9.0.0",
+    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
     "authored_commit": "71a80d984aea14713d8eeaf6ac9a0d41c1fba12b",
     "reviewed_on": "2026-10-03",
     "evidence": [
@@ -25,6 +25,15 @@
           { "path": "src/validation.ts", "changed": false },
           { "path": "src/schemas/attachments.ts", "changed": false }
         ]
+      },
+      {
+        "from_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "to_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "reviewed_on": "2026-10-03",
+        "files": [
+          { "path": "src/modules/attachments.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/attachments.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/modules/list.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/list.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/validation.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/validation.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
+          { "path": "src/schemas/attachments.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/attachments.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
+        ]
       }
     ]
   },
@@ -38,22 +47,22 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/attachments.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/attachments.ts",
       "supports": "getAttachmentsForPlanEntry validates the plan ID and the entry ID, places them in that order after get_attachments_for_plan_entry, and parses the reply with listOf before unwrapping it. Its comment records that entry_id is the plan entry's GUID from getPlan(...).entries[].id, that TestRail refuses a numeric one with 400 \"Field :entry_id is not a valid test plan entry\", that the reference mislabels it an integer, and that a live instance answered with a bare array."
     },
     {
       "id": "driver-list",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/modules/list.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/list.ts",
       "supports": "listOf accepts a bare array or an envelope whose collection key is present, and unwrapList returns the collection alone: an envelope's offset, limit, size and _links do not survive it. A null collection is an empty list and any other outer shape throws."
     },
     {
       "id": "driver-validation",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/validation.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/validation.ts",
       "supports": "validateId accepts any positive integer: it tests Number.isInteger and has no safe-integer bound, so the largest-safe-integer ceiling on these identifiers is this server's own. validateEntryId accepts only a UUID, case-insensitively, with nothing before or after it; validatePaginationParams holds limit to 1..250 and offset to a non-negative integer."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/7680ab6c0d1973749e3178016a3d133af27bfb0a/src/schemas/attachments.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/attachments.ts",
       "supports": "AttachmentSchema is one passthrough object for every attachment shape TestRail documents: the upload reply, the legacy case and test entries, the plan, plan-entry and run entries with entity_attachments_id and icon_name, and the 7.1 cloud entries whose id is a UUID string. Every field is nullish and id and entity_id admit a number or a string, so each documented entity parses unchanged."
     },
     {

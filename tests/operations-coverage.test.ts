@@ -193,6 +193,27 @@ describe('input path resolution', () => {
     expect(() => paths.variants({ $ref: '#/definitions/leaf/length' })).toThrow('Unresolved input schema reference: #/definitions/leaf/length');
   });
 
+  /*
+   * A result body states its "status, comment or assignee" rule as an anyOf beside its
+   * properties. The alternatives only add requirements, so every declared field must
+   * stay reachable through each of them.
+   */
+  it('reads an anyOf as a condition beside its sibling keywords, not in place of them', () => {
+    const body = {
+      type: 'object', properties: { a: {}, b: {} }, required: ['b'], additionalProperties: false,
+      anyOf: [{ required: ['a'] }, { required: ['b'], properties: { c: {} } }],
+    };
+    expect(paths.variants(body)).toEqual([
+      { type: 'object', properties: { a: {}, b: {} }, required: ['b', 'a'], additionalProperties: false },
+      { type: 'object', properties: { a: {}, b: {}, c: {} }, required: ['b'], additionalProperties: false },
+    ]);
+    expect(paths.has({ type: 'object', properties: { body } }, 'body.a')).toBe(true);
+    expect(paths.has({ type: 'object', properties: { body } }, 'body.d')).toBe(false);
+    // Siblings without properties or requirements of their own leave the alternative's in place.
+    expect(paths.variants({ type: 'object', anyOf: [{ properties: { a: {} }, required: ['a'] }, true] }))
+      .toEqual([{ type: 'object', properties: { a: {} }, required: ['a'] }]);
+  });
+
   it('honours boolean propertyNames schemas when walking open objects', () => {
     expect(paths.has({ type: 'object', propertyNames: true, additionalProperties: {} }, 'anything')).toBe(true);
     expect(paths.has({ type: 'object', propertyNames: false, additionalProperties: {} }, 'anything')).toBe(false);
