@@ -79,10 +79,14 @@ describe('the README\'s configuration', () => {
     expect(Array.isArray(roots) && roots.length > 0 && roots.every(usable)).toBe(true);
   });
 
-  it('installs the tarball npm packs by its file name, and runs the published executable', () => {
-    const install = /^## Install\n[\s\S]*?```sh\n([\s\S]*?)```/mu.exec(readme)?.[1] ?? '';
+  it('installs the latest release from npm, or the tarball npm packs by its file name, and runs the executable', async () => {
+    const section = /^## Install\n([\s\S]*?)^## /mu.exec(readme)?.[1] ?? '';
+    const [released, packed] = [...section.matchAll(/```sh\n([\s\S]*?)```/gu)].map(([, block]) => block?.split('\n'));
+    // The newest dated changelog section is the latest release.
+    const latest = /^## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}$/mu.exec(await readFile(new URL('../CHANGELOG.md', import.meta.url), 'utf8'))?.[1];
+    expect(released).toEqual([`npm install --global ${packageJson.name}@${latest ?? 'no dated release'}`, `${BIN} --version`, '']);
     const tarball = `${packageJson.name.replace(/^@/u, '').replace('/', '-')}-<version>.tgz`;
-    expect(install.split('\n')).toEqual(['npm ci', 'npm pack', `npm install --global ./${tarball}`, `${BIN} --version`, '']);
+    expect(packed).toEqual(['npm ci', 'npm pack', `npm install --global ./${tarball}`, `${BIN} --version`, '']);
   });
 
   it('marks as required exactly the variables whose absence stops startup', async () => {

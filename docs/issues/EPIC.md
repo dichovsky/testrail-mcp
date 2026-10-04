@@ -34,7 +34,7 @@ Implement the full TestRail MCP server in this repository using the public `@dic
 - [x] [[T11] Implement Reports endpoint tools (4)](https://github.com/dichovsky/testrail-mcp/issues/20)
 - [x] [[T12] Implement Attachments endpoint tools (12)](https://github.com/dichovsky/testrail-mcp/issues/21)
 - [x] [[R01] Enforce exhaustive endpoint, parameter and protocol regression gates](https://github.com/dichovsky/testrail-mcp/issues/22)
-- [ ] [[R02] Document and qualify Codex, Claude Code and Copilot CLI](https://github.com/dichovsky/testrail-mcp/issues/23)
+- [x] [[R02] Document and qualify Codex, Claude Code and Copilot CLI](https://github.com/dichovsky/testrail-mcp/issues/23)
 - [ ] [[R03] Qualify TestRail 10.7 and ship the complete npm release](https://github.com/dichovsky/testrail-mcp/issues/24)
 
 ## Release gates
@@ -45,14 +45,13 @@ Architecture and engineering decisions: [architecture](https://github.com/dichov
 
 ## Progress — 2026-10-04
 
-Every implementation item except R02 and R03 is closed, and its box above is ticked to match: F01 to F08, T01 to T12 and R01. F02 and F04 were already ticked. Two items added after this checklist was written are closed too: F09 (#30) and F10 (#31).
+Every implementation item except R03 is closed, and its box above is ticked to match: F01 to F08, T01 to T12, R01 and R02. The owner closed [R02](R02.md) on 2026-10-04 with Claude Code recorded, Codex CLI owner-reported, and Codex desktop and Copilot CLI not tested. F02 and F04 were already ticked. Two items added after this checklist was written are closed too: F09 (#30) and F10 (#31).
 
 Two statements above have been overtaken:
 - "Release gates" says adapter development could start with driver 7.0.0, and that release needed a later published driver: one with the newer network-guard fixes, report generators that bypass cache, coalescing and retries, and a public per-operation settlement API. F01 closed once that driver was published: the server pinned driver 7.2.0, the release that added `trackOperation`, then 8.0.0 from #95, and now 9.0.0. [F01](F01.md) records the rest.
 - The outcome names TestRail 10.7.0. The tools still cover the 10.7.0 API reference, but on 2026-10-02 the owner made TestRail 10.8.1 the version the live qualification runs against. See [R03](R03.md).
 
 Still open:
-- [R02](R02.md) (#23): evidence from Codex, Claude Code and Copilot CLI. Claude Code has a fixture-run record of all twelve scenarios. Codex desktop, Codex CLI and Copilot CLI, and every live smoke check, remain.
-- [R03](R03.md) (#24): the live gate and the release. Three live runs against 10.8.1 are recorded. In the third, on 2026-10-04 with the release's driver 9.0.0, nothing failed, and 35 tools have no live pass, 27 blocked by a missing licence or permission and 8 left out by the owner's choice. On 2026-10-03 the owner made those documented limitations rather than blockers. Publishing needs the npm trusted publisher and the `npm-release` environment.
+- [R03](R03.md) (#24): the live gate and the release. Three live runs against 10.8.1 are recorded. In the third, on 2026-10-04 with the release's driver 9.0.0, nothing failed, and 35 tools have no live pass, 27 blocked by a missing licence or permission and 8 left out by the owner's choice. On 2026-10-03 the owner made those documented limitations rather than blockers. The version pull request sets 1.0.0; publishing needs the npm trusted publisher, the `npm-release` environment, the tag and the owner's approval.
 
 Resolved since: #49 and #55, two rules driver 8.0.0 declared on payload types its methods never parse. The four add-result tools take a result with a status, a comment or an assignee, as TestRail documents. The user write tools take the lookup's address rule, so a single-label domain or domain literal can be written as well as looked up. Both were fixed on 8.0.0 in the adapter, and driver 9.0.0, now pinned, declares the same two rules itself (dichovsky/testrail-api-client#305). Neither was an item on this checklist.

@@ -10,14 +10,21 @@ It exposes **133 tools, one per TestRail REST endpoint**, across all 28 API reso
 | --- | --- |
 | Endpoint tools | All 133 registered, each with a complete independent parameter manifest ([coverage reports](docs/coverage-reports.md)) |
 | Offline verification | Fixture contracts for every endpoint, both MCP protocol eras (legacy `initialize` and 2026-07-28), and the packed executable on Node 24 across Linux, macOS and Windows |
-| Client qualification | Pending: [R02](https://github.com/dichovsky/testrail-mcp/issues/23) |
-| Live TestRail 10.8.1 qualification and npm release | Pending: [R03](https://github.com/dichovsky/testrail-mcp/issues/24). The [live run](docs/evidence/live/testrail-10.8.1.json) on 10.8.1 with the release's driver, 9.0.0, on 2026-10-04, has no failures: 98 tools pass, 27 are blocked by the instance's licence or the API user's permissions, and 8 were left out. Those 35 are documented limitations, not passes. **No release is on npm yet**; the only version there is a deprecated placeholder, `0.0.0-bootstrap.0` |
+| Client qualification | Closed by the owner on 2026-10-04: [R02](https://github.com/dichovsky/testrail-mcp/issues/23). Claude Code passed all 12 scenarios against the fixture stand-in ([record](docs/evidence/clients/claude-code.json)). Codex CLI passed 10 of 12, as the owner reported. Codex desktop and Copilot CLI were not tested. [Client configuration](docs/client-compatibility.md#required-surfaces-and-evidence) has the details |
+| Live TestRail 10.8.1 qualification and npm release | [R03](https://github.com/dichovsky/testrail-mcp/issues/24). The [live run](docs/evidence/live/testrail-10.8.1.json) on 10.8.1 with the release's driver, 9.0.0, on 2026-10-04, has no failures: 98 tools pass, 27 are blocked by the instance's licence or the API user's permissions, and 8 were left out. Those 35 are documented limitations, not passes, and the [changelog](CHANGELOG.md) lists them. 1.0.0 is the first npm release; the placeholder before it, `0.0.0-bootstrap.0`, is deprecated |
 
 ## Install
 
 Node 24 or later is required, and Node 24 is tested. The pinned driver, `@dichovsky/testrail-api-client` 9.0.0, requires Node 24 itself. Later majors satisfy the engine range but are untested and best effort.
 
-Until the first npm release, install from a packed checkout. `npm pack` prints the tarball's file name; install that file by name, since Windows shells do not expand a `*` wildcard:
+Install an exact version from npm:
+
+```sh
+npm install --global @dichovsky/testrail-mcp@1.0.0
+testrail-mcp --version
+```
+
+To try an unreleased change, install from a packed checkout. `npm pack` prints the tarball's file name; install that file by name, since Windows shells do not expand a `*` wildcard:
 
 ```sh
 npm ci
@@ -26,7 +33,7 @@ npm install --global ./dichovsky-testrail-mcp-<version>.tgz
 testrail-mcp --version
 ```
 
-After the first release, install an exact version from npm, for example `npm install --global @dichovsky/testrail-mcp@<version>`. [Releases](docs/release.md) covers versioning, upgrading, rolling back and uninstalling.
+[Releases](docs/release.md) covers versioning, upgrading, rolling back and uninstalling.
 
 ## Configure
 
@@ -65,7 +72,7 @@ A missing or invalid value stops startup with a message naming the variable, nev
 
 [Client configuration](docs/client-compatibility.md) has examples for Codex desktop and CLI, Claude Code and GitHub Copilot CLI. Give the client a 120-second tool-call timeout, and keep every tool enabled: leave allow and deny filters unset, or, in Copilot CLI, set `tools: ["*"]` as its example does.
 
-The client passes the variables under [Configure](#configure) to the server, so they must be in the environment the client itself was launched with, and `node` must be on that environment's path. A desktop app may not inherit what a terminal exports; how each app is set up is recorded under [R02](https://github.com/dichovsky/testrail-mcp/issues/23).
+The client passes the variables under [Configure](#configure) to the server, so they must be in the environment the client itself was launched with, and `node` must be on that environment's path. A desktop app may not inherit what a terminal exports, so check how yours is launched.
 
 ## How the tools behave
 

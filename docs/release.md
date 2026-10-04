@@ -1,6 +1,6 @@
 # Releases
 
-This is how `@dichovsky/testrail-mcp` is versioned, published, upgraded and rolled back. No release is on npm yet: the only version there is the deprecated placeholder `0.0.0-bootstrap.0`, and 1.0.0 is the first planned release.
+This is how `@dichovsky/testrail-mcp` is versioned, published, upgraded and rolled back. 1.0.0 is the first release. Before it, npm held only the deprecated placeholder `0.0.0-bootstrap.0`.
 
 ## Versioning and compatibility
 
@@ -58,7 +58,7 @@ The release workflow publishes a packed tarball, which runs no package scripts, 
 
 1. **Gates.**
    - CI passes on `main`.
-   - Every record in [client evidence](evidence/clients/) holds the required-client results.
+   - Every required client has its record in [client evidence](evidence/clients/), or the owner has decided to release without it and the release notes say so. For 1.0.0 the owner closed [R02](https://github.com/dichovsky/testrail-mcp/issues/23) with Claude Code recorded, Codex CLI owner-reported, and Codex desktop and Copilot CLI not tested.
    - The live TestRail qualification evidence is complete: a [live qualification](live-qualification.md) record for 10.8.1 with no `fail`, made with the driver the release pins (its `server.driver_version`), and every `blocked` or `not_run` tool explained and listed as a known limitation in the release notes.
    - [Client configuration](client-compatibility.md) and the [release gates](implementation-plan.md#release-gates-and-evidence) list what each must contain.
 2. **Version pull request.** Set `version` in `package.json` and `package-lock.json`, then replace `Unreleased` with the release date in that version's [changelog](../CHANGELOG.md) section. Merge it once CI passes.

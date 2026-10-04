@@ -431,7 +431,10 @@ describe('the client evidence records', () => {
       const cell = row.split('|').map((part) => part.trim()).at(-2);
       const ran = Object.values(record.scenarios).some(({ status }) => status !== 'not_run');
       if (ran) expect(cell, slug).toContain(`evidence/clients/${slug}.json`);
-      else expect(cell, slug).toBe('Pending');
+      else {
+        expect(cell, slug).not.toContain('evidence/clients/');
+        expect(cell, slug).toMatch(/^(?:Pending|Not tested|Owner-reported)\b/u);
+      }
     }
     expect(guide).toContain(`${names.length} tools, sorted-name SHA-256 \`${EXPECTED_HASH}\``);
   });
