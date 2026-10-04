@@ -19,11 +19,13 @@ Versions follow semantic versioning, applied to what a client and its model depe
 
 ## One-time setup
 
-**GitHub.** Create the environment `npm-release` under the repository's settings.
-- Add at least one required reviewer.
-- Limit its deployments to tags matching `v*`.
+Releases go through the [Publish workflow](../.github/workflows/publish.yml), the process `@dichovsky/testrail-api-client` releases with. Publishing a GitHub Release for a `release/X.Y.Z` tag starts it.
 
-The [release workflow](../.github/workflows/release.yml) publishes only from that environment.
+**GitHub.** Create the environment `npm-publish` under the repository's settings, and add at least one required reviewer. The publish job waits there for approval. Its reviewers may approve their own release, so the gate is a deliberate pause, not a second review. It is configuration outside this repository and can be removed without a commit, so check it before each release:
+
+```sh
+gh api repos/dichovsky/testrail-mcp/environments/npm-publish --jq '.protection_rules'
+```
 
 **npm.** Trusted publishing lets the workflow publish with a short-lived GitHub OIDC credential, so no npm token is stored. npm attaches a provenance attestation to each such release. On npmjs.com, open the package's settings and add a trusted publisher:
 
@@ -32,19 +34,10 @@ The [release workflow](../.github/workflows/release.yml) publishes only from tha
 | Publisher | GitHub Actions |
 | Organization or user | `dichovsky` |
 | Repository | `testrail-mcp` |
-| Workflow filename | `release.yml` |
-| Environment name | `npm-release` |
+| Workflow filename | `publish.yml` |
+| Environment name | `npm-publish` |
 
-npm allows a trusted publisher only on a package that already exists, so the very first version must be published another way. There are two routes. The owner took the first, and published `0.0.0-bootstrap.0` on 2026-10-02, so what remains is the trusted publisher above.
-
-- **Publish a placeholder first**, so that 1.0.0 goes through the workflow like every later release, with provenance.
-  1. Set `version` to `0.0.0-bootstrap.0` in a scratch copy of the tree.
-  2. Run `npm publish --access public --tag bootstrap` there. A pre-release needs a `--tag` other than `latest`: the [check below](#publishing-by-hand) refuses one without it, and so does npm 11. The tag does not keep `latest` free, though. The registry points `latest` at a package's first version whatever its tag, so until 1.0.0 is published, `npm install @dichovsky/testrail-mcp` gets the deprecated placeholder. Publishing 1.0.0 moves `latest` to it.
-  3. Run `npm deprecate @dichovsky/testrail-mcp@0.0.0-bootstrap.0 "Placeholder; install 1.0.0 or later."`.
-  4. Configure the trusted publisher above, then release 1.0.0 with the checklist below.
-- **Publish 1.0.0 once from a terminal**, from the tagged, fully checked tree, with `npm publish --access public`. 1.0.0 then has no provenance attestation. The workflow the tag starts cannot finish for 1.0.0. Its publish job stops at a 1.0.0 published from a different tarball, and a byte-identical one fails the provenance check, so there is no workflow SBOM or GitHub release. Create the release by hand with `gh release create v1.0.0 --verify-tag --notes-file <notes>`, attaching the tarball you published. Every later version goes through the workflow.
-
-Either way, revoke any token used for the bootstrap afterwards.
+npm allows a trusted publisher only on a package that already exists, so the very first version had to be published another way. The owner published the deprecated placeholder `0.0.0-bootstrap.0` on 2026-10-02 for that: it was published under the `bootstrap` tag, but npm points `latest` at a package's first version whatever its tag, so `latest` names the placeholder until 1.0.0. The workflow's registry check accepts a pre-release `latest` only while no stable version is published, which is that case alone. After the trusted publisher is configured, revoke any token used for the bootstrap.
 
 ### Publishing by hand
 
@@ -52,29 +45,56 @@ Either way, revoke any token used for the bootstrap afterwards.
 - the tree's own `-dev` version, under any tag;
 - a pre-release without a `--tag` other than `latest`. npm 10 would publish one under `latest`, and npm 11 refuses one without `--tag` only after the build.
 
-The release workflow publishes a packed tarball, which runs no package scripts, so the check does not affect it. `--ignore-scripts` skips the check, and the build with it.
+The Publish workflow publishes with `--ignore-scripts`, which runs no package scripts, so the check does not affect it. `--ignore-scripts` skips the check, and the build with it.
 
 ## Release checklist
+
+### Prepare
 
 1. **Gates.**
    - CI passes on `main`.
    - Every required client has its record in [client evidence](evidence/clients/), or the owner has decided to release without it and the release notes say so. For 1.0.0 the owner closed [R02](https://github.com/dichovsky/testrail-mcp/issues/23) with Claude Code recorded, Codex CLI owner-reported, and Codex desktop and Copilot CLI not tested.
    - The live TestRail qualification evidence is complete: a [live qualification](live-qualification.md) record for 10.8.1 with no `fail`, made with the driver the release pins (its `server.driver_version`), and every `blocked` or `not_run` tool explained and listed as a known limitation in the release notes.
    - [Client configuration](client-compatibility.md) and the [release gates](implementation-plan.md#release-gates-and-evidence) list what each must contain.
-2. **Version pull request.** Set `version` in `package.json` and `package-lock.json`, then replace `Unreleased` with the release date in that version's [changelog](../CHANGELOG.md) section. Merge it once CI passes.
-3. **Tag.** Tag the merge commit on `main` as `vX.Y.Z` and push the tag.
-4. **Approve.** The workflow re-runs every check on all six platforms, builds the release files, and then waits for the `npm-release` environment. Approve it.
-5. **Publish.** The workflow runs its jobs in order, each with only the permission it needs:
+2. **Version pull request.** Choose a stable version newer than every published stable version. Set it with `npm version X.Y.Z --no-git-tag-version --ignore-scripts`, which updates `package.json` and both root version fields of `package-lock.json`. Replace `Unreleased` with the release date in that version's [changelog](../CHANGELOG.md) section. Merge the pull request once CI passes on Linux, macOS and Windows, then fetch `main` and check CI on the merge commit.
+
+### Publish
+
+1. **Tag** the verified merge commit as `release/X.Y.Z` and push the tag. Never move an existing release tag.
+
+   ```sh
+   git fetch origin main --tags
+   git tag release/X.Y.Z <merge commit>
+   git push origin release/X.Y.Z
+   ```
+
+2. **Publish a stable GitHub Release** for that existing tag, with the changelog section as its notes, marked latest. `--verify-tag` refuses to create a tag, so a typo cannot release another commit. `scripts/release-notes.mjs` prints the section and refuses a tag that does not match `package.json` or a section that is missing or undated; it points the section's relative links at the tagged tree.
+
+   ```sh
+   node scripts/release-notes.mjs release/X.Y.Z > release-notes.md
+   gh release create release/X.Y.Z --verify-tag --title X.Y.Z --latest --notes-file release-notes.md
+   ```
+
+3. **Follow the Publish run, and approve it.** It runs two jobs:
 
 | Job | Permission | What it does |
 | --- | --- | --- |
-| `verify` | read | `npm run check` on Node 24, on Linux, macOS and Windows |
-| `build` | read | Refuses a tag that does not match `package.json`, and a changelog section that is missing or undated. Writes the notes, packs the tarball, and writes a CycloneDX inventory of a clean production install with `scripts/release-sbom.mjs` |
-| `publish` | `id-token: write`, in `npm-release` | Publishes that exact tarball with `--provenance`, so npm refuses to publish it without an attestation. It checks out, installs and runs no package code. If the version is already published from the same tarball, it goes on; from a different one, it stops |
-| `verify-published` | read | Installs the published version from npm into a clean directory with `scripts/verify-published.mjs`. Checks that npm serves the same integrity and holds a provenance attestation, and that the installed executable serves all 133 tools over MCP in both protocol eras |
-| `release` | `contents: write` | Creates the GitHub release with the notes, the tarball and the inventory, or completes it on a re-run |
+| `verify` | `contents: read` | Before any repository code runs, checks that the event is a published, stable release, that the tag is `release/X.Y.Z`, and that the tag, the event's commit and the checkout are one commit reachable from `main`. Then, with `scripts/release-preflight.mjs context`, it checks that `package.json` and the lockfile name this package at that version, and that npm and Node support trusted publishing. It requires the version's dated changelog section, then runs every gate: build, registry check, both typechecks, lint, the tests with coverage, `npm audit --omit=dev`, and the packed-package smoke test. `scripts/release-preflight.mjs registry` then asks npm, with an isolated configuration, whether the version is published. A new version must be newer than `latest` and every published stable version. An identical release (same `gitHead`, `latest`, provenance and files) is skipped. Any other answer stops the release. Last, it archives the tested `dist` with its SHA-256 |
+| `publish` | `contents: read`, `id-token: write`, in `npm-publish` | Waits for approval. Repeats the identity check before any repository code runs, verifies the archive's SHA-256 and paths, and restores the tested `dist`. It installs and runs no repository or dependency code. With an empty npm configuration it re-checks that the version is absent and still newer than what npm holds, then publishes with `--provenance --ignore-scripts`. Afterwards it waits up to five minutes for npm to report the version, the release commit as `gitHead`, the version as `latest` and an SLSA provenance attestation, and checks with `npm diff` that every published file is the tested build |
 
-If a job after `publish` fails, fix the cause and re-run the workflow: the published version is recognised by its integrity, and the checks and the release run again. If the published package itself is faulty, never unpublish it. Fix forward with a new patch version, and deprecate the faulty one if users should avoid it.
+Check the approval gate while the run waits; this, not this guide, says what the gate is:
+
+```sh
+gh api repos/dichovsky/testrail-mcp/actions/runs/<run-id>/pending_deployments
+```
+
+### Verify after publication
+
+- Require the whole Publish run to succeed.
+- Install the published version into a clean directory and drive it, with `node scripts/verify-published.mjs @dichovsky/testrail-mcp@X.Y.Z --version X.Y.Z --require-provenance`. It checks that npm holds a provenance attestation and that the installed executable serves all 133 tools over MCP in both protocol eras.
+- Confirm the GitHub Release is public, stable and latest, and points at the verified commit.
+
+If publication or its verification fails, look at the exact version on npm before anything else: npm may accept an upload while the version still answers 404 during processing. Never publish again under the same version. Re-run the whole workflow, `verify` included: re-running `publish` alone reuses its earlier decision and fails the version-absence check. `verify` recognises an already published release only when its identity, provenance, `latest` and files all match. If the published package itself is faulty, never unpublish it. Fix forward with a new patch version, and deprecate the faulty one if users should avoid it.
 
 ## Upgrading, rolling back and uninstalling
 
