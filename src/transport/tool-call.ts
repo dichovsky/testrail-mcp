@@ -4,7 +4,7 @@ import type { Limits } from '../config/limits.js';
 import { advisoryWarnings } from '../contracts/drift.js';
 import { AdapterError, classifyError } from '../contracts/errors.js';
 import { aggregateMetadata, pageMetadata } from '../contracts/pagination.js';
-import { errorResult, successResult, validateOuter, type ToolResult } from '../contracts/results.js';
+import { errorResult, successResult, validateOuter, type ProtocolResultFields, type ToolResult } from '../contracts/results.js';
 import { writeDownload } from '../files/download.js';
 import { stageUpload, type StagedUpload } from '../files/staging.js';
 import type { CallContext, DriverCall } from '../operations/driver-call.js';
@@ -15,6 +15,8 @@ import { correlationId, logEvent } from './diagnostics.js';
 export interface CallDependencies {
   readonly runtime: Runtime;
   readonly configuration: Configuration;
+  /** Include SDK-owned fields before measuring either complete-result budget. */
+  readonly protocolResultFields?: ProtocolResultFields;
   /** Aborted when the client cancels this request. */
   readonly signal?: AbortSignal;
   /** Created on first use so a server that never uploads makes no staging directory. */
@@ -270,7 +272,7 @@ export async function executeToolCall(
       data,
       ...(pagination === undefined ? {} : { pagination }),
       ...(warnings.length === 0 ? {} : { warnings }),
-    }, limits);
+    }, limits, dependencies.protocolResultFields);
 
     logEvent('tool_call', {
       correlation, tool: operation.tool, outcome: 'success',
@@ -292,6 +294,6 @@ export async function executeToolCall(
       code: safe.code, duration_ms: Date.now() - started,
       ...(safe.write_outcome === undefined ? {} : { write_outcome: safe.write_outcome }),
     });
-    return errorResult(safe);
+    return errorResult(safe, dependencies.protocolResultFields);
   }
 }

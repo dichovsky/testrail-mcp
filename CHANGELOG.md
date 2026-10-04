@@ -1,6 +1,20 @@
 # Changelog
 
-All notable changes to `@dichovsky/testrail-mcp` are recorded here. Versions follow [semantic versioning](https://semver.org/) as [docs/release.md](docs/release.md#versioning-and-compatibility) defines it for this server. A section stays `Unreleased` until its release is cut; the release workflow refuses to publish a version whose section is not dated.
+All notable changes to `@dichovsky/testrail-mcp` are recorded here. Versions follow [semantic versioning](https://semver.org/) as [docs/release.md](docs/release.md#versioning-and-compatibility) defines it for this server. Move `Unreleased` entries into a dated version section when preparing a release; the release workflow refuses to publish a version whose section is not dated.
+
+## [Unreleased]
+
+### Fixed
+
+- Shutdown bounds its wait for upload staging creation and cleanup, so a stalled temporary filesystem cannot prevent the exit grace from starting after the drain.
+- Attachment uploads accept documented numeric and UUID identifiers without reporting false schema drift. Missing and malformed identifiers still produce advisory warnings.
+- The complete tool-result byte budget includes metadata added by the MCP SDK.
+- The source overview describes the implemented 133-tool catalog and its component boundaries.
+
+### Maintenance
+
+- npm publishing requires approval from the repository owner through the `npm-publish` environment, with self-approval permitted by the release policy.
+- GitHub vulnerability alerts and security-update pull requests are enabled. Dependabot configuration checks npm and GitHub Actions versions weekly while retaining dependency review and driver qualification.
 
 ## [1.0.0] - 2026-10-04
 

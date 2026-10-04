@@ -225,14 +225,15 @@ const uploadFields = {
  * The same sentences appear in every upload summary, because the same driver pipeline and
  * the same staging carry each of them.
  */
-const uploadContract = 'filename is sent as the multipart part\'s filename, which the driver\'s documentation describes as the name TestRail stores and shows for the attachment; TestRail\'s own reference does not say. content_type, when given, is sent lowercased as the part\'s media type. Each call adds another attachment, even for the same file, and TestRail documents its reply as the new attachment_id; a JSON object reply without a numeric attachment_id is returned with a drift warning, and an empty one comes back as {}. TestRail accepts files up to 256 MB, but this server refuses a file above its configured file limit, at most 100 MiB, before anything is sent, and TestRail must answer, file sent, within this server\'s 15-second request timeout. Neither this server nor its driver retries an upload, not even after a 429. If it fails after the request was sent, write_outcome is acknowledged when TestRail\'s success reply was JSON this server could not use, and unknown otherwise, including a timeout and a success reply that is not JSON, because this server cannot then tell whether TestRail stored the file; either way, uploading again may add a second attachment.';
+const uploadContract = 'filename is sent as the multipart part\'s filename, which the driver\'s documentation describes as the name TestRail stores and shows for the attachment; TestRail\'s own reference does not say. content_type, when given, is sent lowercased as the part\'s media type. Each call adds another attachment, even for the same file, and TestRail documents its reply as the new attachment_id; a JSON object reply without a positive integer or UUID attachment_id is returned with a drift warning, and an empty one comes back as {}. TestRail accepts files up to 256 MB, but this server refuses a file above its configured file limit, at most 100 MiB, before anything is sent, and TestRail must answer, file sent, within this server\'s 15-second request timeout. Neither this server nor its driver retries an upload, not even after a 429. If it fails after the request was sent, write_outcome is acknowledged when TestRail\'s success reply was JSON this server could not use, and unknown otherwise, including a timeout and a success reply that is not JSON, because this server cannot then tell whether TestRail stored the file; either way, uploading again may add a second attachment.';
 
 /*
  * TestRail documents attachment_id as always present in an upload's reply. The driver's
  * AttachmentSchema covers every attachment shape and so makes it optional; requiring it
- * here lets a reply without one surface as drift instead of passing unremarked.
+ * here lets a reply without one surface as drift instead of passing unremarked. Accept
+ * the same numeric and UUID identifiers as attachment reads and deletes.
  */
-const uploadReplySchema = AttachmentSchema.extend({ attachment_id: z.number() });
+const uploadReplySchema = AttachmentSchema.extend({ attachment_id: attachmentIdSchema });
 
 const addAttachmentToCaseInput = strictObject({ case_id: positiveIdSchema, ...uploadFields });
 

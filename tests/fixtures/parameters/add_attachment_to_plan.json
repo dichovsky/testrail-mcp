@@ -104,7 +104,7 @@
   "outer_result": {
     "driver": "record",
     "tool_data": "record",
-    "notes": "TestRail answers with the new attachment_id, returned as the driver received it: the upload methods parse no schema. Drift is checked, advisorily, against the driver's attachment schema with attachment_id required as a number, since the reference documents it as always included."
+    "notes": "TestRail answers with the new attachment_id, returned as the driver received it: the upload methods parse no schema. Drift is checked, advisorily, against the driver's attachment schema with attachment_id required as a positive safe integer or UUID, matching the identifiers accepted by attachment reads and deletes. A missing or malformed ID produces a warning without changing the reply."
   },
   "requirements": [
     {

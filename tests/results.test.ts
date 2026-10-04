@@ -80,7 +80,7 @@ describe('result budgets', () => {
       .toThrow(expect.objectContaining({ code: 'RESPONSE_TOO_LARGE' }));
   });
 
-  /** The complete result as the client receives it, in UTF-8 bytes: the reference both budgets are checked against. */
+  /** The result without protocol fields; transport tests measure the SDK's final encoded result. */
   const resultBytes = (data: unknown) => {
     const payload = { data };
     return Buffer.byteLength(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(payload) }], structuredContent: payload }), 'utf8');
@@ -390,5 +390,22 @@ describe('error envelope', () => {
     expect(structured(result).error).toEqual({
       code: 'PAGINATION_LIMIT', message: 'bounded', write_outcome: 'unknown',
     });
+  });
+
+  it('counts protocol fields before deciding whether error metadata fits', () => {
+    const error = { code: 'PAGINATION_LIMIT' as const, message: 'bounded', reason: 'r', write_outcome: 'unknown' as const };
+    const overhead = Buffer.byteLength(JSON.stringify(errorResult(error)), 'utf8');
+    // Each reason byte appears in structuredContent and its text copy. Leave only
+    // one byte of space without the protocol fields, which must trigger degradation.
+    const nearlyFull = { ...error, reason: 'r'.repeat(1 + Math.floor((FIXED_BUDGETS.max_error_bytes - overhead) / 2)) };
+    expect(structured(errorResult(nearlyFull)).error).toHaveProperty('reason');
+    const protocol = {
+      resultType: 'complete' as const,
+      _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'testrail-mcp', version: '1.0.0-€' } },
+    };
+    const result = errorResult(nearlyFull, protocol);
+    expect(result).toMatchObject(protocol);
+    expect(structured(result).error).toEqual({ code: 'PAGINATION_LIMIT', message: 'bounded', write_outcome: 'unknown' });
+    expect(Buffer.byteLength(JSON.stringify(result), 'utf8')).toBeLessThanOrEqual(FIXED_BUDGETS.max_error_bytes);
   });
 });

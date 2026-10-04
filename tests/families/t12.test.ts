@@ -644,12 +644,15 @@ const UPLOADS = [
 
 
 describe('T12 uploads', () => {
-  it.each(UPLOADS)('%s sends one multipart request of the staged copy and removes it afterwards', async (tool, ids, route, method) => {
+  it.each(UPLOADS.flatMap(([tool, ids, route, method]) => [
+    [tool, 443, ids, route, method],
+    [tool, UUID, ids, route, method],
+  ] as const))('%s accepts attachment ID %s without drift after one staged multipart request', async (tool, attachmentId, ids, route, method) => {
     const env = await environment();
     const bodies: unknown[] = [];
     const fetch = vi.fn().mockImplementation(async (_url: unknown, init?: { body?: unknown }) => {
       bodies.push(await describeBody(init?.body));
-      return json({ attachment_id: 443 });
+      return json({ attachment_id: attachmentId });
     });
     const driver = driverFor(env.configuration, fetch);
     const invoked = vi.spyOn(driver.attachments, method);
@@ -659,7 +662,7 @@ describe('T12 uploads', () => {
         ...ids, file_path: env.source, filename: REQUESTED, content_type: 'Text/Plain',
       }, { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
       expect(result.isError).toBeUndefined();
-      expect(data(result)).toEqual({ attachment_id: 443 });
+      expect(data(result)).toEqual({ attachment_id: attachmentId });
       expect(warnings(result)).toEqual([]);
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(requested(fetch)).toBe(`https://people.testrail.io/index.php?/api/v2/${route}`);
@@ -786,11 +789,17 @@ describe('T12 uploads', () => {
   });
 
   /*
-   * TestRail documents attachment_id as always present and numeric. A reply without one, or
-   * with another type, is still TestRail's answer, so it comes back as sent, with a warning.
+   * A missing or malformed attachment_id is still TestRail's answer, so the object comes
+   * back as sent, with an advisory warning instead of a failed upload.
    */
   it.each(UPLOADS.flatMap(([tool, ids]) => [
-    [tool, 'a UUID attachment_id', ids, { attachment_id: UUID }],
+    [tool, 'a malformed attachment_id', ids, { attachment_id: 'not-a-uuid' }],
+    [tool, 'a numeric string attachment_id', ids, { attachment_id: '443' }],
+    [tool, 'a zero attachment_id', ids, { attachment_id: 0 }],
+    [tool, 'a negative attachment_id', ids, { attachment_id: -1 }],
+    [tool, 'a fractional attachment_id', ids, { attachment_id: 1.5 }],
+    [tool, 'an unsafe integer attachment_id', ids, { attachment_id: Number.MAX_SAFE_INTEGER + 1 }],
+    [tool, 'a null attachment_id', ids, { attachment_id: null }],
     [tool, 'no attachment_id', ids, {}],
     [tool, 'an error object', ids, { error: 'nope' }],
   ] as const))('%s returns a reply with %s as sent, with a drift warning', async (tool, _label, ids, reply) => {
@@ -800,6 +809,7 @@ describe('T12 uploads', () => {
     try {
       const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
         { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
+      expect(result.isError).toBeUndefined();
       expect(data(result)).toEqual(reply);
       expect(warnings(result)).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
     } finally { await runtime.shutdown(); await env.staging.dispose(); }
@@ -879,7 +889,7 @@ describe('T12 uploads', () => {
     expect(description).toContain('TestRail must answer, file sent, within this server\'s 15-second request timeout');
     expect(description).toContain('filename is sent as the multipart part\'s filename, which the driver\'s documentation describes as the name TestRail stores and shows for the attachment; TestRail\'s own reference does not say');
     expect(description).toContain('content_type, when given, is sent lowercased as the part\'s media type');
-    expect(description).toContain('a JSON object reply without a numeric attachment_id is returned with a drift warning, and an empty one comes back as {}');
+    expect(description).toContain('a JSON object reply without a positive integer or UUID attachment_id is returned with a drift warning, and an empty one comes back as {}');
     // The .feature rule belongs to the BDD uploads, not to attachments.
     expect(description).not.toContain('.feature');
     expect(description).not.toMatch(/safe to (call|run|retry|repeat)/iu);
@@ -899,7 +909,8 @@ describe('T12 uploads', () => {
       if (schema === null) throw new Error(`${tool}: no entity schema`);
       expect(schema.safeParse({ attachment_id: 443, extra: true }).success, tool).toBe(true);
       expect(schema.safeParse({}).success, tool).toBe(false);
-      expect(schema.safeParse({ attachment_id: UUID }).success, tool).toBe(false);
+      expect(schema.safeParse({ attachment_id: UUID }).success, tool).toBe(true);
+      expect(schema.safeParse({ attachment_id: 'not-a-uuid' }).success, tool).toBe(false);
     }
   });
 

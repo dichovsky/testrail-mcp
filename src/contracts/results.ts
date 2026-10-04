@@ -9,7 +9,13 @@ export interface ResultWrapper {
   readonly warnings?: readonly ResultWarning[];
 }
 
-export interface ToolResult {
+/** Fields the negotiated SDK codec adds to the result, excluding its JSON-RPC envelope. */
+export interface ProtocolResultFields {
+  readonly resultType?: 'complete';
+  readonly _meta?: Readonly<Record<string, unknown>>;
+}
+
+export interface ToolResult extends ProtocolResultFields {
   readonly content: readonly { readonly type: 'text'; readonly text: string }[];
   readonly structuredContent: Readonly<Record<string, unknown>>;
   readonly isError?: true;
@@ -48,7 +54,11 @@ export function validateOuter(outerSchema: z.ZodType, value: unknown): void {
  * truncated — a caller can narrow a read, and a caller whose write already
  * succeeded must not be told to repeat it just to retrieve output.
  */
-export function successResult(wrapper: ResultWrapper, limits: Limits): ToolResult {
+export function successResult(
+  wrapper: ResultWrapper,
+  limits: Limits,
+  protocol: ProtocolResultFields = {},
+): ToolResult {
   if ((wrapper.warnings?.length ?? 0) > MAX_WARNINGS) throw new AdapterError('INTERNAL_ERROR');
 
   // A resolved void method carries no value; the wrapper still requires `data`.
@@ -60,7 +70,7 @@ export function successResult(wrapper: ResultWrapper, limits: Limits): ToolResul
   if (wrapper.warnings !== undefined && wrapper.warnings.length > 0) payload.warnings = wrapper.warnings;
 
   const text = serialize(payload);
-  const result: ToolResult = { content: [{ type: 'text' as const, text }], structuredContent: payload };
+  const result: ToolResult = { content: [{ type: 'text' as const, text }], structuredContent: payload, ...protocol };
   if (utf8Bytes(serialize(result)) > limits.max_result_bytes) throw new AdapterError('RESPONSE_TOO_LARGE');
   return Object.freeze(result);
 }
@@ -70,10 +80,10 @@ export function successResult(wrapper: ResultWrapper, limits: Limits): ToolResul
  * an error that cannot be delivered is worse than one delivered without its metadata,
  * so the optional fields are dropped before the code and message are.
  */
-export function errorResult(error: SafeError): ToolResult {
+export function errorResult(error: SafeError, protocol: ProtocolResultFields = {}): ToolResult {
   const build = (payload: Record<string, unknown>): ToolResult => {
     const text = serialize(payload);
-    return Object.freeze({ content: [{ type: 'text' as const, text }], structuredContent: payload, isError: true });
+    return Object.freeze({ content: [{ type: 'text' as const, text }], structuredContent: payload, isError: true, ...protocol });
   };
   const full = build({ error: { ...error } });
   if (utf8Bytes(serialize(full)) <= FIXED_BUDGETS.max_error_bytes) return full;

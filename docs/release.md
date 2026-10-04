@@ -21,10 +21,12 @@ Versions follow semantic versioning, applied to what a client and its model depe
 
 Releases go through the [Publish workflow](../.github/workflows/publish.yml), the process `@dichovsky/testrail-api-client` releases with. Publishing a GitHub Release for a `release/X.Y.Z` tag starts it.
 
-**GitHub.** Create the environment `npm-publish` under the repository's settings, and add at least one required reviewer. The publish job waits there for approval. Its reviewers may approve their own release, so the gate is a deliberate pause, not a second review. It is configuration outside this repository and can be removed without a commit, so check it before each release:
+**GitHub.** The environment `npm-publish` requires approval from the repository owner, `dichovsky`. The owner may approve their own release. Keep at least one required reviewer configured: naming the environment in the workflow does not create an approval rule. This setting can change without a commit, so verify it before each release. The following command fails if the reviewer rule is absent or empty:
 
 ```sh
-gh api repos/dichovsky/testrail-mcp/environments/npm-publish --jq '.protection_rules'
+gh api repos/dichovsky/testrail-mcp/environments/npm-publish \
+  --jq '.protection_rules | any(.type == "required_reviewers" and (.reviewers | length > 0))' \
+  | grep -qx true
 ```
 
 **npm.** Trusted publishing lets the workflow publish with a short-lived GitHub OIDC credential, so no npm token is stored. npm attaches a provenance attestation to each such release. On npmjs.com, open the package's settings and add a trusted publisher:
@@ -57,7 +59,7 @@ The Publish workflow publishes with `--ignore-scripts`, which runs no package sc
    - Every required client has its record in [client evidence](evidence/clients/), or the owner has decided to release without it and the release notes say so. For 1.0.0 the owner closed [R02](https://github.com/dichovsky/testrail-mcp/issues/23) with Claude Code recorded, Codex CLI owner-reported, and Codex desktop and Copilot CLI not tested.
    - The live TestRail qualification evidence is complete: a [live qualification](live-qualification.md) record for 10.8.1 with no `fail`, made with the driver the release pins (its `server.driver_version`), and every `blocked` or `not_run` tool explained and listed as a known limitation in the release notes.
    - [Client configuration](client-compatibility.md) and the [release gates](implementation-plan.md#release-gates-and-evidence) list what each must contain.
-2. **Version pull request.** Choose a stable version newer than every published stable version. Set it with `npm version X.Y.Z --no-git-tag-version --ignore-scripts`, which updates `package.json` and both root version fields of `package-lock.json`. Replace `Unreleased` with the release date in that version's [changelog](../CHANGELOG.md) section. Merge the pull request once CI passes on Linux, macOS and Windows, then fetch `main` and check CI on the merge commit.
+2. **Version pull request.** Choose a stable version newer than every published stable version. Set it with `npm version X.Y.Z --no-git-tag-version --ignore-scripts`, which updates `package.json` and both root version fields of `package-lock.json`. Move the `Unreleased` entries into a [changelog](../CHANGELOG.md) section headed `## [X.Y.Z] - YYYY-MM-DD`, using the release version and date. Merge the pull request once CI passes on Linux, macOS and Windows, then fetch `main` and check CI on the merge commit.
 
 ### Publish
 
@@ -96,6 +98,19 @@ gh api repos/dichovsky/testrail-mcp/actions/runs/<run-id>/pending_deployments
 - Confirm the GitHub Release is public, stable and latest, and points at the verified commit.
 
 If publication or its verification fails, look at the exact version on npm before anything else: npm may accept an upload while the version still answers 404 during processing. Never publish again under the same version. Re-run the whole workflow, `verify` included: re-running `publish` alone reuses its earlier decision and fails the version-absence check. `verify` recognises an already published release only when its identity, provenance, `latest` and files all match. If the published package itself is faulty, never unpublish it. Fix forward with a new patch version, and deprecate the faulty one if users should avoid it.
+
+## Dependency maintenance
+
+GitHub vulnerability alerts and Dependabot security updates are enabled for this repository. Security fixes arrive as pull requests and require review and passing checks before merging. A clean release audit describes the dependencies at that moment; alerts also cover vulnerabilities disclosed while the repository is idle.
+
+[Dependabot configuration](../.github/dependabot.yml) checks npm dependencies and GitHub Actions every Monday at 09:00 Europe/Kyiv, once the configuration is on the default branch. npm updates retain exact version pins. Weekly version updates group the MCP server and client packages together, and Vitest with its coverage package; security-update pull requests are separate. Driver updates still need the [qualification process](driver-qualification.md), including the release ledger and parameter evidence; an automated pull request does not qualify a driver release. Review Actions updates as well: vulnerability alerts do not cover SHA-pinned actions, and the version-update checks keep those pins maintained. See [GitHub's alert limitations](https://docs.github.com/en/code-security/concepts/supply-chain-security/dependabot-alerts#limitations).
+
+Check the effective settings when maintaining release configuration. The alerts endpoint succeeds with no body when enabled, and the security-fix endpoint reports `enabled: true`:
+
+```sh
+gh api repos/dichovsky/testrail-mcp/vulnerability-alerts --silent
+gh api repos/dichovsky/testrail-mcp/automated-security-fixes --jq '.enabled'
+```
 
 ## Upgrading, rolling back and uninstalling
 
