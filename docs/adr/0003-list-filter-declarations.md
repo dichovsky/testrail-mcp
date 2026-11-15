@@ -1,0 +1,3 @@
+# Derive list filter projection and mappings from explicit declarations
+
+Each list filter will declare its input schema, driver property, and serialization once; the list module will derive runtime projection and production argument mappings from that declaration. Driver bindings remain explicit, and no naming convention will infer driver properties. Independently authored parameter fixtures will continue to specify expected arguments and requests so they can detect a declaration that is consistently wrong; generated expectations would remove that independent check. This decision is accepted; implementation is pending.
