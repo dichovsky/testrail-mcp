@@ -1,0 +1,3 @@
+# Own ordinary calls and Attachment transfers in one operation executor
+
+A process-owned operation executor will own invocation and staging lifetimes for ordinary calls and Attachment transfers, exposing execution and idempotent shutdown to transport. This concentrates admission, response abandonment, dispatch observations, driver settlement, and file cleanup without making transport assemble cleanup hooks or making a file-only module shut down a runtime shared by unrelated calls. Existing response, capacity, persistence, and bounded-shutdown contracts remain in force, including the distinction between settlement cleanup of one staged copy and removal of the staging directory after the shutdown drain. This decision is accepted; implementation is pending.

@@ -1,0 +1,3 @@
+# Use the published JSON Schema for runtime input validation
+
+Zod remains the authoring and type-inference tool, but the published JSON Schema will be the authority for runtime input validation: cloning an adapted Zod schema can lose a parser check while its advertised schema retains the constraint. Registration will finalize the input contract, reject unsupported schema constructs, and compile a validator that preserves the caller's original JSON values without coercion, defaults, or field removal. Independently authored parameter fixtures remain the behavioral oracle; agreement between two uses of the same validator is not evidence of correctness. This decision is accepted; implementation is pending.

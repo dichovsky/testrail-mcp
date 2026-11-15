@@ -6,6 +6,8 @@ The server is a local stdio adapter around `@dichovsky/testrail-api-client`, wit
 
 The [architecture](architecture.md) defines component boundaries and accepted behavior. The [implementation contracts](implementation-contracts.md) define exact inputs, outputs, budgets, configuration, error outcomes, files and lifecycle. The [inventory](operation-inventory.json) and [coverage table](api-coverage.md) define every endpoint and public driver binding. These requirements apply to every issue below.
 
+The subsequent [architecture refactoring plan](architecture-refactoring.md) records the accepted input-contract, list-definition, and operation-executor changes. Its implementation is pending; the original delivery backlog below is retained separately.
+
 ## Work items and dependencies
 
 Tracking epic: [EPIC](https://github.com/dichovsky/testrail-mcp/issues/1). There are **23 implementation issues**, each with scope, explicit dependencies and acceptance/verification criteria. The [issue manifest](implementation-items.json) records IDs, endpoint ownership and published issue links; [local issue bodies](issues/) retain the reviewable text.
