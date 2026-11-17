@@ -32,6 +32,12 @@ function update_script() {
     exit
   fi
 
+  # Only the install script writes the system setup (SSH wrapper, sshd drop-in,
+  # security upgrades). Repeat any change to it here, or existing containers keep
+  # the old setup.
+  ensure_dependencies unattended-upgrades
+  systemctl enable -q --now apt-daily.timer apt-daily-upgrade.timer
+
   NODE_VERSION="24" setup_nodejs
 
   msg_info "Updating TestRail MCP"

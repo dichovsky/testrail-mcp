@@ -14,7 +14,10 @@ network_check
 update_os
 
 msg_info "Installing Dependencies"
-$STD apt install -y openssh-server
+$STD apt install -y openssh-server unattended-upgrades
+# Debian enables daily security upgrades when the package is installed; the
+# timers that run them must be on too.
+systemctl enable -q --now apt-daily.timer apt-daily-upgrade.timer
 msg_ok "Installed Dependencies"
 
 NODE_VERSION="24" setup_nodejs
