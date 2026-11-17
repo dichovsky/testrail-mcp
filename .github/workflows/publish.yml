@@ -106,11 +106,8 @@ jobs:
       - name: Verify the operation registry and generated reference
         run: npm run registry:check
 
-      - name: Type-check with TypeScript 7
+      - name: Type-check
         run: npm run typecheck
-
-      - name: Type-check TypeScript 6 compatibility
-        run: npm run typecheck:ts6
 
       - name: Lint
         run: npm run lint

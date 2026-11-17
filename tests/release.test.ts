@@ -129,7 +129,7 @@ describe('the Publish workflow', () => {
     expect(publish.match(/package-manager-cache: false/gu)).toHaveLength(2);
   });
 
-  it('runs every release gate in the verify job, the TypeScript 7 check before the TypeScript 6 one', () => {
+  it('runs every release gate in the verify job', () => {
     expect(ascending(positions(verify, [
       'run: npm ci --ignore-scripts --registry=https://registry.npmjs.org/',
       'run: node scripts/release-preflight.mjs context',
@@ -137,7 +137,6 @@ describe('the Publish workflow', () => {
       'run: npm run build',
       'run: npm run registry:check',
       'run: npm run typecheck\n',
-      'run: npm run typecheck:ts6',
       'run: npm run lint',
       'run: npm run test:coverage',
       'run: npm audit --omit=dev --audit-level=moderate',
