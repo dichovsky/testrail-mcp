@@ -33,7 +33,7 @@
     "build": "node scripts/build.mjs",
     "typecheck": "node node_modules/@typescript/native/bin/tsc --noEmit",
     "typecheck:ts6": "node node_modules/typescript/bin/tsc --noEmit",
-    "lint": "eslint .",
+    "lint": "oxlint --type-aware --deny-warnings --report-unused-disable-directives-severity=error .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:package": "node scripts/verify-package.mjs",
@@ -49,15 +49,13 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@eslint/js": "10.0.1",
     "@modelcontextprotocol/client": "2.4.0",
     "@types/node": "26.6.6",
     "@typescript/native": "npm:typescript@7.0.2",
     "@vitest/coverage-v8": "5.1.0",
-    "eslint": "10.15.0",
-    "globals": "17.14.0",
+    "oxlint": "1.94.0",
+    "oxlint-tsgolint": "7.0.2007",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.73.0",
     "vitest": "5.1.0"
   }
 }
