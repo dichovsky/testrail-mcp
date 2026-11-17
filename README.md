@@ -35,6 +35,8 @@ testrail-mcp --version
 
 [Releases](docs/release.md) covers versioning, upgrading, rolling back and uninstalling.
 
+To host the server in a Proxmox VE container that clients start over SSH, see [Proxmox VE container](proxmox/README.md).
+
 ## Configure
 
 The server reads its configuration from the environment of the process that launches it, usually the MCP client. It never reads a `.env` file, and never accepts credentials, hosts or URLs in tool arguments.
