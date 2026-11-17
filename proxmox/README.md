@@ -73,4 +73,4 @@ tool_timeout_sec = 120
 
 ## Update
 
-Run `update` in the container. It installs the latest npm release of `@dichovsky/testrail-mcp`; open sessions keep the old version until they reconnect.
+Debian's security updates install automatically every day through `unattended-upgrades`. Node.js and the server update only when you run `update` in the container. It installs the latest npm release of `@dichovsky/testrail-mcp`, and turns on the automatic security updates in containers created before they were added. Open sessions keep the old version until they reconnect.
