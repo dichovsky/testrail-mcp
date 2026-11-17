@@ -77,9 +77,11 @@ describe('T03 feature-file uploads through the transport', () => {
   it.each(['testrail_add_bdd', 'testrail_update_bdd'])('%s says, and enforces, that the filename ends in .feature', (tool) => {
     const registered = operation(tool);
     expect(registered.description).toContain('The multipart filename must end in .feature.');
-    const shape = (registered.inputSchema as unknown as { shape: { filename: { safeParse: (value: unknown) => { success: boolean } } } }).shape;
-    expect(shape.filename.safeParse('login.feature').success).toBe(true);
-    expect(shape.filename.safeParse('login.txt').success).toBe(false);
+    const target = tool === 'testrail_add_bdd' ? { section_id: 188 } : { case_id: 2133 };
+    const input = { ...target, file_path: join(roots, 'login.feature'), filename: 'login.feature' };
+    expect(() => registered.input.validate(input)).not.toThrow();
+    expect(() => registered.input.validate({ ...input, filename: 'login.txt' }))
+      .toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT' }));
   });
 
   it.each([

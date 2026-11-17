@@ -1,6 +1,6 @@
 # Architecture refactoring plan
 
-Status: design accepted; implementation pending. This plan covers the three deepening opportunities selected during the architecture review. It supplements the existing [implementation plan](implementation-plan.md) without changing the published endpoint contract.
+Status: finalized input contracts implemented; list definitions and the operation executor remain accepted designs pending implementation. This plan covers the three deepening opportunities selected during the architecture review. It supplements the existing [implementation plan](implementation-plan.md) without changing the published endpoint contract.
 
 ## Accepted decisions
 
@@ -29,6 +29,8 @@ flowchart TD
 Registration owns the input and binding interface; list definitions own shared paging rules; the executor owns when admitted work starts, stops producing a response, and finally releases its resources. Filesystem algorithms and capacity accounting can remain separate implementation modules. Moving code without removing caller obligations does not complete this refactor.
 
 ### Finalized input contract
+
+Implemented in `src/contracts/input-contract.ts` with registration-owned typed bindings. The 2026-11-17 verification passed `npm run check` and `npm run test:coverage` on Node 24: 7,030 tests passed, one platform-specific test skipped, and all coverage thresholds exceeded 99%. A captured catalog comparison confirmed identical schemas, descriptions, annotations, routes, bindings and argument maps for all 133 tools. Independent review found and verified fixes for omitted authoring checks, mutable review metadata, and inherited-property validation; its 2,041 malformed direct-call probes performed no driver lookup.
 
 Start with `src/contracts/inputs.ts`, `src/operations/driver-call.ts`, `src/operations/registry.ts`, and their consumers in transport and contract tests.
 
@@ -106,7 +108,9 @@ The interface is the test surface. Replace obsolete helper-wiring tests once the
 
 Relevant existing suites include `tests/inputs.test.ts`, `tests/registered-parameters.test.ts`, `tests/paging-through-tools.test.ts`, `tests/result-contract.test.ts`, `tests/soft-delete-preview.test.ts`, `tests/runtime-*.test.ts`, and the lifetime, composition, cancellation, and result-budget tests under `tests/transport/`. Run `npm run check` and `npm run test:coverage` for the completed refactor, including the existing 99% coverage thresholds. Fixtures require no live TestRail credentials.
 
-## Review-time verification limitation
+## Review-time verification limitation (resolved)
+
+Before implementation, `npm ci` restored the pinned dependency set and the unchanged baseline passed `npm run check` with 6,988 tests. The completed input refactor passed the checks recorded above in a clean copy of the changes, excluding unrelated local worktrees. The following records the original review limitation, not the current verification state.
 
 The installed dependencies did not match the manifest and lockfile during this review:
 
@@ -117,4 +121,4 @@ The installed dependencies did not match the manifest and lockfile during this r
 | `zod` | 4.6.1 | 4.6.7 |
 | `vitest` | 4.1.11 | 5.1.0 |
 
-`npm test -- tests/registered-parameters.test.ts tests/inputs.test.ts` produced 54 passing and seven failing input tests; the registered-parameter suite failed during import. The cloning discrepancy was reproduced with current source against this installed dependency set, not verified against the pinned set. The design is accepted, but none of these observations establishes a passing pinned baseline or completed implementation.
+`npm test -- tests/registered-parameters.test.ts tests/inputs.test.ts` produced 54 passing and seven failing input tests; the registered-parameter suite failed during import. The cloning discrepancy was reproduced against that installed dependency set. Those observations alone did not establish a passing pinned baseline or completed implementation; the later verification above supersedes that limitation.

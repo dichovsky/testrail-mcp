@@ -8,7 +8,6 @@ import { loadConfiguration, type Configuration } from '../../src/config/environm
 import { attachmentIdSchema, filePathSchema, strictObject } from '../../src/contracts/inputs.js';
 import { createStagingArea } from '../../src/files/staging.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
-import { driverCall } from '../../src/operations/driver-call.js';
 import { defineOperation, type Operation, type OperationDefinition } from '../../src/operations/registry.js';
 import { createRuntime, type Runtime } from '../../src/runtime/invocation.js';
 import { executeToolCall } from '../../src/transport/tool-call.js';
@@ -49,14 +48,14 @@ const getAttachment = defineOperation({
   inputSchema: downloadInput,
   argumentMap: [{ input: 'attachment_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'binary', outerSchema: z.instanceof(ArrayBuffer), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(downloadInput, 'attachments.getAttachment', (method, input) => method(input.attachment_id)),
-  },
+    single: bind('attachments.getAttachment', (method, input) => method(input.attachment_id)),
+  }),
   files: { kind: 'download' },
   effects: { testRail: 'read', destructive: false, idempotent: false },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition) as Operation;
+} as const satisfies OperationDefinition<string, typeof downloadInput>) as Operation;
 
 /** An upload operation, used to prove the staged copy never outlives a refused call. */
 // The registry reserves these flat names for upload operations.
@@ -71,16 +70,16 @@ const addAttachment = defineOperation({
   inputSchema: uploadInput,
   argumentMap: [{ input: 'case_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: z.record(z.string(), z.unknown()), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(uploadInput, 'attachments.addAttachmentToCase', (method, input, context) =>
+    single: bind('attachments.addAttachmentToCase', (method, input, context) =>
       method(input.case_id, context.upload ?? { path: '' }, input.filename)),
-  },
+  }),
   files: { kind: 'upload', featureFilename: false },
   effects: { testRail: 'write', destructive: false, idempotent: false },
   // The registry requires this: a multipart upload is never retried.
   retry: 'never',
-} as const satisfies OperationDefinition) as Operation;
+} as const satisfies OperationDefinition<string, typeof uploadInput>) as Operation;
 
 /** A plain read, used to occupy execution slots: a download would take the one
  * binary slot instead and the rest would be refused before filling capacity. */
@@ -91,14 +90,14 @@ const getProject = defineOperation({
   inputSchema: projectInput,
   argumentMap: [{ input: 'project_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: z.record(z.string(), z.unknown()), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(projectInput, 'projects.getProject', (method, input) => method(input.project_id)),
-  },
+    single: bind('projects.getProject', (method, input) => method(input.project_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition) as Operation;
+} as const satisfies OperationDefinition<string, typeof projectInput>) as Operation;
 
 function binary(bytes: Uint8Array): Response {
   return new Response(bytes, { status: 200, headers: { 'content-type': 'application/octet-stream' } });

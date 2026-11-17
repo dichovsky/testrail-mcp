@@ -26,7 +26,7 @@ Tools advertise each operation's reviewed JSON Schema **verbatim**, through a sm
 
 Handing the SDK a Zod schema instead would re-emit it in another dialect, so the bytes a client sees would stop matching the document the parameter gates reviewed. Letting the SDK validate would be worse than cosmetic: it rejects bad arguments itself with a bare error carrying no `structuredContent`, which bypasses the adapter's error taxonomy entirely. Both failures are pinned by tests — swapping in the Zod schema fails two of them.
 
-The adapter validates instead, and a rejected argument is an `INVALID_ARGUMENT` tool error like any other.
+The adapter validates through the operation's finalized input contract, whose compiled validator uses that same document. It checks the original JSON before admission or staging and preserves it for the driver binding, which also guards standalone invocation. A rejected argument is an `INVALID_ARGUMENT` tool error like any other.
 
 `outputSchema` describes only the wrapper, with `data` unconstrained, so entity drift can never fail it. The SDK also skips output validation for error results (`if (result.isError) return;`), so an error envelope is never measured against it either.
 

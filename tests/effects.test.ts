@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
 import { operationRegistry } from '../src/operations/catalog.js';
 
 /*
@@ -16,35 +15,40 @@ import { operationRegistry } from '../src/operations/catalog.js';
  * to agree with a mistake; a rule has to be argued with.
  */
 
-/** Whether a schema accepts a property under `name` at any depth. */
-function admits(schema: z.ZodType, name: string, depth = 0): boolean {
-  if (depth > 8) return false;
-  const definition = (schema as unknown as { _zod?: { def?: Record<string, unknown> } })._zod?.def;
-  if (definition === undefined) return false;
-  if (definition['type'] === 'object') {
-    const shape = (definition['shape'] ?? {}) as Record<string, z.ZodType>;
-    for (const [key, value] of Object.entries(shape)) {
-      // A z.never() property is a declared refusal, not an acceptance: naming the field
-      // is how a registration says the field cannot be sent.
+/** Whether the published schema admits a declared property at any reachable depth. */
+function admits(schema: unknown, name: string, root: unknown = schema, seen = new Set<unknown>()): boolean {
+  if (schema === null || typeof schema !== 'object' || seen.has(schema)) return false;
+  seen.add(schema);
+  const node = schema as Record<string, unknown>;
+  if (typeof node.$ref === 'string' && node.$ref.startsWith('#/')) {
+    const target = node.$ref.slice(2).split('/').reduce<unknown>((value, part) => {
+      const key = part.replaceAll('~1', '/').replaceAll('~0', '~');
+      return typeof value === 'object' && value !== null ? (value as Record<string, unknown>)[key] : undefined;
+    }, root);
+    if (admits(target, name, root, seen)) return true;
+  }
+  if (typeof node.properties === 'object' && node.properties !== null) {
+    for (const [key, value] of Object.entries(node.properties)) {
+      // An impossible property is a declared refusal, not an accepted field.
       if (key === name && !refuses(value)) return true;
-      if (admits(value, name, depth + 1)) return true;
+      if (admits(value, name, root, seen)) return true;
     }
-    return false;
   }
-  for (const key of ['innerType', 'element', 'valueType'] as const) {
-    const nested = definition[key] as z.ZodType | undefined;
-    if (nested !== undefined && admits(nested, name, depth + 1)) return true;
+  for (const key of ['items', 'additionalProperties']) {
+    if (admits(node[key], name, root, seen)) return true;
   }
-  for (const option of (definition['options'] ?? []) as z.ZodType[]) {
-    if (admits(option, name, depth + 1)) return true;
+  for (const key of ['anyOf', 'oneOf', 'allOf']) {
+    const alternatives = node[key];
+    if (Array.isArray(alternatives) && alternatives.some((value) => admits(value, name, root, seen))) return true;
   }
   return false;
 }
 
-function refuses(schema: z.ZodType): boolean {
-  const definition = (schema as unknown as { _zod?: { def?: Record<string, unknown> } })._zod?.def;
-  const inner = definition?.['innerType'] as { _zod?: { def?: { type?: string } } } | undefined;
-  return (inner?._zod?.def?.type ?? definition?.['type']) === 'never';
+function refuses(schema: unknown): boolean {
+  if (schema === false) return true;
+  if (schema === null || typeof schema !== 'object') return false;
+  const not = (schema as Record<string, unknown>).not;
+  return not !== null && typeof not === 'object' && Object.keys(not).length === 0;
 }
 
 const operations = operationRegistry.entries.map((operation) => ({
@@ -54,7 +58,7 @@ const operations = operationRegistry.entries.map((operation) => ({
   files: operation.files,
   annotations: operation.annotations,
   /** The pair that defines which cases a run covers. Narrowing it deletes tests. */
-  selectsCoverage: admits(operation.inputSchema, 'include_all') && admits(operation.inputSchema, 'case_ids'),
+  selectsCoverage: admits(operation.jsonSchema, 'include_all') && admits(operation.jsonSchema, 'case_ids'),
 }));
 
 describe('published effect annotations', () => {

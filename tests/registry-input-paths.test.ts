@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { createListInput, payloadInput, positiveIdSchema, refsSchema, strictObject } from '../src/contracts/inputs.js';
-import { driverCall } from '../src/operations/driver-call.js';
 import { defineOperation, type ArgumentMapping, type OperationDefinition } from '../src/operations/registry.js';
 
 // These definitions exercise registration only. Endpoint adapters and their
@@ -16,7 +15,7 @@ function mutationDefinition(body: z.ZodType, paths: readonly string[]): Operatio
       ...paths.map((path) => ({ input: path, call: 'single' as const, argument: 1, serialization: 'json-body' as const })),
     ],
     response: { shape: 'record', outerSchema: z.record(z.string(), z.unknown()), entitySchema: null },
-    pagination: { kind: 'none', single: driverCall(input, 'projects.updateProject', (method) => method(1, {})) },
+    pagination: (bind) => ({ kind: 'none', single: bind('projects.updateProject', (method) => method(1, {})) }),
     files: { kind: 'none' }, effects: { testRail: 'write', destructive: false, idempotent: false }, retry: 'json-write',
   };
 }
@@ -32,11 +31,11 @@ function listDefinition(mappings: readonly ArgumentMapping[]): OperationDefiniti
       ...mappings,
     ],
     response: { shape: 'page', outerSchema: z.object({ kind: z.enum(['envelope', 'legacy-array']), items: z.array(z.unknown()) }), entitySchema: null },
-    pagination: {
+    pagination: (bind) => ({
       kind: 'controlled',
-      page: driverCall(input, 'cases.getCasesPage', (method) => method(1)),
-      all: driverCall(input, 'cases.getAllCases', (method) => method(1)),
-    },
+      page: bind('cases.getCasesPage', (method) => method(1)),
+      all: bind('cases.getAllCases', (method) => method(1)),
+    }),
     files: { kind: 'none' }, effects: { testRail: 'read', destructive: false, idempotent: true }, retry: 'ordinary-read',
   };
 }

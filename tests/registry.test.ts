@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { TestRailClient, ProjectSchema, UpdateCasePayloadSchema } from '@dichovsky/testrail-api-client';
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_LIMITS } from '../src/config/limits.js';
+import { createInputContract } from '../src/contracts/input-contract.js';
 import { z } from 'zod';
 import { createListInput, payloadInput, positiveIdSchema, strictObject } from '../src/contracts/inputs.js';
 import { operationRegistry } from '../src/operations/catalog.js';
@@ -16,9 +17,9 @@ const getProjectDefinition = {
   driverBinding: 'projects.getProject', summary: 'Get a TestRail project.', inputSchema: projectInput,
   argumentMap: [{ input: 'project_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: z.record(z.string(), z.unknown()), entitySchema: ProjectSchema },
-  pagination: { kind: 'none', single: driverCall(projectInput, 'projects.getProject', (method, input) => method(input.project_id)) },
+  pagination: (bind) => ({ kind: 'none', single: bind('projects.getProject', (method, input) => method(input.project_id)) }),
   files: { kind: 'none' }, effects: { testRail: 'read', destructive: false, idempotent: true }, retry: 'ordinary-read',
-} as const satisfies OperationDefinition;
+} as const satisfies OperationDefinition<string, typeof projectInput>;
 const getProject = defineOperation(getProjectDefinition);
 
 describe('typed endpoint registry', () => {
@@ -28,6 +29,10 @@ describe('typed endpoint registry', () => {
     expect(getProject.description).toContain('Required path arguments: project_id.');
     expect(getProject.jsonSchema).toMatchObject({ type: 'object', required: ['project_id'], additionalProperties: false });
     expect(Object.isFrozen(getProject)).toBe(true);
+    expect(getProject).not.toHaveProperty('inputSchema');
+    expect(getProject.input.jsonSchema).toBe(getProject.jsonSchema);
+    if (getProject.pagination.kind !== 'none') throw new Error('Expected a single-call project operation');
+    expect(getProject.pagination.single.input).toBe(getProject.input);
   });
 
   it('rejects duplicates even when entries arrive as a dynamically typed array', () => {
@@ -46,44 +51,48 @@ describe('typed endpoint registry', () => {
 
   it('keeps report GET effects separate from ordinary reads and discloses email effects', () => {
     const input = strictObject({ report_template_id: positiveIdSchema });
-    const report = defineOperation({
+    const definition = {
       ...getProjectDefinition,
       token: 'run_report', route: 'run_report/{report_template_id}', family: 'T11', driverBinding: 'reports.runReport',
       inputSchema: input, argumentMap: [{ input: 'report_template_id', call: 'single', argument: 0, serialization: 'path' }],
-      pagination: { kind: 'none', single: driverCall(input, 'reports.runReport', (method, value) => method(value.report_template_id)) },
+      pagination: (bind) => ({ kind: 'none', single: bind('reports.runReport', (method, value) => method(value.report_template_id)) }),
       effects: { testRail: 'report', destructive: false, idempotent: false }, retry: 'rate-limit-only',
-    });
+    } as const satisfies OperationDefinition<string, typeof input>;
+    const report = defineOperation(definition);
     expect(report.annotations).toMatchObject({ readOnlyHint: false, idempotentHint: false });
     expect(report.description).toContain('template-configured email');
     expect(report.description).toContain('do not generate the report again to poll');
-    expect(() => defineOperation({ ...report, retry: 'ordinary-read' })).toThrow('Invalid report effects');
+    expect(() => defineOperation({ ...definition, retry: 'ordinary-read' })).toThrow('Invalid report effects');
     // The driver re-sends a rate-limited report run, so declaring no retry at all would be false.
-    expect(() => defineOperation({ ...report, retry: 'never' })).toThrow('Invalid report effects');
-    expect(() => defineOperation({ ...report, effects: { testRail: 'read', destructive: false, idempotent: true }, retry: 'ordinary-read' })).toThrow('Report endpoint must declare report effects');
+    expect(() => defineOperation({ ...definition, retry: 'never' })).toThrow('Invalid report effects');
+    expect(() => defineOperation({ ...definition, effects: { testRail: 'read', destructive: false, idempotent: true }, retry: 'ordinary-read' })).toThrow('Report endpoint must declare report effects');
   });
 
   it('describes download effects without changing remote read retry policy', () => {
     const input = strictObject({ attachment_id: positiveIdSchema });
-    const download = defineOperation({
+    const definition = {
       ...getProjectDefinition,
       token: 'get_attachment', route: 'get_attachment/{attachment_id}', family: 'T12', driverBinding: 'attachments.getAttachment',
       inputSchema: input, argumentMap: [{ input: 'attachment_id', call: 'single', argument: 0, serialization: 'path' }],
-      pagination: { kind: 'none', single: driverCall(input, 'attachments.getAttachment', (method, value) => method(value.attachment_id)) },
+      pagination: (bind) => ({ kind: 'none', single: bind('attachments.getAttachment', (method, value) => method(value.attachment_id)) }),
       response: { shape: 'binary', outerSchema: z.instanceof(ArrayBuffer), entitySchema: null },
       files: { kind: 'download' }, effects: { testRail: 'read', destructive: false, idempotent: false },
-    });
+    } as const satisfies OperationDefinition<string, typeof input>;
+    const download = defineOperation(definition);
     expect(download.annotations).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true });
     expect(download.effects.testRail).toBe('read');
     expect(download.retry).toBe('ordinary-read');
     expect(download.description).toContain('unique persistent local file');
-    expect(() => defineOperation({ ...download, effects: { ...download.effects, idempotent: true } })).toThrow('Invalid persistent download effects');
-    expect(() => defineOperation({ ...download, files: { kind: 'none' }, effects: { testRail: 'read', destructive: false, idempotent: true } })).toThrow('get_attachment must declare persistent download behavior');
+    expect(() => defineOperation({ ...definition, effects: { ...download.effects, idempotent: true } })).toThrow('Invalid persistent download effects');
+    expect(() => defineOperation({ ...definition, files: { kind: 'none' }, effects: { testRail: 'read', destructive: false, idempotent: true } })).toThrow('get_attachment must declare persistent download behavior');
   });
 
-  it('rejects malformed metadata, oversized UTF-8 descriptions and mismatched call schemas', () => {
+  it('rejects malformed metadata, oversized UTF-8 descriptions and mismatched call contracts', () => {
     expect(() => defineOperation({ ...getProjectDefinition, route: 'get_suite/{suite_id}' })).toThrow('Invalid endpoint identity');
     expect(() => defineOperation({ ...getProjectDefinition, summary: '🐈'.repeat(512) })).toThrow('below 2 KiB');
-    expect(() => defineOperation({ ...getProjectDefinition, inputSchema: strictObject({ project_id: positiveIdSchema }) })).toThrow('Different call input schema');
+    const foreignCall = driverCall(createInputContract(projectInput), 'projects.getProject', (method, input) => method(input.project_id));
+    expect(() => defineOperation({ ...getProjectDefinition, pagination: () => ({ kind: 'none', single: foreignCall }) }))
+      .toThrow('Different call input contract');
     expect(() => defineOperation({ ...getProjectDefinition, argumentMap: [{ input: 'query.limit', call: 'all', argument: 0, serialization: 'aggregate-control' }] })).toThrow('Invalid argument map');
     expect(() => defineOperation({ ...getProjectDefinition, argumentMap: [] })).toThrow('Unmapped path argument');
   });
@@ -95,9 +104,9 @@ describe('typed endpoint registry', () => {
       strictObject({ project_id: positiveIdSchema, file_path: z.string().optional() }),
       strictObject({ project_id: positiveIdSchema, query: z.record(z.string(), z.string()).optional() }),
     ]) {
-      const definition = { ...getProjectDefinition, inputSchema: input, pagination: {
-        kind: 'none' as const, single: driverCall(input, 'projects.getProject', (method) => method(1)),
-      } };
+      const definition = { ...getProjectDefinition, inputSchema: input, pagination: (bind) => ({
+        kind: 'none' as const, single: bind('projects.getProject', (method) => method(1)),
+      }) } satisfies OperationDefinition<string, typeof input>;
       expect(() => defineOperation(definition)).toThrow();
     }
   });
@@ -106,7 +115,7 @@ describe('typed endpoint registry', () => {
 describe('driver mapping boundary', () => {
   it('forwards original custom JSON including own __proto__ keys after validation', async () => {
     const schema = strictObject({ case_id: positiveIdSchema, body: payloadInput(UpdateCasePayloadSchema, { extensions: 'custom' }) });
-    const call = driverCall(schema, 'cases.updateCase', (method, value) => method(value.case_id, value.body));
+    const call = driverCall(createInputContract(schema), 'cases.updateCase', (method, value) => method(value.case_id, value.body));
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response('{"id":1,"title":"Case"}'));
     const client = new TestRailClient({ baseUrl: 'https://example.test', email: 'fixture@example.test', apiKey: 'synthetic', allowPrivateHosts: true, fetch });
     const raw: unknown = JSON.parse('{"case_id":1,"body":{"custom_value":{"__proto__":{"preserved":true},"safe":1}}}');
@@ -121,7 +130,8 @@ describe('driver mapping boundary', () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(JSON.stringify(raw)));
     const client = new TestRailClient({ baseUrl: 'https://example.test/testrail', email: 'fixture@example.test', apiKey: 'synthetic', allowPrivateHosts: true, fetch });
     try {
-      const call = getProjectDefinition.pagination.single;
+      if (getProject.pagination.kind !== 'none') throw new Error('Expected a single-call project operation');
+      const call = getProject.pagination.single;
       await expect(call.invoke(client, { project_id: '42' }, { limits: DEFAULT_LIMITS })).rejects.toThrow();
       await expect(call.invoke(client, { project_id: 42, api_key: 'extra' }, { limits: DEFAULT_LIMITS })).rejects.toThrow();
       expect(fetch).not.toHaveBeenCalled();
@@ -135,7 +145,7 @@ describe('driver mapping boundary', () => {
     const input = strictObject({ query: strictObject({ is_completed: z.boolean(), limit: positiveIdSchema }) });
     // getProjects' final .d.ts overload takes limit/offset. This callback still
     // accepts the primary options-object overload without copying driver types.
-    const call = driverCall(input, 'projects.getProjects', (method, value) => method({ isCompleted: value.query.is_completed, limit: value.query.limit }));
+    const call = driverCall(createInputContract(input), 'projects.getProjects', (method, value) => method({ isCompleted: value.query.is_completed, limit: value.query.limit }));
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response('[]'));
     const client = new TestRailClient({ baseUrl: 'https://example.test', email: 'fixture@example.test', apiKey: 'synthetic', allowPrivateHosts: true, fetch });
     try {
@@ -157,9 +167,9 @@ describe('independent inventory parity', () => {
   });
 
   it('rejects an equally sized replacement and names binding/family differences', () => {
-    const wrong = defineOperation({ ...getProjectDefinition, family: 'T02', driverBinding: 'suites.getSuite', pagination: {
-      kind: 'none', single: driverCall(projectInput, 'suites.getSuite', (method, value) => method(value.project_id)),
-    } });
+    const wrong = defineOperation({ ...getProjectDefinition, family: 'T02', driverBinding: 'suites.getSuite', pagination: (bind) => ({
+      kind: 'none', single: bind('suites.getSuite', (method, value) => method(value.project_id)),
+    }) });
     const baseline = inventory.filter((entry) => entry.tool === 'testrail_get_project');
     const report = compareRegistry(createRegistry(wrong), baseline);
     expect(report.differences).toEqual([
@@ -176,11 +186,11 @@ describe('independent inventory parity', () => {
     const operation = defineOperation({
       ...getProjectDefinition, token: 'get_projects', route: 'get_projects', driverBinding: 'projects.getProjects', inputSchema: input,
       response: { shape: 'page', outerSchema: z.object({ kind: z.enum(['envelope', 'legacy-array']), items: z.array(z.unknown()) }), entitySchema: ProjectSchema },
-      argumentMap: [], pagination: {
+      argumentMap: [], pagination: (bind) => ({
         kind: 'controlled',
-        page: driverCall(input, 'projects.getProjectsPage', (method) => method()),
-        all: driverCall(input, 'suites.getAllSuites', (method) => method(1)),
-      },
+        page: bind('projects.getProjectsPage', (method) => method()),
+        all: bind('suites.getAllSuites', (method) => method(1)),
+      }),
     });
     const report = compareRegistry(createRegistry(operation), inventory);
     expect(report.differences).toContainEqual({ tool: 'testrail_get_projects', field: 'pagination.all_binding', expected: 'projects.getAllProjects', actual: 'suites.getAllSuites' });
@@ -208,13 +218,13 @@ export function compileTimeRegistryChecks(): void {
   const widened: Operation = getProject;
   createRegistry(widened, getProject); // Widened identities defer uniqueness to the runtime guard.
   // @ts-expect-error Root request() is not an endpoint module binding.
-  driverCall(projectInput, 'request', () => Promise.resolve());
+  driverCall(createInputContract(projectInput), 'request', () => Promise.resolve());
   // @ts-expect-error A nonexistent module method is not a public binding.
-  driverCall(projectInput, 'projects.getSecret', () => Promise.resolve());
+  driverCall(createInputContract(projectInput), 'projects.getSecret', () => Promise.resolve());
   // @ts-expect-error The selected public driver method requires a numeric ID.
-  driverCall(projectInput, 'projects.getProject', (method) => method('42'));
+  driverCall(createInputContract(projectInput), 'projects.getProject', (method) => method('42'));
   // @ts-expect-error Calls must preserve the async driver promise contract.
-  driverCall(projectInput, 'projects.getProject', () => 42);
+  driverCall(createInputContract(projectInput), 'projects.getProject', () => 42);
   // @ts-expect-error Literal duplicate tool names are rejected at compile time.
   createRegistry(getProject, getProject);
   // @ts-expect-error An outer record schema cannot return a string.

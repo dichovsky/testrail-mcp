@@ -1,8 +1,7 @@
 import { CrossProjectReportSchema, ReportResultSchema, ReportSchema } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
 import { positiveIdSchema, strictObject } from '../../contracts/inputs.js';
-import { driverCall } from '../driver-call.js';
-import { defineOperation, type OperationDefinition } from '../registry.js';
+import { defineOperation } from '../registry.js';
 import { recordResponse } from './common.js';
 
 /*
@@ -42,14 +41,14 @@ export const getReports = defineOperation({
   inputSchema: getReportsInput,
   argumentMap: [{ input: 'project_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'array', outerSchema: arrayResponse, entitySchema: ReportSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getReportsInput, 'reports.getReports', (method, input) => method(input.project_id)),
-  },
+    single: bind('reports.getReports', (method, input) => method(input.project_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const runReportInput = strictObject({ report_template_id: positiveIdSchema });
 
@@ -63,16 +62,16 @@ export const runReport = defineOperation({
   inputSchema: runReportInput,
   argumentMap: [{ input: 'report_template_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: ReportResultSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(runReportInput, 'reports.runReport', (method, input) => method(input.report_template_id)),
-  },
+    single: bind('reports.runReport', (method, input) => method(input.report_template_id)),
+  }),
   files: { kind: 'none' },
   // Nothing is removed, so it is not destructive; a repeat is a second report, and a second email if the template sends one.
   effects: { testRail: 'report', destructive: false, idempotent: false },
   // The driver's own policy for this method: it re-sends a 429 and nothing else.
   retry: 'rate-limit-only',
-} as const satisfies OperationDefinition);
+});
 
 // -------------------------------------------------------------- cross-project
 
@@ -88,14 +87,14 @@ export const getCrossProjectReports = defineOperation({
   inputSchema: noInput,
   argumentMap: [],
   response: { shape: 'array', outerSchema: arrayResponse, entitySchema: CrossProjectReportSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(noInput, 'reports.getCrossProjectReports', (method) => method()),
-  },
+    single: bind('reports.getCrossProjectReports', (method) => method()),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const runCrossProjectReportInput = strictObject({ report_template_id: positiveIdSchema });
 
@@ -109,15 +108,15 @@ export const runCrossProjectReport = defineOperation({
   inputSchema: runCrossProjectReportInput,
   argumentMap: [{ input: 'report_template_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: ReportResultSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(runCrossProjectReportInput, 'reports.runCrossProjectReport',
+    single: bind('reports.runCrossProjectReport',
       (method, input) => method(input.report_template_id)),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'report', destructive: false, idempotent: false },
   retry: 'rate-limit-only',
-} as const satisfies OperationDefinition);
+});
 
 /** Registered in tool-name order by the registry; listed here in reviewed order. */
 export const t11 = [getReports, runReport, getCrossProjectReports, runCrossProjectReport] as const;

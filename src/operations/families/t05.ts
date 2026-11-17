@@ -8,8 +8,7 @@ import {
   createListInput, nonnegativeIntegerSchema, payloadArray, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
 import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
-import { driverCall } from '../driver-call.js';
-import { defineOperation, type ArgumentMapping, type OperationDefinition } from '../registry.js';
+import { defineOperation, type ArgumentMapping } from '../registry.js';
 import {
   aggregateControlMappings, allControls, control, pageResponse, recordResponse,
 } from './common.js';
@@ -99,21 +98,21 @@ export const getResults = defineOperation({
     ...aggregateControlMappings(1),
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: ResultSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'controlled',
-    page: driverCall(getResultsInput, 'results.getResultsPage', (method, input) => method(input.test_id, {
+    page: bind('results.getResultsPage', (method, input) => method(input.test_id, {
       ...resultFilter(input.query, resultFilterNames),
       ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
     })),
-    all: driverCall(getResultsInput, 'results.getAllResults', (method, input, context) => method(input.test_id, {
+    all: bind('results.getAllResults', (method, input, context) => method(input.test_id, {
       ...resultFilter(input.query, resultFilterNames),
       ...driverAllOptions(allControls(input._mcp), context.limits),
     })),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const getResultsForCaseInput = createListInput({
   path: { run_id: positiveIdSchema, case_id: positiveIdSchema },
@@ -140,23 +139,23 @@ export const getResultsForCase = defineOperation({
     ...aggregateControlMappings(2),
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: ResultSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'controlled',
-    page: driverCall(getResultsForCaseInput, 'results.getResultsForCasePage',
+    page: bind('results.getResultsForCasePage',
       (method, input) => method(input.run_id, input.case_id, {
         ...resultFilter(input.query, resultFilterNames),
         ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
       })),
-    all: driverCall(getResultsForCaseInput, 'results.getAllResultsForCase',
+    all: bind('results.getAllResultsForCase',
       (method, input, context) => method(input.run_id, input.case_id, {
         ...resultFilter(input.query, resultFilterNames),
         ...driverAllOptions(allControls(input._mcp), context.limits),
       })),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const getResultsForRunInput = createListInput({
   path: { run_id: positiveIdSchema },
@@ -181,21 +180,21 @@ export const getResultsForRun = defineOperation({
     ...aggregateControlMappings(1),
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: ResultSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'controlled',
-    page: driverCall(getResultsForRunInput, 'results.getResultsForRunPage', (method, input) => method(input.run_id, {
+    page: bind('results.getResultsForRunPage', (method, input) => method(input.run_id, {
       ...resultFilter(input.query, runResultFilterNames),
       ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
     })),
-    all: driverCall(getResultsForRunInput, 'results.getAllResultsForRun', (method, input, context) => method(input.run_id, {
+    all: bind('results.getAllResultsForRun', (method, input, context) => method(input.run_id, {
       ...resultFilter(input.query, runResultFilterNames),
       ...driverAllOptions(allControls(input._mcp), context.limits),
     })),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /*
  * A result's own fields. The identifiers are held to the identifier domain because the
@@ -231,15 +230,15 @@ export const addResult = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: ResultSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addResultInput, 'results.addResult', (method, input) => method(input.test_id, input.body)),
-  },
+    single: bind('results.addResult', (method, input) => method(input.test_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Each call records another result; the test's history keeps both.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const addResultForCaseInput = strictObject({
   run_id: positiveIdSchema,
@@ -261,15 +260,15 @@ export const addResultForCase = defineOperation({
     { input: 'body', call: 'single', argument: 2, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: ResultSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addResultForCaseInput, 'results.addResultForCase',
+    single: bind('results.addResultForCase',
       (method, input) => method(input.run_id, input.case_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 /*
  * The bulk payloads carry the same result fields as the single ones, keyed by test or
@@ -310,15 +309,15 @@ export const addResults = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'array', outerSchema: z.array(z.unknown()), entitySchema: ResultSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addResultsInput, 'results.addResults', (method, input) => method(input.run_id, input.body)),
-  },
+    single: bind('results.addResults', (method, input) => method(input.run_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Each call records another result for every entry; nothing is replaced.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const addResultsForCasesInput = strictObject({
   run_id: positiveIdSchema,
@@ -338,15 +337,15 @@ export const addResultsForCases = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'array', outerSchema: z.array(z.unknown()), entitySchema: ResultSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addResultsForCasesInput, 'results.addResultsForCases',
+    single: bind('results.addResultsForCases',
       (method, input) => method(input.run_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 /*
  * The edit payload has no custom_fields container of its own and declares the step
@@ -385,15 +384,15 @@ export const editResult = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: ResultSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(editResultInput, 'results.editResult', (method, input) => method(input.result_id, input.body)),
-  },
+    single: bind('results.editResult', (method, input) => method(input.result_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Applying the same field values again leaves the result in the same state.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 /** Registered in tool-name order by the registry; listed here in reviewed order. */
 export const t05 = [

@@ -70,7 +70,6 @@ import type { ParameterFixture, ParameterManifest } from './contracts/parameter-
 import { auditRegisteredParameters } from './contracts/registered-parameters.js';
 import { describeBody, materializeFiles, substituteTokens } from './contracts/uploads.js';
 import { positiveIdSchema, strictObject } from '../src/contracts/inputs.js';
-import { driverCall } from '../src/operations/driver-call.js';
 import { deletePlanEntry } from '../src/operations/families/t06.js';
 import { createRegistry, defineOperation } from '../src/operations/registry.js';
 
@@ -1036,10 +1035,10 @@ describe('independent parameter manifest format', () => {
     const weakened = defineOperation({
       ...deletePlanEntry,
       inputSchema: weakenedInput,
-      pagination: {
+      pagination: (bind) => ({
         kind: 'none',
-        single: driverCall(weakenedInput, 'plans.deletePlanEntry', (method, input) => method(input.plan_id, input.entry_id)),
-      },
+        single: bind('plans.deletePlanEntry', (method, input) => method(input.plan_id, input.entry_id)),
+      }),
     });
     const isolating = plans.cases.filter(({ id }) => id.startsWith('entry_id:') && id !== 'entry_id:missing');
     expect(isolating.map(({ id }) => id)).toEqual([

@@ -209,8 +209,11 @@ describe('the C03 corpus', () => {
   });
 
   it('expects arguments each tool accepts', () => {
-    const refused = corpus.tasks.filter(({ tool, arguments: input }) => operationRegistry.get(tool)?.inputSchema.safeParse(input).success !== true);
-    expect(refused.map(({ id }) => id)).toEqual([]);
+    for (const { id, tool, arguments: input } of corpus.tasks) {
+      const operation = operationRegistry.get(tool);
+      expect(operation, id).toBeDefined();
+      expect(() => operation?.input.validate(input), id).not.toThrow();
+    }
   });
 
   it('keeps the expected tool and argument names out of the prompt', () => {

@@ -5,8 +5,7 @@ import {
 import { z } from 'zod';
 import { createListInput, payloadInput, positiveIdSchema, strictObject } from '../../contracts/inputs.js';
 import { driverAllOptions } from '../../contracts/pagination.js';
-import { driverCall } from '../driver-call.js';
-import { defineOperation, type OperationDefinition } from '../registry.js';
+import { defineOperation } from '../registry.js';
 import { allControls, pageResponse, recordResponse, safetyControlMappings } from './common.js';
 
 /*
@@ -35,14 +34,14 @@ export const getDataset = defineOperation({
   inputSchema: getDatasetInput,
   argumentMap: [{ input: 'dataset_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: DatasetSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getDatasetInput, 'datasets.getDataset', (method, input) => method(input.dataset_id)),
-  },
+    single: bind('datasets.getDataset', (method, input) => method(input.dataset_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /*
  * TestRail documents no request controls for this list: its parameter table carries the
@@ -72,16 +71,16 @@ export const getDatasets = defineOperation({
     ...safetyControlMappings(1),
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: DatasetSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'response_driven',
-    page: driverCall(getDatasetsInput, 'datasets.getDatasetsPage', (method, input) => method(input.project_id)),
-    all: driverCall(getDatasetsInput, 'datasets.getAllDatasets',
+    page: bind('datasets.getDatasetsPage', (method, input) => method(input.project_id)),
+    all: bind('datasets.getAllDatasets',
       (method, input, context) => method(input.project_id, driverAllOptions(allControls(input._mcp), context.limits))),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /*
  * The write form of a dataset's values is a map from variable name to value, which is
@@ -107,11 +106,11 @@ export const addDataset = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: DatasetSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addDatasetInput, 'datasets.addDataset',
+    single: bind('datasets.addDataset',
       (method, input) => method(input.project_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   /*
    * Not idempotent: a repeat asks TestRail for a second dataset of the same name, which
@@ -120,7 +119,7 @@ export const addDataset = defineOperation({
    */
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateDatasetInput = strictObject({
   dataset_id: positiveIdSchema,
@@ -140,11 +139,11 @@ export const updateDataset = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: DatasetSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateDatasetInput, 'datasets.updateDataset',
+    single: bind('datasets.updateDataset',
       (method, input) => method(input.dataset_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   /*
    * Applying the same field values again leaves the dataset in the same state. It is not
@@ -154,7 +153,7 @@ export const updateDataset = defineOperation({
    */
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deleteDatasetInput = strictObject({ dataset_id: positiveIdSchema });
 
@@ -168,14 +167,14 @@ export const deleteDataset = defineOperation({
   inputSchema: deleteDatasetInput,
   argumentMap: [{ input: 'dataset_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteDatasetInput, 'datasets.deleteDataset', (method, input) => method(input.dataset_id)),
-  },
+    single: bind('datasets.deleteDataset', (method, input) => method(input.dataset_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 // -------------------------------------------------------------------- variables
 
@@ -198,16 +197,16 @@ export const getVariables = defineOperation({
     ...safetyControlMappings(1),
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: VariableSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'response_driven',
-    page: driverCall(getVariablesInput, 'variables.getVariablesPage', (method, input) => method(input.project_id)),
-    all: driverCall(getVariablesInput, 'variables.getAllVariables',
+    page: bind('variables.getVariablesPage', (method, input) => method(input.project_id)),
+    all: bind('variables.getAllVariables',
       (method, input, context) => method(input.project_id, driverAllOptions(allControls(input._mcp), context.limits))),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const addVariableInput = strictObject({
   project_id: positiveIdSchema,
@@ -227,16 +226,16 @@ export const addVariable = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: VariableSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addVariableInput, 'variables.addVariable',
+    single: bind('variables.addVariable',
       (method, input) => method(input.project_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   // A repeat asks TestRail for a second variable of the same name, which it refuses.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateVariableInput = strictObject({
   variable_id: positiveIdSchema,
@@ -256,15 +255,15 @@ export const updateVariable = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: VariableSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateVariableInput, 'variables.updateVariable',
+    single: bind('variables.updateVariable',
       (method, input) => method(input.variable_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deleteVariableInput = strictObject({ variable_id: positiveIdSchema });
 
@@ -278,14 +277,14 @@ export const deleteVariable = defineOperation({
   inputSchema: deleteVariableInput,
   argumentMap: [{ input: 'variable_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteVariableInput, 'variables.deleteVariable', (method, input) => method(input.variable_id)),
-  },
+    single: bind('variables.deleteVariable', (method, input) => method(input.variable_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 /** Registered in tool-name order by the registry; listed here in reviewed order. */
 export const t09 = [

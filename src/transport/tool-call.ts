@@ -161,7 +161,7 @@ export async function executeToolCall(
   try {
     // Validate before anything is staged or dispatched. The original value is kept:
     // a parsed clone may drop keys the caller legitimately sent.
-    if (!operation.inputSchema.safeParse(input).success) throw new AdapterError('INVALID_ARGUMENT');
+    operation.input.validate(input);
 
     mode = selectMode(operation, input);
     if (mode === 'all') refuseBoundsAboveLimits(controls(input), limits);
