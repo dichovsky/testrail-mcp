@@ -4,6 +4,10 @@ All notable changes to `@dichovsky/testrail-mcp` are recorded here. Versions fol
 
 ## [Unreleased]
 
+### Added
+
+- A self-hosted Proxmox VE script creates a Debian 13 container for the server. MCP clients start it over SSH, the TestRail credentials stay in the container, and Debian security updates install automatically. The script lives in `proxmox/` and is not part of the npm package.
+
 ### Fixed
 
 - Shutdown bounds its wait for upload staging creation and cleanup, so a stalled temporary filesystem cannot prevent the exit grace from starting after the drain.
