@@ -334,19 +334,24 @@ const annotationMetadata = new Set([
   'title', 'description', 'examples', 'deprecated', 'readOnly', 'writeOnly', '$comment',
 ]);
 
-// The emitter silently omits check kinds it does not understand. Accept only
-// checks whose constraints this module has reviewed, plus the custom refinements
-// paired with structural metadata above.
-const representedChecks = new Set([
-  'less_than', 'greater_than', 'number_format',
-  'min_length', 'max_length', 'length_equals', 'string_format', 'custom',
-]);
+// The emitter silently omits check kinds it does not understand, and writes a check's
+// constraint only on the schema types listed here: on a union, optional or nullable
+// wrapper it drops the constraint, which the validator would then never enforce. Accept
+// only reviewed kinds on those types, plus the custom refinements paired with
+// structural metadata above.
+const checkCarriers: Readonly<Record<string, readonly string[] | undefined>> = {
+  less_than: ['number'], greater_than: ['number'], number_format: ['number'],
+  min_length: ['string', 'array'], max_length: ['string', 'array'], length_equals: ['string', 'array'],
+  string_format: ['string'],
+};
 
-// These formats are fully described by their emitted pattern (and, for email,
-// the published format). Other built-ins can perform extra checks or transforms:
-// URL trims even without normalize, JWT inspects its payload, and checks supplied
-// as functions cannot be inferred from a format name.
-const representedStringFormats = new Set(['regex', 'email', 'emoji']);
+// Only a regex is fully described by its emitted pattern. email also publishes a
+// format, which the validator enforces beyond the pattern (a dotted domain the driver's
+// own rule does not require), and emoji publishes one the validator does not know.
+// Other built-ins can perform extra checks or transforms: URL trims even without
+// normalize, JWT inspects its payload, and checks supplied as functions cannot be
+// inferred from a format name.
+const representedStringFormats = new Set(['regex']);
 
 /** Generate SDK-compatible object schemas without silently dropping refinements. */
 export function inputJsonSchema(schema: z.ZodType<object>): Tool['inputSchema'] {
@@ -386,8 +391,16 @@ export function inputJsonSchema(schema: z.ZodType<object>): Tool['inputSchema'] 
       if ('check' in definition && definition.check === 'overwrite') {
         throw new Error('Input transforms are not supported');
       }
-      if ('check' in definition && !representedChecks.has(definition.check)) {
-        throw new Error(`Input check has no reviewed JSON Schema equivalent: ${definition.check}`);
+      if ('check' in definition && definition.check !== 'custom') {
+        const carriers = checkCarriers[definition.check];
+        if (carriers === undefined) {
+          throw new Error(`Input check has no reviewed JSON Schema equivalent: ${definition.check}`);
+        }
+        if (!carriers.includes(current.def.type)) {
+          throw new Error(
+            `Input check has no reviewed JSON Schema equivalent on ${current.def.type} schemas: ${definition.check}`,
+          );
+        }
       }
       if ('check' in definition && definition.check === 'string_format' && (
         !('format' in definition) || typeof definition.format !== 'string'

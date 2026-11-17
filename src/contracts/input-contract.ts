@@ -67,9 +67,15 @@ function isJson(input: unknown): boolean {
 export function createInputContract<S extends z.ZodType<object>>(schema: S): InputContract<z.output<S>> {
   const jsonSchema = freezeDocument(structuredClone(inputJsonSchema(schema)));
   // inputJsonSchema emits draft-07. Use the SDK's bundled engine and formats,
-  // with JSON's own-member semantics even for names such as __proto__.
+  // with JSON's own-member semantics even for names such as __proto__. Stop at the first
+  // error: a rejection carries none, so collecting every error from a large invalid
+  // payload only costs time and memory. An unknown keyword or format fails registration
+  // rather than being ignored, so a constraint the validator cannot enforce is never
+  // published as if it were. The other strict checks lint schema style, and the
+  // emitter's own anyOf/required branches trip strictRequired.
   const ajv = new Ajv({
-    strict: false, validateFormats: true, validateSchema: false, allErrors: true,
+    strictSchema: true, strictTypes: false, strictTuples: false, strictRequired: false,
+    validateFormats: true, validateSchema: false, allErrors: false,
     ownProperties: true, coerceTypes: false, useDefaults: false, removeAdditional: false,
   });
   // The SDK's bundled declaration exposes this function through an untyped default.
@@ -79,8 +85,9 @@ export function createInputContract<S extends z.ZodType<object>>(schema: S): Inp
     jsonSchema,
     validate(input: unknown): z.output<S> {
       if (!isJson(input) || !validateJson(input).valid) throw new AdapterError('INVALID_ARGUMENT');
-      // Authoring rejects transforms and unsupported refinements. JSON validation
-      // proves the inferred shape; no parsed clone can lose an own __proto__ key.
+      // The authoring audit refuses constructs the emitter would drop or alter, so
+      // validating the original JSON against the published document proves the inferred
+      // shape; no parsed clone can lose an own __proto__ key.
       return input as z.output<S>;
     },
   });

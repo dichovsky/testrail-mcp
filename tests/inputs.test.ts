@@ -44,15 +44,21 @@ import {
 const validator = new AjvJsonSchemaValidator();
 const uuid = '3933d74b-4282-0000-0000-f4faaf144175';
 
-/** Literal expected outcomes exercise the same finalized interface as callers. */
+/**
+ * Literal expected outcomes run through the finalized interface callers use and through
+ * the Zod schema that types the handlers, so a constraint the published schema drops or
+ * adds cannot leave a handler's type claiming more than the runtime enforces.
+ */
 function acceptsInput(schema: z.ZodType<object>, valid: object[], invalid: unknown[]): void {
   const contract = createInputContract(schema);
   expect(contract.jsonSchema.type).toBe('object');
   for (const value of valid) {
     expect(contract.validate(value)).toBe(value);
+    expect(schema.safeParse(value).success, JSON.stringify(value)).toBe(true);
   }
   for (const value of invalid) {
     expect(() => contract.validate(value)).toThrow(AdapterError);
+    expect(schema.safeParse(value).success, JSON.stringify(value)).toBe(false);
   }
 }
 
@@ -454,9 +460,13 @@ describe('strict reuse of public driver payload schemas', () => {
     ['URL hostname restriction', z.url({ hostname: /^example\.com$/u })],
     ['JWT validation', z.jwt()],
     ['custom format function', z.stringFormat('only-ok', (value) => value === 'ok')],
-    ['custom function named as a supported format', z.stringFormat('email', (value) => value === 'ok')],
+    // email also publishes a format the validator enforces beyond the pattern (a dotted
+    // domain), and emoji publishes one it does not know; neither is described by its pattern alone.
+    ['email format', z.email({ pattern: /^[^\s@]+@[^\s@]+(?![\s\S])/u })],
+    ['emoji format', z.emoji()],
+    ['custom function named as a supported format', z.stringFormat('regex', (value) => value === 'ok')],
     ['custom format with a pattern', z.stringFormat('only-ok', /^ok$/u)],
-    ['custom format borrowing a supported name and pattern', z.stringFormat('email', /^ok$/u)],
+    ['custom format borrowing a supported name and pattern', z.stringFormat('regex', /^ok$/u)],
   ] as const)('rejects unrepresented %s both standalone and attached to a string', (_name, field) => {
     for (const value of [field, z.string().check(field)]) {
       const schema = strictObject({ value });
@@ -481,6 +491,30 @@ describe('strict reuse of public driver payload schemas', () => {
     expect(() => createInputContract(schema)).toThrow('Input check has no reviewed JSON Schema equivalent: property');
   });
 
+  // The emitter writes a check's constraint only on the schema types that carry it. On a
+  // wrapper it drops the constraint, and the published schema, which is the runtime
+  // validator, would then never enforce what Zod did. The casts stand in for an untyped
+  // caller: the optional and nullable rows do not type-check without them.
+  it.each([
+    ['union', z.union([z.string(), z.array(z.string())]).check(z.minLength(2))],
+    ['optional string', z.string().optional().check(z.minLength(2) as never)],
+    ['nullable string', z.string().nullable().check(z.maxLength(2) as never)],
+    ['optional number', z.number().optional().check(z.gt(0) as never)],
+  ] as const)('refuses a check the emitter drops when a %s wrapper carries it', (_name, field) => {
+    const schema = strictObject({ value: field });
+    expect(() => inputJsonSchema(schema)).toThrow('Input check has no reviewed JSON Schema equivalent on');
+    expect(() => createInputContract(schema)).toThrow('Input check has no reviewed JSON Schema equivalent on');
+  });
+
+  it('still accepts those checks on the node that emits them', () => {
+    acceptsInput(strictObject({
+      text: z.string().min(2).optional(),
+      list: z.array(z.string()).min(1).nullable().optional(),
+    }), [
+      {}, { text: 'ab', list: ['x'] }, { list: null },
+    ], [{ text: 'a' }, { list: [] }]);
+  });
+
   it.each([
     ['required', z.string()],
     ['optional', z.string().optional()],
@@ -494,16 +528,15 @@ describe('strict reuse of public driver payload schemas', () => {
     }
   });
 
-  it('retains supported pattern formats and numeric and array checks', () => {
+  it('retains regex patterns and numeric and array checks', () => {
     const schema = strictObject({
-      emoji: z.emoji(),
-      email: z.email({ pattern: /^[a-z]+@example\.com$/u }),
+      email: z.string().regex(/^[a-z]+@example\.com$/u),
       count: z.number().int().gt(0).lte(5),
       items: z.array(z.string().min(1).max(4)).length(1),
     });
-    const valid = { emoji: '😀', email: 'user@example.com', count: 2, items: ['ok'] };
+    const valid = { email: 'user@example.com', count: 2, items: ['ok'] };
     acceptsInput(schema, [valid], [
-      { ...valid, emoji: 'word' }, { ...valid, email: 'user@different.com' },
+      { ...valid, email: 'user@different.com' },
       { ...valid, count: 0 }, { ...valid, count: 6 }, { ...valid, count: 1.5 },
       { ...valid, items: [] }, { ...valid, items: [''] }, { ...valid, items: ['longer'] },
     ]);

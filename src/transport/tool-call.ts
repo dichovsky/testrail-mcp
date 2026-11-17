@@ -159,8 +159,8 @@ export async function executeToolCall(
     : AbortSignal.any([abandon.signal, dependencies.signal]);
 
   try {
-    // Validate before anything is staged or dispatched. The original value is kept:
-    // a parsed clone may drop keys the caller legitimately sent.
+    // Validate before anything is staged or dispatched. Validation never replaces the
+    // caller's value, so every later step reads the original JSON, own __proto__ keys included.
     operation.input.validate(input);
 
     mode = selectMode(operation, input);
