@@ -255,6 +255,7 @@ describe('the stand-in\'s reserved IDs', () => {
     // A generated item carries a new ID, which drifts to text like every number.
     const withoutId = (item: object) => Object.fromEntries(Object.entries(item).filter(([key]) => key !== 'id'));
     expect(withoutId(cases.cases[0] ?? {})).toEqual(withoutId(flipped(firstCase)));
+    // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- The cast narrows `object` to a type with `id`; tsgolint wrongly calls it unnecessary, and removing it fails tsc (TS2339).
     expect(typeof (cases.cases[0] as { id?: unknown } | undefined)?.id).toBe('string');
     // Only the first item drifts; the rest are the fixture's under new IDs.
     expect(cases.cases.length).toBeGreaterThan(1);
