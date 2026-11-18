@@ -5,13 +5,11 @@ import {
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
 import {
-  createListInput, nonnegativeIntegerSchema, payloadInput, positiveIdSchema, strictObject,
+  nonnegativeIntegerSchema, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
-import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
-import { defineOperation, type ArgumentMapping } from '../registry.js';
-import {
-  aggregateControlMappings, allControls, control, pageResponse, recordResponse,
-} from './common.js';
+import { defineOperation } from '../registry.js';
+import { createListDefinition, type ListFilters } from '../lists.js';
+import { recordResponse } from './common.js';
 
 // ----------------------------------------------------------------------- labels
 
@@ -41,10 +39,11 @@ export const getLabel = defineOperation({
  * gives get_labels a project and the paging controls and nothing else, and the driver's
  * prepare step passes only the project, so there is no filter to map.
  */
-const getLabelsInput = createListInput({
-  path: { project_id: positiveIdSchema },
-  query: {},
+const getLabelsList = createListDefinition({
+  path: { project_id: { schema: positiveIdSchema, argument: 0 } },
   pagination: 'controlled',
+  optionsArgument: 1,
+  entitySchema: LabelSchema,
 });
 
 export const getLabels = defineOperation({
@@ -54,21 +53,15 @@ export const getLabels = defineOperation({
   family: 'T07',
   driverBinding: 'labels.getLabels',
   summary: 'List the labels of a TestRail project (TestRail 10.5 or later). The endpoint takes no filter beyond the project, so narrow the result by reading the labels you need individually.',
-  inputSchema: getLabelsInput,
-  argumentMap: [
-    { input: 'project_id', call: 'page', argument: 0, serialization: 'path' },
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'project_id', call: 'all', argument: 0, serialization: 'path' },
-    ...aggregateControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: LabelSchema },
-  pagination: (bind) => ({
-    kind: 'controlled',
-    page: bind('labels.getLabelsPage', (method, input) => method(input.project_id,
-      pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }))),
-    all: bind('labels.getAllLabels', (method, input, context) => method(input.project_id,
-      driverAllOptions(allControls(input._mcp), context.limits))),
+  ...getLabelsList.bind({
+    page: {
+      binding: 'labels.getLabelsPage',
+      call: (method, input, options) => method(input.project_id, options),
+    },
+    all: {
+      binding: 'labels.getAllLabels',
+      call: (method, input, options) => method(input.project_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
@@ -206,41 +199,16 @@ export const getMilestone = defineOperation({
   retry: 'ordinary-read',
 });
 
-const getMilestonesInput = createListInput({
-  path: { project_id: positiveIdSchema },
-  query: {
-    is_completed: z.boolean().optional(),
-    is_started: z.boolean().optional(),
-  },
+const getMilestonesList = createListDefinition({
+  path: { project_id: { schema: positiveIdSchema, argument: 0 } },
   pagination: 'controlled',
+  optionsArgument: 1,
+  filters: {
+    is_completed: { schema: z.boolean().optional(), property: 'isCompleted', serialization: 'query-scalar' },
+    is_started: { schema: z.boolean().optional(), property: 'isStarted', serialization: 'query-scalar' },
+  } satisfies ListFilters<GetMilestonesOptions>,
+  entitySchema: MilestoneSchema,
 });
-
-/** Derived from the driver's own option type, so a rename there fails the build here. */
-type MilestoneFilter = Pick<GetMilestonesOptions, 'isCompleted' | 'isStarted'>;
-
-/*
- * The driver also accepts the deprecated numeric spellings is_completed and is_started,
- * which mean the same thing. Only the boolean names are exposed: two ways to say one
- * thing at the boundary would be two things to keep agreeing with each other.
- */
-const milestoneFilterNames = {
-  is_completed: 'isCompleted', is_started: 'isStarted',
-} as const satisfies Readonly<Record<string, keyof MilestoneFilter>>;
-
-function milestoneFilter(query: object | undefined): MilestoneFilter {
-  const source = (query ?? {}) as Record<string, unknown>;
-  const filter: Record<string, unknown> = {};
-  for (const [name, option] of Object.entries(milestoneFilterNames)) {
-    if (source[name] !== undefined) filter[option] = source[name];
-  }
-  return filter;
-}
-
-function milestoneFilterMappings(call: 'page' | 'all'): readonly ArgumentMapping[] {
-  return Object.entries(milestoneFilterNames).map(([name, property]) => ({
-    input: `query.${name}`, call, argument: 1, property, serialization: 'query-scalar' as const,
-  }));
-}
 
 export const getMilestones = defineOperation({
   token: 'get_milestones',
@@ -249,27 +217,15 @@ export const getMilestones = defineOperation({
   family: 'T07',
   driverBinding: 'milestones.getMilestones',
   summary: 'List the milestones of a TestRail project, optionally filtered by completion or by whether they have started. Both filters are booleans here and reach TestRail as 1 or 0.',
-  inputSchema: getMilestonesInput,
-  argumentMap: [
-    { input: 'project_id', call: 'page', argument: 0, serialization: 'path' },
-    ...milestoneFilterMappings('page'),
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'project_id', call: 'all', argument: 0, serialization: 'path' },
-    ...milestoneFilterMappings('all'),
-    ...aggregateControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: MilestoneSchema },
-  pagination: (bind) => ({
-    kind: 'controlled',
-    page: bind('milestones.getMilestonesPage', (method, input) => method(input.project_id, {
-      ...milestoneFilter(input.query),
-      ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    })),
-    all: bind('milestones.getAllMilestones', (method, input, context) => method(input.project_id, {
-      ...milestoneFilter(input.query),
-      ...driverAllOptions(allControls(input._mcp), context.limits),
-    })),
+  ...getMilestonesList.bind({
+    page: {
+      binding: 'milestones.getMilestonesPage',
+      call: (method, input, options) => method(input.project_id, options),
+    },
+    all: {
+      binding: 'milestones.getAllMilestones',
+      call: (method, input, options) => method(input.project_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },

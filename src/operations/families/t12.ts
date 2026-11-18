@@ -1,12 +1,12 @@
 import { AttachmentSchema } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
 import {
-  attachmentIdSchema, contentTypeSchema, createListInput, entryIdSchema, filenameSchema, filePathSchema,
+  attachmentIdSchema, contentTypeSchema, entryIdSchema, filenameSchema, filePathSchema,
   positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
-import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
 import { defineOperation } from '../registry.js';
-import { aggregateControlMappings, allControls, control, pageResponse, recordResponse, staged } from './common.js';
+import { createListDefinition } from '../lists.js';
+import { recordResponse, staged } from './common.js';
 
 /*
  * Attachments are the one family that moves files both ways. A download is a GET, but
@@ -63,7 +63,12 @@ export const getAttachment = defineOperation({
 
 // --------------------------------------------------------------------- lists
 
-const getAttachmentsForCaseInput = createListInput({ path: { case_id: positiveIdSchema }, pagination: 'controlled' });
+const getAttachmentsForCaseList = createListDefinition({
+  path: { case_id: { schema: positiveIdSchema, argument: 0 } },
+  pagination: 'controlled',
+  optionsArgument: 1,
+  entitySchema: AttachmentSchema,
+});
 
 export const getAttachmentsForCase = defineOperation({
   token: 'get_attachments_for_case',
@@ -72,32 +77,27 @@ export const getAttachmentsForCase = defineOperation({
   family: 'T12',
   driverBinding: 'attachments.getAttachmentsForCase',
   summary: 'List the attachments of a TestRail test case (TestRail 5.7 or later; limit and offset need 6.7 or later). Each entry carries the attachment\'s id, an integer or a UUID from release 7.1 (cloud) on, with its name, size and upload time; pass the id to testrail_get_attachment to download the file. TestRail answers 400 for an invalid case ID and 403 when the configured user has no access to the project or lacks permission.',
-  inputSchema: getAttachmentsForCaseInput,
-  argumentMap: [
-    { input: 'case_id', call: 'page', argument: 0, serialization: 'path' },
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'case_id', call: 'all', argument: 0, serialization: 'path' },
-    ...aggregateControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: AttachmentSchema },
-  pagination: (bind) => ({
-    kind: 'controlled',
-    page: bind('attachments.getAttachmentsForCasePage', (method, input) => method(
-      input.case_id,
-      pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    )),
-    all: bind('attachments.getAllAttachmentsForCase', (method, input, context) => method(
-      input.case_id,
-      driverAllOptions(allControls(input._mcp), context.limits),
-    )),
+  ...getAttachmentsForCaseList.bind({
+    page: {
+      binding: 'attachments.getAttachmentsForCasePage',
+      call: (method, input, options) => method(input.case_id, options),
+    },
+    all: {
+      binding: 'attachments.getAllAttachmentsForCase',
+      call: (method, input, options) => method(input.case_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
 });
 
-const getAttachmentsForPlanInput = createListInput({ path: { plan_id: positiveIdSchema }, pagination: 'controlled' });
+const getAttachmentsForPlanList = createListDefinition({
+  path: { plan_id: { schema: positiveIdSchema, argument: 0 } },
+  pagination: 'controlled',
+  optionsArgument: 1,
+  entitySchema: AttachmentSchema,
+});
 
 export const getAttachmentsForPlan = defineOperation({
   token: 'get_attachments_for_plan',
@@ -106,25 +106,15 @@ export const getAttachmentsForPlan = defineOperation({
   family: 'T12',
   driverBinding: 'attachments.getAttachmentsForPlan',
   summary: 'List the attachments of a TestRail test plan (TestRail 6.3 or later; limit and offset need 6.7 or later). Each entry carries the attachment\'s id, with its name, size and upload time; pass the id to testrail_get_attachment to download the file. TestRail\'s reference does not say whether attachments on the plan\'s entries are included; testrail_get_attachments_for_plan_entry lists an entry\'s own. ' + BARE_ARRAY + ' TestRail answers 400 for an invalid ID and 403 when the configured user has no access to the project or lacks permission.',
-  inputSchema: getAttachmentsForPlanInput,
-  argumentMap: [
-    { input: 'plan_id', call: 'page', argument: 0, serialization: 'path' },
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'plan_id', call: 'all', argument: 0, serialization: 'path' },
-    ...aggregateControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: AttachmentSchema },
-  pagination: (bind) => ({
-    kind: 'controlled',
-    page: bind('attachments.getAttachmentsForPlanPage', (method, input) => method(
-      input.plan_id,
-      pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    )),
-    all: bind('attachments.getAllAttachmentsForPlan', (method, input, context) => method(
-      input.plan_id,
-      driverAllOptions(allControls(input._mcp), context.limits),
-    )),
+  ...getAttachmentsForPlanList.bind({
+    page: {
+      binding: 'attachments.getAttachmentsForPlanPage',
+      call: (method, input, options) => method(input.plan_id, options),
+    },
+    all: {
+      binding: 'attachments.getAllAttachmentsForPlan',
+      call: (method, input, options) => method(input.plan_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
@@ -156,7 +146,12 @@ export const getAttachmentsForPlanEntry = defineOperation({
   retry: 'ordinary-read',
 });
 
-const getAttachmentsForRunInput = createListInput({ path: { run_id: positiveIdSchema }, pagination: 'controlled' });
+const getAttachmentsForRunList = createListDefinition({
+  path: { run_id: { schema: positiveIdSchema, argument: 0 } },
+  pagination: 'controlled',
+  optionsArgument: 1,
+  entitySchema: AttachmentSchema,
+});
 
 export const getAttachmentsForRun = defineOperation({
   token: 'get_attachments_for_run',
@@ -165,25 +160,15 @@ export const getAttachmentsForRun = defineOperation({
   family: 'T12',
   driverBinding: 'attachments.getAttachmentsForRun',
   summary: 'List the attachments of a TestRail test run (TestRail 6.3 or later; limit and offset need 6.7 or later). Each entry carries the attachment\'s id, with its name, size and upload time; pass the id to testrail_get_attachment to download the file. ' + BARE_ARRAY + ' TestRail answers 400 for an invalid ID and 403 when the configured user has no access to the project or lacks permission.',
-  inputSchema: getAttachmentsForRunInput,
-  argumentMap: [
-    { input: 'run_id', call: 'page', argument: 0, serialization: 'path' },
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'run_id', call: 'all', argument: 0, serialization: 'path' },
-    ...aggregateControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: AttachmentSchema },
-  pagination: (bind) => ({
-    kind: 'controlled',
-    page: bind('attachments.getAttachmentsForRunPage', (method, input) => method(
-      input.run_id,
-      pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    )),
-    all: bind('attachments.getAllAttachmentsForRun', (method, input, context) => method(
-      input.run_id,
-      driverAllOptions(allControls(input._mcp), context.limits),
-    )),
+  ...getAttachmentsForRunList.bind({
+    page: {
+      binding: 'attachments.getAttachmentsForRunPage',
+      call: (method, input, options) => method(input.run_id, options),
+    },
+    all: {
+      binding: 'attachments.getAllAttachmentsForRun',
+      call: (method, input, options) => method(input.run_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },

@@ -3,10 +3,10 @@ import {
   UpdateVariablePayloadSchema, VariableSchema,
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
-import { createListInput, payloadInput, positiveIdSchema, strictObject } from '../../contracts/inputs.js';
-import { driverAllOptions } from '../../contracts/pagination.js';
+import { payloadInput, positiveIdSchema, strictObject } from '../../contracts/inputs.js';
 import { defineOperation } from '../registry.js';
-import { allControls, pageResponse, recordResponse, safetyControlMappings } from './common.js';
+import { createListDefinition } from '../lists.js';
+import { recordResponse } from './common.js';
 
 /*
  * Every endpoint in this family answers 403 "Not an Enterprise license/subscription" on
@@ -52,9 +52,11 @@ export const getDataset = defineOperation({
  * what no one here chooses is the page size. A complete read that stops at a safety bound
  * cannot be resumed from where it stopped.
  */
-const getDatasetsInput = createListInput({
-  path: { project_id: positiveIdSchema },
+const getDatasetsList = createListDefinition({
+  path: { project_id: { schema: positiveIdSchema, argument: 0 } },
   pagination: 'response-driven',
+  optionsArgument: 1,
+  entitySchema: DatasetSchema,
 });
 
 export const getDatasets = defineOperation({
@@ -64,18 +66,15 @@ export const getDatasets = defineOperation({
   family: 'T09',
   driverBinding: 'datasets.getDatasets',
   summary: 'List the datasets of a TestRail project, each with its variable values. This endpoint accepts no paging controls, so the server chooses each page; a complete read that stops at one of its bounds cannot be resumed from where it stopped, and needs a larger bound instead. Datasets are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription.',
-  inputSchema: getDatasetsInput,
-  argumentMap: [
-    { input: 'project_id', call: 'page', argument: 0, serialization: 'path' },
-    { input: 'project_id', call: 'all', argument: 0, serialization: 'path' },
-    ...safetyControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: DatasetSchema },
-  pagination: (bind) => ({
-    kind: 'response_driven',
-    page: bind('datasets.getDatasetsPage', (method, input) => method(input.project_id)),
-    all: bind('datasets.getAllDatasets',
-      (method, input, context) => method(input.project_id, driverAllOptions(allControls(input._mcp), context.limits))),
+  ...getDatasetsList.bind({
+    page: {
+      binding: 'datasets.getDatasetsPage',
+      call: (method, input) => method(input.project_id),
+    },
+    all: {
+      binding: 'datasets.getAllDatasets',
+      call: (method, input, options) => method(input.project_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
@@ -178,9 +177,11 @@ export const deleteDataset = defineOperation({
 
 // -------------------------------------------------------------------- variables
 
-const getVariablesInput = createListInput({
-  path: { project_id: positiveIdSchema },
+const getVariablesList = createListDefinition({
+  path: { project_id: { schema: positiveIdSchema, argument: 0 } },
   pagination: 'response-driven',
+  optionsArgument: 1,
+  entitySchema: VariableSchema,
 });
 
 export const getVariables = defineOperation({
@@ -190,18 +191,15 @@ export const getVariables = defineOperation({
   family: 'T09',
   driverBinding: 'variables.getVariables',
   summary: 'List the variables of a TestRail project. A variable carries an identifier and a name only; the value a dataset gives it is read through the dataset tools. This endpoint accepts no paging controls, so the server chooses each page; a complete read that stops at one of its bounds cannot be resumed from where it stopped, and needs a larger bound instead. Variables are an Enterprise feature: TestRail answers 403 on an instance without an Enterprise license or subscription.',
-  inputSchema: getVariablesInput,
-  argumentMap: [
-    { input: 'project_id', call: 'page', argument: 0, serialization: 'path' },
-    { input: 'project_id', call: 'all', argument: 0, serialization: 'path' },
-    ...safetyControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: VariableSchema },
-  pagination: (bind) => ({
-    kind: 'response_driven',
-    page: bind('variables.getVariablesPage', (method, input) => method(input.project_id)),
-    all: bind('variables.getAllVariables',
-      (method, input, context) => method(input.project_id, driverAllOptions(allControls(input._mcp), context.limits))),
+  ...getVariablesList.bind({
+    page: {
+      binding: 'variables.getVariablesPage',
+      call: (method, input) => method(input.project_id),
+    },
+    all: {
+      binding: 'variables.getAllVariables',
+      call: (method, input, options) => method(input.project_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },

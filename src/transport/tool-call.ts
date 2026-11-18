@@ -1,13 +1,12 @@
-import type { Page, TestRailClient } from '@dichovsky/testrail-api-client';
+import type { TestRailClient } from '@dichovsky/testrail-api-client';
 import type { Configuration } from '../config/environment.js';
-import type { Limits } from '../config/limits.js';
 import { advisoryWarnings } from '../contracts/drift.js';
 import { AdapterError, classifyError } from '../contracts/errors.js';
-import { aggregateMetadata, pageMetadata } from '../contracts/pagination.js';
 import { errorResult, successResult, validateOuter, type ProtocolResultFields, type ToolResult } from '../contracts/results.js';
 import { writeDownload } from '../files/download.js';
 import { stageUpload, type StagedUpload } from '../files/staging.js';
 import type { CallContext, DriverCall } from '../operations/driver-call.js';
+import { prepareListCall, type ListResult } from '../operations/lists.js';
 import type { Operation } from '../operations/registry.js';
 import type { Runtime } from '../runtime/invocation.js';
 import { correlationId, logEvent } from './diagnostics.js';
@@ -24,46 +23,6 @@ export interface CallDependencies {
 }
 
 type Mode = 'single' | 'page' | 'all';
-
-/** Reserved adapter input; never forwarded to TestRail as a parameter. */
-interface AdapterControls {
-  readonly pagination?: 'page' | 'all';
-  readonly start_offset?: number;
-  readonly max_items?: number;
-  readonly max_pages?: number;
-  readonly max_bytes?: number;
-  readonly max_duration_ms?: number;
-}
-
-/** Each aggregate bound a caller may state, and the configured limit it may not exceed. */
-const aggregateBounds = [
-  ['max_items', 'max_all_items'],
-  ['max_pages', 'max_all_pages'],
-  ['max_bytes', 'max_all_bytes'],
-  ['max_duration_ms', 'max_all_duration_ms'],
-] as const satisfies readonly (readonly [keyof AdapterControls, keyof Limits])[];
-
-/**
- * The operator's configured limit is the bound a caller may lower but never raise.
- *
- * The input schema is built when the module loads, before the configuration is read, so
- * the ceiling it enforces is the built-in default. A stated bound between the configured
- * limit and that default would otherwise pass validation and reach the driver verbatim.
- * It is refused rather than clamped, so the aggregate never quietly does less than the
- * caller asked.
- */
-function refuseBoundsAboveLimits(stated: AdapterControls, limits: Limits): void {
-  for (const [bound, limit] of aggregateBounds) {
-    const value = stated[bound];
-    if (value !== undefined && value > limits[limit]) throw new AdapterError('INVALID_ARGUMENT');
-  }
-}
-
-function controls(input: unknown): AdapterControls {
-  if (typeof input !== 'object' || input === null) return {};
-  const mcp = (input as { _mcp?: unknown })._mcp;
-  return typeof mcp === 'object' && mcp !== null && !Array.isArray(mcp) ? mcp : {};
-}
 
 /**
  * The registry reserves these as flat top-level inputs for upload operations
@@ -92,20 +51,6 @@ function attachmentId(input: unknown): number | string | undefined {
     ? (input as { attachment_id?: unknown }).attachment_id
     : undefined;
   return typeof value === 'number' || typeof value === 'string' ? value : undefined;
-}
-
-function selectMode(operation: Operation, input: unknown): Mode {
-  if (operation.pagination.kind === 'none') return 'single';
-  return controls(input).pagination === 'all' ? 'all' : 'page';
-}
-
-function selectCall(operation: Operation, mode: Mode): DriverCall {
-  if (operation.pagination.kind === 'none') return operation.pagination.single;
-  return mode === 'all' ? operation.pagination.all : operation.pagination.page;
-}
-
-function isPage(value: unknown): value is Page<unknown> {
-  return typeof value === 'object' && value !== null && Array.isArray((value as { items?: unknown }).items);
 }
 
 /** Whether a preview reply names at least one of its counters with a value. */
@@ -163,9 +108,16 @@ export async function executeToolCall(
     // caller's value, so every later step reads the original JSON, own __proto__ keys included.
     operation.input.validate(input);
 
-    mode = selectMode(operation, input);
-    if (mode === 'all') refuseBoundsAboveLimits(controls(input), limits);
-    const call = selectCall(operation, mode);
+    let call: DriverCall;
+    let listResult: ((value: unknown) => ListResult) | undefined;
+    if (operation.pagination.kind === 'none') {
+      call = operation.pagination.single;
+    } else {
+      const list = prepareListCall(operation.pagination, operation.response.outerSchema, input, limits);
+      mode = list.mode;
+      call = list.call;
+      listResult = list.result;
+    }
     let request: ReturnType<typeof uploadRequest>;
     let stagingDirectory: (() => Promise<string>) | undefined;
 
@@ -247,19 +199,8 @@ export async function executeToolCall(
 
     if (download) {
       // The value is already the written file's identifier, path and size: bytes have no envelope to check.
-    } else if (mode === 'page') {
-      validateOuter(operation.response.outerSchema, value);
-      if (!isPage(value)) throw new AdapterError('INVALID_RESPONSE');
-      data = value.items;
-      pagination = pageMetadata(value, { responseDriven: operation.pagination.kind === 'response_driven' });
-    } else if (mode === 'all') {
-      // The aggregate helper returns a plain array, not the page envelope the
-      // operation's outer schema describes, so that schema does not apply here.
-      if (!Array.isArray(value)) throw new AdapterError('INVALID_RESPONSE');
-      const startOffset = controls(input).start_offset;
-      pagination = aggregateMetadata(value, operation.pagination.kind === 'response_driven'
-        ? {}
-        : { startOffset: startOffset ?? 0 });
+    } else if (listResult !== undefined) {
+      ({ data, pagination } = listResult(value));
     } else {
       validateOuter(operation.response.outerSchema, value);
     }

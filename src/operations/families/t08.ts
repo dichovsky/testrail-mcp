@@ -4,11 +4,11 @@ import {
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
 import {
-  createListInput, emailSchema, payloadInput, positiveIdSchema, strictObject,
+  emailSchema, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
-import { driverAllOptions } from '../../contracts/pagination.js';
 import { defineOperation } from '../registry.js';
-import { allControls, control, pageResponse, recordResponse, safetyControlMappings } from './common.js';
+import { createListDefinition } from '../lists.js';
+import { recordResponse } from './common.js';
 
 // ------------------------------------------------------------------------ users
 
@@ -106,7 +106,7 @@ export const getUsers = defineOperation({
   pagination: (bind) => ({
     kind: 'none',
     single: bind('users.getUsers', (method, input) => {
-      const project = control(input.query, 'project_id');
+      const project = input.query?.project_id;
       return project === undefined ? method() : method(project);
     }),
   }),
@@ -209,7 +209,11 @@ export const getGroup = defineOperation({
  * the server chooses each page. A complete read that stops at one of its safety bounds
  * cannot be resumed from where it stopped; it needs a larger bound instead.
  */
-const getGroupsInput = createListInput({ path: {}, pagination: 'response-driven' });
+const getGroupsList = createListDefinition({
+  pagination: 'response-driven',
+  optionsArgument: 0,
+  entitySchema: GroupSchema,
+});
 
 export const getGroups = defineOperation({
   token: 'get_groups',
@@ -218,14 +222,15 @@ export const getGroups = defineOperation({
   family: 'T08',
   driverBinding: 'users.getGroups',
   summary: 'List the TestRail user groups of the instance. This endpoint accepts no paging controls, so the server chooses each page; a complete read that stops at one of its bounds cannot be resumed from where it stopped, and needs a larger bound instead.',
-  inputSchema: getGroupsInput,
-  argumentMap: [...safetyControlMappings(0)],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: GroupSchema },
-  pagination: (bind) => ({
-    kind: 'response_driven',
-    page: bind('users.getGroupsPage', (method) => method()),
-    all: bind('users.getAllGroups',
-      (method, input, context) => method(driverAllOptions(allControls(input._mcp), context.limits))),
+  ...getGroupsList.bind({
+    page: {
+      binding: 'users.getGroupsPage',
+      call: (method) => method(),
+    },
+    all: {
+      binding: 'users.getAllGroups',
+      call: (method, _input, options) => method(options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
@@ -319,7 +324,11 @@ export const deleteGroup = defineOperation({
 
 // ------------------------------------------------------------------------ roles
 
-const getRolesInput = createListInput({ path: {}, pagination: 'response-driven' });
+const getRolesList = createListDefinition({
+  pagination: 'response-driven',
+  optionsArgument: 0,
+  entitySchema: RoleSchema,
+});
 
 export const getRoles = defineOperation({
   token: 'get_roles',
@@ -328,14 +337,15 @@ export const getRoles = defineOperation({
   family: 'T08',
   driverBinding: 'metadata.getRoles',
   summary: 'List the TestRail user roles of the instance (TestRail 7.3 or later). is_project_admin appears on TestRail Enterprise only. This endpoint accepts no paging controls, so the server chooses each page; a complete read that stops at one of its bounds cannot be resumed from where it stopped, and needs a larger bound instead.',
-  inputSchema: getRolesInput,
-  argumentMap: [...safetyControlMappings(0)],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: RoleSchema },
-  pagination: (bind) => ({
-    kind: 'response_driven',
-    page: bind('metadata.getRolesPage', (method) => method()),
-    all: bind('metadata.getAllRoles',
-      (method, input, context) => method(driverAllOptions(allControls(input._mcp), context.limits))),
+  ...getRolesList.bind({
+    page: {
+      binding: 'metadata.getRolesPage',
+      call: (method) => method(),
+    },
+    all: {
+      binding: 'metadata.getAllRoles',
+      call: (method, _input, options) => method(options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
