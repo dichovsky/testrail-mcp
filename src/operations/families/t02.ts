@@ -9,8 +9,7 @@ import {
   positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
 import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
-import { driverCall } from '../driver-call.js';
-import { defineOperation, type ArgumentMapping, type OperationDefinition } from '../registry.js';
+import { defineOperation, type ArgumentMapping } from '../registry.js';
 import { aggregateControlMappings, allControls, control, flag, pageResponse, recordResponse, softDeletePreview } from './common.js';
 
 const getCaseInput = strictObject({ case_id: positiveIdSchema });
@@ -25,14 +24,14 @@ export const getCase = defineOperation({
   inputSchema: getCaseInput,
   argumentMap: [{ input: 'case_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: CaseSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getCaseInput, 'cases.getCase', (method, input) => method(input.case_id)),
-  },
+    single: bind('cases.getCase', (method, input) => method(input.case_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /** One reference sends refs=; several send the repeated refs[] form TestRail 10.7 accepts. */
 const caseRefsSchema = z.union([z.string(), z.array(z.string()).min(1)]);
@@ -116,21 +115,21 @@ export const getCases = defineOperation({
     ...aggregateControlMappings(1),
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: CaseSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'controlled',
-    page: driverCall(getCasesInput, 'cases.getCasesPage', (method, input) => method(input.project_id, {
+    page: bind('cases.getCasesPage', (method, input) => method(input.project_id, {
       ...caseFilter(input.query),
       ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
     })),
-    all: driverCall(getCasesInput, 'cases.getAllCases', (method, input, context) => method(input.project_id, {
+    all: bind('cases.getAllCases', (method, input, context) => method(input.project_id, {
       ...caseFilter(input.query),
       ...driverAllOptions(allControls(input._mcp), context.limits),
     })),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const getCaseTitlesInput = strictObject({ query: strictObject({ case_ids: caseIdsSchema }) });
 
@@ -144,14 +143,14 @@ export const getCaseTitles = defineOperation({
   inputSchema: getCaseTitlesInput,
   argumentMap: [{ input: 'query.case_ids', call: 'single', argument: 0, serialization: 'query-list' }],
   response: { shape: 'array', outerSchema: z.array(z.unknown()), entitySchema: CaseTitleSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getCaseTitlesInput, 'cases.getCaseTitles', (method, input) => method(input.query.case_ids)),
-  },
+    single: bind('cases.getCaseTitles', (method, input) => method(input.query.case_ids)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const getHistoryForCaseInput = createListInput({ path: { case_id: positiveIdSchema }, pagination: 'controlled' });
 
@@ -171,21 +170,21 @@ export const getHistoryForCase = defineOperation({
     ...aggregateControlMappings(1),
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: HistoryEntrySchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'controlled',
-    page: driverCall(getHistoryForCaseInput, 'cases.getHistoryForCasePage', (method, input) => method(
+    page: bind('cases.getHistoryForCasePage', (method, input) => method(
       input.case_id,
       pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
     )),
-    all: driverCall(getHistoryForCaseInput, 'cases.getAllHistoryForCase', (method, input, context) => method(
+    all: bind('cases.getAllHistoryForCase', (method, input, context) => method(
       input.case_id,
       driverAllOptions(allControls(input._mcp), context.limits),
     )),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 // The driver forwards any number for these; a fractional, non-positive or unsafe value can
 // never name an existing template, type, priority, milestone or section, so they are held
@@ -219,15 +218,15 @@ export const addCase = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: CaseSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addCaseInput, 'cases.addCase', (method, input) => method(input.section_id, input.body)),
-  },
+    single: bind('cases.addCase', (method, input) => method(input.section_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Repeating the call creates another case, so this is not idempotent.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const addCasesInput = strictObject({
   section_id: positiveIdSchema,
@@ -248,15 +247,15 @@ export const addCases = defineOperation({
   ],
   // The driver unwraps TestRail's { cases: [...] } reply and fails closed on any other.
   response: { shape: 'array', outerSchema: z.array(z.unknown()), entitySchema: CaseSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addCasesInput, 'cases.addCases', (method, input) => method(input.section_id, input.body)),
-  },
+    single: bind('cases.addCases', (method, input) => method(input.section_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Repeating the call creates the cases again, so this is not idempotent.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateCaseInput = strictObject({
   case_id: positiveIdSchema,
@@ -279,15 +278,15 @@ export const updateCase = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: CaseSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateCaseInput, 'cases.updateCase', (method, input) => method(input.case_id, input.body)),
-  },
+    single: bind('cases.updateCase', (method, input) => method(input.case_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Applying the same field values again leaves the case in the same state.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateCasesInput = strictObject({
   suite_id: positiveIdSchema,
@@ -311,15 +310,15 @@ export const updateCases = defineOperation({
   ],
   // The driver unwraps TestRail's { updated_cases: [...] } reply and fails closed on any other.
   response: { shape: 'array', outerSchema: z.array(z.unknown()), entitySchema: CaseSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateCasesInput, 'cases.updateCases', (method, input) => method(input.suite_id, input.body)),
-  },
+    single: bind('cases.updateCases', (method, input) => method(input.suite_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Applying the same field values again leaves the cases in the same state.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deleteCaseInput = strictObject({
   case_id: positiveIdSchema,
@@ -341,18 +340,18 @@ export const deleteCase = defineOperation({
   // Void after a deletion; TestRail's affected-entity counts after a preview, which are
   // drift-checked advisorily and must carry at least one count (see softDeletePreview).
   response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null, preview: softDeletePreview },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteCaseInput, 'cases.deleteCase', (method, input) => {
+    single: bind('cases.deleteCase', (method, input) => {
       const soft = flag(input.query, 'soft');
       return soft === undefined ? method(input.case_id) : method(input.case_id, { soft });
     }),
-  },
+  }),
   files: { kind: 'none' },
   // A preview is possible, but the tool as a whole is destructive and never idempotent.
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 // TestRail takes the suite in the path and the project as a query control; the body
 // carries only the case IDs, and the driver refuses a body-level soft flag.
@@ -377,19 +376,19 @@ export const deleteCases = defineOperation({
     { input: 'query.soft', call: 'single', argument: 3, property: 'soft', serialization: 'query-scalar' },
   ],
   response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null, preview: softDeletePreview },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteCasesInput, 'cases.deleteCases', (method, input) => {
+    single: bind('cases.deleteCases', (method, input) => {
       const { project_id: projectId, soft } = input.query;
       return soft === undefined
         ? method(input.suite_id, projectId, input.body)
         : method(input.suite_id, projectId, input.body, { soft });
     }),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const copyCasesToSectionInput = strictObject({
   section_id: positiveIdSchema,
@@ -410,16 +409,16 @@ export const copyCasesToSection = defineOperation({
   ],
   // TestRail replies with an empty body and the driver resolves with no value.
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(copyCasesToSectionInput, 'cases.copyCasesToSection',
+    single: bind('cases.copyCasesToSection',
       (method, input) => method(input.section_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   // Repeating the call creates another set of copies, so this is not idempotent.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const moveCasesToSectionInput = strictObject({
   section_id: positiveIdSchema,
@@ -439,16 +438,16 @@ export const moveCasesToSection = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(moveCasesToSectionInput, 'cases.moveCasesToSection',
+    single: bind('cases.moveCasesToSection',
       (method, input) => method(input.section_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   // Moving to the same section again leaves the cases where they are.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 /** Registered in tool-name order by the registry; listed here in reviewed order. */
 export const t02 = [

@@ -8,8 +8,7 @@ import {
   createListInput, nonnegativeIntegerSchema, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
 import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
-import { driverCall } from '../driver-call.js';
-import { defineOperation, type ArgumentMapping, type OperationDefinition } from '../registry.js';
+import { defineOperation, type ArgumentMapping } from '../registry.js';
 import {
   aggregateControlMappings, allControls, control, pageResponse, recordResponse,
 } from './common.js';
@@ -28,14 +27,14 @@ export const getLabel = defineOperation({
   inputSchema: getLabelInput,
   argumentMap: [{ input: 'label_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: LabelSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getLabelInput, 'labels.getLabel', (method, input) => method(input.label_id)),
-  },
+    single: bind('labels.getLabel', (method, input) => method(input.label_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /*
  * The one list in this family that documents no filter of its own. TestRail's reference
@@ -64,17 +63,17 @@ export const getLabels = defineOperation({
     ...aggregateControlMappings(1),
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: LabelSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'controlled',
-    page: driverCall(getLabelsInput, 'labels.getLabelsPage', (method, input) => method(input.project_id,
+    page: bind('labels.getLabelsPage', (method, input) => method(input.project_id,
       pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }))),
-    all: driverCall(getLabelsInput, 'labels.getAllLabels', (method, input, context) => method(input.project_id,
+    all: bind('labels.getAllLabels', (method, input, context) => method(input.project_id,
       driverAllOptions(allControls(input._mcp), context.limits))),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const addLabelInput = strictObject({
   project_id: positiveIdSchema,
@@ -99,15 +98,15 @@ export const addLabel = defineOperation({
    * union that unwraps the wrapper, so a caller sees one record either way.
    */
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: LabelSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addLabelInput, 'labels.addLabel', (method, input) => method(input.project_id, input.body)),
-  },
+    single: bind('labels.addLabel', (method, input) => method(input.project_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Repeating the call asks TestRail for another label of the same title.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateLabelInput = strictObject({
   label_id: positiveIdSchema,
@@ -127,15 +126,15 @@ export const updateLabel = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: LabelSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateLabelInput, 'labels.updateLabel', (method, input) => method(input.label_id, input.body)),
-  },
+    single: bind('labels.updateLabel', (method, input) => method(input.label_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Applying the same title again leaves the label in the same state.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deleteLabelInput = strictObject({ label_id: positiveIdSchema });
 
@@ -149,14 +148,14 @@ export const deleteLabel = defineOperation({
   inputSchema: deleteLabelInput,
   argumentMap: [{ input: 'label_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteLabelInput, 'labels.deleteLabel', (method, input) => method(input.label_id)),
-  },
+    single: bind('labels.deleteLabel', (method, input) => method(input.label_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deleteLabelsInput = strictObject({ body: payloadInput(DeleteLabelsPayloadSchema) });
 
@@ -175,14 +174,14 @@ export const deleteLabels = defineOperation({
    * does not follow up on its own.
    */
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteLabelsInput, 'labels.deleteLabels', (method, input) => method(input.body)),
-  },
+    single: bind('labels.deleteLabels', (method, input) => method(input.body)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 // ------------------------------------------------------------------- milestones
 
@@ -198,14 +197,14 @@ export const getMilestone = defineOperation({
   inputSchema: getMilestoneInput,
   argumentMap: [{ input: 'milestone_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: MilestoneSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getMilestoneInput, 'milestones.getMilestone', (method, input) => method(input.milestone_id)),
-  },
+    single: bind('milestones.getMilestone', (method, input) => method(input.milestone_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const getMilestonesInput = createListInput({
   path: { project_id: positiveIdSchema },
@@ -261,21 +260,21 @@ export const getMilestones = defineOperation({
     ...aggregateControlMappings(1),
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: MilestoneSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'controlled',
-    page: driverCall(getMilestonesInput, 'milestones.getMilestonesPage', (method, input) => method(input.project_id, {
+    page: bind('milestones.getMilestonesPage', (method, input) => method(input.project_id, {
       ...milestoneFilter(input.query),
       ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
     })),
-    all: driverCall(getMilestonesInput, 'milestones.getAllMilestones', (method, input, context) => method(input.project_id, {
+    all: bind('milestones.getAllMilestones', (method, input, context) => method(input.project_id, {
       ...milestoneFilter(input.query),
       ...driverAllOptions(allControls(input._mcp), context.limits),
     })),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /*
  * The identifiers and dates a milestone payload carries. The driver forwards any number
@@ -307,15 +306,15 @@ export const addMilestone = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: MilestoneSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addMilestoneInput, 'milestones.addMilestone',
+    single: bind('milestones.addMilestone',
       (method, input) => method(input.project_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateMilestoneInput = strictObject({
   milestone_id: positiveIdSchema,
@@ -335,11 +334,11 @@ export const updateMilestone = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: MilestoneSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateMilestoneInput, 'milestones.updateMilestone',
+    single: bind('milestones.updateMilestone',
       (method, input) => method(input.milestone_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   /*
    * Applying the same field values again leaves the milestone in the same state. Marking
@@ -348,7 +347,7 @@ export const updateMilestone = defineOperation({
    */
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deleteMilestoneInput = strictObject({ milestone_id: positiveIdSchema });
 
@@ -362,15 +361,15 @@ export const deleteMilestone = defineOperation({
   inputSchema: deleteMilestoneInput,
   argumentMap: [{ input: 'milestone_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteMilestoneInput, 'milestones.deleteMilestone',
+    single: bind('milestones.deleteMilestone',
       (method, input) => method(input.milestone_id)),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 /** Registered in tool-name order by the registry; listed here in reviewed order. */
 export const t07 = [

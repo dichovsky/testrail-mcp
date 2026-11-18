@@ -7,8 +7,7 @@ import {
   createListInput, emailSchema, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
 import { driverAllOptions } from '../../contracts/pagination.js';
-import { driverCall } from '../driver-call.js';
-import { defineOperation, type OperationDefinition } from '../registry.js';
+import { defineOperation } from '../registry.js';
 import { allControls, control, pageResponse, recordResponse, safetyControlMappings } from './common.js';
 
 // ------------------------------------------------------------------------ users
@@ -25,14 +24,14 @@ export const getCurrentUser = defineOperation({
   inputSchema: noInput,
   argumentMap: [],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: UserSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(noInput, 'users.getCurrentUser', (method) => method()),
-  },
+    single: bind('users.getCurrentUser', (method) => method()),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const getUserInput = strictObject({ user_id: positiveIdSchema });
 
@@ -46,14 +45,14 @@ export const getUser = defineOperation({
   inputSchema: getUserInput,
   argumentMap: [{ input: 'user_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: UserSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getUserInput, 'users.getUser', (method, input) => method(input.user_id)),
-  },
+    single: bind('users.getUser', (method, input) => method(input.user_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /*
  * The address is a query parameter rather than a path segment, so it lives under query
@@ -71,14 +70,14 @@ export const getUserByEmail = defineOperation({
   inputSchema: getUserByEmailInput,
   argumentMap: [{ input: 'query.email', call: 'single', argument: 0, serialization: 'query-scalar' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: UserSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getUserByEmailInput, 'users.getUserByEmail', (method, input) => method(input.query.email)),
-  },
+    single: bind('users.getUserByEmail', (method, input) => method(input.query.email)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /*
  * The project is optional and changes the endpoint rather than a query parameter:
@@ -104,17 +103,17 @@ export const getUsers = defineOperation({
   // TestRail documents a bare array here while every sibling list documents an
   // envelope. The driver accepts both and a null collection, and hands back an array.
   response: { shape: 'array', outerSchema: z.array(z.unknown()), entitySchema: UserSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getUsersInput, 'users.getUsers', (method, input) => {
+    single: bind('users.getUsers', (method, input) => {
       const project = control(input.query, 'project_id');
       return project === undefined ? method() : method(project);
     }),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const addUserInput = strictObject({
   body: payloadInput(UserAddPayloadSchema, {
@@ -137,15 +136,15 @@ export const addUser = defineOperation({
   inputSchema: addUserInput,
   argumentMap: [{ input: 'body', call: 'single', argument: 0, serialization: 'json-body' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: UserSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addUserInput, 'users.addUser', (method, input) => method(input.body)),
-  },
+    single: bind('users.addUser', (method, input) => method(input.body)),
+  }),
   files: { kind: 'none' },
   // Repeating the call asks TestRail for another user with the same address.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateUserInput = strictObject({
   user_id: positiveIdSchema,
@@ -172,15 +171,15 @@ export const updateUser = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: UserSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateUserInput, 'users.updateUser', (method, input) => method(input.user_id, input.body)),
-  },
+    single: bind('users.updateUser', (method, input) => method(input.user_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Applying the same field values again leaves the user in the same state.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 // ----------------------------------------------------------------------- groups
 
@@ -196,14 +195,14 @@ export const getGroup = defineOperation({
   inputSchema: getGroupInput,
   argumentMap: [{ input: 'group_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: GroupSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getGroupInput, 'users.getGroup', (method, input) => method(input.group_id)),
-  },
+    single: bind('users.getGroup', (method, input) => method(input.group_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /*
  * TestRail documents no request controls for this list, so the driver sends none and
@@ -222,16 +221,16 @@ export const getGroups = defineOperation({
   inputSchema: getGroupsInput,
   argumentMap: [...safetyControlMappings(0)],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: GroupSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'response_driven',
-    page: driverCall(getGroupsInput, 'users.getGroupsPage', (method) => method()),
-    all: driverCall(getGroupsInput, 'users.getAllGroups',
+    page: bind('users.getGroupsPage', (method) => method()),
+    all: bind('users.getAllGroups',
       (method, input, context) => method(driverAllOptions(allControls(input._mcp), context.limits))),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const addGroupInput = strictObject({
   body: payloadInput(AddGroupPayloadSchema, { fields: { user_ids: z.array(positiveIdSchema).optional() } }),
@@ -247,14 +246,14 @@ export const addGroup = defineOperation({
   inputSchema: addGroupInput,
   argumentMap: [{ input: 'body', call: 'single', argument: 0, serialization: 'json-body' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: GroupSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addGroupInput, 'users.addGroup', (method, input) => method(input.body)),
-  },
+    single: bind('users.addGroup', (method, input) => method(input.body)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 /*
  * The body carries the group's own ID as well as the path, which TestRail requires and
@@ -282,10 +281,10 @@ export const updateGroup = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: GroupSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateGroupInput, 'users.updateGroup', (method, input) => method(input.group_id, input.body)),
-  },
+    single: bind('users.updateGroup', (method, input) => method(input.group_id, input.body)),
+  }),
   files: { kind: 'none' },
   /*
    * Applying the same field values again leaves the group in the same state. It is not
@@ -295,7 +294,7 @@ export const updateGroup = defineOperation({
    */
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deleteGroupInput = strictObject({ group_id: positiveIdSchema });
 
@@ -309,14 +308,14 @@ export const deleteGroup = defineOperation({
   inputSchema: deleteGroupInput,
   argumentMap: [{ input: 'group_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteGroupInput, 'users.deleteGroup', (method, input) => method(input.group_id)),
-  },
+    single: bind('users.deleteGroup', (method, input) => method(input.group_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 // ------------------------------------------------------------------------ roles
 
@@ -332,16 +331,16 @@ export const getRoles = defineOperation({
   inputSchema: getRolesInput,
   argumentMap: [...safetyControlMappings(0)],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: RoleSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'response_driven',
-    page: driverCall(getRolesInput, 'metadata.getRolesPage', (method) => method()),
-    all: driverCall(getRolesInput, 'metadata.getAllRoles',
+    page: bind('metadata.getRolesPage', (method) => method()),
+    all: bind('metadata.getAllRoles',
       (method, input, context) => method(driverAllOptions(allControls(input._mcp), context.limits))),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /** Registered in tool-name order by the registry; listed here in reviewed order. */
 export const t08 = [

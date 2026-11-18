@@ -1,7 +1,6 @@
 import type { TestRailClient, UploadFilePathInput } from '@dichovsky/testrail-api-client';
-import type { z } from 'zod';
 import type { Limits } from '../config/limits.js';
-import { inputJsonSchema } from '../contracts/inputs.js';
+import type { InputContract } from '../contracts/input-contract.js';
 
 export const driverModules = [
   'projects', 'suites', 'sections', 'cases', 'plans', 'runs', 'tests', 'results',
@@ -32,31 +31,32 @@ export interface CallContext {
 
 export interface DriverCall {
   readonly binding: DriverBinding;
-  readonly inputSchema: z.ZodType<object>;
+  readonly input: InputContract;
   readonly invoke: (client: TestRailClient, input: unknown, context: CallContext) => Promise<unknown>;
 }
+
+/** Registration supplies this builder around its one finalized input contract. */
+export type DriverCallBinder<Input extends object> = <const B extends DriverBinding>(
+  binding: B,
+  call: (method: DriverMethod<B>, input: Input, context: CallContext) => Promise<unknown>,
+) => DriverCall & { readonly binding: B };
 
 /**
  * The callback receives the actual overloaded public method type. Parameters<T>
  * would retain only the final overload and lose supported driver call shapes.
  */
-export function driverCall<S extends z.ZodType<object>, const B extends DriverBinding>(
-  inputSchema: S,
+export function driverCall<Input extends object, const B extends DriverBinding>(
+  contract: InputContract<Input>,
   binding: B,
-  call: (method: DriverMethod<B>, input: z.output<S>, context: CallContext) => Promise<unknown>,
+  call: (method: DriverMethod<B>, input: Input, context: CallContext) => Promise<unknown>,
 ): DriverCall & { readonly binding: B } {
-  // Refuse schemas that coerce, default, transform or strip ordinary fields.
-  // Once validated, the original JSON is the value promised to the driver.
-  inputJsonSchema(inputSchema);
   return Object.freeze({
     binding,
-    inputSchema,
+    input: contract,
     async invoke(client: TestRailClient, input: unknown, context: CallContext): Promise<unknown> {
       // Always validate before selecting or invoking a public driver method.
-      inputSchema.parse(input);
-      // Zod's otherwise valid JSON/record parsers may omit own __proto__ keys.
-      // Never substitute a parsed clone for the caller's validated JSON data.
-      const parsed = input as z.output<S>;
+      // The contract returns the original JSON, including permitted own __proto__ keys.
+      const parsed = contract.validate(input);
       const [moduleName, methodName] = binding.split('.');
       if (!driverModules.some((name) => name === moduleName) || methodName === undefined) {
         throw new Error('Unsupported public driver binding');

@@ -6,8 +6,7 @@ import { DEFAULT_LIMITS } from '../src/config/limits.js';
 import { z } from 'zod';
 import { attachmentIdSchema, createListInput, positiveIdSchema, refsSchema, strictObject } from '../src/contracts/inputs.js';
 import { operationRegistry } from '../src/operations/catalog.js';
-import { driverCall } from '../src/operations/driver-call.js';
-import { createRegistry, defineOperation } from '../src/operations/registry.js';
+import { createRegistry, defineOperation, type OperationDefinition } from '../src/operations/registry.js';
 import { loadParameterManifests } from './contracts/parameter-manifest.js';
 import { auditRegisteredParameters } from './contracts/registered-parameters.js';
 import { runRegisteredFixture } from './contracts/fixture-runner.js';
@@ -20,15 +19,17 @@ if (!attachment) throw new Error('Missing independent attachment parameter fixtu
 // registry that holds it alone. The production registration lives in families/t12.ts and is
 // driven with every fixture by the gate below.
 const input = strictObject({ attachment_id: attachmentIdSchema });
-const call = driverCall(input, 'attachments.getAttachment', (method, value) => method(value.attachment_id));
-const operation = defineOperation({
+const definition = {
   token: 'get_attachment', method: 'GET', route: 'get_attachment/{attachment_id}', family: 'T12',
   driverBinding: 'attachments.getAttachment', summary: 'Download a TestRail attachment.', inputSchema: input,
   argumentMap: [{ input: 'attachment_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'binary', outerSchema: z.instanceof(ArrayBuffer), entitySchema: null },
-  pagination: { kind: 'none', single: call }, files: { kind: 'download' },
+  pagination: (bind) => ({ kind: 'none', single: bind('attachments.getAttachment', (method, value) => method(value.attachment_id)) }), files: { kind: 'download' },
   effects: { testRail: 'read', destructive: false, idempotent: false }, retry: 'ordinary-read',
-});
+} as const satisfies OperationDefinition<string, typeof input>;
+const operation = defineOperation(definition);
+if (operation.pagination.kind !== 'none') throw new Error('Expected a single-call attachment operation');
+const call = operation.pagination.single;
 const validateJson = new AjvJsonSchemaValidator().getValidator(operation.jsonSchema as unknown as JsonSchemaType);
 
 describe('registered parameter coverage gate', () => {
@@ -41,7 +42,7 @@ describe('registered parameter coverage gate', () => {
   });
 
   it('detects argument target drift independently from source field names', () => {
-    const changed = defineOperation({ ...operation, argumentMap: [{ input: 'attachment_id', call: 'single', argument: 1, serialization: 'path' }] });
+    const changed = defineOperation({ ...definition, argumentMap: [{ input: 'attachment_id', call: 'single', argument: 1, serialization: 'path' }] });
     expect(auditRegisteredParameters(createRegistry(changed), manifests)).toEqual(['testrail_get_attachment: no single argument mapping for attachment_id']);
   });
 
@@ -74,7 +75,7 @@ describe('registered parameter coverage gate', () => {
         { input: 'project_id', call: 'all', argument: 0, serialization: 'path' },
       ],
       response: { shape: 'page', outerSchema: z.object({ kind: z.enum(['envelope', 'legacy-array']), items: z.array(z.unknown()) }), entitySchema: null },
-      pagination: { kind: 'controlled', page: driverCall(listInput, 'cases.getCasesPage', (method) => method(7)), all: driverCall(listInput, 'cases.getAllCases', (method) => method(7)) },
+      pagination: (bind) => ({ kind: 'controlled', page: bind('cases.getCasesPage', (method) => method(7)), all: bind('cases.getAllCases', (method) => method(7)) }),
     });
     const manifest = manifests.find((candidate) => candidate.endpoint.tool === cases.tool);
     const accepted = manifest?.cases.find((fixture) => fixture.id === 'defaults');
@@ -126,7 +127,7 @@ describe('registered parameter coverage gate', () => {
           ...(includeRefs ? [{ input: 'query.refs', call: 'page' as const, argument: 1, property: 'refs', serialization: 'query-repeated' as const }] : []),
         ],
         response: { shape: 'page', outerSchema: z.object({ kind: z.enum(['envelope', 'legacy-array']), items: z.array(z.unknown()) }), entitySchema: null },
-        pagination: { kind: 'controlled', page: driverCall(listInput, 'cases.getCasesPage', (method) => method(1)), all: driverCall(listInput, 'cases.getAllCases', (method) => method(1)) },
+        pagination: (bind) => ({ kind: 'controlled', page: bind('cases.getCasesPage', (method) => method(1)), all: bind('cases.getAllCases', (method) => method(1)) }),
       });
       const errors = auditRegisteredParameters(createRegistry(cases), [sample]);
       expect(errors).toContain('testrail_get_cases: no all argument mapping for query.refs');
@@ -146,7 +147,7 @@ describe('registered parameter coverage gate', () => {
         { input: 'query.offset', call: 'single', argument: 1, property: 'offset', serialization: 'query-scalar' },
       ],
       response: { shape: 'array', outerSchema: z.array(z.unknown()), entitySchema: null },
-      pagination: { kind: 'none', single: driverCall(schema, 'attachments.getAttachmentsForTest', (method, value) => method(value.test_id, value.query)) },
+      pagination: (bind) => ({ kind: 'none', single: bind('attachments.getAttachmentsForTest', (method, value) => method(value.test_id, value.query)) }),
     });
     const parameter = attachment.parameters[0];
     const accepted = attachment.cases.find((fixture) => fixture.expect.kind === 'accepted');
@@ -269,7 +270,8 @@ describe('independent fixture → schema → real public driver', () => {
       const client = new TestRailClient({ baseUrl: 'https://example.test', email: 'fixture@example.test', apiKey: 'synthetic', allowPrivateHosts: true, fetch });
       const publicMethod = vi.spyOn(client.attachments, 'getAttachment');
       try {
-        expect(input.safeParse(fixture.input).success).toBe(fixture.expect.kind === 'accepted');
+        if (fixture.expect.kind === 'accepted') expect(() => operation.input.validate(fixture.input)).not.toThrow();
+        else expect(() => operation.input.validate(fixture.input)).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT' }));
         expect(validateJson(fixture.input).valid).toBe(fixture.expect.kind === 'accepted');
         if (fixture.expect.kind === 'rejected') {
           await expect(call.invoke(client, fixture.input, { limits: DEFAULT_LIMITS })).rejects.toThrow();

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { TestRailClient } from '@dichovsky/testrail-api-client';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import { createInputContract, type InputContract } from '../../src/contracts/input-contract.js';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { strictObject } from '../../src/contracts/inputs.js';
 import type { ToolResult } from '../../src/contracts/results.js';
@@ -71,11 +72,14 @@ async function withRuntime<T>(client: TestRailClient, body: (runtime: Runtime) =
   try { return await body(runtime); } finally { await runtime.shutdown(); }
 }
 
+/** Deliberately bypass registration validation to isolate downstream defensive checks. */
+const uncheckedInput: InputContract = { jsonSchema: { type: 'object' }, validate: (input) => input as object };
+
 /** A stand-in driver call, recording what the pipeline handed it. */
 function standIn(binding: DriverCall['binding'], reply: (input: unknown, context: CallContext) => unknown) {
   const invoke = vi.fn((_client: TestRailClient, input: unknown, context: CallContext) =>
     Promise.resolve(reply(input, context)));
-  const call: DriverCall = { binding, inputSchema: z.object({}), invoke };
+  const call: DriverCall = { binding, input: uncheckedInput, invoke };
   return { call, invoke };
 }
 
@@ -103,7 +107,7 @@ describe('a list input that is not an object, or whose _mcp is not an object', (
     const pageCall = standIn('projects.getProjectsPage', () => page);
     const allCall = standIn('projects.getAllProjects', () => []);
     const operation = derive(getProjects, {
-      inputSchema: z.unknown(),
+      input: uncheckedInput,
       pagination: { ...getProjects.pagination, page: pageCall.call, all: allCall.call },
     });
     const result = await withRuntime(quietDriver(), (runtime) =>
@@ -153,7 +157,7 @@ describe('an upload whose request cannot be staged', () => {
     const client = quietDriver();
     const upload = vi.spyOn(client.attachments, 'addAttachmentToCase');
     const stagingDirectory = vi.fn(() => Promise.resolve(staging));
-    const operation = derive(addAttachment, { inputSchema: z.unknown() });
+    const operation = derive(addAttachment, { input: uncheckedInput });
     const result = await withRuntime(client, (runtime) =>
       executeToolCall(operation, input, { runtime, configuration, stagingDirectory }));
 
@@ -195,7 +199,7 @@ describe('an upload whose input names no filename', () => {
       return { attachment_id: 'a1' };
     });
     const operation = derive(addAttachment, {
-      inputSchema: input,
+      input: createInputContract(input),
       pagination: { kind: 'none', single: single.call },
     });
     const result = await withRuntime(quietDriver(), (runtime) => executeToolCall(operation, {
@@ -223,7 +227,7 @@ describe('a download whose input carries no usable identifier', () => {
   ])('is an INTERNAL_ERROR registration fault, raised before dispatch, for %s', async (_label, input) => {
     const client = quietDriver();
     const download = vi.spyOn(client.attachments, 'getAttachment');
-    const operation = derive(getAttachment, { inputSchema: z.unknown() });
+    const operation = derive(getAttachment, { input: uncheckedInput });
     const result = await withRuntime(client, (runtime) =>
       executeToolCall(operation, input, { runtime, configuration }));
 

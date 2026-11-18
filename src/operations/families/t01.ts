@@ -8,8 +8,7 @@ import {
   createListInput, nonnegativeIntegerSchema, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
 import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
-import { driverCall } from '../driver-call.js';
-import { defineOperation, type OperationDefinition } from '../registry.js';
+import { defineOperation } from '../registry.js';
 import { allControls, control, flag, pageResponse, recordResponse, softDeletePreview } from './common.js';
 
 const getProjectInput = strictObject({ project_id: positiveIdSchema });
@@ -24,14 +23,14 @@ export const getProject = defineOperation({
   inputSchema: getProjectInput,
   argumentMap: [{ input: 'project_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: ProjectSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getProjectInput, 'projects.getProject', (method, input) => method(input.project_id)),
-  },
+    single: bind('projects.getProject', (method, input) => method(input.project_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const getProjectsInput = createListInput({
   query: { is_completed: z.boolean().optional() },
@@ -65,11 +64,11 @@ export const getProjects = defineOperation({
     { input: '_mcp.max_duration_ms', call: 'all', argument: 0, property: 'maxDurationMs', serialization: 'aggregate-control' },
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: ProjectSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'controlled',
     // The page helper is used rather than the convenience method, which discards the
     // metadata the result needs to describe continuation honestly.
-    page: driverCall(getProjectsInput, 'projects.getProjectsPage', (method, input) => method({
+    page: bind('projects.getProjectsPage', (method, input) => method({
       ...projectFilter(input.query),
       ...pageRequestDefaults({
         ...(control(input.query, 'limit') === undefined ? {} : { limit: control(input.query, 'limit') }),
@@ -78,15 +77,15 @@ export const getProjects = defineOperation({
     })),
     // A bound the caller left unset falls back to the configured limit, never to the
     // driver's own far larger default. Paging controls are forwarded only when supplied.
-    all: driverCall(getProjectsInput, 'projects.getAllProjects', (method, input, context) => method({
+    all: bind('projects.getAllProjects', (method, input, context) => method({
       ...projectFilter(input.query),
       ...driverAllOptions(allControls(input._mcp), context.limits),
     })),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const addProjectInput = strictObject({ body: payloadInput(AddProjectPayloadSchema) });
 
@@ -100,15 +99,15 @@ export const addProject = defineOperation({
   inputSchema: addProjectInput,
   argumentMap: [{ input: 'body', call: 'single', argument: 0, serialization: 'json-body' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: ProjectSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addProjectInput, 'projects.addProject', (method, input) => method(input.body)),
-  },
+    single: bind('projects.addProject', (method, input) => method(input.body)),
+  }),
   files: { kind: 'none' },
   // Repeating the call creates another project, so this is not idempotent.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateProjectInput = strictObject({
   project_id: positiveIdSchema,
@@ -128,16 +127,16 @@ export const updateProject = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: ProjectSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateProjectInput, 'projects.updateProject',
+    single: bind('projects.updateProject',
       (method, input) => method(input.project_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   // Applying the same field values again leaves the project in the same state.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deleteProjectInput = strictObject({ project_id: positiveIdSchema });
 
@@ -152,17 +151,17 @@ export const deleteProject = defineOperation({
   argumentMap: [{ input: 'project_id', call: 'single', argument: 0, serialization: 'path' }],
   // The method resolves with no value; the wrapper reports that as data: null.
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteProjectInput, 'projects.deleteProject',
+    single: bind('projects.deleteProject',
       (method, input) => method(input.project_id)),
-  },
+  }),
   files: { kind: 'none' },
   // Removing a project removes its suites, cases, runs and results with it. A repeat
   // call does not restore anything, so it is neither reversible nor idempotent.
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const getSuiteInput = strictObject({ suite_id: positiveIdSchema });
 
@@ -176,14 +175,14 @@ export const getSuite = defineOperation({
   inputSchema: getSuiteInput,
   argumentMap: [{ input: 'suite_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: SuiteSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getSuiteInput, 'suites.getSuite', (method, input) => method(input.suite_id)),
-  },
+    single: bind('suites.getSuite', (method, input) => method(input.suite_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const getSuitesInput = createListInput({ path: { project_id: positiveIdSchema }, pagination: 'controlled' });
 
@@ -208,21 +207,21 @@ export const getSuites = defineOperation({
     { input: '_mcp.max_duration_ms', call: 'all', argument: 1, property: 'maxDurationMs', serialization: 'aggregate-control' },
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: SuiteSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'controlled',
-    page: driverCall(getSuitesInput, 'suites.getSuitesPage', (method, input) => method(
+    page: bind('suites.getSuitesPage', (method, input) => method(
       input.project_id,
       pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
     )),
-    all: driverCall(getSuitesInput, 'suites.getAllSuites', (method, input, context) => method(
+    all: bind('suites.getAllSuites', (method, input, context) => method(
       input.project_id,
       driverAllOptions(allControls(input._mcp), context.limits),
     )),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const addSuiteInput = strictObject({ project_id: positiveIdSchema, body: payloadInput(AddSuitePayloadSchema) });
 
@@ -239,15 +238,15 @@ export const addSuite = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: SuiteSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addSuiteInput, 'suites.addSuite', (method, input) => method(input.project_id, input.body)),
-  },
+    single: bind('suites.addSuite', (method, input) => method(input.project_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Repeating the call creates another suite, so this is not idempotent.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateSuiteInput = strictObject({ suite_id: positiveIdSchema, body: payloadInput(UpdateSuitePayloadSchema) });
 
@@ -264,15 +263,15 @@ export const updateSuite = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: SuiteSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateSuiteInput, 'suites.updateSuite', (method, input) => method(input.suite_id, input.body)),
-  },
+    single: bind('suites.updateSuite', (method, input) => method(input.suite_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Applying the same field values again leaves the suite in the same state.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deleteSuiteInput = strictObject({
   suite_id: positiveIdSchema,
@@ -294,19 +293,19 @@ export const deleteSuite = defineOperation({
   // Void after a deletion; TestRail's affected-entity counts after a preview, which are
   // drift-checked advisorily and must carry at least one count (see softDeletePreview).
   response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null, preview: softDeletePreview },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteSuiteInput, 'suites.deleteSuite', (method, input) => {
+    single: bind('suites.deleteSuite', (method, input) => {
       const soft = flag(input.query, 'soft');
       return soft === undefined ? method(input.suite_id) : method(input.suite_id, { soft });
     }),
-  },
+  }),
   files: { kind: 'none' },
   // Removing a suite removes its sections, cases and active runs with it. A preview
   // is possible, but the tool as a whole is destructive and never idempotent.
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const getSectionInput = strictObject({ section_id: positiveIdSchema });
 
@@ -320,14 +319,14 @@ export const getSection = defineOperation({
   inputSchema: getSectionInput,
   argumentMap: [{ input: 'section_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: SectionSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getSectionInput, 'sections.getSection', (method, input) => method(input.section_id)),
-  },
+    single: bind('sections.getSection', (method, input) => method(input.section_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const getSectionsInput = createListInput({
   path: { project_id: positiveIdSchema },
@@ -364,21 +363,21 @@ export const getSections = defineOperation({
     { input: '_mcp.max_duration_ms', call: 'all', argument: 1, property: 'maxDurationMs', serialization: 'aggregate-control' },
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: SectionSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'controlled',
-    page: driverCall(getSectionsInput, 'sections.getSectionsPage', (method, input) => method(input.project_id, {
+    page: bind('sections.getSectionsPage', (method, input) => method(input.project_id, {
       ...sectionFilter(input.query),
       ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
     })),
-    all: driverCall(getSectionsInput, 'sections.getAllSections', (method, input, context) => method(input.project_id, {
+    all: bind('sections.getAllSections', (method, input, context) => method(input.project_id, {
       ...sectionFilter(input.query),
       ...driverAllOptions(allControls(input._mcp), context.limits),
     })),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 // The driver forwards any number for these; a fractional, non-positive or unsafe value
 // can never name an existing suite or section, so they are held to the identifier domain.
@@ -402,15 +401,15 @@ export const addSection = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: SectionSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addSectionInput, 'sections.addSection', (method, input) => method(input.project_id, input.body)),
-  },
+    single: bind('sections.addSection', (method, input) => method(input.project_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Repeating the call creates another section, so this is not idempotent.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateSectionInput = strictObject({ section_id: positiveIdSchema, body: payloadInput(UpdateSectionPayloadSchema) });
 
@@ -427,15 +426,15 @@ export const updateSection = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: SectionSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateSectionInput, 'sections.updateSection', (method, input) => method(input.section_id, input.body)),
-  },
+    single: bind('sections.updateSection', (method, input) => method(input.section_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Applying the same field values again leaves the section in the same state.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 // Null is an explicit move to the root or the top and zero is a sentinel the driver
 // deliberately keeps for some installs; only values that can never name a section go.
@@ -463,15 +462,15 @@ export const moveSection = defineOperation({
   ],
   // The driver discards any body TestRail returns and resolves with no value.
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(moveSectionInput, 'sections.moveSection', (method, input) => method(input.section_id, input.body)),
-  },
+    single: bind('sections.moveSection', (method, input) => method(input.section_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Moving to the same place again leaves the section where it is.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deleteSectionInput = strictObject({
   section_id: positiveIdSchema,
@@ -493,19 +492,19 @@ export const deleteSection = defineOperation({
   // Void after a deletion; TestRail's affected-entity counts after a preview, which are
   // drift-checked advisorily and must carry at least one count (see softDeletePreview).
   response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null, preview: softDeletePreview },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteSectionInput, 'sections.deleteSection', (method, input) => {
+    single: bind('sections.deleteSection', (method, input) => {
       const soft = flag(input.query, 'soft');
       return soft === undefined ? method(input.section_id) : method(input.section_id, { soft });
     }),
-  },
+  }),
   files: { kind: 'none' },
   // Removing a section removes its subsections, cases and active tests with it. A
   // preview is possible, but the tool as a whole is destructive and never idempotent.
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 /** Registered in tool-name order by the registry; listed here in reviewed order. */
 export const t01 = [

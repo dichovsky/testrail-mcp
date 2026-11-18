@@ -113,11 +113,12 @@ describe('paging disclosure in tool descriptions', () => {
       const input = fixture.input as Record<string, unknown>;
       const query = typeof input.query === 'object' && input.query !== null ? input.query : {};
       // The accepted fixture itself passes, so each refusal below is the control's doing.
-      expect(operation.inputSchema.safeParse(input).success, tool).toBe(true);
+      expect(() => operation.input.validate(input), tool).not.toThrow();
       for (const extra of [
         { _mcp: { pagination: 'all' } }, { _mcp: { pagination: 'page' } },
         { query: { ...query, limit: 1 } }, { query: { ...query, offset: 0 } },
-      ]) expect(operation.inputSchema.safeParse({ ...input, ...extra }).success, `${tool} ${JSON.stringify(extra)}`).toBe(false);
+      ]) expect(() => operation.input.validate({ ...input, ...extra }), `${tool} ${JSON.stringify(extra)}`)
+        .toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT' }));
     }
   });
 

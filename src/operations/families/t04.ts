@@ -8,8 +8,7 @@ import {
   createListInput, idFilterSchema, nonnegativeIntegerSchema, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
 import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
-import { driverCall } from '../driver-call.js';
-import { defineOperation, type ArgumentMapping, type OperationDefinition } from '../registry.js';
+import { defineOperation, type ArgumentMapping } from '../registry.js';
 import {
   aggregateControlMappings, allControls, control, flag, pageResponse, recordResponse, softDeletePreview,
 } from './common.js';
@@ -26,14 +25,14 @@ export const getRun = defineOperation({
   inputSchema: getRunInput,
   argumentMap: [{ input: 'run_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: RunSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getRunInput, 'runs.getRun', (method, input) => method(input.run_id)),
-  },
+    single: bind('runs.getRun', (method, input) => method(input.run_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 // TestRail documents every creator as a comma-separated list, but the driver's option
 // for this one filter is an array alone, so this tool takes an array rather than
@@ -107,21 +106,21 @@ export const getRuns = defineOperation({
     ...aggregateControlMappings(1),
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: RunSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'controlled',
-    page: driverCall(getRunsInput, 'runs.getRunsPage', (method, input) => method(input.project_id, {
+    page: bind('runs.getRunsPage', (method, input) => method(input.project_id, {
       ...runFilter(input.query),
       ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
     })),
-    all: driverCall(getRunsInput, 'runs.getAllRuns', (method, input, context) => method(input.project_id, {
+    all: bind('runs.getAllRuns', (method, input, context) => method(input.project_id, {
       ...runFilter(input.query),
       ...driverAllOptions(allControls(input._mcp), context.limits),
     })),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /*
  * The case selection. TestRail reads include_all, case_ids and dynamic_filters together
@@ -156,15 +155,15 @@ export const addRun = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: RunSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addRunInput, 'runs.addRun', (method, input) => method(input.project_id, input.body)),
-  },
+    single: bind('runs.addRun', (method, input) => method(input.project_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Repeating the call creates another run, so this is not idempotent.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateRunInput = strictObject({
   run_id: positiveIdSchema,
@@ -184,10 +183,10 @@ export const updateRun = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: RunSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateRunInput, 'runs.updateRun', (method, input) => method(input.run_id, input.body)),
-  },
+    single: bind('runs.updateRun', (method, input) => method(input.run_id, input.body)),
+  }),
   files: { kind: 'none' },
   /*
    * Applying the same field values again leaves the run in the same state, so this is
@@ -196,7 +195,7 @@ export const updateRun = defineOperation({
    */
   effects: { testRail: 'write', destructive: true, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const closeRunInput = strictObject({ run_id: positiveIdSchema });
 
@@ -210,15 +209,15 @@ export const closeRun = defineOperation({
   inputSchema: closeRunInput,
   argumentMap: [{ input: 'run_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: RunSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(closeRunInput, 'runs.closeRun', (method, input) => method(input.run_id)),
-  },
+    single: bind('runs.closeRun', (method, input) => method(input.run_id)),
+  }),
   files: { kind: 'none' },
   // Archiving cannot be undone, and a second call has nothing left to close.
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deleteRunInput = strictObject({
   run_id: positiveIdSchema,
@@ -240,17 +239,17 @@ export const deleteRun = defineOperation({
   // Void after a deletion; TestRail's affected-entity counts after a preview, which are
   // drift-checked advisorily and must carry at least one count (see softDeletePreview).
   response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null, preview: softDeletePreview },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteRunInput, 'runs.deleteRun', (method, input) => {
+    single: bind('runs.deleteRun', (method, input) => {
       const soft = flag(input.query, 'soft');
       return soft === undefined ? method(input.run_id) : method(input.run_id, { soft });
     }),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 // The driver takes this control as the string TestRail reads, not as a boolean, and
 // rejects any other value before dispatch.
@@ -277,19 +276,19 @@ export const getTest = defineOperation({
     { input: 'query.with_data', call: 'single', argument: 1, property: 'withData', serialization: 'query-scalar' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: TestSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getTestInput, 'tests.getTest', async (method, input) => {
+    single: bind('tests.getTest', async (method, input) => {
       const data = withData(input.query);
       // With the data, the driver assembles one record from TestRail's test, results and
       // attachments, and refuses a reply that is not that shape as an invalid response.
       return data === undefined ? method(input.test_id) : method(input.test_id, { withData: data });
     }),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 // Both filters are arrays in the driver's option type and comma-joined on the wire.
 const getTestsInput = createListInput({
@@ -340,21 +339,21 @@ export const getTests = defineOperation({
     ...aggregateControlMappings(1),
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: TestSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'controlled',
-    page: driverCall(getTestsInput, 'tests.getTestsPage', (method, input) => method(input.run_id, {
+    page: bind('tests.getTestsPage', (method, input) => method(input.run_id, {
       ...testFilter(input.query),
       ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
     })),
-    all: driverCall(getTestsInput, 'tests.getAllTests', (method, input, context) => method(input.run_id, {
+    all: bind('tests.getAllTests', (method, input, context) => method(input.run_id, {
       ...testFilter(input.query),
       ...driverAllOptions(allControls(input._mcp), context.limits),
     })),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /**
  * A label is named by its ID or its title, as TestRail documents for these two tools.
@@ -385,15 +384,15 @@ export const updateTest = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: TestSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateTestInput, 'tests.updateTest', (method, input) => method(input.test_id, input.body)),
-  },
+    single: bind('tests.updateTest', (method, input) => method(input.test_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Assigning the same labels again leaves the test in the same state.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateTestsInput = strictObject({
   body: payloadInput(UpdateTestsLabelsPayloadSchema, {
@@ -412,15 +411,15 @@ export const updateTests = defineOperation({
   argumentMap: [{ input: 'body', call: 'single', argument: 0, serialization: 'json-body' }],
   // The acknowledgement, not the tests: it carries the IDs and the labels applied.
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: UpdateTestsResponseSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateTestsInput, 'tests.updateTests', (method, input) => method(input.body)),
-  },
+    single: bind('tests.updateTests', (method, input) => method(input.body)),
+  }),
   files: { kind: 'none' },
   // Assigning the same labels again leaves every named test in the same state.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 /** Registered in tool-name order by the registry; listed here in reviewed order. */
 export const t04 = [

@@ -9,8 +9,7 @@ import {
   nonnegativeIntegerSchema, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
 import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
-import { driverCall } from '../driver-call.js';
-import { defineOperation, type OperationDefinition } from '../registry.js';
+import { defineOperation } from '../registry.js';
 import {
   aggregateControlMappings, allControls, control, flag, pageResponse, recordResponse, safetyControlMappings, staged,
 } from './common.js';
@@ -28,14 +27,14 @@ export const getBdd = defineOperation({
   argumentMap: [{ input: 'case_id', call: 'single', argument: 0, serialization: 'path' }],
   // The only endpoint of the API that answers with text rather than JSON.
   response: { shape: 'text', outerSchema: z.string(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getBddInput, 'bdd.getBdd', (method, input) => method(input.case_id)),
-  },
+    single: bind('bdd.getBdd', (method, input) => method(input.case_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /** One reference sends refs=; several send the repeated refs[] form TestRail 10.7 accepts. */
 const bddRefsSchema = z.union([z.string(), z.array(z.string()).min(1)]);
@@ -99,21 +98,21 @@ export const getBdds = defineOperation({
   // is checked. It still says a row is an object, which is worth keeping: a page of
   // strings or nulls would otherwise reach the caller with nothing said about it.
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: BddSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'controlled',
-    page: driverCall(getBddsInput, 'bdd.getBddsPage', (method, input) => method(input.project_id, {
+    page: bind('bdd.getBddsPage', (method, input) => method(input.project_id, {
       ...bddFilter(input.query),
       ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
     })),
-    all: driverCall(getBddsInput, 'bdd.getAllBdds', (method, input, context) => method(input.project_id, {
+    all: bind('bdd.getAllBdds', (method, input, context) => method(input.project_id, {
       ...bddFilter(input.query),
       ...driverAllOptions(allControls(input._mcp), context.limits),
     })),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /** Every upload takes the caller's path, the multipart filename and an optional media type. */
 const uploadFields = {
@@ -139,17 +138,17 @@ export const addBdd = defineOperation({
     { input: 'filename', call: 'single', argument: 2, serialization: 'multipart' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: CaseSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addBddInput, 'bdd.addBdd',
+    single: bind('bdd.addBdd',
       (method, input, context) => method(input.section_id, staged(context), input.filename)),
-  },
+  }),
   files: { kind: 'upload', featureFilename: true },
   // Repeating the call creates another case, so this is not idempotent. A multipart
   // upload is never retried: the request body is a consumed stream.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'never',
-} as const satisfies OperationDefinition);
+});
 
 const updateBddInput = strictObject({ case_id: positiveIdSchema, ...uploadFields });
 
@@ -168,16 +167,16 @@ export const updateBdd = defineOperation({
     { input: 'filename', call: 'single', argument: 2, serialization: 'multipart' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: CaseSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateBddInput, 'bdd.updateBdd',
+    single: bind('bdd.updateBdd',
       (method, input, context) => method(input.case_id, staged(context), input.filename)),
-  },
+  }),
   files: { kind: 'upload', featureFilename: true },
   // Sending the same feature file again leaves the case with the same scenario.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'never',
-} as const satisfies OperationDefinition);
+});
 
 const getSharedStepInput = strictObject({ shared_step_id: positiveIdSchema });
 
@@ -191,14 +190,14 @@ export const getSharedStep = defineOperation({
   inputSchema: getSharedStepInput,
   argumentMap: [{ input: 'shared_step_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: SharedStepSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getSharedStepInput, 'sharedSteps.getSharedStep', (method, input) => method(input.shared_step_id)),
-  },
+    single: bind('sharedSteps.getSharedStep', (method, input) => method(input.shared_step_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const getSharedStepsInput = createListInput({
   path: { project_id: positiveIdSchema },
@@ -257,21 +256,21 @@ export const getSharedSteps = defineOperation({
     ...aggregateControlMappings(1),
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: SharedStepSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'controlled',
-    page: driverCall(getSharedStepsInput, 'sharedSteps.getSharedStepsPage', (method, input) => method(input.project_id, {
+    page: bind('sharedSteps.getSharedStepsPage', (method, input) => method(input.project_id, {
       ...sharedStepFilter(input.query),
       ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
     })),
-    all: driverCall(getSharedStepsInput, 'sharedSteps.getAllSharedSteps', (method, input, context) => method(input.project_id, {
+    all: bind('sharedSteps.getAllSharedSteps', (method, input, context) => method(input.project_id, {
       ...sharedStepFilter(input.query),
       ...driverAllOptions(allControls(input._mcp), context.limits),
     })),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 // TestRail documents no request controls for this endpoint, so the driver's page helper
 // sends none and the caller cannot choose an offset: the server picks each page.
@@ -294,17 +293,17 @@ export const getSharedStepHistory = defineOperation({
     ...safetyControlMappings(1),
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: StepHistoryEntrySchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'response_driven',
-    page: driverCall(getSharedStepHistoryInput, 'sharedSteps.getSharedStepHistoryPage',
+    page: bind('sharedSteps.getSharedStepHistoryPage',
       (method, input) => method(input.shared_step_id)),
-    all: driverCall(getSharedStepHistoryInput, 'sharedSteps.getAllSharedStepHistory',
+    all: bind('sharedSteps.getAllSharedStepHistory',
       (method, input, context) => method(input.shared_step_id, driverAllOptions(allControls(input._mcp), context.limits))),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /*
  * TestRail warns that the separated-steps field carries a per-instance system name: an
@@ -330,16 +329,16 @@ export const addSharedStep = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: SharedStepSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addSharedStepInput, 'sharedSteps.addSharedStep',
+    single: bind('sharedSteps.addSharedStep',
       (method, input) => method(input.project_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   // Repeating the call creates another set, so this is not idempotent.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateSharedStepInput = strictObject({
   shared_step_id: positiveIdSchema,
@@ -359,16 +358,16 @@ export const updateSharedStep = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: SharedStepSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateSharedStepInput, 'sharedSteps.updateSharedStep',
+    single: bind('sharedSteps.updateSharedStep',
       (method, input) => method(input.shared_step_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   // Applying the same field values again leaves the set in the same state.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deleteSharedStepInput = strictObject({
   shared_step_id: positiveIdSchema,
@@ -388,18 +387,18 @@ export const deleteSharedStep = defineOperation({
     { input: 'body.keep_in_cases', call: 'single', argument: 1, property: 'keepInCases', serialization: 'json-body' },
   ],
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteSharedStepInput, 'sharedSteps.deleteSharedStep', (method, input) => {
+    single: bind('sharedSteps.deleteSharedStep', (method, input) => {
       const keepInCases = flag(input.body, 'keep_in_cases');
       return keepInCases === undefined ? method(input.shared_step_id) : method(input.shared_step_id, { keepInCases });
     }),
-  },
+  }),
   files: { kind: 'none' },
   // Removing a set is irreversible, and removing its steps from cases doubly so.
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 /** Registered in tool-name order by the registry; listed here in reviewed order. */
 export const t03 = [

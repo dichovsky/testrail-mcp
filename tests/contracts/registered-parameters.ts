@@ -1,5 +1,6 @@
 import type { JsonSchemaType } from '@modelcontextprotocol/server';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
+import { AdapterError } from '../../src/contracts/errors.js';
 import type { CallMode, OperationRegistry, ResponseContract } from '../../src/operations/registry.js';
 import { supplies, type ParameterManifest } from './parameter-manifest.js';
 
@@ -70,7 +71,14 @@ export function auditRegisteredParameters(registry: OperationRegistry, manifests
     const exercisedModes = new Set<CallMode>();
     for (const fixture of manifest.cases) {
       const accepted = fixture.expect.kind === 'accepted';
-      if (operation.inputSchema.safeParse(fixture.input).success !== accepted) errors.push(`${operation.tool}: runtime schema disagrees with fixture ${fixture.id}`);
+      let runtimeAccepted = true;
+      try {
+        operation.input.validate(fixture.input);
+      } catch (error) {
+        if (!(error instanceof AdapterError) || error.code !== 'INVALID_ARGUMENT') throw error;
+        runtimeAccepted = false;
+      }
+      if (runtimeAccepted !== accepted) errors.push(`${operation.tool}: runtime schema disagrees with fixture ${fixture.id}`);
       if (validateJson(fixture.input).valid !== accepted) errors.push(`${operation.tool}: JSON Schema disagrees with fixture ${fixture.id}`);
       if (fixture.expect.kind === 'accepted') {
         const control = fixture.input._mcp;

@@ -348,7 +348,7 @@ describe('the guard\'s view of every argument', () => {
         }
       }
     };
-    for (const { tool } of operationRegistry.entries) visit(z.toJSONSchema(registered(tool).inputSchema as z.ZodType, { unrepresentable: 'any', io: 'input' }), undefined);
+    for (const { tool } of operationRegistry.entries) visit(registered(tool).jsonSchema, undefined);
     const idLike = [...names].filter((name) => /_(?:id|ids|by)$/u.test(name) || ['id', 'labels', 'assigned_projects', 'groups', 'users'].includes(name));
     const known = new Set([...Object.keys(KINDS), ...REFERENCES, ...Object.keys(ITEMS), 'id', ...RELATIVE]);
     expect(idLike.filter((name) => !known.has(name))).toEqual([]);

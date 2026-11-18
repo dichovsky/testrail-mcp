@@ -8,7 +8,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { positiveIdSchema, strictObject } from '../../src/contracts/inputs.js';
-import { driverCall } from '../../src/operations/driver-call.js';
 import { createRegistry, defineOperation, type OperationDefinition } from '../../src/operations/registry.js';
 import { createRuntime, type Runtime } from '../../src/runtime/invocation.js';
 import { buildServer, SERVER_INSTRUCTIONS } from '../../src/transport/server.js';
@@ -29,14 +28,14 @@ const getProject = defineOperation({
     outerSchema: z.record(z.string(), z.unknown()),
     entitySchema: z.object({ id: z.number(), name: z.string() }),
   },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(projectInput, 'projects.getProject', (method, input) => method(input.project_id)),
-  },
+    single: bind('projects.getProject', (method, input) => method(input.project_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+} as const satisfies OperationDefinition<string, typeof projectInput>);
 
 const registry = createRegistry(getProject);
 

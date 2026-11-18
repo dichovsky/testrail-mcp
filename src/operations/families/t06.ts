@@ -10,8 +10,7 @@ import {
   createListInput, entryIdSchema, nonnegativeIntegerSchema, payloadArray, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
 import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
-import { driverCall } from '../driver-call.js';
-import { defineOperation, type ArgumentMapping, type OperationDefinition } from '../registry.js';
+import { defineOperation, type ArgumentMapping } from '../registry.js';
 import {
   aggregateControlMappings, allControls, control, pageResponse, recordResponse,
 } from './common.js';
@@ -30,14 +29,14 @@ export const getConfigs = defineOperation({
   inputSchema: getConfigsInput,
   argumentMap: [{ input: 'project_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'array', outerSchema: z.array(z.unknown()), entitySchema: ConfigurationGroupSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getConfigsInput, 'configurations.getConfigurations', (method, input) => method(input.project_id)),
-  },
+    single: bind('configurations.getConfigurations', (method, input) => method(input.project_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const addConfigGroupInput = strictObject({
   project_id: positiveIdSchema,
@@ -57,16 +56,16 @@ export const addConfigGroup = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: ConfigurationGroupSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addConfigGroupInput, 'configurations.addConfigurationGroup',
+    single: bind('configurations.addConfigurationGroup',
       (method, input) => method(input.project_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   // Repeating the call creates another group, so this is not idempotent.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateConfigGroupInput = strictObject({
   config_group_id: positiveIdSchema,
@@ -86,16 +85,16 @@ export const updateConfigGroup = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: ConfigurationGroupSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateConfigGroupInput, 'configurations.updateConfigurationGroup',
+    single: bind('configurations.updateConfigurationGroup',
       (method, input) => method(input.config_group_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   // Applying the same name again leaves the group in the same state.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deleteConfigGroupInput = strictObject({ config_group_id: positiveIdSchema });
 
@@ -109,16 +108,16 @@ export const deleteConfigGroup = defineOperation({
   inputSchema: deleteConfigGroupInput,
   argumentMap: [{ input: 'config_group_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteConfigGroupInput, 'configurations.deleteConfigurationGroup',
+    single: bind('configurations.deleteConfigurationGroup',
       (method, input) => method(input.config_group_id)),
-  },
+  }),
   files: { kind: 'none' },
   // Removing a group removes its configurations with it, and nothing restores them.
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const addConfigInput = strictObject({
   config_group_id: positiveIdSchema,
@@ -138,15 +137,15 @@ export const addConfig = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: ConfigurationSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addConfigInput, 'configurations.addConfiguration',
+    single: bind('configurations.addConfiguration',
       (method, input) => method(input.config_group_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateConfigInput = strictObject({
   config_id: positiveIdSchema,
@@ -166,15 +165,15 @@ export const updateConfig = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: ConfigurationSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateConfigInput, 'configurations.updateConfiguration',
+    single: bind('configurations.updateConfiguration',
       (method, input) => method(input.config_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deleteConfigInput = strictObject({ config_id: positiveIdSchema });
 
@@ -188,15 +187,15 @@ export const deleteConfig = defineOperation({
   inputSchema: deleteConfigInput,
   argumentMap: [{ input: 'config_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteConfigInput, 'configurations.deleteConfiguration',
+    single: bind('configurations.deleteConfiguration',
       (method, input) => method(input.config_id)),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 // ------------------------------------------------------------------------ plans
 
@@ -212,14 +211,14 @@ export const getPlan = defineOperation({
   inputSchema: getPlanInput,
   argumentMap: [{ input: 'plan_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: PlanSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getPlanInput, 'plans.getPlan', (method, input) => method(input.plan_id)),
-  },
+    single: bind('plans.getPlan', (method, input) => method(input.plan_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const getPlansInput = createListInput({
   path: { project_id: positiveIdSchema },
@@ -285,21 +284,21 @@ export const getPlans = defineOperation({
     ...aggregateControlMappings(1),
   ],
   response: { shape: 'page', outerSchema: pageResponse, entitySchema: PlanSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'controlled',
-    page: driverCall(getPlansInput, 'plans.getPlansPage', (method, input) => method(input.project_id, {
+    page: bind('plans.getPlansPage', (method, input) => method(input.project_id, {
       ...planFilter(input.query),
       ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
     })),
-    all: driverCall(getPlansInput, 'plans.getAllPlans', (method, input, context) => method(input.project_id, {
+    all: bind('plans.getAllPlans', (method, input, context) => method(input.project_id, {
       ...planFilter(input.query),
       ...driverAllOptions(allControls(input._mcp), context.limits),
     })),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /*
  * The identifiers a plan payload carries, at whatever depth. The driver forwards any
@@ -363,15 +362,15 @@ export const addPlan = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: PlanSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addPlanInput, 'plans.addPlan', (method, input) => method(input.project_id, input.body)),
-  },
+    single: bind('plans.addPlan', (method, input) => method(input.project_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Repeating the call creates another plan, so this is not idempotent.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updatePlanInput = strictObject({
   plan_id: positiveIdSchema,
@@ -393,14 +392,14 @@ export const updatePlan = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: PlanSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updatePlanInput, 'plans.updatePlan', (method, input) => method(input.plan_id, input.body)),
-  },
+    single: bind('plans.updatePlan', (method, input) => method(input.plan_id, input.body)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const closePlanInput = strictObject({ plan_id: positiveIdSchema });
 
@@ -414,15 +413,15 @@ export const closePlan = defineOperation({
   inputSchema: closePlanInput,
   argumentMap: [{ input: 'plan_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: PlanSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(closePlanInput, 'plans.closePlan', (method, input) => method(input.plan_id)),
-  },
+    single: bind('plans.closePlan', (method, input) => method(input.plan_id)),
+  }),
   files: { kind: 'none' },
   // Archiving cannot be undone, and a second call has nothing left to close.
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deletePlanInput = strictObject({ plan_id: positiveIdSchema });
 
@@ -436,14 +435,14 @@ export const deletePlan = defineOperation({
   inputSchema: deletePlanInput,
   argumentMap: [{ input: 'plan_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deletePlanInput, 'plans.deletePlan', (method, input) => method(input.plan_id)),
-  },
+    single: bind('plans.deletePlan', (method, input) => method(input.plan_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const addPlanEntryInput = strictObject({
   plan_id: positiveIdSchema,
@@ -470,14 +469,14 @@ export const addPlanEntry = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: PlanEntrySchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addPlanEntryInput, 'plans.addPlanEntry', (method, input) => method(input.plan_id, input.body)),
-  },
+    single: bind('plans.addPlanEntry', (method, input) => method(input.plan_id, input.body)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updatePlanEntryInput = strictObject({
   plan_id: positiveIdSchema,
@@ -501,11 +500,11 @@ export const updatePlanEntry = defineOperation({
     { input: 'body', call: 'single', argument: 2, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: PlanEntrySchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updatePlanEntryInput, 'plans.updatePlanEntry',
+    single: bind('plans.updatePlanEntry',
       (method, input) => method(input.plan_id, input.entry_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   /*
    * Applying the same field values again leaves the entry in the same state, so this is
@@ -515,7 +514,7 @@ export const updatePlanEntry = defineOperation({
    */
   effects: { testRail: 'write', destructive: true, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deletePlanEntryInput = strictObject({ plan_id: positiveIdSchema, entry_id: entryIdSchema });
 
@@ -532,15 +531,15 @@ export const deletePlanEntry = defineOperation({
     { input: 'entry_id', call: 'single', argument: 1, serialization: 'path' },
   ],
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deletePlanEntryInput, 'plans.deletePlanEntry',
+    single: bind('plans.deletePlanEntry',
       (method, input) => method(input.plan_id, input.entry_id)),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const addRunToPlanEntryInput = strictObject({
   plan_id: positiveIdSchema,
@@ -569,15 +568,15 @@ export const addRunToPlanEntry = defineOperation({
     { input: 'body', call: 'single', argument: 2, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: RunSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addRunToPlanEntryInput, 'plans.addRunToPlanEntry',
+    single: bind('plans.addRunToPlanEntry',
       (method, input) => method(input.plan_id, input.entry_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateRunInPlanEntryInput = strictObject({
   run_id: positiveIdSchema,
@@ -603,11 +602,11 @@ export const updateRunInPlanEntry = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: RunSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateRunInPlanEntryInput, 'plans.updateRunInPlanEntry',
+    single: bind('plans.updateRunInPlanEntry',
       (method, input) => method(input.run_id, input.body)),
-  },
+  }),
   files: { kind: 'none' },
   /*
    * Applying the same field values again leaves the run in the same state, so this is
@@ -616,7 +615,7 @@ export const updateRunInPlanEntry = defineOperation({
    */
   effects: { testRail: 'write', destructive: true, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deleteRunFromPlanEntryInput = strictObject({ run_id: positiveIdSchema });
 
@@ -630,15 +629,15 @@ export const deleteRunFromPlanEntry = defineOperation({
   inputSchema: deleteRunFromPlanEntryInput,
   argumentMap: [{ input: 'run_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteRunFromPlanEntryInput, 'plans.deleteRunFromPlanEntry',
+    single: bind('plans.deleteRunFromPlanEntry',
       (method, input) => method(input.run_id)),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 /** Registered in tool-name order by the registry; listed here in reviewed order. */
 export const t06 = [
