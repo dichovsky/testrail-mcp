@@ -7,8 +7,8 @@ import { loadConfiguration, type Configuration } from '../../src/config/environm
 import type { ToolResult } from '../../src/contracts/results.js';
 import { createStagingArea, stageUpload } from '../../src/files/staging.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
-import { createRuntime, type Delay } from '../../src/runtime/invocation.js';
-import { executeToolCall } from '../../src/transport/tool-call.js';
+import type { Delay } from '../../src/runtime/invocation.js';
+import { createTestExecutor } from '../support/executor.js';
 
 /*
  * Upload staging runs inside the call's slot: admitted like the request, bounded by the
@@ -65,7 +65,7 @@ function counted() {
   return { client, seen };
 }
 
-/** The runtime's waits, fired by hand. Only the 60-second response watchdog is fired. */
+/** The executor's waits, fired by hand. Only the 60-second response watchdog is fired. */
 function manualDelay() {
   const pending: { ms: number; fire: () => void; cancelled: boolean }[] = [];
   const delay = (ms: number): Delay => {
@@ -106,23 +106,21 @@ describe('upload staging inside the call slot', () => {
 
     const { client, seen } = counted();
     const watchdog = manualDelay();
-    const runtime = createRuntime({ client, limits: configuration.limits, delay: watchdog.delay });
+    const executor = createTestExecutor({ client, configuration, delay: watchdog.delay, createStaging: () => Promise.resolve(area) });
     try {
-      const pending = executeToolCall(addAttachmentToCase, { case_id: 1, file_path: source, filename: 'slow.bin' }, {
-        runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory),
-      });
+      const pending = executor.execute(addAttachmentToCase, { case_id: 1, file_path: source, filename: 'slow.bin' });
       // The copy is under way and the watchdog is already running: staging is inside the slot.
       await vi.waitFor(() => { expect({ reads, watchdogs: watchdog.watchdogs() }).toEqual({ reads: 1, watchdogs: 1 }); });
-      expect(runtime.stats().active).toBe(1);
+      expect(executor.stats().active).toBe(1);
 
       watchdog.fire();
       expect(error(await pending)).toMatchObject({ code: 'TIMEOUT', write_outcome: 'not_started' });
       // The paused read still belongs to this call, so its slot is still held.
       await new Promise((resolve) => { setTimeout(resolve, 30); });
-      expect(runtime.stats().active).toBe(1);
+      expect(executor.stats().active).toBe(1);
 
       release();
-      await vi.waitFor(() => { expect(runtime.stats().active).toBe(0); });
+      await vi.waitFor(() => { expect(executor.stats().active).toBe(0); });
       // The copy stopped at the next chunk rather than running on to the end, and its
       // own promise says so: it was stopped, not merely left unsent.
       expect(reads).toBe(1);
@@ -131,8 +129,7 @@ describe('upload staging inside the call slot', () => {
       expect(await readdir(area.directory)).toEqual(['owner.json']);
     } finally {
       release();
-      await runtime.shutdown();
-      await area.dispose();
+      await executor.shutdown();
     }
   });
 
@@ -161,20 +158,18 @@ describe('upload staging inside the call slot', () => {
 
     const { client, seen } = counted();
     const watchdog = manualDelay();
-    const runtime = createRuntime({ client, limits: configuration.limits, delay: watchdog.delay });
+    const executor = createTestExecutor({ client, configuration, delay: watchdog.delay, createStaging: () => Promise.resolve(area) });
     try {
-      const pending = executeToolCall(addAttachmentToCase, { case_id: 1, file_path: source, filename: 'closing.txt' }, {
-        runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory),
-      });
+      const pending = executor.execute(addAttachmentToCase, { case_id: 1, file_path: source, filename: 'closing.txt' });
       await vi.waitFor(() => { expect({ closing, watchdogs: watchdog.watchdogs() }).toEqual({ closing: true, watchdogs: 1 }); });
 
       // No caller signal exists here: only the call's own abandonment can stop the send.
       watchdog.fire();
       expect(error(await pending)).toMatchObject({ code: 'TIMEOUT', write_outcome: 'not_started' });
-      expect(runtime.stats().active).toBe(1);
+      expect(executor.stats().active).toBe(1);
 
       release();
-      await vi.waitFor(() => { expect(runtime.stats().active).toBe(0); });
+      await vi.waitFor(() => { expect(executor.stats().active).toBe(0); });
       // The copy finished rather than stopping at a chunk, so only the check after
       // staging stood between it and the driver.
       await expect(vi.mocked(stageUpload).mock.results[0]?.value).resolves.toMatchObject({ bytes: Buffer.byteLength(content) });
@@ -182,8 +177,7 @@ describe('upload staging inside the call slot', () => {
       expect(await readdir(area.directory)).toEqual(['owner.json']);
     } finally {
       release();
-      await runtime.shutdown();
-      await area.dispose();
+      await executor.shutdown();
     }
   });
 
@@ -200,20 +194,19 @@ describe('upload staging inside the call slot', () => {
     });
 
     const { client, seen } = counted();
-    const runtime = createRuntime({ client, limits: configuration.limits });
+    const executor = createTestExecutor({ client, configuration, createStaging: () => Promise.resolve(area) });
     try {
-      const result = await executeToolCall(addAttachmentToCase, { case_id: 1, file_path: source, filename: 'late.txt' }, {
-        runtime, configuration, signal: cancel.signal, stagingDirectory: () => Promise.resolve(area.directory),
+      const result = await executor.execute(addAttachmentToCase, { case_id: 1, file_path: source, filename: 'late.txt' }, {
+        signal: cancel.signal,
       });
       expect(error(result)).toMatchObject({ code: 'CANCELLED', write_outcome: 'not_started' });
-      await vi.waitFor(() => { expect(runtime.stats().active).toBe(0); });
+      await vi.waitFor(() => { expect(executor.stats().active).toBe(0); });
       expect(vi.mocked(stageUpload)).toHaveBeenCalledTimes(1);
       expect(seen).toEqual({ lookups: 0, requests: 0 });
       // Settlement disposed the finished copy: only the ownership marker remains.
       expect(await readdir(area.directory)).toEqual(['owner.json']);
     } finally {
-      await runtime.shutdown();
-      await area.dispose();
+      await executor.shutdown();
     }
   });
 });

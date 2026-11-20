@@ -1,6 +1,6 @@
 # Results, warnings and errors
 
-`src/contracts/results.ts`, `drift.ts` and `errors.ts` implement F05's success wrapper, advisory drift warnings and error taxonomy. Pagination metadata is built by F06; tool registration and SDK wiring by F08.
+`src/contracts/results.ts`, `drift.ts` and `errors.ts` implement F05's success wrapper, advisory drift warnings and error taxonomy. The process executor in `src/execution/executor.ts` applies them to each ordinary call or Attachment transfer, recording dispatch and acknowledgement before interpreting replies. Pagination metadata is built by F06; tool registration, negotiated result fields and the defensive handler-failure guard belong to F08.
 
 ## Preserved data
 

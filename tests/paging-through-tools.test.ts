@@ -7,12 +7,11 @@ import { loadConfiguration, type Configuration } from '../src/config/environment
 import { driverOptions } from '../src/driver/configuration.js';
 import { operationRegistry } from '../src/operations/catalog.js';
 import type { Operation } from '../src/operations/registry.js';
-import { createRuntime } from '../src/runtime/invocation.js';
-import { executeToolCall } from '../src/transport/tool-call.js';
+import { createTestExecutor } from './support/executor.js';
 import { loadParameterManifests, type ParameterManifest } from './contracts/parameter-manifest.js';
 
 /*
- * R01: all 24 paged lists end to end through `executeToolCall`, the path a client's call
+ * R01: all 24 paged lists end to end through the operation executor, the path a client's call
  * takes, rather than through the driver call alone. Page mode must describe the page it
  * returns, all mode must follow a continuation to a second page and join the two, and an
  * aggregate that would pass a configured bound must stop with PAGINATION_LIMIT and no data.
@@ -182,13 +181,13 @@ function bareArray(tool: string, route: string, manifest: ParameterManifest, aft
   return { first, second, fetch };
 }
 
-function runtimeFor(fetch: ReturnType<typeof vi.fn>) {
+function executorFor(fetch: ReturnType<typeof vi.fn>, settings: Configuration = configuration) {
   const client = new TestRailClient({
-    ...driverOptions(configuration),
+    ...driverOptions(settings),
     dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
     fetch: fetch as unknown as typeof globalThis.fetch,
   });
-  return createRuntime({ client, limits: configuration.limits });
+  return createTestExecutor({ configuration: settings, client });
 }
 
 function registered(tool: string): Operation {
@@ -223,9 +222,9 @@ describe('every paged list through the tool-call path', () => {
   it.each(rows)('%s: page mode returns the first page and describes what follows it', async (tool, route, kind) => {
     const manifest = manifestFor(tool);
     const server = twoPages(tool, route, manifest);
-    const runtime = runtimeFor(server.fetch);
+    const executor = executorFor(server.fetch);
     try {
-      const result = await executeToolCall(registered(tool), pageFixture(manifest).input, { runtime, configuration });
+      const result = await executor.execute(registered(tool), pageFixture(manifest).input);
       expect(result.isError, JSON.stringify(result.structuredContent)).toBeUndefined();
       const { data, pagination, warnings } = structured(result);
       expect(data).toEqual([server.first]);
@@ -248,15 +247,15 @@ describe('every paged list through the tool-call path', () => {
         ...(controlled ? { next_offset: 1 } : {}),
         driver: { size: 1, links: { next: server.next, prev: null } },
       });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it.each(rows)('%s: all mode follows the continuation and returns both pages', async (tool, route, kind) => {
     const manifest = manifestFor(tool);
     const server = twoPages(tool, route, manifest);
-    const runtime = runtimeFor(server.fetch);
+    const executor = executorFor(server.fetch);
     try {
-      const result = await executeToolCall(registered(tool), allFixture(manifest).input, { runtime, configuration });
+      const result = await executor.execute(registered(tool), allFixture(manifest).input);
       expect(result.isError, JSON.stringify(result.structuredContent)).toBeUndefined();
       const { data, pagination, warnings } = structured(result);
       expect(data).toEqual([server.first, server.second]);
@@ -265,16 +264,16 @@ describe('every paged list through the tool-call path', () => {
       expect(server.urls[1]).toMatch(/[?&]offset=1(?:&|$)/u);
       // Only a controlled list has a caller-chosen start to report.
       expect(pagination).toEqual({ mode: 'all', returned: 2, complete: true, ...(kind === 'controlled' ? { start_offset: 0 } : {}) });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it.each(rows)('%s: an aggregate that would pass max_items stops with PAGINATION_LIMIT and no data', async (tool, route) => {
     const manifest = manifestFor(tool);
     const server = twoPages(tool, route, manifest);
-    const runtime = runtimeFor(server.fetch);
+    const executor = executorFor(server.fetch);
     try {
       const input = { ...allFixture(manifest).input, _mcp: { ...(allFixture(manifest).input._mcp as object), max_items: 1 } };
-      const result = await executeToolCall(registered(tool), input, { runtime, configuration });
+      const result = await executor.execute(registered(tool), input);
       expect(result.isError).toBe(true);
       const payload = structured(result);
       // One-item pages stop max_items and max_pages at the same point, so only the reason
@@ -285,7 +284,7 @@ describe('every paged list through the tool-call path', () => {
       expect(payload.error).not.toHaveProperty('write_outcome');
       // The first page was fetched and then withheld; the second was never asked for.
       expect(server.fetch).toHaveBeenCalledTimes(1);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -298,9 +297,9 @@ describe('every paged list through the tool-call path', () => {
   it.each(rows)('%s: a bare first reply is the whole list, in page mode and in all mode', async (tool, route, kind) => {
     const manifest = manifestFor(tool);
     const page = bareArray(tool, route, manifest, false);
-    let runtime = runtimeFor(page.fetch);
+    let executor = executorFor(page.fetch);
     try {
-      const result = await executeToolCall(registered(tool), pageFixture(manifest).input, { runtime, configuration });
+      const result = await executor.execute(registered(tool), pageFixture(manifest).input);
       expect(result.isError, JSON.stringify(result.structuredContent)).toBeUndefined();
       const { data, pagination, warnings } = structured(result);
       expect(data).toEqual([page.first, page.second]);
@@ -309,18 +308,18 @@ describe('every paged list through the tool-call path', () => {
         mode: 'page', source: 'legacy_array', returned: 2, has_more: false,
         manual_continuation: false, next_action: 'none', driver: { size: 2 },
       });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
     const all = bareArray(tool, route, manifest, false);
-    runtime = runtimeFor(all.fetch);
+    executor = executorFor(all.fetch);
     try {
-      const result = await executeToolCall(registered(tool), allFixture(manifest).input, { runtime, configuration });
+      const result = await executor.execute(registered(tool), allFixture(manifest).input);
       expect(result.isError, JSON.stringify(result.structuredContent)).toBeUndefined();
       const { data, pagination, warnings } = structured(result);
       expect(data).toEqual([all.first, all.second]);
       expect(warnings).toBeUndefined();
       expect(pagination).toEqual({ mode: 'all', returned: 2, complete: true, ...(kind === 'controlled' ? { start_offset: 0 } : {}) });
       expect(all.fetch).toHaveBeenCalledTimes(1);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -332,16 +331,16 @@ describe('every paged list through the tool-call path', () => {
   it.each(rows)('%s: all mode ends at a bare array that follows an envelope and reports it complete', async (tool, route, kind) => {
     const manifest = manifestFor(tool);
     const server = bareArray(tool, route, manifest, true);
-    const runtime = runtimeFor(server.fetch);
+    const executor = executorFor(server.fetch);
     try {
-      const result = await executeToolCall(registered(tool), allFixture(manifest).input, { runtime, configuration });
+      const result = await executor.execute(registered(tool), allFixture(manifest).input);
       expect(result.isError, JSON.stringify(result.structuredContent)).toBeUndefined();
       const { data, pagination, warnings } = structured(result);
       expect(data).toEqual([server.first, server.second]);
       expect(warnings).toBeUndefined();
       expect(pagination).toEqual({ mode: 'all', returned: 2, complete: true, ...(kind === 'controlled' ? { start_offset: 0 } : {}) });
       expect(server.fetch).toHaveBeenCalledTimes(2);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -357,13 +356,13 @@ describe('each aggregate bound through a controlled and a response-driven list',
   ] as const)))('%s stops at %s %s', async (tool, bound, value, route) => {
     const manifest = manifestFor(tool);
     const server = twoPages(tool, route, manifest);
-    const runtime = runtimeFor(server.fetch);
+    const executor = executorFor(server.fetch);
     try {
       const input = { ...allFixture(manifest).input, _mcp: { ...(allFixture(manifest).input._mcp as object), [bound]: value } };
-      const result = await executeToolCall(registered(tool), input, { runtime, configuration });
+      const result = await executor.execute(registered(tool), input);
       expect(structured(result).error).toMatchObject({ code: 'PAGINATION_LIMIT', reason: REASON[bound] });
       expect(structured(result)).not.toHaveProperty('data');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it.each(bounded)('%s stops at max_duration_ms while the first page is still arriving', async (tool, route) => {
@@ -374,10 +373,10 @@ describe('each aggregate bound through a controlled and a response-driven list',
       await new Promise((resolve) => { setTimeout(resolve, 50); });
       return server.fetch(target);
     });
-    const runtime = runtimeFor(slow);
+    const executor = executorFor(slow);
     try {
       const input = { ...allFixture(manifest).input, _mcp: { ...(allFixture(manifest).input._mcp as object), max_duration_ms: 5 } };
-      const result = await executeToolCall(registered(tool), input, { runtime, configuration });
+      const result = await executor.execute(registered(tool), input);
       const error = structured(result).error as Record<string, unknown>;
       expect(error).toMatchObject({ code: 'PAGINATION_LIMIT', reason: REASON.max_duration_ms });
       // Stopped by the driver's deadline check, the helper supplies its counts: nothing
@@ -386,7 +385,7 @@ describe('each aggregate bound through a controlled and a response-driven list',
       expect(Object.keys(error).filter((key) => !['code', 'message', 'reason', 'pages_fetched', 'items_fetched'].includes(key))).toEqual([]);
       if ('pages_fetched' in error) expect([error.pages_fetched, error.items_fetched]).toEqual([0, 0]);
       expect(structured(result)).not.toHaveProperty('data');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -436,14 +435,14 @@ describe('F06 boundaries and continuation through the tools', () => {
   }
 
   async function all(tool: string, extra: Record<string, unknown>, fetch: ReturnType<typeof vi.fn>, query?: object) {
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      return structured(await executeToolCall(registered(tool), {
+      return structured(await executor.execute(registered(tool), {
         ...allFixture(manifestFor(tool)).input,
         ...(query === undefined ? {} : { query }),
         _mcp: { pagination: 'all', ...extra },
-      }, { runtime, configuration }));
-    } finally { await runtime.shutdown(); }
+      }));
+    } finally { await executor.shutdown(); }
   }
 
   it.each(both)('%s succeeds with every bound set exactly at what the list needs', async (tool, key) => {
@@ -524,15 +523,15 @@ describe('F06 boundaries and continuation through the tools', () => {
     const [first] = items(tool, key);
     const token = tool.replace('testrail_', '');
     const empty = { '0': { offset: 0, limit: 50, size: 0, _links: { next: null, prev: null }, [key]: [] } };
-    const runtime = runtimeFor(serve(empty).fetch);
+    const executor = executorFor(serve(empty).fetch);
     try {
-      const page = structured(await executeToolCall(registered(tool), pageFixture(manifestFor(tool)).input, { runtime, configuration }));
+      const page = structured(await executor.execute(registered(tool), pageFixture(manifestFor(tool)).input));
       expect(page.data).toEqual([]);
       expect(page.pagination).toEqual({
         mode: 'page', source: 'envelope', returned: 0, has_more: false, manual_continuation: false, next_action: 'none',
         limit: 50, offset: 0, driver: { size: 0, links: { next: null, prev: null } },
       });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
     // An empty page that links on still advances (the link's offset is past the page), so
     // the aggregate follows it and returns what the next page holds.
     const onward = serve({
@@ -566,14 +565,12 @@ describe('F06 boundaries and continuation through the tools', () => {
     const [first, second] = items('testrail_get_projects', 'projects');
     const big = { ...second, name: 'x'.repeat(300) };
     const server = serve(linked('projects', 'get_projects', first, big));
-    const runtime = runtimeFor(server.fetch);
+    const executor = executorFor(server.fetch, { ...configuration, limits: { ...configuration.limits, max_result_bytes: 400 } });
     try {
-      const result = await executeToolCall(registered('testrail_get_projects'), { _mcp: { pagination: 'all' } }, {
-        runtime, configuration: { ...configuration, limits: { ...configuration.limits, max_result_bytes: 400 } },
-      });
+      const result = await executor.execute(registered('testrail_get_projects'), { _mcp: { pagination: 'all' } });
       expect(structured(result).error).toMatchObject({ code: 'RESPONSE_TOO_LARGE' });
       expect(structured(result)).not.toHaveProperty('data');
       expect(server.fetch).toHaveBeenCalledTimes(2);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });

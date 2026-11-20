@@ -6,8 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { createStagingArea, type StagingArea } from '../../src/files/staging.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
-import { createRuntime } from '../../src/runtime/invocation.js';
-import { executeToolCall } from '../../src/transport/tool-call.js';
+import { createTestExecutor } from '../support/executor.js';
 import { describeBody } from '../contracts/uploads.js';
 
 const FEATURE = '@APP-1\nFeature: Users cannot login with invalid credentials\n';
@@ -92,12 +91,12 @@ describe('T03 feature-file uploads through the transport', () => {
     const area = await staging();
     const driver = client(() => Promise.resolve(new Response(JSON.stringify(CASE), { headers: { 'content-type': 'application/json' } })), calls);
     const upload = vi.spyOn(driver.bdd, method);
-    const runtime = createRuntime({ client: driver, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client: driver, createStaging: () => Promise.resolve(area) });
     const source = join(roots, 'login.feature');
     try {
-      const result = await executeToolCall(operation(tool), {
+      const result = await executor.execute(operation(tool), {
         ...target, file_path: source, filename: 'login.feature', content_type: 'text/plain',
-      }, { runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory) });
+      });
 
       expect(result.isError).toBeUndefined();
       expect((result.structuredContent as { data: unknown }).data).toEqual(CASE);
@@ -120,12 +119,14 @@ describe('T03 feature-file uploads through the transport', () => {
       expect(calls[0]?.body).toEqual([
         { name: 'attachment', filename: 'login.feature', content_type: 'text/plain', utf8: FEATURE },
       ]);
-      // Capacity, and with it the staged copy, is held until the call settles rather
-      // than until its result is returned, so the drain is what proves disposal.
-      await runtime.shutdown();
+      // The call may return before its staged copy is disposed. Wait for settlement
+      // and check the copy is gone before shutdown removes the whole staging area.
+      await vi.waitFor(() => { expect(executor.stats().active).toBe(0); });
       expect(await readdir(area.directory)).toEqual(['owner.json']);
+      await executor.shutdown();
+      await expect(readdir(area.directory)).rejects.toMatchObject({ code: 'ENOENT' });
     } finally {
-      await runtime.shutdown();
+      await executor.shutdown();
       await area.dispose();
     }
   });
@@ -146,11 +147,11 @@ describe('T03 feature-file uploads through the transport', () => {
       await writeFile(source, TAMPERED, 'utf8');
       return forward(sectionId, file, filename);
     });
-    const runtime = createRuntime({ client: driver, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client: driver, createStaging: () => Promise.resolve(area) });
     try {
-      const result = await executeToolCall(operation('testrail_add_bdd'), {
+      const result = await executor.execute(operation('testrail_add_bdd'), {
         section_id: 188, file_path: source, filename: 'login.feature',
-      }, { runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory) });
+      });
 
       expect(result.isError).toBeUndefined();
       expect(calls[0]?.body).toEqual([
@@ -159,7 +160,7 @@ describe('T03 feature-file uploads through the transport', () => {
       ]);
     } finally {
       vi.restoreAllMocks();
-      await runtime.shutdown();
+      await executor.shutdown();
       await area.dispose();
       await rm(source, { force: true });
     }
@@ -168,14 +169,15 @@ describe('T03 feature-file uploads through the transport', () => {
   it('refuses a file outside the configured upload roots without dispatching', async () => {
     const calls: { body: unknown }[] = [];
     const area = await staging();
-    const runtime = createRuntime({
+    const executor = createTestExecutor({
+      configuration,
       client: client(() => Promise.resolve(new Response('{}', { headers: { 'content-type': 'application/json' } })), calls),
-      limits: configuration.limits,
+      createStaging: () => Promise.resolve(area),
     });
     try {
-      const result = await executeToolCall(operation('testrail_add_bdd'), {
+      const result = await executor.execute(operation('testrail_add_bdd'), {
         section_id: 188, file_path: join(outside, 'login.feature'), filename: 'login.feature',
-      }, { runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory) });
+      });
 
       expect(result.isError).toBe(true);
       const { error } = result.structuredContent as { error: { code: string; write_outcome?: string } };
@@ -185,31 +187,34 @@ describe('T03 feature-file uploads through the transport', () => {
       expect(calls).toEqual([]);
       expect(await readdir(area.directory)).toEqual(['owner.json']);
     } finally {
-      await runtime.shutdown();
+      await executor.shutdown();
       await area.dispose();
     }
   });
 
   it('disposes the staged copy when the upload itself fails', async () => {
     const area = await staging();
-    const runtime = createRuntime({
+    const executor = createTestExecutor({
+      configuration,
       client: client(() => Promise.resolve(new Response('upstream failure', { status: 500 }))),
-      limits: configuration.limits,
+      createStaging: () => Promise.resolve(area),
     });
     try {
-      const result = await executeToolCall(operation('testrail_update_bdd'), {
+      const result = await executor.execute(operation('testrail_update_bdd'), {
         case_id: 2133, file_path: join(roots, 'login.feature'), filename: 'login.feature',
-      }, { runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory) });
+      });
 
       expect(result.isError).toBe(true);
       const { error } = result.structuredContent as { error: { code: string; write_outcome?: string } };
       expect(error.code).toBe('UPSTREAM_ERROR');
       // The request was sent and no usable answer came back, so the outcome is unknown.
       expect(error.write_outcome).toBe('unknown');
-      await runtime.shutdown();
+      await vi.waitFor(() => { expect(executor.stats().active).toBe(0); });
       expect(await readdir(area.directory)).toEqual(['owner.json']);
+      await executor.shutdown();
+      await expect(readdir(area.directory)).rejects.toMatchObject({ code: 'ENOENT' });
     } finally {
-      await runtime.shutdown();
+      await executor.shutdown();
       await area.dispose();
     }
   });
@@ -218,15 +223,15 @@ describe('T03 feature-file uploads through the transport', () => {
 describe('T03 reads that are not JSON objects', () => {
   it('returns a BDD scenario as the text it is, empty string included', async () => {
     for (const text of [FEATURE, '']) {
-      const runtime = createRuntime({
+      const executor = createTestExecutor({
+        configuration,
         client: client(() => Promise.resolve(new Response(text, { headers: { 'content-type': 'text/plain' } }))),
-        limits: configuration.limits,
       });
       try {
-        const result = await executeToolCall(operation('testrail_get_bdd'), { case_id: 2133 }, { runtime, configuration });
+        const result = await executor.execute(operation('testrail_get_bdd'), { case_id: 2133 });
         expect(result.isError).toBeUndefined();
         expect((result.structuredContent as { data: unknown }).data).toBe(text);
-      } finally { await runtime.shutdown(); }
+      } finally { await executor.shutdown(); }
     }
   });
 
@@ -236,12 +241,12 @@ describe('T03 reads that are not JSON objects', () => {
       _links: { next: '/api/v2/get_shared_step_history/1&limit=250&offset=250', prev: null },
       step_history: [{ id: '1', timestamp: 1389968184, user_id: '4', title: 'Shared Steps 1' }],
     };
-    const runtime = createRuntime({
+    const executor = createTestExecutor({
+      configuration,
       client: client(() => Promise.resolve(new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } }))),
-      limits: configuration.limits,
     });
     try {
-      const result = await executeToolCall(operation('testrail_get_shared_step_history'), { shared_step_id: 1 }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_shared_step_history'), { shared_step_id: 1 });
       expect(result.isError).toBeUndefined();
       const { pagination } = result.structuredContent as { pagination: Record<string, unknown> };
       expect(pagination.has_more).toBe(true);
@@ -253,6 +258,6 @@ describe('T03 reads that are not JSON objects', () => {
       expect(pagination.manual_continuation).toBe(false);
       expect(pagination.next_action).toBe('all');
       expect(pagination.next_offset).toBeUndefined();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });

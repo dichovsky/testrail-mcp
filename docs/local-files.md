@@ -1,6 +1,6 @@
 # Local file layer
 
-`src/files/` implements F07: containment for caller-supplied upload paths, bounded staging copies, abandoned-staging recovery, and persistent attachment downloads.
+`src/files/` implements F07's filesystem algorithms: containment for caller-supplied upload paths, bounded staging copies, abandoned-staging recovery, and persistent attachment downloads. `src/execution/executor.ts` owns when these run and their lifetime alongside ordinary calls. Transport supplies neither staging directories nor per-call cleanup callbacks.
 
 ## What this layer is and is not
 
@@ -28,7 +28,7 @@ The source is opened non-blocking, and that is what makes the regular-file check
 
 ## Staging runs inside the call's slot
 
-The runtime admits an upload before anything is staged, then stages the file and calls the driver within the same tracked operation. Staging is therefore bounded like the request it precedes: by the four-call slot limit, the fixed 60-second response watchdog and the caller's cancellation. A call refused as `BUSY`, or cancelled before admission, copies nothing. One consequence of that order: on a server whose slots are all busy, an upload whose file would be refused is answered `BUSY` before its path is checked, rather than `FILE_ACCESS_DENIED`.
+The executor validates input and configured list bounds before asking its runtime to admit the call. For an admitted upload, it lazily creates the shared staging area, stages the file and calls the driver within the same tracked operation. Concurrent uploads share creation; a failed creation is forgotten so a later upload can retry. Staging is therefore bounded like the request it precedes: by the four-call slot limit, the fixed 60-second response watchdog and the caller's cancellation. A call refused as `BUSY`, or cancelled before admission, creates no staging area or copy. One consequence of that order: on a server whose slots are all busy, an upload whose file would be refused is answered `BUSY` before its path is checked, rather than `FILE_ACCESS_DENIED`.
 
 When the watchdog ends the wait while the file is still being copied, the caller is answered at once with `TIMEOUT` and `write_outcome: "not_started"`. When the caller's cancellation ends it, the call ends at once with `CANCELLED` and `not_started`, which the `tool_call` diagnostic records; the SDK suppresses the response, so a client that cancelled through `notifications/cancelled` receives nothing for that call, as for any cancelled call (see [stdio transport](transport.md)). Either way, the copy stops before its next 64 KiB chunk and is removed, and nothing is sent afterwards, even if the copy had just finished. The slot is held until the copy has stopped. A filesystem call that never returns, such as a read on a hung network mount, holds its slot until it returns, because Node cannot interrupt it.
 
@@ -38,7 +38,7 @@ Disposing of a copy empties it before removing it. After a request body is aband
 
 ## Recovery deletes only what it can prove
 
-An abandoned staging directory is removed only with positive evidence: the staging name prefix, our marker, a recorded owner PID, and proof that the owner is gone. `ESRCH` is the only proof of absence — `EPERM` means the process exists under another user, and anything unreadable or unmarked is left alone. A stale directory wastes an inode; deleting a live one destroys an upload in flight, and PID reuse makes that a real possibility. Completed downloads are never inspected.
+Executor startup calls recovery before constructing the shared driver. An abandoned staging directory is removed only with positive evidence: the staging name prefix, our marker, a recorded owner PID, and proof that the owner is gone. `ESRCH` is the only proof of absence — `EPERM` means the process exists under another user, and anything unreadable or unmarked is left alone. A stale directory wastes an inode; deleting a live one destroys an upload in flight, and PID reuse makes that a real possibility. Completed downloads are never inspected.
 
 ## Downloads are additive and never destructive
 

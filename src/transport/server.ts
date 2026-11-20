@@ -1,18 +1,14 @@
 import { readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { McpServer, SERVER_INFO_META_KEY, type ServerContext } from '@modelcontextprotocol/server';
 import { serveStdio, type StdioServerHandle } from '@modelcontextprotocol/server/stdio';
-import { loadConfiguration, type Configuration, type Environment } from '../config/environment.js';
-import { FIXED_BUDGETS } from '../config/limits.js';
+import { loadConfiguration, type Environment } from '../config/environment.js';
 import { AdapterError, classifyError } from '../contracts/errors.js';
 import { errorResult, type ProtocolResultFields, type ToolResult } from '../contracts/results.js';
-import { createConfiguredDriver, type DriverSeams } from '../driver/configuration.js';
-import { createStagingArea, recoverAbandonedStaging } from '../files/staging.js';
+import type { DriverSeams } from '../driver/configuration.js';
+import { createOperationExecutor, type OperationExecutor } from '../execution/executor.js';
 import { operationRegistry } from '../operations/catalog.js';
 import type { Operation, OperationRegistry } from '../operations/registry.js';
-import { createRuntime, type Runtime } from '../runtime/invocation.js';
 import { correlationId, logEvent } from './diagnostics.js';
-import { executeToolCall } from './tool-call.js';
 
 /**
  * Cross-tool rules a model needs before its first call. Hosts may truncate to 512
@@ -44,7 +40,7 @@ const WRAPPER_JSON_SCHEMA = {
  * Handing the SDK a Zod schema would re-emit it in a different dialect, so the bytes
  * a client sees would stop matching the schema the parameter gates reviewed. This
  * passes the reviewed document through and accepts every value, because the adapter
- * validates in `executeToolCall` and reports a failure as an INVALID_ARGUMENT tool
+ * validates in `executor.execute` and reports a failure as an INVALID_ARGUMENT tool
  * error. Letting the SDK reject arguments instead would surface a bare protocol
  * error outside the adapter's error taxonomy.
  */
@@ -89,14 +85,12 @@ function packageVersion(): string {
 }
 
 export interface ServerDependencies {
-  readonly configuration: Configuration;
-  readonly runtime: Runtime;
+  readonly executor: OperationExecutor;
   readonly registry: OperationRegistry;
-  readonly stagingDirectory: () => Promise<string>;
 }
 
 /**
- * The answer to a call whose pipeline rejected. `executeToolCall` is built never to
+ * The answer to a call whose pipeline rejected. `executor.execute` is built never to
  * reject, so this cannot happen today, but if it ever did the SDK would send the raw
  * error message as the tool result, with no error code and no write outcome. Instead the
  * call fails as an internal fault like any other. Whether the driver was entered is not
@@ -120,7 +114,7 @@ function handlerFailure(operation: Operation, started: number, protocol: Protoco
  *
  * This is the factory body, and it must stay cheap and side-effect free: the stdio
  * entry calls it per connection and may call it again when an opening falls back to
- * the other protocol era. The driver and runtime are closed over rather than created
+ * the other protocol era. The executor is closed over rather than created
  * here, so a second instance cannot mean a second credential or a second rate budget.
  * Registration contacts nothing, so discovery makes no TestRail request.
  */
@@ -149,12 +143,9 @@ export function buildServer(dependencies: ServerDependencies): McpServer {
       const version = server.server.getNegotiatedProtocolVersion();
       const protocolResultFields = version === '2026-07-28' ? modernResultFields : {};
       try {
-        return await executeToolCall(operation, args, {
-          runtime: dependencies.runtime,
-          configuration: dependencies.configuration,
+        return await dependencies.executor.execute(operation, args, {
           signal: ctx.mcpReq.signal,
           protocolResultFields,
-          stagingDirectory: dependencies.stagingDirectory,
         });
       } catch {
         return handlerFailure(operation, started, protocolResultFields);
@@ -228,7 +219,7 @@ export function exitAfterGrace(
 }
 
 /**
- * Compose configuration, driver, runtime and transport, and own their lifetimes.
+ * Compose the process executor and transport; close protocol intake before draining.
  *
  * Configuration failures happen before any transport exists, so a misconfigured
  * server never writes a protocol message it cannot honour.
@@ -239,30 +230,11 @@ export async function startServer(
 ): Promise<StartedServer> {
   const configuration = await loadConfiguration(environment);
 
-  const removed = await recoverAbandonedStaging(tmpdir());
-  if (removed > 0) logEvent('staging_recovered', { removed });
-
-  const client = createConfiguredDriver(configuration, options.driver);
-  const runtime = createRuntime({ client, limits: configuration.limits });
+  const executor = await createOperationExecutor(configuration, options.driver);
   const registry = options.registry ?? operationRegistry;
 
-  // Created on first upload so a server that never uploads leaves no directory behind.
-  let staging: Promise<{ directory: string; dispose: () => Promise<void> }> | undefined;
-  const stagingArea = (): Promise<{ directory: string; dispose: () => Promise<void> }> => {
-    // A failure is forgotten, so the next upload tries again rather than inheriting it,
-    // and shutdown never awaits a staging area that was never created.
-    staging ??= createStagingArea(tmpdir()).catch((error: unknown) => {
-      staging = undefined;
-      throw error;
-    });
-    return staging;
-  };
-
   const handle = (options.serve ?? serveStdio)(
-    () => buildServer({
-      configuration, runtime, registry,
-      stagingDirectory: async () => (await stagingArea()).directory,
-    }),
+    () => buildServer({ executor, registry }),
     { onerror: (error: Error) => { logEvent('transport_error', { code: errorClassName(error) }); } },
   );
 
@@ -277,25 +249,7 @@ export async function startServer(
     stopping ??= (async () => {
       logEvent('server_stopping');
       await handle.close().catch(() => undefined);
-      const drainStarted = performance.now();
-      await runtime.shutdown().catch(() => undefined);
-      if (staging !== undefined) {
-        // Creation and removal can hang on a stalled filesystem too. Cleanup shares
-        // the drain's deadline rather than extending it. Keep observing the promise:
-        // a late-created area is still disposed, and a late rejection stays handled.
-        const cleanup = staging.then((area) => area.dispose()).catch(() => undefined);
-        const remaining = Math.max(0, FIXED_BUDGETS.shutdown_drain_ms - (performance.now() - drainStarted));
-        let timer: NodeJS.Timeout | undefined;
-        const expired = new Promise<void>((resolve) => {
-          timer = setTimeout(resolve, remaining);
-          timer.unref();
-        });
-        try {
-          await Promise.race([cleanup, expired]);
-        } finally {
-          clearTimeout(timer);
-        }
-      }
+      await executor.shutdown();
       logEvent('server_stopped');
     })();
     return stopping;

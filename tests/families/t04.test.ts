@@ -5,8 +5,7 @@ import { TestRailClient } from '@dichovsky/testrail-api-client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
-import { createRuntime } from '../../src/runtime/invocation.js';
-import { executeToolCall } from '../../src/transport/tool-call.js';
+import { createTestExecutor } from '../support/executor.js';
 
 let base: string;
 let configuration: Configuration;
@@ -30,15 +29,15 @@ function operation(tool: string) {
   return found;
 }
 
-function runtimeFor(fetch: ReturnType<typeof vi.fn>) {
-  return createRuntime({
+function executorFor(fetch: ReturnType<typeof vi.fn>) {
+  return createTestExecutor({
+    configuration,
     client: new TestRailClient({
       baseUrl: configuration.baseUrl, email: configuration.email, apiKey: configuration.apiKey,
       registerProcessHandlers: false, maxRetries: 0,
       dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
       fetch: fetch as unknown as typeof globalThis.fetch,
     }),
-    limits: configuration.limits,
   });
 }
 
@@ -58,9 +57,9 @@ describe('T04 changes refused by a closed run', () => {
         status: 400, headers: { 'content-type': 'application/json' },
       }),
     );
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), input, { runtime, configuration });
+      const result = await executor.execute(operation(tool), input);
       expect(result.isError).toBe(true);
       const { error } = result.structuredContent as { error: { code: string; http_status?: number; write_outcome?: string } };
       expect(error.code).toBe('UPSTREAM_ERROR');
@@ -72,7 +71,7 @@ describe('T04 changes refused by a closed run', () => {
       expect(fetch).toHaveBeenCalledTimes(1);
       // TestRail's own sentence is not echoed back; the message is the adapter's own.
       expect(JSON.stringify(result.structuredContent)).not.toContain('cannot be modified');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -82,13 +81,9 @@ describe('T04 results that are not the entity they name', () => {
     const fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(acknowledgement), { headers: { 'content-type': 'application/json' } }),
     );
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(
-        operation('testrail_update_tests'),
-        { body: { test_ids: [1, 2, 3], labels: [1] } },
-        { runtime, configuration },
-      );
+      const result = await executor.execute(operation('testrail_update_tests'), { body: { test_ids: [1, 2, 3], labels: [1] } });
       expect(result.isError).toBeUndefined();
       /*
        * This endpoint acknowledges the assignment instead of returning the tests. The
@@ -96,7 +91,7 @@ describe('T04 results that are not the entity they name', () => {
        * resolve to an empty array, which would tell a caller nothing was changed.
        */
       expect((result.structuredContent as { data: unknown }).data).toEqual(acknowledgement);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('blames the reply, not the server, when the data cannot be assembled', async () => {
@@ -107,18 +102,14 @@ describe('T04 results that are not the entity they name', () => {
     const fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(plain), { headers: { 'content-type': 'application/json' } }),
     );
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(
-        operation('testrail_get_test'),
-        { test_id: 100, query: { with_data: '1' } },
-        { runtime, configuration },
-      );
+      const result = await executor.execute(operation('testrail_get_test'), { test_id: 100, query: { with_data: '1' } });
       expect(result.isError).toBe(true);
       const { error } = result.structuredContent as { error: { code: string } };
       expect(error.code).toBe('INVALID_RESPONSE');
       expect(JSON.stringify(result.structuredContent)).not.toContain('server failed');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('still returns a drifted test with data, reporting the drift as a warning', async () => {
@@ -133,18 +124,14 @@ describe('T04 results that are not the entity they name', () => {
         headers: { 'content-type': 'application/json' },
       }),
     );
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(
-        operation('testrail_get_test'),
-        { test_id: 100, query: { with_data: '1' } },
-        { runtime, configuration },
-      );
+      const result = await executor.execute(operation('testrail_get_test'), { test_id: 100, query: { with_data: '1' } });
       expect(result.isError).toBeUndefined();
       const { data, warnings } = result.structuredContent as { data: { status_id: unknown }; warnings?: unknown[] };
       expect(data.status_id).toBe('5');
       expect(warnings).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('clears a test\'s labels when given an empty array', async () => {
@@ -154,18 +141,14 @@ describe('T04 results that are not the entity they name', () => {
     const fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(cleared), { headers: { 'content-type': 'application/json' } }),
     );
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(
-        operation('testrail_update_test'),
-        { test_id: 100, body: { labels: [] } },
-        { runtime, configuration },
-      );
+      const result = await executor.execute(operation('testrail_update_test'), { test_id: 100, body: { labels: [] } });
       expect(result.isError).toBeUndefined();
       expect((result.structuredContent as { data: unknown }).data).toEqual(cleared);
       const sent = fetch.mock.calls[0]?.[1] as { body?: string } | undefined;
       expect(JSON.parse(sent?.body ?? 'null')).toEqual({ labels: [] });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('merges a test\'s results and attachments into the record when asked for them', async () => {
@@ -174,19 +157,15 @@ describe('T04 results that are not the entity they name', () => {
     const fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } }),
     );
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(
-        operation('testrail_get_test'),
-        { test_id: 100, query: { with_data: '1' } },
-        { runtime, configuration },
-      );
+      const result = await executor.execute(operation('testrail_get_test'), { test_id: 100, query: { with_data: '1' } });
       expect(result.isError).toBeUndefined();
       // One record, as the driver assembles it: the test's own fields alongside what
       // was asked for, rather than TestRail's three-part envelope.
       expect((result.structuredContent as { data: unknown }).data)
         .toEqual({ ...test, results: body.results, attachments: body.attachments });
       expect(String(fetch.mock.calls[0]?.[0])).toContain('get_test/100&with_data=1');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });

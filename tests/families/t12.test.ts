@@ -8,8 +8,7 @@ import { LIMIT_CEILINGS } from '../../src/config/limits.js';
 import { driverOptions } from '../../src/driver/configuration.js';
 import { createStagingArea } from '../../src/files/staging.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
-import { createRuntime } from '../../src/runtime/invocation.js';
-import { executeToolCall } from '../../src/transport/tool-call.js';
+import { createTestExecutor } from '../support/executor.js';
 import { describeBody } from '../contracts/uploads.js';
 
 /*
@@ -151,10 +150,14 @@ describe('T12 get_attachment writes a new local file on every call', () => {
   it.each([[17], [UUID]] as const)('downloads %s twice into two complete files with identical bytes', async (id) => {
     const env = await environment();
     const fetch = replying(() => bytes('PNG fixture bytes\n'));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const first = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: id }, { runtime, configuration: env.configuration });
-      const second = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: id }, { runtime, configuration: env.configuration });
+      const first = await executor.execute(operation('testrail_get_attachment'), { attachment_id: id });
+      const second = await executor.execute(operation('testrail_get_attachment'), { attachment_id: id });
       expect(first.isError).toBeUndefined();
       expect(second.isError).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(2);
@@ -172,7 +175,7 @@ describe('T12 get_attachment writes a new local file on every call', () => {
       }
       expect(results[0]?.file_path).not.toBe(results[1]?.file_path);
       expect((await readdir(env.downloads)).sort()).toEqual(results.map(({ file_path }) => basename(file_path)).sort());
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it.each([
@@ -180,15 +183,19 @@ describe('T12 get_attachment writes a new local file on every call', () => {
   ] as const)('reports a %i download failure without a write_outcome and writes nothing', async (status, code) => {
     const env = await environment();
     const fetch = replying(() => json({ error: 'Field :attachment_id is not a valid attachment.' }, status));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation('testrail_get_attachment'), { attachment_id: 17 });
       expect(errorOf(result)).toEqual(expect.objectContaining({ code, http_status: status }));
       // A download only reads TestRail, so its failure says nothing about a write.
       expect(errorOf(result).write_outcome).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(await readdir(env.downloads)).toEqual([]);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('retries a download as an ordinary read and still writes one file', async () => {
@@ -196,27 +203,35 @@ describe('T12 get_attachment writes a new local file on every call', () => {
     const fetch = vi.fn()
       .mockImplementationOnce(() => Promise.resolve(json({ error: 'upstream' }, 503, { 'retry-after': '0' })))
       .mockImplementationOnce(() => Promise.resolve(bytes('after a retry\n')));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation('testrail_get_attachment'), { attachment_id: 17 });
       expect(result.isError).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(2);
       expect(await readdir(env.downloads)).toHaveLength(1);
       expect(await readFile((data(result) as { file_path: string }).file_path, 'utf8')).toBe('after a retry\n');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('refuses a reply over the configured file limit and writes nothing', async () => {
     const env = await environment({ max_file_bytes: 1024 });
     const fetch = replying(() => bytes('x'.repeat(2048)));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation('testrail_get_attachment'), { attachment_id: 17 });
       expect(result.isError).toBe(true);
       expect(errorOf(result).code).toBe('INVALID_RESPONSE');
       expect(errorOf(result).write_outcome).toBeUndefined();
       expect(await readdir(env.downloads)).toEqual([]);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('refuses a second download while one is in progress, before any request', async () => {
@@ -225,18 +240,22 @@ describe('T12 get_attachment writes a new local file on every call', () => {
     const fetch = vi.fn()
       .mockImplementationOnce(() => new Promise<Response>((resolve) => { release = resolve; }))
       .mockImplementation(() => Promise.resolve(bytes('second\n')));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const first = executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      const first = executor.execute(operation('testrail_get_attachment'), { attachment_id: 17 });
       await vi.waitFor(() => { expect(fetch).toHaveBeenCalledTimes(1); });
-      const second = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 18 }, { runtime, configuration: env.configuration });
+      const second = await executor.execute(operation('testrail_get_attachment'), { attachment_id: 18 });
       expect(errorOf(second).code).toBe('BUSY');
       expect(errorOf(second).write_outcome).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(1);
       release(bytes('first\n'));
       expect((await first).isError).toBeUndefined();
       expect(await readdir(env.downloads)).toHaveLength(1);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('refuses a second download while the first reply is still being read', async () => {
@@ -250,17 +269,21 @@ describe('T12 get_attachment writes a new local file on every call', () => {
         },
       }), { headers: { 'content-type': 'application/octet-stream' } })))
       .mockImplementation(() => Promise.resolve(bytes('second\n')));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const first = executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      const first = executor.execute(operation('testrail_get_attachment'), { attachment_id: 17 });
       await vi.waitFor(() => { expect(fetch).toHaveBeenCalledTimes(1); });
-      const second = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 18 }, { runtime, configuration: env.configuration });
+      const second = await executor.execute(operation('testrail_get_attachment'), { attachment_id: 18 });
       expect(errorOf(second).code).toBe('BUSY');
       expect(fetch).toHaveBeenCalledTimes(1);
       finish();
       const done = await first;
       expect(await readFile((data(done) as { file_path: string }).file_path, 'utf8')).toBe('first half, second half\n');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -274,23 +297,27 @@ describe('T12 get_attachment writes a new local file on every call', () => {
     writes.hold = new Promise<void>((resolve) => { release = resolve; });
     writes.started = 0;
     const fetch = replying(() => bytes('held\n'));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const first = executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      const first = executor.execute(operation('testrail_get_attachment'), { attachment_id: 17 });
       await vi.waitFor(() => { expect(writes.started).toBe(1); });
-      const refused = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 18 }, { runtime, configuration: env.configuration });
+      const refused = await executor.execute(operation('testrail_get_attachment'), { attachment_id: 18 });
       expect(errorOf(refused).code).toBe('BUSY');
       expect(fetch).toHaveBeenCalledTimes(1);
       release();
       expect((await first).isError).toBeUndefined();
       // Once the write is done the slot is free again.
       writes.hold = undefined;
-      const next = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 18 }, { runtime, configuration: env.configuration });
+      const next = await executor.execute(operation('testrail_get_attachment'), { attachment_id: 18 });
       expect(next.isError).toBeUndefined();
       expect(await readdir(env.downloads)).toHaveLength(2);
     } finally {
       writes.hold = undefined;
-      await runtime.shutdown();
+      await executor.shutdown();
     }
   });
 
@@ -298,24 +325,28 @@ describe('T12 get_attachment writes a new local file on every call', () => {
   it('releases the download slot when writing the file fails', async () => {
     const env = await environment();
     const fetch = replying(() => bytes('bytes\n'));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
       writes.fail = true;
-      const failed = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      const failed = await executor.execute(operation('testrail_get_attachment'), { attachment_id: 17 });
       expect(failed.isError).toBe(true);
       expect(errorOf(failed).write_outcome).toBeUndefined();
       writes.fail = false;
-      const next = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 18 }, { runtime, configuration: env.configuration });
+      const next = await executor.execute(operation('testrail_get_attachment'), { attachment_id: 18 });
       expect(next.isError).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(2);
     } finally {
       writes.fail = false;
-      await runtime.shutdown();
+      await executor.shutdown();
     }
   });
 
   /*
-   * The runtime stops waiting on cancellation but the request runs on, so the slot is kept
+   * The executor stops waiting on cancellation but the request runs on, so the slot is kept
    * until its reply settles. That reply writes nothing: the caller was already told
    * CANCELLED and would never learn the file's path.
    */
@@ -326,21 +357,25 @@ describe('T12 get_attachment writes a new local file on every call', () => {
       await new Promise<void>((resolve) => { reply = resolve; });
       return bytes('late bytes\n');
     });
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     const cancel = new AbortController();
     writes.started = 0;
     try {
-      const call = executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration, signal: cancel.signal });
+      const call = executor.execute(operation('testrail_get_attachment'), { attachment_id: 17 }, { signal: cancel.signal });
       await vi.waitFor(() => { expect(fetch).toHaveBeenCalledTimes(1); });
       cancel.abort();
       expect(errorOf(await call).code).toBe('CANCELLED');
-      expect(runtime.stats().binary).toBe(1);
+      expect(executor.stats().binary).toBe(1);
       reply();
-      await vi.waitFor(() => { expect(runtime.stats().binary).toBe(0); });
+      await vi.waitFor(() => { expect(executor.stats().binary).toBe(0); });
       expect(writes.started).toBe(0);
       expect(await readdir(env.downloads)).toEqual([]);
     } finally {
-      await runtime.shutdown();
+      await executor.shutdown();
     }
   });
 
@@ -351,17 +386,21 @@ describe('T12 get_attachment writes a new local file on every call', () => {
   it('keeps the committed file when its result is too large to return', async () => {
     const env = await environment({ max_data_bytes: 16, max_all_bytes: 16 });
     const fetch = replying(() => bytes('kept only if reported\n'));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
       writes.started = 0;
-      const result = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation('testrail_get_attachment'), { attachment_id: 17 });
       expect(errorOf(result).code).toBe('RESPONSE_TOO_LARGE');
       expect(writes.started).toBe(1);
       const kept = await readdir(env.downloads);
       expect(kept).toHaveLength(1);
       expect(await readFile(join(env.downloads, kept[0] ?? ''), 'utf8')).toBe('kept only if reported\n');
     } finally {
-      await runtime.shutdown();
+      await executor.shutdown();
     }
   });
 
@@ -373,22 +412,26 @@ describe('T12 get_attachment writes a new local file on every call', () => {
     writes.hold = new Promise<void>((resolve) => { release = resolve; });
     writes.started = 0;
     const fetch = replying(() => bytes('written late\n'));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     const cancel = new AbortController();
     try {
-      const call = executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration, signal: cancel.signal });
+      const call = executor.execute(operation('testrail_get_attachment'), { attachment_id: 17 }, { signal: cancel.signal });
       await vi.waitFor(() => { expect(writes.started).toBe(1); });
       cancel.abort();
       expect(errorOf(await call).code).toBe('CANCELLED');
-      expect(runtime.stats().binary).toBe(1);
+      expect(executor.stats().binary).toBe(1);
       release();
-      await vi.waitFor(() => { expect(runtime.stats().binary).toBe(0); });
+      await vi.waitFor(() => { expect(executor.stats().binary).toBe(0); });
       const kept = await readdir(env.downloads);
       expect(kept).toHaveLength(1);
       expect(await readFile(join(env.downloads, kept[0] ?? ''), 'utf8')).toBe('written late\n');
     } finally {
       writes.hold = undefined;
-      await runtime.shutdown();
+      await executor.shutdown();
     }
   });
 
@@ -409,25 +452,32 @@ describe('T12 get_attachment writes a new local file on every call', () => {
   ] as const)('refuses a download whose %s arrive in time as TIMEOUT, and writes nothing', async (_label, overrides, respond) => {
     const env = await environment();
     const fetch = vi.fn().mockImplementation(respond);
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch, overrides), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch, overrides),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation('testrail_get_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation('testrail_get_attachment'), { attachment_id: 17 });
       expect(errorOf(result)).toEqual({ code: 'TIMEOUT', message: 'The response wait expired; upstream work may still be running.' });
       expect(await readdir(env.downloads)).toEqual([]);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('refuses a caller-chosen destination before any request', async () => {
     const env = await environment();
     const fetch = replying(() => bytes('never\n'));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation('testrail_get_attachment'),
-        { attachment_id: 17, download_path: join(env.directory, 'chosen.bin') }, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation('testrail_get_attachment'), { attachment_id: 17, download_path: join(env.directory, 'chosen.bin') });
       expect(errorOf(result).code).toBe('INVALID_ARGUMENT');
       expect(fetch).not.toHaveBeenCalled();
       expect(await readdir(env.downloads)).toEqual([]);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -440,13 +490,17 @@ describe('T12 attachment lists', () => {
       offset: 0, limit: 50, size: 3, _links: { next: null, prev: null },
       attachments: [LEGACY_CASE_ENTITY, CLOUD_ENTITY, PLAN_ENTITY],
     }));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation('testrail_get_attachments_for_case'), { case_id: 42 }, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation('testrail_get_attachments_for_case'), { case_id: 42 });
       expect(data(result)).toEqual([LEGACY_CASE_ENTITY, CLOUD_ENTITY, PLAN_ENTITY]);
       expect(warnings(result)).toEqual([]);
       expect(requested(fetch)).toBe('https://people.testrail.io/index.php?/api/v2/get_attachments_for_case/42&limit=50&offset=0');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   // Drift is advisory on every list: a drifted entity is returned as sent, never refused.
@@ -460,12 +514,16 @@ describe('T12 attachment lists', () => {
     const env = await environment();
     const drifted = { ...PLAN_ENTITY, size: 'large' };
     const fetch = replying(() => json([drifted]));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation(tool), input, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation(tool), input);
       expect(data(result)).toEqual([drifted]);
       expect(warnings(result)).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -483,20 +541,24 @@ describe('T12 attachment lists', () => {
       .mockImplementationOnce(() => Promise.resolve(json(full(50))))
       .mockImplementationOnce(() => Promise.resolve(json(full(20))))
       .mockImplementationOnce(() => Promise.resolve(json(full(10))));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const page = await executeToolCall(operation(tool), input, { runtime, configuration: env.configuration });
+      const page = await executor.execute(operation(tool), input);
       expect(data(page)).toHaveLength(50);
       expect((page.structuredContent as { pagination: unknown }).pagination).toMatchObject({ has_more: false });
-      const all = await executeToolCall(operation(tool), { ...input, _mcp: { pagination: 'all', page_size: 20 } }, { runtime, configuration: env.configuration });
+      const all = await executor.execute(operation(tool), { ...input, _mcp: { pagination: 'all', page_size: 20 } });
       expect(data(all)).toHaveLength(20);
       expect((all.structuredContent as { pagination: unknown }).pagination).toMatchObject({ complete: true });
       expect(fetch).toHaveBeenCalledTimes(2);
       // The way on that the summary names: the next offset, in page mode.
-      await executeToolCall(operation(tool), { ...input, query: { offset: 50 } }, { runtime, configuration: env.configuration });
+      await executor.execute(operation(tool), { ...input, query: { offset: 50 } });
       expect(requested(fetch, 2)).toMatch(/&limit=50&offset=50$/u);
       expect(operation(tool).description).toContain('TestRail documents the reply as a bare array, which carries no continuation: a page that comes back full may not be the whole list although its pagination reports has_more false, and all mode stops after its first reply while reporting complete. To read further, request the next offset in page mode.');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it.each([
@@ -505,14 +567,18 @@ describe('T12 attachment lists', () => {
   ] as const)('%s reads the documented bare array as a terminal page', async (tool, input, route) => {
     const env = await environment();
     const fetch = replying(() => json([PLAN_ENTITY]));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation(tool), input, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation(tool), input);
       expect(data(result)).toEqual([PLAN_ENTITY]);
       expect((result.structuredContent as { pagination: unknown }).pagination)
         .toMatchObject({ source: 'legacy_array', has_more: false });
       expect(requested(fetch)).toBe(`https://people.testrail.io/index.php?/api/v2/${route}&limit=50&offset=0`);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it.each([
@@ -528,13 +594,17 @@ describe('T12 attachment lists', () => {
       .mockImplementationOnce(() => Promise.resolve(json({
         offset: 1, limit: 1, size: 1, _links: { next: null, prev: `/api/v2/${route}&limit=1&offset=0` }, attachments: [CLOUD_ENTITY],
       })));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation(tool), { ...input, _mcp: { pagination: 'all', page_size: 1 } }, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation(tool), { ...input, _mcp: { pagination: 'all', page_size: 1 } });
       expect(data(result)).toEqual([LEGACY_CASE_ENTITY, CLOUD_ENTITY]);
       expect(fetch).toHaveBeenCalledTimes(2);
       expect(requested(fetch, 1)).toBe(`https://people.testrail.io/index.php?/api/v2/${route}&limit=1&offset=1`);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -550,16 +620,20 @@ describe('T12 attachment lists', () => {
       _links: { next: '/api/v2/get_attachments_for_test/21&limit=250&offset=250', prev: null },
       attachments: [CLOUD_ENTITY],
     }));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation('testrail_get_attachments_for_test'), { test_id: 21 }, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation('testrail_get_attachments_for_test'), { test_id: 21 });
       expect(data(result)).toEqual([CLOUD_ENTITY]);
       expect(result.structuredContent).not.toHaveProperty('pagination');
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(requested(fetch)).toBe('https://people.testrail.io/index.php?/api/v2/get_attachments_for_test/21');
       expect(operation('testrail_get_attachments_for_test').description).toContain(
         'If TestRail pages it, only the attachments in that one reply are returned, with no sign that more exist, because the driver method returns the list alone.');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('returns only the first reply of a paged plan-entry list, with nothing that says more exist', async () => {
@@ -569,30 +643,38 @@ describe('T12 attachment lists', () => {
       _links: { next: `/api/v2/get_attachments_for_plan_entry/7/${UUID}&limit=250&offset=250`, prev: null },
       attachments: [PLAN_ENTITY],
     }));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation('testrail_get_attachments_for_plan_entry'), { plan_id: 7, entry_id: UUID }, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation('testrail_get_attachments_for_plan_entry'), { plan_id: 7, entry_id: UUID });
       expect(data(result)).toEqual([PLAN_ENTITY]);
       expect(result.structuredContent).not.toHaveProperty('pagination');
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(operation('testrail_get_attachments_for_plan_entry').description).toContain(
         'if it sends a paged envelope instead, only the attachments in that one reply are returned, with no sign that more exist, because the driver method returns the list alone');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('refuses a numeric plan entry before any request and sends a UUID as given', async () => {
     const env = await environment();
     const fetch = replying(() => json([PLAN_ENTITY]));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const numeric = await executeToolCall(operation('testrail_get_attachments_for_plan_entry'), { plan_id: 7, entry_id: 12 }, { runtime, configuration: env.configuration });
+      const numeric = await executor.execute(operation('testrail_get_attachments_for_plan_entry'), { plan_id: 7, entry_id: 12 });
       expect(errorOf(numeric).code).toBe('INVALID_ARGUMENT');
       expect(fetch).not.toHaveBeenCalled();
       const upper = UUID.toUpperCase();
-      const result = await executeToolCall(operation('testrail_get_attachments_for_plan_entry'), { plan_id: 7, entry_id: upper }, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation('testrail_get_attachments_for_plan_entry'), { plan_id: 7, entry_id: upper });
       expect(data(result)).toEqual([PLAN_ENTITY]);
       expect(requested(fetch)).toBe(`https://people.testrail.io/index.php?/api/v2/get_attachments_for_plan_entry/7/${upper}`);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('does not say what the test list\'s entries all carry beyond the id', () => {
@@ -656,11 +738,11 @@ describe('T12 uploads', () => {
     });
     const driver = driverFor(env.configuration, fetch);
     const invoked = vi.spyOn(driver.attachments, method);
-    const runtime = createRuntime({ client: driver, limits: env.configuration.limits });
+    const executor = createTestExecutor({ configuration: env.configuration, client: driver, createStaging: () => Promise.resolve(env.staging) });
     try {
-      const result = await executeToolCall(operation(tool), {
+      const result = await executor.execute(operation(tool), {
         ...ids, file_path: env.source, filename: REQUESTED, content_type: 'Text/Plain',
-      }, { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
+      });
       expect(result.isError).toBeUndefined();
       expect(data(result)).toEqual({ attachment_id: attachmentId });
       expect(warnings(result)).toEqual([]);
@@ -675,9 +757,11 @@ describe('T12 uploads', () => {
       expect(file?.path).not.toBe(env.source);
       // Exactly a path and the caller's media type: no descriptor, nothing invented.
       expect(file).toStrictEqual({ path: file?.path, type: 'Text/Plain' });
-      await runtime.shutdown();
+      await vi.waitFor(() => { expect(executor.stats().active).toBe(0); });
       expect(await readdir(env.staging.directory)).toEqual(['owner.json']);
-    } finally { await runtime.shutdown(); await env.staging.dispose(); }
+      await executor.shutdown();
+      await expect(readdir(env.staging.directory)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally { await executor.shutdown(); await env.staging.dispose(); }
   });
 
   it.each(UPLOADS)('%s invents no media type when the caller names none', async (tool, ids, _route, method) => {
@@ -685,16 +769,14 @@ describe('T12 uploads', () => {
     const fetch = vi.fn().mockImplementation(() => Promise.resolve(json({ attachment_id: 443 })));
     const driver = driverFor(env.configuration, fetch);
     const invoked = vi.spyOn(driver.attachments, method);
-    const runtime = createRuntime({ client: driver, limits: env.configuration.limits });
+    const executor = createTestExecutor({ configuration: env.configuration, client: driver, createStaging: () => Promise.resolve(env.staging) });
     try {
-      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED }, {
-        runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory),
-      });
+      const result = await executor.execute(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED });
       expect(result.isError).toBeUndefined();
       const file = invoked.mock.calls[0]?.find((argument): argument is { path: string } =>
         typeof argument === 'object' && argument !== null && 'path' in argument);
       expect(Object.keys(file ?? {})).toEqual(['path']);
-    } finally { await runtime.shutdown(); await env.staging.dispose(); }
+    } finally { await executor.shutdown(); await env.staging.dispose(); }
   });
 
   /*
@@ -723,42 +805,49 @@ describe('T12 uploads', () => {
     const fetch = vi.fn().mockImplementation(respond);
     const driver = driverFor(env.configuration, fetch, { timeout: 100 });
     const invoked = vi.spyOn(driver.attachments, method);
-    const runtime = createRuntime({ client: driver, limits: env.configuration.limits });
+    const executor = createTestExecutor({ configuration: env.configuration, client: driver, createStaging: () => Promise.resolve(env.staging) });
     try {
-      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
-        { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
+      const result = await executor.execute(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED });
       expect(result.isError).toBe(true);
       expect(errorOf(result)).toEqual({ ...expected, message: expect.any(String) as unknown, write_outcome: 'unknown' });
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(invoked).toHaveBeenCalledTimes(1);
-      await runtime.shutdown();
+      await vi.waitFor(() => { expect(executor.stats().active).toBe(0); });
       expect(await readdir(env.staging.directory)).toEqual(['owner.json']);
-    } finally { await runtime.shutdown(); await env.staging.dispose(); }
+      await executor.shutdown();
+      await expect(readdir(env.staging.directory)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally { await executor.shutdown(); await env.staging.dispose(); }
   });
 
   it.each(UPLOADS)('%s refuses a file above the configured limit before anything is sent', async (tool, ids) => {
     const env = await environment({ max_file_bytes: 16 });
     const fetch = replying(() => json({ attachment_id: 443 }));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
-        { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
+      const result = await executor.execute(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED });
       expect(errorOf(result)).toEqual(expect.objectContaining({ code: 'FILE_TOO_LARGE', write_outcome: 'not_started' }));
       expect(fetch).not.toHaveBeenCalled();
       expect(await readdir(env.staging.directory)).toEqual(['owner.json']);
-    } finally { await runtime.shutdown(); await env.staging.dispose(); }
+    } finally { await executor.shutdown(); await env.staging.dispose(); }
   });
 
   it.each(UPLOADS)('%s refuses a file outside the upload roots before anything is sent', async (tool, ids) => {
     const env = await environment();
     const fetch = replying(() => json({ attachment_id: 443 }));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation(tool), { ...ids, file_path: join(env.directory, 'outside', 'console.log'), filename: REQUESTED },
-        { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
+      const result = await executor.execute(operation(tool), { ...ids, file_path: join(env.directory, 'outside', 'console.log'), filename: REQUESTED });
       expect(errorOf(result)).toEqual(expect.objectContaining({ code: 'FILE_ACCESS_DENIED', write_outcome: 'not_started' }));
       expect(fetch).not.toHaveBeenCalled();
-    } finally { await runtime.shutdown(); await env.staging.dispose(); }
+    } finally { await executor.shutdown(); await env.staging.dispose(); }
   });
 
   /*
@@ -773,10 +862,13 @@ describe('T12 uploads', () => {
       await describeBody(init?.body);
       return new Promise<Response>((resolve) => { releases.push(resolve); });
     });
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const call = () => executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
-        { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
+      const call = () => executor.execute(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED });
       const pending = [call(), call()];
       await vi.waitFor(() => { expect(releases).toHaveLength(2); });
       releases[0]?.(json({ attachment_id: 441 }));
@@ -785,7 +877,7 @@ describe('T12 uploads', () => {
       // Either request may reach TestRail first; what matters is that each call got its own attachment.
       expect(results.map((result) => (data(result) as { attachment_id: number }).attachment_id).sort()).toEqual([441, 442]);
       expect(fetch).toHaveBeenCalledTimes(2);
-    } finally { await runtime.shutdown(); await env.staging.dispose(); }
+    } finally { await executor.shutdown(); await env.staging.dispose(); }
   });
 
   /*
@@ -805,14 +897,17 @@ describe('T12 uploads', () => {
   ] as const))('%s returns a reply with %s as sent, with a drift warning', async (tool, _label, ids, reply) => {
     const env = await environment();
     const fetch = replying(() => json(reply));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
-        { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
+      const result = await executor.execute(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED });
       expect(result.isError).toBeUndefined();
       expect(data(result)).toEqual(reply);
       expect(warnings(result)).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
-    } finally { await runtime.shutdown(); await env.staging.dispose(); }
+    } finally { await executor.shutdown(); await env.staging.dispose(); }
   });
 
   /*
@@ -825,25 +920,31 @@ describe('T12 uploads', () => {
   ] as const))('%s reports a success reply that %s as unknown', async (tool, _label, ids, limits, respond) => {
     const env = await environment(limits);
     const fetch = replying(respond);
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
-        { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
+      const result = await executor.execute(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED });
       expect(errorOf(result)).toEqual(expect.objectContaining({ code: 'INVALID_RESPONSE', write_outcome: 'unknown' }));
       expect(fetch).toHaveBeenCalledTimes(1);
-    } finally { await runtime.shutdown(); await env.staging.dispose(); }
+    } finally { await executor.shutdown(); await env.staging.dispose(); }
   });
 
   it.each(UPLOADS)('%s returns an empty success reply as {} with a drift warning', async (tool, ids) => {
     const env = await environment();
     const fetch = replying(() => new Response('', { status: 200 }));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
-        { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
+      const result = await executor.execute(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED });
       expect(data(result)).toEqual({});
       expect(warnings(result)).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
-    } finally { await runtime.shutdown(); await env.staging.dispose(); }
+    } finally { await executor.shutdown(); await env.staging.dispose(); }
   });
 
   // The driver's own timeout covers sending the file; an upload it cuts off stays unknown.
@@ -855,27 +956,33 @@ describe('T12 uploads', () => {
         reject(reason instanceof Error ? reason : new DOMException('aborted', 'AbortError'));
       });
     }));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch, { timeout: 100 }), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch, { timeout: 100 }),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
-        { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
+      const result = await executor.execute(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED });
       // No status arrived, so none is claimed.
       expect(errorOf(result)).toEqual({ code: 'TIMEOUT', message: 'The response wait expired; upstream work may still be running.', write_outcome: 'unknown' });
       expect(fetch).toHaveBeenCalledTimes(1);
-    } finally { await runtime.shutdown(); await env.staging.dispose(); }
+    } finally { await executor.shutdown(); await env.staging.dispose(); }
   });
 
   // TestRail stored the file and answered; only its reply is unusable here, so the outcome is acknowledged.
   it.each(UPLOADS)('%s reports a success reply it cannot use as acknowledged', async (tool, ids) => {
     const env = await environment();
     const fetch = replying(() => json([443]));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED },
-        { runtime, configuration: env.configuration, stagingDirectory: () => Promise.resolve(env.staging.directory) });
+      const result = await executor.execute(operation(tool), { ...ids, file_path: env.source, filename: REQUESTED });
       expect(errorOf(result)).toEqual(expect.objectContaining({ code: 'INVALID_RESPONSE', write_outcome: 'acknowledged' }));
       expect(fetch).toHaveBeenCalledTimes(1);
-    } finally { await runtime.shutdown(); await env.staging.dispose(); }
+    } finally { await executor.shutdown(); await env.staging.dispose(); }
   });
 
   it.each(UPLOADS)('%s is published as a repeatable-unsafe write and says why', (tool) => {
@@ -930,15 +1037,19 @@ describe('T12 delete_attachment', () => {
   it.each([[17], [UUID]] as const)('deletes %s with one POST and reports no data', async (id) => {
     const env = await environment();
     const fetch = replying(() => new Response('', { status: 200 }));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation('testrail_delete_attachment'), { attachment_id: id }, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation('testrail_delete_attachment'), { attachment_id: id });
       expect(result.isError).toBeUndefined();
       expect(data(result)).toBeNull();
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(requested(fetch)).toBe(`https://people.testrail.io/index.php?/api/v2/delete_attachment/${id}`);
       expect((fetch.mock.calls[0]?.[1] as { method?: string }).method).toBe('POST');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('is published as destructive and not idempotent', () => {
@@ -953,12 +1064,16 @@ describe('T12 delete_attachment', () => {
     const fetch = vi.fn()
       .mockImplementationOnce(() => Promise.resolve(json({ error: 'slow down' }, 429, { 'retry-after': '0' })))
       .mockImplementationOnce(() => Promise.resolve(new Response('', { status: 200 })));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation('testrail_delete_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation('testrail_delete_attachment'), { attachment_id: 17 });
       expect(fetch).toHaveBeenCalledTimes(2);
       expect(result.isError).toBeUndefined();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it.each([
@@ -969,22 +1084,30 @@ describe('T12 delete_attachment', () => {
   ] as const)('is not re-sent after %s, and its outcome stays unknown', async (_label, respond) => {
     const env = await environment();
     const fetch = vi.fn().mockImplementation(respond);
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation('testrail_delete_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation('testrail_delete_attachment'), { attachment_id: 17 });
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(errorOf(result).write_outcome).toBe('unknown');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('reports a refusal with its status and an unknown outcome', async () => {
     const env = await environment();
     const fetch = replying(() => json({ error: 'Field :attachment_id is not a valid attachment.' }, 400));
-    const runtime = createRuntime({ client: driverFor(env.configuration, fetch), limits: env.configuration.limits });
+    const executor = createTestExecutor({
+      configuration: env.configuration,
+      client: driverFor(env.configuration, fetch),
+      createStaging: () => Promise.resolve(env.staging),
+    });
     try {
-      const result = await executeToolCall(operation('testrail_delete_attachment'), { attachment_id: 17 }, { runtime, configuration: env.configuration });
+      const result = await executor.execute(operation('testrail_delete_attachment'), { attachment_id: 17 });
       expect(errorOf(result)).toEqual(expect.objectContaining({ code: 'UPSTREAM_ERROR', http_status: 400, write_outcome: 'unknown' }));
       expect(fetch).toHaveBeenCalledTimes(1);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });

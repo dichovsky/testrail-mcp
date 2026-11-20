@@ -6,7 +6,7 @@ The server is a local stdio adapter around `@dichovsky/testrail-api-client`, wit
 
 The [architecture](architecture.md) defines component boundaries and accepted behavior. The [implementation contracts](implementation-contracts.md) define exact inputs, outputs, budgets, configuration, error outcomes, files and lifecycle. The [inventory](operation-inventory.json) and [coverage table](api-coverage.md) define every endpoint and public driver binding. These requirements apply to every issue below.
 
-The subsequent [architecture refactoring plan](architecture-refactoring.md) records the accepted input-contract, list-definition, and operation-executor changes. Its implementation is pending; the original delivery backlog below is retained separately.
+The subsequent [architecture refactoring plan](architecture-refactoring.md) records the accepted input-contract, list-definition, and operation-executor changes. Input contracts, list definitions and the executor are implemented. Executor local gates and mutation checks passed on 2026-11-21; both fresh independent reviews are complete; the test-review finding was fixed and rechecked. The original delivery backlog below is retained separately.
 
 ## Work items and dependencies
 
