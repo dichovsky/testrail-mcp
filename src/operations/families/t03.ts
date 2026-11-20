@@ -37,6 +37,7 @@ export const getBdd = defineOperation({
 /** One reference sends refs=; several send the repeated refs[] form TestRail 10.7 accepts. */
 const bddRefsSchema = z.union([z.string(), z.array(z.string()).min(1)]);
 
+// BddSchema is an open record, but still warns if a returned item is a string or null.
 const getBddsList = createListDefinition({
   path: { project_id: { schema: positiveIdSchema, argument: 0 } },
   pagination: 'controlled',

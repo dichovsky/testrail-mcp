@@ -223,6 +223,33 @@ describe('response-driven list definitions', () => {
   });
 });
 
+describe('direct aggregate input validation', () => {
+  const invalidInputs: readonly (readonly [string, (onAccess: () => never) => object])[] = [
+    ['symbol bound', () => ({ project_id: 9, _mcp: { pagination: 'all', max_items: Symbol('bound') } })],
+    ['throwing valueOf', (onAccess) => ({ project_id: 9, _mcp: { pagination: 'all', max_items: { valueOf: onAccess } } })],
+    ['bound getter', (onAccess) => ({ project_id: 9, _mcp: { pagination: 'all', get max_items() { return onAccess(); } } })],
+    ['controls getter', (onAccess) => ({ project_id: 9, get _mcp() { return onAccess(); } })],
+  ];
+
+  it.each([cases, variables].flatMap((operation) => invalidInputs.map(([name, makeInput]) =>
+    [operation.tool, name, operation, makeInput] as const)))(
+    '%s rejects a %s as INVALID_ARGUMENT before inspecting bounds or looking up the driver',
+    async (_tool, _name, operation, makeInput) => {
+      if (operation.pagination.kind === 'none') throw new Error('Expected a list');
+      const onAccess = vi.fn((): never => { throw new Error('Input hook must not run'); });
+      const lookup = vi.fn((): never => { throw new Error('Driver lookup must not run'); });
+      const driver = client();
+      const guardedDriver = new Proxy(driver, { get: lookup });
+      try {
+        await expect(operation.pagination.all.invoke(guardedDriver, makeInput(onAccess), { limits: DEFAULT_LIMITS }))
+          .rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+        expect(onAccess).not.toHaveBeenCalled();
+        expect(lookup).not.toHaveBeenCalled();
+      } finally { driver.destroy(); }
+    },
+  );
+});
+
 describe('list declaration authoring guards', () => {
   const malformedPaths: { optionsArgument: number; path?: Record<string, { schema: z.ZodType; argument: number }> }[] = [
     { optionsArgument: 1 },

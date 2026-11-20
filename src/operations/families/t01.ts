@@ -32,6 +32,7 @@ export const getProject = defineOperation({
   retry: 'ordinary-read',
 });
 
+// *Page helpers preserve continuation metadata that the convenience methods discard.
 const getProjectsList = createListDefinition({
   pagination: 'controlled',
   optionsArgument: 0,

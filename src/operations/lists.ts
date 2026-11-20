@@ -104,6 +104,7 @@ export function createListDefinition<
   const properties = new Set<string>();
   for (const { property, serialization } of filters) {
     if (properties.has(property) || reservedProperties.has(property)) throw new Error('List filter property conflicts with another filter or paging control');
+    // Fail during registration for JavaScript callers as well as typed definitions.
     if (!['query-scalar', 'query-list', 'query-repeated'].includes(serialization)) throw new Error('Invalid list filter serialization');
     properties.add(property);
   }
@@ -174,7 +175,8 @@ export function createListDefinition<
             all: Object.freeze({
               ...all,
               async invoke(client, input, context) {
-                // Standalone calls must enforce configured bounds before lookup too.
+                // Validate before reading/comparing bounds: non-JSON getters or
+                // coercion hooks must not run. The inner binding's guard is too late.
                 all.input.validate(input);
                 refuseBoundsAboveLimits(controls(input), context.limits);
                 return all.invoke(client, input, context);
