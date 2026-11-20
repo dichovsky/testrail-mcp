@@ -5,8 +5,7 @@ import { TestRailClient } from '@dichovsky/testrail-api-client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
-import { createRuntime } from '../../src/runtime/invocation.js';
-import { executeToolCall } from '../../src/transport/tool-call.js';
+import { createTestExecutor } from '../support/executor.js';
 
 let base: string;
 let configuration: Configuration;
@@ -30,15 +29,15 @@ function operation(tool: string) {
   return found;
 }
 
-function runtimeFor(fetch: ReturnType<typeof vi.fn>) {
-  return createRuntime({
+function executorFor(fetch: ReturnType<typeof vi.fn>) {
+  return createTestExecutor({
+    configuration,
     client: new TestRailClient({
       baseUrl: configuration.baseUrl, email: configuration.email, apiKey: configuration.apiKey,
       registerProcessHandlers: false, maxRetries: 0,
       dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
       fetch: fetch as unknown as typeof globalThis.fetch,
     }),
-    limits: configuration.limits,
   });
 }
 
@@ -74,12 +73,12 @@ describe('T07 the two shapes of a label mutation reply', () => {
     const results: unknown[] = [];
     for (const reply of [LABEL, { label: LABEL }]) {
       const fetch = vi.fn().mockResolvedValue(json(reply));
-      const runtime = runtimeFor(fetch);
+      const executor = executorFor(fetch);
       try {
-        const result = await executeToolCall(operation(tool), input, { runtime, configuration });
+        const result = await executor.execute(operation(tool), input);
         expect(result.isError).toBeUndefined();
         results.push((result.structuredContent as { data: unknown }).data);
-      } finally { await runtime.shutdown(); }
+      } finally { await executor.shutdown(); }
     }
     // Same record both times, and the wrapper is gone rather than passed through.
     expect(results[0]).toEqual(LABEL);
@@ -96,17 +95,16 @@ describe('T07 the two shapes of a label mutation reply', () => {
 describe('T07 bulk label deletion', () => {
   it('posts the identifiers to the bare endpoint with no trailing segment', async () => {
     const fetch = vi.fn().mockResolvedValue(json({}));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_delete_labels'),
-        { body: { label_ids: [1, 2, 3] } }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_delete_labels'), { body: { label_ids: [1, 2, 3] } });
       expect(result.isError).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(requested(fetch)).toMatch(/\/api\/v2\/delete_labels$/);
       expect(sentBody(fetch)).toEqual({ label_ids: [1, 2, 3] });
       // No entity comes back, and none is invented.
       expect((result.structuredContent as { data: unknown }).data).toBeNull();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it.each([
@@ -115,16 +113,15 @@ describe('T07 bulk label deletion', () => {
     ['a single identifier that is not a list', 1],
   ] as const)('refuses %s before any request', async (_label, value) => {
     const fetch = vi.fn().mockResolvedValue(json({}));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_delete_labels'),
-        { body: { label_ids: value } }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_delete_labels'), { body: { label_ids: value } });
       expect(result.isError).toBe(true);
       const { error } = result.structuredContent as { error: { code: string; write_outcome?: string } };
       expect(error.code).toBe('INVALID_ARGUMENT');
       expect(error.write_outcome).toBe('not_started');
       expect(fetch).not.toHaveBeenCalled();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -140,10 +137,9 @@ describe('T07 the title cap belongs to TestRail', () => {
     const fetch = vi.fn().mockResolvedValue(
       json({ error: 'Field :title is too long (maximum length is 20 characters).' }, 400),
     );
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_add_label'),
-        { project_id: 1, body: { title } }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_add_label'), { project_id: 1, body: { title } });
       // Dispatched rather than refused locally, so the limit stays TestRail's.
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(sentBody(fetch)).toEqual({ title });
@@ -153,7 +149,7 @@ describe('T07 the title cap belongs to TestRail', () => {
       expect(error.http_status).toBe(400);
       // TestRail's own sentence is not echoed back; the message is this server's.
       expect(JSON.stringify(result.structuredContent)).not.toContain('maximum length');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -167,15 +163,14 @@ describe('T07 milestone list filters', () => {
     const fetch = vi.fn().mockResolvedValue(json({
       offset: 0, limit: 250, size: 1, _links: { next: null, prev: null }, milestones: [MILESTONE],
     }));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_milestones'),
-        { project_id: 3, query: { is_completed: false, is_started: false } }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_milestones'), { project_id: 3, query: { is_completed: false, is_started: false } });
       expect(result.isError).toBeUndefined();
       const url = requested(fetch);
       expect(url).toContain('is_completed=0');
       expect(url).toContain('is_started=0');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('carries the same filters through every page of an aggregate call', async () => {
@@ -186,28 +181,27 @@ describe('T07 milestone list filters', () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(page(0, '/api/v2/get_milestones/3&is_completed=0&limit=1&offset=1'))
       .mockResolvedValueOnce(page(1, null));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_milestones'), {
+      const result = await executor.execute(operation('testrail_get_milestones'), {
         project_id: 3, query: { is_completed: false }, _mcp: { pagination: 'all', page_size: 1 },
-      }, { runtime, configuration });
+      });
       expect(result.isError).toBeUndefined();
       expect((result.structuredContent as { data: unknown[] }).data).toHaveLength(2);
       expect(fetch).toHaveBeenCalledTimes(2);
       for (const index of [0, 1]) expect(requested(fetch, index)).toContain('is_completed=0');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('refuses the numeric spelling TestRail uses on the wire', async () => {
     const fetch = vi.fn().mockResolvedValue(json({ milestones: [] }));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_milestones'),
-        { project_id: 3, query: { is_completed: 1 } }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_milestones'), { project_id: 3, query: { is_completed: 1 } });
       expect(result.isError).toBe(true);
       expect((result.structuredContent as { error: { code: string } }).error.code).toBe('INVALID_ARGUMENT');
       expect(fetch).not.toHaveBeenCalled();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -219,13 +213,12 @@ describe('T07 milestone list filters', () => {
 describe('T07 the project a label update names', () => {
   it('sends the project in the body beside the title', async () => {
     const fetch = vi.fn().mockResolvedValue(json(LABEL));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      await executeToolCall(operation('testrail_update_label'),
-        { label_id: 9, body: { project_id: 4, title: 'renamed' } }, { runtime, configuration });
+      await executor.execute(operation('testrail_update_label'), { label_id: 9, body: { project_id: 4, title: 'renamed' } });
       expect(requested(fetch)).toContain('update_label/9');
       expect(sentBody(fetch)).toEqual({ project_id: 4, title: 'renamed' });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it.each([
@@ -233,13 +226,12 @@ describe('T07 the project a label update names', () => {
     ['zero', { project_id: 0 }],
   ] as const)('refuses a project that is %s before any request', async (_label, extra) => {
     const fetch = vi.fn().mockResolvedValue(json(LABEL));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_update_label'),
-        { label_id: 9, body: { title: 'renamed', ...extra } }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_update_label'), { label_id: 9, body: { title: 'renamed', ...extra } });
       expect(result.isError).toBe(true);
       expect((result.structuredContent as { error: { code: string } }).error.code).toBe('INVALID_ARGUMENT');
       expect(fetch).not.toHaveBeenCalled();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });

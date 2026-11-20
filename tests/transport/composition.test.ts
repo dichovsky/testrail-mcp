@@ -250,6 +250,7 @@ describe('the composition root', () => {
     await waitFor(() => fake.calls === 1, 'the in-flight request');
 
     const stops = [started.shutdown(), started.shutdown()];
+    expect(stops[1]).toBe(stops[0]);
     await waitFor(() => events(write).some(({ event }) => event === 'server_stopping'), 'the stop to begin');
     // The second caller must not return before the drain the first one started.
     let settled = 0;
@@ -259,6 +260,7 @@ describe('the composition root', () => {
 
     fake.answerAll();
     await Promise.all(stops);
+    expect(started.shutdown()).toBe(stops[0]);
     await call;
     expect(settled).toBe(2);
     const names = events(write).map(({ event }) => event);

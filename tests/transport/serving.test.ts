@@ -8,7 +8,7 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
-import { createRuntime } from '../../src/runtime/invocation.js';
+import { createTestExecutor } from '../support/executor.js';
 import { buildServer } from '../../src/transport/server.js';
 
 /*
@@ -39,18 +39,18 @@ afterAll(async () => { await rm(directory, { recursive: true, force: true }); })
 
 async function connect(negotiation: 'legacy' | { readonly pin: string }, respond: () => Promise<Response> = () => Promise.reject(new Error('no request expected'))) {
   const fetch = vi.fn(respond);
-  const runtime = createRuntime({
+  const executor = createTestExecutor({
     client: new TestRailClient({
       baseUrl: configuration.baseUrl, email: configuration.email, apiKey: configuration.apiKey,
       registerProcessHandlers: false, maxRetries: 0,
       dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
       fetch,
     }),
-    limits: configuration.limits,
+    configuration,
   });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const handle = serveStdio(() => buildServer({
-    configuration, runtime, registry: operationRegistry, stagingDirectory: () => Promise.resolve(directory),
+    executor, registry: operationRegistry,
   }), { transport: serverTransport });
   const client = new Client({ name: 'serving-test', version: '1.0.0' }, { versionNegotiation: { mode: negotiation } });
   await client.connect(clientTransport);
@@ -59,7 +59,7 @@ async function connect(negotiation: 'legacy' | { readonly pin: string }, respond
     close: async () => {
       await client.close().catch(() => undefined);
       await handle.close().catch(() => undefined);
-      await runtime.shutdown();
+      await executor.shutdown();
     },
   };
 }

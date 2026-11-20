@@ -10,7 +10,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { createStagingArea } from '../../src/files/staging.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
-import { createRuntime } from '../../src/runtime/invocation.js';
+import { createTestExecutor } from '../support/executor.js';
 import { buildServer, EXIT_GRACE_MS, exitAfterGrace, startServer } from '../../src/transport/server.js';
 
 /*
@@ -137,17 +137,15 @@ function registered(server: McpServer, tool: string) {
 
 function build(): McpServer {
   return buildServer({
-    configuration,
-    runtime: createRuntime({
+    executor: createTestExecutor({
       client: new TestRailClient({
         baseUrl: configuration.baseUrl, email: configuration.email, apiKey: configuration.apiKey,
         registerProcessHandlers: false, maxRetries: 0,
         dnsLookup: driver.dnsLookup, fetch: () => Promise.reject(new Error('no request is expected')),
       }),
-      limits: configuration.limits,
+      configuration,
     }),
     registry: operationRegistry,
-    stagingDirectory: () => Promise.resolve(base),
   });
 }
 

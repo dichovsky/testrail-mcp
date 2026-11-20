@@ -5,8 +5,7 @@ import { TestRailClient } from '@dichovsky/testrail-api-client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../src/config/environment.js';
 import { operationRegistry } from '../src/operations/catalog.js';
-import { createRuntime } from '../src/runtime/invocation.js';
-import { executeToolCall } from '../src/transport/tool-call.js';
+import { createTestExecutor } from './support/executor.js';
 
 let base: string;
 let configuration: Configuration;
@@ -58,12 +57,12 @@ async function call(tool: string, input: object, reply: () => Response): Promise
     registerProcessHandlers: false, maxRetries: 0, fetch,
     dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
   });
-  const runtime = createRuntime({ client, limits: configuration.limits });
+  const executor = createTestExecutor({ configuration, client });
   try {
-    const result = await executeToolCall(operation, input, { runtime, configuration });
+    const result = await executor.execute(operation, input);
     return { isError: result.isError === true, structured: result.structuredContent, urls };
   } finally {
-    await runtime.shutdown();
+    await executor.shutdown();
   }
 }
 

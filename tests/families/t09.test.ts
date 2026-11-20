@@ -5,8 +5,7 @@ import { TestRailClient } from '@dichovsky/testrail-api-client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
-import { createRuntime } from '../../src/runtime/invocation.js';
-import { executeToolCall } from '../../src/transport/tool-call.js';
+import { createTestExecutor } from '../support/executor.js';
 
 let base: string;
 let configuration: Configuration;
@@ -30,15 +29,15 @@ function operation(tool: string) {
   return found;
 }
 
-function runtimeFor(fetch: ReturnType<typeof vi.fn>) {
-  return createRuntime({
+function executorFor(fetch: ReturnType<typeof vi.fn>) {
+  return createTestExecutor({
+    configuration,
     client: new TestRailClient({
       baseUrl: configuration.baseUrl, email: configuration.email, apiKey: configuration.apiKey,
       registerProcessHandlers: false, maxRetries: 0,
       dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
       fetch: fetch as unknown as typeof globalThis.fetch,
     }),
-    limits: configuration.limits,
   });
 }
 
@@ -81,15 +80,14 @@ describe('T09 the variable names a dataset write is allowed to use', () => {
   it('sends a name that collides with a paging control as the variable name it is', async () => {
     const variables = { limit: '250', offset: '0', _mcp: 'all', variables: 'nested', pagination: 'page' };
     const fetch = vi.fn().mockResolvedValue(json(DATASET));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_add_dataset'),
-        { project_id: 7, body: { name: 'Collisions', variables } }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_add_dataset'), { project_id: 7, body: { name: 'Collisions', variables } });
       expect(result.isError).toBeUndefined();
       expect(sentBody(fetch)).toEqual({ name: 'Collisions', variables });
       // None of them became a query parameter or a second path segment.
       expect(requested(fetch)).toMatch(/\/api\/v2\/add_dataset\/7$/);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it.each([
@@ -100,16 +98,14 @@ describe('T09 the variable names a dataset write is allowed to use', () => {
     ['an astral symbol', 'browser\u{1F600}'],
   ] as const)('preserves %s byte for byte', async (_label, name) => {
     const fetch = vi.fn().mockResolvedValue(json(DATASET));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_add_dataset'),
-        { project_id: 7, body: { name: 'Odd names', variables: { [name]: 'Chrome' } } },
-        { runtime, configuration });
+      const result = await executor.execute(operation('testrail_add_dataset'), { project_id: 7, body: { name: 'Odd names', variables: { [name]: 'Chrome' } } });
       expect(result.isError).toBeUndefined();
       const sent = sentBody(fetch) as { variables: Record<string, string> };
       expect(Object.keys(sent.variables)).toEqual([name]);
       expect(sent.variables[name]).toBe('Chrome');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -121,17 +117,15 @@ describe('T09 the variable names a dataset write is allowed to use', () => {
     // A fresh response per call: a Response body is read once, so a single shared one
     // would leave the second call reading a drained stream and proving nothing.
     const fetch = vi.fn().mockImplementation(() => Promise.resolve(json({ ...DATASET, id: 2 })));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const cleared = await executeToolCall(operation('testrail_update_dataset'),
-        { dataset_id: 2, body: { variables: {} } }, { runtime, configuration });
+      const cleared = await executor.execute(operation('testrail_update_dataset'), { dataset_id: 2, body: { variables: {} } });
       expect(cleared.isError).toBeUndefined();
       expect(sentBody(fetch, 0)).toEqual({ variables: {} });
-      const untouched = await executeToolCall(operation('testrail_update_dataset'),
-        { dataset_id: 2, body: {} }, { runtime, configuration });
+      const untouched = await executor.execute(operation('testrail_update_dataset'), { dataset_id: 2, body: {} });
       expect(untouched.isError).toBeUndefined();
       expect(sentBody(fetch, 1)).toEqual({});
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -142,19 +136,17 @@ describe('T09 the variable names a dataset write is allowed to use', () => {
    */
   it('sends an empty value and refuses a null one', async () => {
     const fetch = vi.fn().mockImplementation(() => Promise.resolve(json({ ...DATASET, id: 2 })));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const empty = await executeToolCall(operation('testrail_update_dataset'),
-        { dataset_id: 2, body: { variables: { age: '' } } }, { runtime, configuration });
+      const empty = await executor.execute(operation('testrail_update_dataset'), { dataset_id: 2, body: { variables: { age: '' } } });
       expect(empty.isError).toBeUndefined();
       expect(sentBody(fetch)).toEqual({ variables: { age: '' } });
-      const nulled = await executeToolCall(operation('testrail_update_dataset'),
-        { dataset_id: 2, body: { variables: { age: null } } }, { runtime, configuration });
+      const nulled = await executor.execute(operation('testrail_update_dataset'), { dataset_id: 2, body: { variables: { age: null } } });
       expect(nulled.isError).toBe(true);
       expect(errorOf(nulled).code).toBe('INVALID_ARGUMENT');
       // The refusal is local: the null never reached the wire.
       expect(fetch).toHaveBeenCalledTimes(1);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it.each([
@@ -164,14 +156,14 @@ describe('T09 the variable names a dataset write is allowed to use', () => {
     const fetch = vi.fn().mockResolvedValue(json(
       tool.endsWith('variable') ? { ...VARIABLE, id: 2 } : { ...DATASET, id: 2 },
     ));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), { [key]: 2, body: {} }, { runtime, configuration });
+      const result = await executor.execute(operation(tool), { [key]: 2, body: {} });
       expect(result.isError).toBeUndefined();
       expect(requested(fetch)).toContain(endpoint);
       // TestRail documents the empty body as a no-op; the request still carries one.
       expect(sentBody(fetch)).toEqual({});
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -184,27 +176,25 @@ describe('T09 what a dataset reply is allowed to leave out', () => {
     const fetch = vi.fn().mockResolvedValue(json({
       id: 184, name: 'Partly filled', variables: [{ id: 1171, name: 'age', value: null }],
     }));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_dataset'),
-        { dataset_id: 184 }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_dataset'), { dataset_id: 184 });
       expect(result.isError).toBeUndefined();
       expect(data(result)).toEqual({
         id: 184, name: 'Partly filled', variables: [{ id: 1171, name: 'age', value: null }],
       });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('does not invent a variables array for a dataset that carries none', async () => {
     const fetch = vi.fn().mockResolvedValue(json({ id: 185, name: 'Empty' }));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_dataset'),
-        { dataset_id: 185 }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_dataset'), { dataset_id: 185 });
       expect(result.isError).toBeUndefined();
       expect(data(result)).toEqual({ id: 185, name: 'Empty' });
       expect(Object.hasOwn(data(result) as object, 'variables')).toBe(false);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -220,16 +210,16 @@ describe('T09 continuing a list the server pages itself', () => {
     const fetch = vi.fn().mockResolvedValue(json(
       envelope(collection, [item], 'https://people.testrail.io/index.php?/api/v2/x&offset=250'),
     ));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), { project_id: 2 }, { runtime, configuration });
+      const result = await executor.execute(operation(tool), { project_id: 2 });
       expect(result.isError).toBeUndefined();
       const { pagination } = result.structuredContent as { pagination: Record<string, unknown> };
       expect(pagination.has_more).toBe(true);
       expect(pagination.manual_continuation).toBe(false);
       expect(pagination.next_action).toBe('all');
       expect(pagination.next_offset).toBeUndefined();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -248,9 +238,9 @@ describe('T09 an instance without the Enterprise feature', () => {
     ['testrail_delete_variable', { variable_id: 611 }],
   ] as const)('reports %s as a licence restriction, after asking', async (tool, input) => {
     const fetch = vi.fn().mockResolvedValue(json({ error: 'Not an Enterprise license/subscription.' }, 403));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), input, { runtime, configuration });
+      const result = await executor.execute(operation(tool), input);
       // Dispatched rather than pre-empted: the edition is instance state, not input.
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(result.isError).toBe(true);
@@ -259,18 +249,17 @@ describe('T09 an instance without the Enterprise feature', () => {
       expect(error.http_status).toBe(403);
       // TestRail's own sentence is not echoed back; the message is this server's.
       expect(JSON.stringify(result.structuredContent)).not.toContain('Enterprise');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('keeps an ordinary permission denial distinct from the licence one', async () => {
     const fetch = vi.fn().mockResolvedValue(json({ error: 'You do not have permission.' }, 403));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_datasets'),
-        { project_id: 2 }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_datasets'), { project_id: 2 });
       expect(result.isError).toBe(true);
       expect(errorOf(result).code).toBe('PERMISSION_DENIED');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -285,14 +274,14 @@ describe('T09 deleting the object a dataset value hangs from', () => {
     ['testrail_delete_dataset', { dataset_id: 183 }, 'delete_dataset/183'],
   ] as const)('%s sends one request and reports no data', async (tool, input, endpoint) => {
     const fetch = vi.fn().mockResolvedValue(json({}));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), input, { runtime, configuration });
+      const result = await executor.execute(operation(tool), input);
       expect(result.isError).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(requested(fetch)).toContain(endpoint);
       expect(data(result)).toBeNull();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('publishes both deletions as destructive and neither update as one', () => {

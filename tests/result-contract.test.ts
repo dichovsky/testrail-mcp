@@ -12,9 +12,8 @@ import { loadConfiguration, type Configuration } from '../src/config/environment
 import { driverOptions } from '../src/driver/configuration.js';
 import { operationRegistry } from '../src/operations/catalog.js';
 import type { Operation } from '../src/operations/registry.js';
-import { createRuntime, type Runtime } from '../src/runtime/invocation.js';
+import { createTestExecutor, type TestExecutor } from './support/executor.js';
 import { buildServer } from '../src/transport/server.js';
-import { executeToolCall } from '../src/transport/tool-call.js';
 import { loadParameterManifests, type ParameterManifest } from './contracts/parameter-manifest.js';
 import { materializeFiles, substituteTokens } from './contracts/uploads.js';
 
@@ -140,28 +139,24 @@ function driver(configured: Configuration, respond: (url: string) => Reply | Pro
 
 describe('every tool\'s result, as a connected client receives it', () => {
   let client: Client;
-  let runtime: Runtime;
+  let executor: TestExecutor;
   let close: () => Promise<void>;
   let next: Reply = json({});
   const advertised = new Map<string, Tool>();
   const validator = new AjvJsonSchemaValidator();
 
   beforeAll(async () => {
-    const staging = join(base, 'staging');
-    await mkdir(staging);
     const { client: testRail } = driver(configuration, () => next);
-    runtime = createRuntime({ client: testRail, limits: configuration.limits });
+    executor = createTestExecutor({ configuration, client: testRail });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const handle = serveStdio(() => buildServer({
-      configuration, runtime, registry: operationRegistry, stagingDirectory: () => Promise.resolve(staging),
-    }), { transport: serverTransport });
+    const handle = serveStdio(() => buildServer({ executor, registry: operationRegistry }), { transport: serverTransport });
     client = new Client({ name: 'result-contract', version: '1.0.0' });
     await client.connect(clientTransport);
     for (const tool of (await client.listTools()).tools) advertised.set(tool.name, tool);
     close = async () => {
       await client.close().catch(() => undefined);
       await handle.close().catch(() => undefined);
-      await runtime.shutdown();
+      await executor.shutdown();
     };
   });
 
@@ -269,15 +264,15 @@ describe('a read whose success reply cannot be used', () => {
       json({ offset: 5, limit: 1, size: 1, _links: { next: null, prev: null }, projects: [{ id: 1 }] })],
   ] as const)('fails %s as INVALID_RESPONSE with no data and no write outcome (%#)', async (_label, tool, args, upstream) => {
     const { client } = driver(configuration, () => upstream);
-    const runtime = createRuntime({ client, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client });
     try {
-      const result = await executeToolCall(registered(tool), args, { runtime, configuration });
+      const result = await executor.execute(registered(tool), args);
       expect(result.isError).toBe(true);
       const payload = result.structuredContent as { error: { code: string; write_outcome?: string } };
       expect(payload.error.code).toBe('INVALID_RESPONSE');
       expect(payload.error).not.toHaveProperty('write_outcome');
       expect(payload).not.toHaveProperty('data');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('checks the shapes this block relies on', () => {
@@ -302,9 +297,9 @@ describe('drift warnings belong to the call that received the drifted reply', ()
       await gate;
       return /get_project\/7$/u.test(url) ? json(drifting ? drifted : { ...entity, id: 7 }) : json({ ...entity, id: 8 });
     });
-    const runtime = createRuntime({ client, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client });
     try {
-      const call = (id: number) => executeToolCall(registered('testrail_get_project'), { project_id: id }, { runtime, configuration });
+      const call = (id: number) => executor.execute(registered('testrail_get_project'), { project_id: id });
       const pending = [call(7), call(7), call(7), call(8)];
       // The three identical reads share one request; the fourth has its own.
       await vi.waitFor(() => { expect(fetch).toHaveBeenCalledTimes(2); });
@@ -317,13 +312,13 @@ describe('drift warnings belong to the call that received the drifted reply', ()
       expect(fetch).toHaveBeenCalledTimes(2);
       // Nothing carries over to a later identical call whose reply is clean.
       drifting = false;
-      const later = await executeToolCall(registered('testrail_get_project'), { project_id: 7 }, { runtime, configuration });
+      const later = await executor.execute(registered('testrail_get_project'), { project_id: 7 });
       expect(fetch).toHaveBeenCalledTimes(3);
       expect(later.isError).toBeUndefined();
       expect(warnings(later)).toBeUndefined();
     } finally {
       release();
-      await runtime.shutdown();
+      await executor.shutdown();
     }
   });
 });
@@ -349,21 +344,21 @@ describe('the complete-result budget through a tool', () => {
     ['a write TestRail accepted', 'testrail_add_project', { body: { name: 'Gate' } }, 'acknowledged'],
   ] as const)('reports %s over max_result_bytes as RESPONSE_TOO_LARGE, never truncated', async (_label, tool, args, outcome) => {
     const { client, fetch } = driver(small, () => json(long));
-    const runtime = createRuntime({ client, limits: small.limits });
+    const executor = createTestExecutor({ configuration: small, client });
     try {
-      const result = await executeToolCall(registered(tool), args, { runtime, configuration: small });
+      const result = await executor.execute(registered(tool), args);
       const payload = result.structuredContent as { error: { code: string; write_outcome?: string } };
       expect(payload.error.code).toBe('RESPONSE_TOO_LARGE');
       expect(payload.error.write_outcome).toBe(outcome);
       expect(payload).not.toHaveProperty('data');
       expect(fetch).toHaveBeenCalledTimes(1);
       // The same reply fits the default budget: the refusal is the configured bound's.
-      const roomy = createRuntime({ client: driver(configuration, () => json(long)).client, limits: configuration.limits });
+      const roomy = createTestExecutor({ configuration, client: driver(configuration, () => json(long)).client });
       try {
-        const fits = await executeToolCall(registered(tool), args, { runtime: roomy, configuration });
+        const fits = await roomy.execute(registered(tool), args);
         expect(fits.isError).toBeUndefined();
       } finally { await roomy.shutdown(); }
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -389,13 +384,13 @@ describe('F05 result evidence through registered tools', () => {
       if (/get_project\/2$/u.test(url)) return json({ a: 'x', b: 'y' });
       return json({ a: 'x', b: 'y', c: 'z' });
     });
-    const runtime = createRuntime({ client, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client });
     const one = withEntity(registered('testrail_get_project'), z.object({ a: z.number(), b: z.number().optional() }));
     const three = withEntity(registered('testrail_get_suite'), z.object({ a: z.number(), b: z.number(), c: z.number() }));
     try {
       const pending = [
-        executeToolCall(one, { project_id: 1 }, { runtime, configuration }),
-        executeToolCall(three, { suite_id: 3 }, { runtime, configuration }),
+        executor.execute(one, { project_id: 1 }),
+        executor.execute(three, { suite_id: 3 }),
       ];
       // Both requests are in flight before either reply is released.
       await vi.waitFor(() => { expect(fetch).toHaveBeenCalledTimes(2); });
@@ -404,11 +399,11 @@ describe('F05 result evidence through registered tools', () => {
       expect(payloadOf(first!).warnings).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
       expect(payloadOf(second!).warnings).toEqual([{ code: 'SCHEMA_DRIFT', count: 3 }]);
       // A second drifted call of the first operation reports its own count, not a reused one.
-      const later = await executeToolCall(one, { project_id: 2 }, { runtime, configuration });
+      const later = await executor.execute(one, { project_id: 2 });
       expect(payloadOf(later).warnings).toEqual([{ code: 'SCHEMA_DRIFT', count: 2 }]);
     } finally {
       release();
-      await runtime.shutdown();
+      await executor.shutdown();
     }
   });
 
@@ -417,13 +412,13 @@ describe('F05 result evidence through registered tools', () => {
     ['a write TestRail accepted', 'testrail_add_project', { body: { name: 'Kept' } }, { id: 9, name: 'Kept' }],
   ] as const)('returns %s whose advisory schema throws, with its data and one drift warning', async (_label, tool, args, body) => {
     const { client } = driver(configuration, () => json(body));
-    const runtime = createRuntime({ client, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client });
     const throwing = z.record(z.string(), z.unknown()).refine(() => { throw new Error('advisory hook failed'); });
     try {
-      const result = await executeToolCall(withEntity(registered(tool), throwing), args, { runtime, configuration });
+      const result = await executor.execute(withEntity(registered(tool), throwing), args);
       expect(result.isError).toBeUndefined();
       expect(payloadOf(result)).toEqual({ data: body, warnings: [{ code: 'SCHEMA_DRIFT', count: 1 }] });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   const rewritten = { id: '7', custom_x: 1 };
@@ -435,14 +430,14 @@ describe('F05 result evidence through registered tools', () => {
     ['an aggregate', 'testrail_get_projects', { _mcp: { pagination: 'all' } }, projectPage, [rewritten]],
   ] as const)('returns %s reply unchanged when the advisory schema coerces, defaults and transforms', async (_label, tool, args, reply, expected) => {
     const { client } = driver(configuration, () => json(structuredClone(reply)));
-    const runtime = createRuntime({ client, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client });
     const rewriting = z.object({ id: z.coerce.number(), status: z.string().default('active') })
       .transform((value) => ({ ...value, extra: 1 }));
     try {
-      const result = await executeToolCall(withEntity(registered(tool), rewriting), args, { runtime, configuration });
+      const result = await executor.execute(withEntity(registered(tool), rewriting), args);
       expect(payloadOf(result).data).toEqual(expected);
       expect(payloadOf(result).warnings).toBeUndefined();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -460,13 +455,13 @@ describe('F05 result evidence through registered tools', () => {
     const call = mode === 'page' ? base.pagination.page : base.pagination.all;
     const operation = { ...base, pagination: { ...base.pagination, [mode]: { ...call, invoke: () => Promise.resolve(value) } } } as unknown as Operation;
     const { client } = driver(configuration, () => json({}));
-    const runtime = createRuntime({ client, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client });
     try {
       const args = mode === 'all' ? { _mcp: { pagination: 'all' } } : {};
-      const result = await executeToolCall(operation, args, { runtime, configuration });
+      const result = await executor.execute(operation, args);
       expect(payloadOf(result).error).toMatchObject({ code: 'INVALID_RESPONSE' });
       expect(payloadOf(result)).not.toHaveProperty('data');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('reports a 404 only as a missing resource, and an unknown-method reply as TestRail\'s own error', async () => {
@@ -476,14 +471,14 @@ describe('F05 result evidence through registered tools', () => {
       json({ error: 'Unknown method \'get_project\'' }, 400),
     ];
     const { client } = driver(configuration, () => replies.shift() ?? json({}));
-    const runtime = createRuntime({ client, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client });
     try {
-      const missing = payloadOf(await executeToolCall(registered('testrail_get_project'), { project_id: 7 }, { runtime, configuration })).error;
+      const missing = payloadOf(await executor.execute(registered('testrail_get_project'), { project_id: 7 })).error;
       expect(missing).toEqual({ code: 'NOT_FOUND', message: 'TestRail reported that the requested resource does not exist.', http_status: 404 });
       expect(JSON.stringify(missing)).not.toMatch(/version|support/iu);
-      const unknownMethod = payloadOf(await executeToolCall(registered('testrail_get_project'), { project_id: 7 }, { runtime, configuration })).error;
+      const unknownMethod = payloadOf(await executor.execute(registered('testrail_get_project'), { project_id: 7 })).error;
       expect(unknownMethod).toEqual({ code: 'UPSTREAM_ERROR', message: 'TestRail returned an error.', http_status: 400 });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /* Production retry settings: the driver re-sends a write after nothing but a 429. */
@@ -509,19 +504,19 @@ describe('F05 result evidence through registered tools', () => {
       dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
       fetch,
     });
-    const runtime = createRuntime({ client, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client });
     try {
       for (const [tool, args] of [
         ['testrail_add_project', { body: { name: 'Lost' } }],
         ['testrail_add_results_for_cases', { run_id: 1, body: { results: [{ case_id: 1, status_id: 1 }] } }],
       ] as const) {
         fetch.mockClear();
-        const result = await executeToolCall(registered(tool), args, { runtime, configuration });
+        const result = await executor.execute(registered(tool), args);
         expect(payloadOf(result).error, tool).toMatchObject({ ...error, write_outcome: 'unknown' });
         expect(payloadOf(result), tool).not.toHaveProperty('data');
         expect(fetch, tool).toHaveBeenCalledTimes(1);
       }
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('enforces the configured data budget through a tool, never truncating', async () => {
@@ -531,12 +526,12 @@ describe('F05 result evidence through registered tools', () => {
       TESTRAIL_MCP_LIMITS: JSON.stringify({ max_data_bytes: 200, max_all_bytes: 200 }),
     });
     const { client } = driver(small, () => json({ id: 7, name: 'n'.repeat(300) }));
-    const runtime = createRuntime({ client, limits: small.limits });
+    const executor = createTestExecutor({ configuration: small, client });
     try {
-      const result = await executeToolCall(registered('testrail_get_project'), { project_id: 7 }, { runtime, configuration: small });
+      const result = await executor.execute(registered('testrail_get_project'), { project_id: 7 });
       expect(payloadOf(result).error).toMatchObject({ code: 'RESPONSE_TOO_LARGE' });
       expect(payloadOf(result)).not.toHaveProperty('data');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('keeps arguments, response bodies, paths and hosts out of every tool_call diagnostic', async () => {
@@ -544,15 +539,13 @@ describe('F05 result evidence through registered tools', () => {
     const secretBody = JSON.stringify({ error: 'api_key=SECRET-9d2 at https://internal.example.test /Users/someone/private' });
     const replies: Reply[] = [{ status: 500, body: secretBody, type: 'application/json' }, json({ id: 7, name: 'data-marker-3b8e' })];
     const { client } = driver(configuration, () => replies.shift() ?? json({}));
-    const runtime = createRuntime({ client, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client });
     const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     try {
-      await executeToolCall(registered('testrail_add_project'), { body: { name: marker } }, { runtime, configuration });
-      await executeToolCall(registered('testrail_get_project'), { project_id: 7 }, { runtime, configuration });
+      await executor.execute(registered('testrail_add_project'), { body: { name: marker } });
+      await executor.execute(registered('testrail_get_project'), { project_id: 7 });
       const outside = join(tmpdir(), `outside-${marker}`, 'secret.txt');
-      await executeToolCall(registered('testrail_add_attachment_to_case'), { case_id: 1, file_path: outside, filename: 'x.txt' }, {
-        runtime, configuration, stagingDirectory: () => Promise.resolve(base),
-      });
+      await executor.execute(registered('testrail_add_attachment_to_case'), { case_id: 1, file_path: outside, filename: 'x.txt' });
       const lines = write.mock.calls.map(([chunk]) => String(chunk));
       // One event per call, in call order, each carrying only its fixed code and, for a
       // write's error, whether it may have been applied.
@@ -576,22 +569,20 @@ describe('F05 result evidence through registered tools', () => {
       }
     } finally {
       write.mockRestore();
-      await runtime.shutdown();
+      await executor.shutdown();
     }
   });
 
   it('never puts a local path in a FILE_ACCESS_DENIED error', async () => {
     const { client } = driver(configuration, () => json({ attachment_id: 1 }));
-    const runtime = createRuntime({ client, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client });
     const outside = join(tmpdir(), 'outside-path-marker-51a0', 'secret.txt');
     try {
-      const result = await executeToolCall(registered('testrail_add_attachment_to_case'), { case_id: 1, file_path: outside, filename: 'x.txt' }, {
-        runtime, configuration, stagingDirectory: () => Promise.resolve(base),
-      });
+      const result = await executor.execute(registered('testrail_add_attachment_to_case'), { case_id: 1, file_path: outside, filename: 'x.txt' });
       expect(payloadOf(result).error).toMatchObject({ code: 'FILE_ACCESS_DENIED', write_outcome: 'not_started' });
       expect(JSON.stringify(result)).not.toContain('outside-path-marker-51a0');
       // As serialized: on Windows every backslash is escaped, so the raw path could never match.
       expect(JSON.stringify(result)).not.toContain(asJson(tmpdir()));
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });

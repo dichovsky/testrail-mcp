@@ -12,8 +12,7 @@ import type { ToolResult } from '../../src/contracts/results.js';
 import { createStagingArea } from '../../src/files/staging.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
 import type { Operation } from '../../src/operations/registry.js';
-import { createRuntime } from '../../src/runtime/invocation.js';
-import { executeToolCall } from '../../src/transport/tool-call.js';
+import { createTestExecutor } from '../support/executor.js';
 
 /*
  * File containment and download persistence through the registered attachment tools,
@@ -79,16 +78,13 @@ async function upload(filePath: string) {
   const upstream = recordingDriver(() => new Response('{"attachment_id":1}', {
     status: 200, headers: { 'content-type': 'application/json' },
   }));
-  const runtime = createRuntime({ client: upstream.client, limits: configuration.limits });
   const area = await createStagingArea(base);
+  const executor = createTestExecutor({ client: upstream.client, configuration, createStaging: () => Promise.resolve(area) });
   try {
-    const result = await executeToolCall(addAttachmentToCase, { case_id: 1, file_path: filePath, filename: 'upload.txt' }, {
-      runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory),
-    });
+    const result = await executor.execute(addAttachmentToCase, { case_id: 1, file_path: filePath, filename: 'upload.txt' });
     return { result, counts: upstream.counts, sent: upstream.sent(), staged: await readdir(area.directory) };
   } finally {
-    await runtime.shutdown();
-    await area.dispose();
+    await executor.shutdown();
   }
 }
 
@@ -139,23 +135,27 @@ describe('upload containment through a registered tool', () => {
 });
 
 describe('download persistence through a registered tool', () => {
-  it('keeps a completed download through runtime shutdown and staging disposal', async () => {
+  it('keeps a completed download through executor shutdown and staging disposal', async () => {
     const upstream = recordingDriver(() => new Response(new Uint8Array([1, 2, 3, 4]), {
       status: 200, headers: { 'content-type': 'application/octet-stream' },
     }));
-    const runtime = createRuntime({ client: upstream.client, limits: configuration.limits });
     const area = await createStagingArea(base);
+    const executor = createTestExecutor({ client: upstream.client, configuration, createStaging: () => Promise.resolve(area) });
 
-    const result = await executeToolCall(getAttachment, { attachment_id: 5 }, {
-      runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory),
+    // Initialize staging through an admitted upload that fails before network dispatch.
+    const missing = await executor.execute(addAttachmentToCase, {
+      case_id: 1, file_path: join(roots, 'missing.txt'), filename: 'missing.txt',
     });
+    expect(error(missing)).toMatchObject({ code: 'FILE_ACCESS_DENIED', write_outcome: 'not_started' });
+
+    const result = await executor.execute(getAttachment, { attachment_id: 5 });
     const { data } = result.structuredContent as { data: { file_path: string; bytes: number } };
     expect(data.bytes).toBe(4);
 
-    // The same order the server's own shutdown uses.
-    await runtime.shutdown();
-    await area.dispose();
+    // The executor owns driver and staging disposal.
+    await executor.shutdown();
 
+    await expect(stat(area.directory)).rejects.toThrow();
     expect([...await readFile(data.file_path)]).toEqual([1, 2, 3, 4]);
   });
 });

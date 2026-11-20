@@ -6,8 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
 import { InputPaths } from '../../src/operations/input-paths.js';
-import { createRuntime } from '../../src/runtime/invocation.js';
-import { executeToolCall } from '../../src/transport/tool-call.js';
+import { createTestExecutor } from '../support/executor.js';
 
 let base: string;
 let configuration: Configuration;
@@ -31,15 +30,15 @@ function operation(tool: string) {
   return found;
 }
 
-function runtimeFor(fetch: ReturnType<typeof vi.fn>) {
-  return createRuntime({
+function executorFor(fetch: ReturnType<typeof vi.fn>) {
+  return createTestExecutor({
+    configuration,
     client: new TestRailClient({
       baseUrl: configuration.baseUrl, email: configuration.email, apiKey: configuration.apiKey,
       registerProcessHandlers: false, maxRetries: 0,
       dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
       fetch: fetch as unknown as typeof globalThis.fetch,
     }),
-    limits: configuration.limits,
   });
 }
 
@@ -59,20 +58,16 @@ describe('T05 bulk result submission', () => {
     const fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(created), { headers: { 'content-type': 'application/json' } }),
     );
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(
-        operation('testrail_add_results'),
-        { run_id: 1, body: { results: ENTRIES } },
-        { runtime, configuration },
-      );
+      const result = await executor.execute(operation('testrail_add_results'), { run_id: 1, body: { results: ENTRIES } });
       expect(result.isError).toBeUndefined();
       // TestRail answers in the order the entries were sent, and that order is kept.
       expect((result.structuredContent as { data: unknown }).data).toEqual(created);
       expect(fetch).toHaveBeenCalledTimes(1);
       const sent = fetch.mock.calls[0]?.[1] as { body?: string } | undefined;
       expect(JSON.parse(sent?.body ?? 'null')).toEqual({ results: ENTRIES });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('reports an unusable reply as acknowledged rather than as a partial success', async () => {
@@ -89,19 +84,15 @@ describe('T05 bulk result submission', () => {
     const fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ recorded: 2 }), { status: 200, headers: { 'content-type': 'application/json' } }),
     );
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(
-        operation('testrail_add_results_for_cases'),
-        { run_id: 1, body: { results: [{ case_id: 1, status_id: 1 }] } },
-        { runtime, configuration },
-      );
+      const result = await executor.execute(operation('testrail_add_results_for_cases'), { run_id: 1, body: { results: [{ case_id: 1, status_id: 1 }] } });
       expect(result.isError).toBe(true);
       const { error } = result.structuredContent as { error: { code: string; write_outcome?: string } };
       expect(error.code).toBe('INVALID_RESPONSE');
       expect(error.write_outcome).toBe('acknowledged');
       expect(fetch).toHaveBeenCalledTimes(1);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -132,29 +123,21 @@ describe('T05 reads that name a case rather than a test', () => {
     const fetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } }),
     );
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(
-        operation('testrail_get_results_for_case'),
-        { run_id: 1, case_id: 2, query: { status_id: [4, 5] } },
-        { runtime, configuration },
-      );
+      const result = await executor.execute(operation('testrail_get_results_for_case'), { run_id: 1, case_id: 2, query: { status_id: [4, 5] } });
       expect(result.isError).toBeUndefined();
       // The run comes first and the case second: reversing them would read a
       // different case's results without any error to show for it.
       expect(String(fetch.mock.calls[0]?.[0]))
         .toContain('get_results_for_case/1/2&status_id=4%2C5&limit=50&offset=0');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('drops no creation filter silently: the per-test list refuses what it cannot send', async () => {
-    const runtime = runtimeFor(vi.fn());
+    const executor = executorFor(vi.fn());
     try {
-      const result = await executeToolCall(
-        operation('testrail_get_results'),
-        { test_id: 101, query: { created_by: [1] } },
-        { runtime, configuration },
-      );
+      const result = await executor.execute(operation('testrail_get_results'), { test_id: 101, query: { created_by: [1] } });
       /*
        * The driver contributes the creation filters for the run-wide list alone and
        * discards them elsewhere. Accepting one here would tell a caller their filter
@@ -162,6 +145,6 @@ describe('T05 reads that name a case rather than a test', () => {
        */
       expect(result.isError).toBe(true);
       expect((result.structuredContent as { error: { code: string } }).error.code).toBe('INVALID_ARGUMENT');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });

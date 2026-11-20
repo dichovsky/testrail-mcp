@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { positiveIdSchema, strictObject } from '../../src/contracts/inputs.js';
 import { createRegistry, defineOperation, type OperationDefinition } from '../../src/operations/registry.js';
-import { createRuntime, type Runtime } from '../../src/runtime/invocation.js';
+import { createTestExecutor, type TestExecutor } from '../support/executor.js';
 import { buildServer, SERVER_INSTRUCTIONS } from '../../src/transport/server.js';
 
 /**
@@ -61,7 +61,7 @@ function json(body: unknown, status = 200): Response {
 
 interface Session {
   readonly client: Client;
-  readonly runtime: Runtime;
+  readonly executor: TestExecutor;
   readonly factoryCalls: () => number;
   readonly close: () => Promise<void>;
 }
@@ -80,15 +80,14 @@ async function connect(
     dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
     fetch: () => respond(),
   });
-  const runtime = createRuntime({ client: driver, limits: configuration.limits });
+  const executor = createTestExecutor({ client: driver, configuration });
 
   let factoryCalls = 0;
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const handle = serveStdio(() => {
     factoryCalls += 1;
     return buildServer({
-      configuration, runtime, registry,
-      stagingDirectory: () => Promise.resolve(directory),
+      executor, registry,
     });
   }, { transport: serverTransport });
 
@@ -99,12 +98,12 @@ async function connect(
   await client.connect(clientTransport);
 
   return {
-    client, runtime,
+    client, executor,
     factoryCalls: () => factoryCalls,
     close: async () => {
       await client.close().catch(() => undefined);
       await handle.close().catch(() => undefined);
-      await runtime.shutdown();
+      await executor.shutdown();
     },
   };
 }
@@ -180,7 +179,7 @@ describe('discovery', () => {
       expect(session.factoryCalls()).toBe(opened);
       // This factory is the test's own. That startServer's factory builds no second
       // driver or budget is held through startServer in tests/transport/composition.test.ts.
-      expect(session.runtime.stats().accepting).toBe(true);
+      expect(session.executor.stats().accepting).toBe(true);
     } finally { await session.close(); }
   });
 });

@@ -12,8 +12,7 @@ import { DEFAULT_LIMITS } from '../src/config/limits.js';
 import { driverOptions, REQUEST_TIMEOUT_MS } from '../src/driver/configuration.js';
 import { operationRegistry } from '../src/operations/catalog.js';
 import type { Operation } from '../src/operations/registry.js';
-import { createRuntime, type Runtime } from '../src/runtime/invocation.js';
-import { executeToolCall } from '../src/transport/tool-call.js';
+import { createTestExecutor, type TestExecutor } from './support/executor.js';
 import { loadParameterManifests, type ParameterManifest } from './contracts/parameter-manifest.js';
 import { materializeFiles, substituteTokens } from './contracts/uploads.js';
 
@@ -118,14 +117,13 @@ let started: Started;
 let base: string;
 let log: string;
 let configuration: Configuration;
-let runtime: Runtime;
+let executor: TestExecutor;
 
 beforeAll(async () => {
   base = await mkdtemp(join(tmpdir(), 'testrail-mcp-stand-in-'));
   log = join(base, 'requests.jsonl');
   await mkdir(join(base, 'uploads'));
   await mkdir(join(base, 'downloads'));
-  await mkdir(join(base, 'staging'));
   child = spawn(process.execPath, [script, '--json', '--pages', String(PAGES), '--delay-scale', String(DELAY_SCALE), '--log', log],
     { stdio: ['ignore', 'pipe', 'inherit'] });
   const first = await new Promise<string>((resolve, reject) => {
@@ -139,15 +137,15 @@ beforeAll(async () => {
     TESTRAIL_MCP_UPLOAD_ROOTS: JSON.stringify([join(base, 'uploads')]),
     TESTRAIL_MCP_DOWNLOAD_DIR: join(base, 'downloads'),
   });
-  runtime = createRuntime({
+  executor = createTestExecutor({
+    configuration,
     // The production limiter allows 100 requests a minute; these sweeps make more.
     client: new TestRailClient({ ...driverOptions(configuration), rateLimiter: { maxRequests: 100_000, windowMs: 60_000 } }),
-    limits: configuration.limits,
   });
 });
 
 afterAll(async () => {
-  await runtime.shutdown();
+  await executor.shutdown();
   child.kill();
   await rm(base, { recursive: true, force: true });
 });
@@ -170,8 +168,8 @@ function acceptedFor(tool: string) {
   return { ...fixture, expect: fixture.expect };
 }
 
-const call = (tool: string, input: unknown, on: Runtime = runtime, with_: Configuration = configuration) =>
-  executeToolCall(registered(tool), input, { runtime: on, configuration: with_, stagingDirectory: () => Promise.resolve(join(base, 'staging')) });
+const call = (tool: string, input: unknown, on: TestExecutor = executor) =>
+  on.execute(registered(tool), input);
 const payload = (result: { structuredContent?: unknown }) => result.structuredContent as {
   data?: unknown; pagination?: Record<string, unknown>; warnings?: { code: string }[];
   error?: { code: string; write_outcome?: string; http_status?: number; reason?: string };
@@ -371,11 +369,11 @@ describe('the stand-in\'s reserved IDs', () => {
   it('turns a 20-second reply into the driver\'s 15-second timeout, while four such calls hold every slot', async () => {
     const realTime = await startFixtureTestRail({ delayScale: 1 });
     const settings = await loadConfiguration({ ...realTime.environment, TESTRAIL_MCP_UPLOAD_ROOTS: '[]', TESTRAIL_MCP_DOWNLOAD_DIR: join(base, 'downloads') });
-    const production = createRuntime({ client: new TestRailClient(driverOptions(settings)), limits: settings.limits });
+    const production = createTestExecutor({ configuration: settings, client: new TestRailClient(driverOptions(settings)) });
     try {
       const begun = performance.now();
       const timed = (promise: Promise<{ structuredContent?: unknown }>) => promise.then((result) => ({ error: payload(result).error, after: performance.now() - begun }));
-      const results = await Promise.all(Array.from({ length: 5 }, () => timed(call('testrail_get_project', { project_id: ID.slow }, production, settings))));
+      const results = await Promise.all(Array.from({ length: 5 }, () => timed(call('testrail_get_project', { project_id: ID.slow }, production))));
       const busy = results.filter(({ error }) => error?.code === 'BUSY');
       // The driver gave up waiting, so no status is claimed.
       const timeouts = results.filter(({ error }) => error?.code === 'TIMEOUT' && error.http_status === undefined);

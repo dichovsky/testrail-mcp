@@ -13,7 +13,7 @@ import { operationRegistry } from '../src/operations/catalog.js';
 import { createRegistry, defineOperation, type Operation, type OperationDefinition } from '../src/operations/registry.js';
 import type { DriverCall } from '../src/operations/driver-call.js';
 import { assertRegistryParity, compareRegistry, parseInventory } from '../src/operations/parity.js';
-import { createRuntime } from '../src/runtime/invocation.js';
+import { createTestExecutor } from './support/executor.js';
 import { buildServer } from '../src/transport/server.js';
 import { runRegisteredFixture } from './contracts/fixture-runner.js';
 import { loadParameterManifests, type ParameterManifest } from './contracts/parameter-manifest.js';
@@ -162,11 +162,9 @@ describe('the served catalog is the inventory, in both protocol eras', () => {
       dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
       fetch: () => { requests += 1; return Promise.resolve(new Response('{}')); },
     });
-    const runtime = createRuntime({ client: driver, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client: driver });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const handle = serveStdio(() => buildServer({
-      configuration, runtime, registry: operationRegistry, stagingDirectory: () => Promise.resolve(base),
-    }), { transport: serverTransport });
+    const handle = serveStdio(() => buildServer({ executor, registry: operationRegistry }), { transport: serverTransport });
     const client = new Client({ name: 'regression-gates', version: '1.0.0' }, { versionNegotiation: { mode: negotiation } });
     try {
       await client.connect(clientTransport);
@@ -176,7 +174,7 @@ describe('the served catalog is the inventory, in both protocol eras', () => {
     } finally {
       await client.close().catch(() => undefined);
       await handle.close().catch(() => undefined);
-      await runtime.shutdown();
+      await executor.shutdown();
     }
   }
 
