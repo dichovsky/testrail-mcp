@@ -7,13 +7,11 @@ import {
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
 import {
-  createListInput, entryIdSchema, nonnegativeIntegerSchema, payloadArray, payloadInput, positiveIdSchema, strictObject,
+  entryIdSchema, nonnegativeIntegerSchema, payloadArray, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
-import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
-import { defineOperation, type ArgumentMapping } from '../registry.js';
-import {
-  aggregateControlMappings, allControls, control, pageResponse, recordResponse,
-} from './common.js';
+import { defineOperation } from '../registry.js';
+import { createListDefinition, type ListFilters } from '../lists.js';
+import { recordResponse } from './common.js';
 
 // ---------------------------------------------------------------- configurations
 
@@ -220,51 +218,20 @@ export const getPlan = defineOperation({
   retry: 'ordinary-read',
 });
 
-const getPlansInput = createListInput({
-  path: { project_id: positiveIdSchema },
-  query: {
-    created_after: nonnegativeIntegerSchema.optional(),
-    created_before: nonnegativeIntegerSchema.optional(),
-    created_by: z.array(positiveIdSchema).min(1).optional(),
-    is_completed: z.boolean().optional(),
-    milestone_id: z.array(positiveIdSchema).min(1).optional(),
-    refs: z.string().optional(),
-  },
+const getPlansList = createListDefinition({
+  path: { project_id: { schema: positiveIdSchema, argument: 0 } },
   pagination: 'controlled',
+  optionsArgument: 1,
+  filters: {
+    created_after: { schema: nonnegativeIntegerSchema.optional(), property: 'createdAfter', serialization: 'query-scalar' },
+    created_before: { schema: nonnegativeIntegerSchema.optional(), property: 'createdBefore', serialization: 'query-scalar' },
+    created_by: { schema: z.array(positiveIdSchema).min(1).optional(), property: 'createdBy', serialization: 'query-list' },
+    is_completed: { schema: z.boolean().optional(), property: 'isCompleted', serialization: 'query-scalar' },
+    milestone_id: { schema: z.array(positiveIdSchema).min(1).optional(), property: 'milestoneId', serialization: 'query-list' },
+    refs: { schema: z.string().optional(), property: 'refs', serialization: 'query-scalar' },
+  } satisfies ListFilters<GetPlansOptions>,
+  entitySchema: PlanSchema,
 });
-
-/** Derived from the driver's own option type, so a rename there fails the build here. */
-type PlanFilter = Omit<GetPlansOptions,
-  'limit' | 'offset' | 'created_after' | 'created_before' | 'created_by' | 'is_completed' | 'milestone_id'>;
-
-/*
- * Each value is checked to be an option the driver still has. Deriving the type alone
- * would not do that: the helper below builds its object dynamically, and a record of
- * unknown values stays assignable to a type whose properties are all optional.
- */
-const planFilterNames = {
-  created_after: 'createdAfter', created_before: 'createdBefore', created_by: 'createdBy',
-  is_completed: 'isCompleted', milestone_id: 'milestoneId', refs: 'refs',
-} as const satisfies Readonly<Record<string, keyof PlanFilter>>;
-
-/** Two of these are comma-joined lists; the rest are scalars. */
-const listValuedPlanFilters = new Set(['created_by', 'milestone_id']);
-
-function planFilter(query: object | undefined): PlanFilter {
-  const source = (query ?? {}) as Record<string, unknown>;
-  const filter: Record<string, unknown> = {};
-  for (const [name, option] of Object.entries(planFilterNames)) {
-    if (source[name] !== undefined) filter[option] = source[name];
-  }
-  return filter;
-}
-
-function planFilterMappings(call: 'page' | 'all'): readonly ArgumentMapping[] {
-  return Object.entries(planFilterNames).map(([name, property]) => ({
-    input: `query.${name}`, call, argument: 1, property,
-    serialization: listValuedPlanFilters.has(name) ? 'query-list' as const : 'query-scalar' as const,
-  }));
-}
 
 export const getPlans = defineOperation({
   token: 'get_plans',
@@ -273,27 +240,15 @@ export const getPlans = defineOperation({
   family: 'T06',
   driverBinding: 'plans.getPlans',
   summary: 'List the test plans of a TestRail project, optionally filtered by creation time (Unix seconds), creator, completion, milestone or a single reference. The listed plans carry no entries; read one plan for those.',
-  inputSchema: getPlansInput,
-  argumentMap: [
-    { input: 'project_id', call: 'page', argument: 0, serialization: 'path' },
-    ...planFilterMappings('page'),
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'project_id', call: 'all', argument: 0, serialization: 'path' },
-    ...planFilterMappings('all'),
-    ...aggregateControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: PlanSchema },
-  pagination: (bind) => ({
-    kind: 'controlled',
-    page: bind('plans.getPlansPage', (method, input) => method(input.project_id, {
-      ...planFilter(input.query),
-      ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    })),
-    all: bind('plans.getAllPlans', (method, input, context) => method(input.project_id, {
-      ...planFilter(input.query),
-      ...driverAllOptions(allControls(input._mcp), context.limits),
-    })),
+  ...getPlansList.bind({
+    page: {
+      binding: 'plans.getPlansPage',
+      call: (method, input, options) => method(input.project_id, options),
+    },
+    all: {
+      binding: 'plans.getAllPlans',
+      call: (method, input, options) => method(input.project_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },

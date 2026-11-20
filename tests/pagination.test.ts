@@ -1,9 +1,7 @@
 import { TestRailClient, TestRailPaginationError, type Page } from '@dichovsky/testrail-api-client';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_LIMITS } from '../src/config/limits.js';
 import {
-  aggregateMetadata, driverAllOptions, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE,
-  pageMetadata, pageRequestDefaults, parseContinuation,
+  aggregateMetadata, MAX_PAGE_SIZE, pageMetadata, parseContinuation,
 } from '../src/contracts/pagination.js';
 
 function envelope(over: Partial<Extract<Page<unknown>, { kind: 'envelope' }>> = {}): Page<unknown> {
@@ -14,19 +12,6 @@ function envelope(over: Partial<Extract<Page<unknown>, { kind: 'envelope' }>> = 
 }
 
 const at = (offset: number, returned: number) => ({ offset, returned });
-
-describe('page request defaults', () => {
-  it('returns one page of fifty from the start when the caller says nothing', () => {
-    expect(pageRequestDefaults(undefined)).toEqual({ limit: DEFAULT_PAGE_SIZE, offset: 0 });
-    expect(DEFAULT_PAGE_SIZE).toBe(50);
-    expect(MAX_PAGE_SIZE).toBe(250);
-  });
-
-  it('honours caller values, including a deliberate zero offset', () => {
-    expect(pageRequestDefaults({ limit: 250, offset: 0 })).toEqual({ limit: 250, offset: 0 });
-    expect(pageRequestDefaults({ offset: 100 })).toEqual({ limit: 50, offset: 100 });
-  });
-});
 
 describe('continuation parsing', () => {
   it('reads a conventional query link', () => {
@@ -205,30 +190,6 @@ describe('aggregate metadata', () => {
 
   it('omits the start offset on a response-driven list that has no caller-controlled start', () => {
     expect(aggregateMetadata([1])).toEqual({ mode: 'all', returned: 1, complete: true });
-  });
-});
-
-describe('aggregate control mapping', () => {
-  it('defaults every bound to the configured maximum', () => {
-    expect(driverAllOptions({}, DEFAULT_LIMITS)).toEqual({
-      maxItems: DEFAULT_LIMITS.max_all_items,
-      maxPages: DEFAULT_LIMITS.max_all_pages,
-      maxBytes: DEFAULT_LIMITS.max_all_bytes,
-      maxDurationMs: DEFAULT_LIMITS.max_all_duration_ms,
-    });
-  });
-
-  it('maps every adapter control to its public helper name', () => {
-    expect(driverAllOptions({
-      page_size: 25, start_offset: 100, max_items: 10, max_pages: 2, max_bytes: 1_024, max_duration_ms: 5_000,
-    }, DEFAULT_LIMITS)).toEqual({
-      pageSize: 25, startOffset: 100, maxItems: 10, maxPages: 2, maxBytes: 1_024, maxDurationMs: 5_000,
-    });
-  });
-
-  it('omits paging controls a response-driven list cannot accept', () => {
-    expect(Object.keys(driverAllOptions({ max_items: 5 }, DEFAULT_LIMITS)).sort())
-      .toEqual(['maxBytes', 'maxDurationMs', 'maxItems', 'maxPages']);
   });
 });
 

@@ -5,80 +5,32 @@ import {
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
 import {
-  createListInput, nonnegativeIntegerSchema, payloadArray, payloadInput, positiveIdSchema, strictObject,
+  nonnegativeIntegerSchema, payloadArray, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
-import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
-import { defineOperation, type ArgumentMapping } from '../registry.js';
-import {
-  aggregateControlMappings, allControls, control, pageResponse, recordResponse,
-} from './common.js';
+import { defineOperation } from '../registry.js';
+import { createListDefinition, type ListFilters } from '../lists.js';
+import { recordResponse } from './common.js';
 
-/** Statuses and the defect text are the filters every result list accepts. */
-const sharedResultFilters = {
-  status_id: z.array(positiveIdSchema).min(1).optional(),
-  defects_filter: z.string().optional(),
-};
+/** Status and defect references are available on every Test Result list. */
+const resultFilters = {
+  status_id: { schema: z.array(positiveIdSchema).min(1).optional(), property: 'statusId', serialization: 'query-list' },
+  defects_filter: { schema: z.string().optional(), property: 'defectsFilter', serialization: 'query-scalar' },
+} satisfies ListFilters<GetResultsOptions>;
 
-/** Only the run-wide list carries the creation filters; the driver drops them elsewhere. */
-const runOnlyResultFilters = {
-  created_after: nonnegativeIntegerSchema.optional(),
-  created_before: nonnegativeIntegerSchema.optional(),
-  created_by: z.array(positiveIdSchema).min(1).optional(),
-};
+/** Creation filters are supported only when listing Test Results for a Test Run. */
+const runResultFilters = {
+  created_after: { schema: nonnegativeIntegerSchema.optional(), property: 'createdAfter', serialization: 'query-scalar' },
+  created_before: { schema: nonnegativeIntegerSchema.optional(), property: 'createdBefore', serialization: 'query-scalar' },
+  created_by: { schema: z.array(positiveIdSchema).min(1).optional(), property: 'createdBy', serialization: 'query-list' },
+  ...resultFilters,
+} satisfies ListFilters<GetResultsForRunOptions>;
 
-type ResultFilter = Omit<GetResultsOptions, 'limit' | 'offset' | 'status_id' | 'defects_filter'>;
-type RunResultFilter = Omit<GetResultsForRunOptions,
-  'limit' | 'offset' | 'status_id' | 'defects_filter' | 'created_after' | 'created_before' | 'created_by'>;
-
-/*
- * Each value is checked to be an option the driver still has. Deriving the type alone
- * would not do that: the helper below builds its object dynamically, and a record of
- * unknown values stays assignable to a type whose properties are all optional, so a
- * renamed option would silently stop being sent rather than fail to compile.
- */
-const resultFilterNames = {
-  status_id: 'statusId', defects_filter: 'defectsFilter',
-} as const satisfies Readonly<Record<string, keyof ResultFilter>>;
-
-const runResultFilterNames = {
-  created_after: 'createdAfter', created_before: 'createdBefore', created_by: 'createdBy',
-  ...resultFilterNames,
-} as const satisfies Readonly<Record<string, keyof RunResultFilter>>;
-
-function resultFilter(query: object | undefined, names: Readonly<Record<string, string>>): RunResultFilter {
-  const source = (query ?? {}) as Record<string, unknown>;
-  const filter: Record<string, unknown> = {};
-  for (const [name, option] of Object.entries(names)) {
-    if (source[name] !== undefined) filter[option] = source[name];
-  }
-  return filter;
-}
-
-/** Two of these are comma-joined lists; the timestamps and the defect text are scalars. */
-const listValuedFilters = new Set(['status_id', 'created_by']);
-
-function filterMappings(
-  names: Readonly<Record<string, string>>,
-  call: 'page' | 'all',
-  argument: number,
-): readonly ArgumentMapping[] {
-  return Object.entries(names).map(([name, property]) => ({
-    input: `query.${name}`, call, argument, property,
-    serialization: listValuedFilters.has(name) ? 'query-list' as const : 'query-scalar' as const,
-  }));
-}
-
-function pagingMappings(call: 'page', argument: number): readonly ArgumentMapping[] {
-  return [
-    { input: 'query.limit', call, argument, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call, argument, property: 'offset', serialization: 'query-scalar' },
-  ];
-}
-
-const getResultsInput = createListInput({
-  path: { test_id: positiveIdSchema },
-  query: sharedResultFilters,
+const getResultsList = createListDefinition({
+  path: { test_id: { schema: positiveIdSchema, argument: 0 } },
   pagination: 'controlled',
+  optionsArgument: 1,
+  filters: resultFilters,
+  entitySchema: ResultSchema,
 });
 
 export const getResults = defineOperation({
@@ -88,36 +40,27 @@ export const getResults = defineOperation({
   family: 'T05',
   driverBinding: 'results.getResults',
   summary: 'List the results recorded against a single TestRail test, newest first, optionally filtered by status or by a defect reference. A test is one case inside one run; use the run or case tools to reach results without a test ID.',
-  inputSchema: getResultsInput,
-  argumentMap: [
-    { input: 'test_id', call: 'page', argument: 0, serialization: 'path' },
-    ...filterMappings(resultFilterNames, 'page', 1),
-    ...pagingMappings('page', 1),
-    { input: 'test_id', call: 'all', argument: 0, serialization: 'path' },
-    ...filterMappings(resultFilterNames, 'all', 1),
-    ...aggregateControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: ResultSchema },
-  pagination: (bind) => ({
-    kind: 'controlled',
-    page: bind('results.getResultsPage', (method, input) => method(input.test_id, {
-      ...resultFilter(input.query, resultFilterNames),
-      ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    })),
-    all: bind('results.getAllResults', (method, input, context) => method(input.test_id, {
-      ...resultFilter(input.query, resultFilterNames),
-      ...driverAllOptions(allControls(input._mcp), context.limits),
-    })),
+  ...getResultsList.bind({
+    page: {
+      binding: 'results.getResultsPage',
+      call: (method, input, options) => method(input.test_id, options),
+    },
+    all: {
+      binding: 'results.getAllResults',
+      call: (method, input, options) => method(input.test_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
 });
 
-const getResultsForCaseInput = createListInput({
-  path: { run_id: positiveIdSchema, case_id: positiveIdSchema },
-  query: sharedResultFilters,
+const getResultsForCaseList = createListDefinition({
+  path: { run_id: { schema: positiveIdSchema, argument: 0 }, case_id: { schema: positiveIdSchema, argument: 1 } },
   pagination: 'controlled',
+  optionsArgument: 2,
+  filters: resultFilters,
+  entitySchema: ResultSchema,
 });
 
 export const getResultsForCase = defineOperation({
@@ -127,40 +70,27 @@ export const getResultsForCase = defineOperation({
   family: 'T05',
   driverBinding: 'results.getResultsForCase',
   summary: 'List the results recorded for one TestRail case within one run, naming the case rather than the test it became. Optionally filtered by status or by a defect reference.',
-  inputSchema: getResultsForCaseInput,
-  argumentMap: [
-    { input: 'run_id', call: 'page', argument: 0, serialization: 'path' },
-    { input: 'case_id', call: 'page', argument: 1, serialization: 'path' },
-    ...filterMappings(resultFilterNames, 'page', 2),
-    ...pagingMappings('page', 2),
-    { input: 'run_id', call: 'all', argument: 0, serialization: 'path' },
-    { input: 'case_id', call: 'all', argument: 1, serialization: 'path' },
-    ...filterMappings(resultFilterNames, 'all', 2),
-    ...aggregateControlMappings(2),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: ResultSchema },
-  pagination: (bind) => ({
-    kind: 'controlled',
-    page: bind('results.getResultsForCasePage',
-      (method, input) => method(input.run_id, input.case_id, {
-        ...resultFilter(input.query, resultFilterNames),
-        ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-      })),
-    all: bind('results.getAllResultsForCase',
-      (method, input, context) => method(input.run_id, input.case_id, {
-        ...resultFilter(input.query, resultFilterNames),
-        ...driverAllOptions(allControls(input._mcp), context.limits),
-      })),
+  ...getResultsForCaseList.bind({
+    page: {
+      binding: 'results.getResultsForCasePage',
+      call: (method, input, options) => method(input.run_id, input.case_id, options),
+    },
+    all: {
+      binding: 'results.getAllResultsForCase',
+      call: (method, input, options) => method(input.run_id, input.case_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
 });
 
-const getResultsForRunInput = createListInput({
-  path: { run_id: positiveIdSchema },
-  query: { ...runOnlyResultFilters, ...sharedResultFilters },
+const getResultsForRunList = createListDefinition({
+  path: { run_id: { schema: positiveIdSchema, argument: 0 } },
   pagination: 'controlled',
+  optionsArgument: 1,
+  filters: runResultFilters,
+  entitySchema: ResultSchema,
 });
 
 export const getResultsForRun = defineOperation({
@@ -170,26 +100,15 @@ export const getResultsForRun = defineOperation({
   family: 'T05',
   driverBinding: 'results.getResultsForRun',
   summary: 'List the results recorded across a whole TestRail run, optionally filtered by creation time (Unix seconds), creator, status or a defect reference. The creation filters are accepted here alone; the per-test and per-case lists do not carry them.',
-  inputSchema: getResultsForRunInput,
-  argumentMap: [
-    { input: 'run_id', call: 'page', argument: 0, serialization: 'path' },
-    ...filterMappings(runResultFilterNames, 'page', 1),
-    ...pagingMappings('page', 1),
-    { input: 'run_id', call: 'all', argument: 0, serialization: 'path' },
-    ...filterMappings(runResultFilterNames, 'all', 1),
-    ...aggregateControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: ResultSchema },
-  pagination: (bind) => ({
-    kind: 'controlled',
-    page: bind('results.getResultsForRunPage', (method, input) => method(input.run_id, {
-      ...resultFilter(input.query, runResultFilterNames),
-      ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    })),
-    all: bind('results.getAllResultsForRun', (method, input, context) => method(input.run_id, {
-      ...resultFilter(input.query, runResultFilterNames),
-      ...driverAllOptions(allControls(input._mcp), context.limits),
-    })),
+  ...getResultsForRunList.bind({
+    page: {
+      binding: 'results.getResultsForRunPage',
+      call: (method, input, options) => method(input.run_id, options),
+    },
+    all: {
+      binding: 'results.getAllResultsForRun',
+      call: (method, input, options) => method(input.run_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },

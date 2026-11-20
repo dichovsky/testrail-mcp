@@ -16,6 +16,8 @@ The remaining components follow [the architecture](../docs/architecture.md#runti
 
 `operations/catalog.ts` composes the 12 endpoint families into 133 tools. Registration finalizes each authoring schema through `contracts/input-contract.ts`: the published, immutable JSON Schema also governs runtime validation, and typed driver bindings share that contract. The [authoring guide](../docs/registry-authoring.md) describes registry entries and the schema helpers in `contracts/inputs.ts`.
 
+`operations/lists.ts` owns the 24 list definitions: explicit filters generate projection and argument mappings, while the module prepares page/all calls, enforces configured bounds and interprets replies. Continuation parsing and metadata remain internal implementation in `contracts/pagination.ts`; the driver fetches the pages.
+
 `config/environment.ts`, `config/limits.ts` and `driver/configuration.ts` validate immutable startup configuration and construct the public driver; see [startup configuration](../docs/startup-configuration.md). `runtime/invocation.ts` owns admission, invocation lifetime and shutdown through the driver's settlement handle; see [runtime lifetime](../docs/runtime-lifetime.md).
 
 `transport/server.ts` composes the server and registers the tools, `transport/tool-call.ts` runs each call, and `transport/diagnostics.ts` keeps stdout protocol-only; see [transport](../docs/transport.md). The contracts preserve response data, report advisory schema drift, classify errors and describe pagination; see [results and errors](../docs/results-and-errors.md) and [pagination](../docs/pagination.md).

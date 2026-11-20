@@ -5,12 +5,12 @@ import {
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
 import {
-  caseIdsSchema, createListInput, idFilterSchema, nonnegativeIntegerSchema, payloadArray, payloadInput,
+  caseIdsSchema, idFilterSchema, nonnegativeIntegerSchema, payloadArray, payloadInput,
   positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
-import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
-import { defineOperation, type ArgumentMapping } from '../registry.js';
-import { aggregateControlMappings, allControls, control, flag, pageResponse, recordResponse, softDeletePreview } from './common.js';
+import { defineOperation } from '../registry.js';
+import { createListDefinition, type ListFilters } from '../lists.js';
+import { flag, recordResponse, softDeletePreview } from './common.js';
 
 const getCaseInput = strictObject({ case_id: positiveIdSchema });
 
@@ -38,64 +38,29 @@ const caseRefsSchema = z.union([z.string(), z.array(z.string()).min(1)]);
 
 // Timestamps are Unix seconds. The driver forwards any number for them, so the
 // integer bound is held here.
-const getCasesInput = createListInput({
-  path: { project_id: positiveIdSchema },
-  query: {
-    suite_id: positiveIdSchema.optional(),
-    section_id: positiveIdSchema.optional(),
-    type_id: idFilterSchema.optional(),
-    priority_id: idFilterSchema.optional(),
-    template_id: idFilterSchema.optional(),
-    milestone_id: idFilterSchema.optional(),
-    created_after: nonnegativeIntegerSchema.optional(),
-    created_before: nonnegativeIntegerSchema.optional(),
-    created_by: idFilterSchema.optional(),
-    filter: z.string().optional(),
-    updated_after: nonnegativeIntegerSchema.optional(),
-    updated_before: nonnegativeIntegerSchema.optional(),
-    updated_by: idFilterSchema.optional(),
-    label_id: idFilterSchema.optional(),
-    refs: caseRefsSchema.optional(),
-  },
+const getCasesList = createListDefinition({
+  path: { project_id: { schema: positiveIdSchema, argument: 0 } },
   pagination: 'controlled',
+  optionsArgument: 1,
+  filters: {
+    suite_id: { schema: positiveIdSchema.optional(), property: 'suiteId', serialization: 'query-scalar' },
+    section_id: { schema: positiveIdSchema.optional(), property: 'sectionId', serialization: 'query-scalar' },
+    type_id: { schema: idFilterSchema.optional(), property: 'typeId', serialization: 'query-list' },
+    priority_id: { schema: idFilterSchema.optional(), property: 'priorityId', serialization: 'query-list' },
+    template_id: { schema: idFilterSchema.optional(), property: 'templateId', serialization: 'query-list' },
+    milestone_id: { schema: idFilterSchema.optional(), property: 'milestoneId', serialization: 'query-list' },
+    created_after: { schema: nonnegativeIntegerSchema.optional(), property: 'createdAfter', serialization: 'query-scalar' },
+    created_before: { schema: nonnegativeIntegerSchema.optional(), property: 'createdBefore', serialization: 'query-scalar' },
+    created_by: { schema: idFilterSchema.optional(), property: 'createdBy', serialization: 'query-list' },
+    filter: { schema: z.string().optional(), property: 'filter', serialization: 'query-scalar' },
+    updated_after: { schema: nonnegativeIntegerSchema.optional(), property: 'updatedAfter', serialization: 'query-scalar' },
+    updated_before: { schema: nonnegativeIntegerSchema.optional(), property: 'updatedBefore', serialization: 'query-scalar' },
+    updated_by: { schema: idFilterSchema.optional(), property: 'updatedBy', serialization: 'query-list' },
+    label_id: { schema: idFilterSchema.optional(), property: 'labelId', serialization: 'query-list' },
+    refs: { schema: caseRefsSchema.optional(), property: 'refs', serialization: 'query-repeated' },
+  } satisfies ListFilters<GetCasesOptions>,
+  entitySchema: CaseSchema,
 });
-
-type CaseFilter = Omit<GetCasesOptions, 'limit' | 'offset'>;
-
-/**
- * REST filter name to driver option name; every filter is renamed to camelCase. Each
- * value is checked to be an option the driver still has, because the helper below
- * builds its object dynamically and a renamed option would otherwise stop being sent
- * without failing to compile.
- */
-const caseFilterNames = {
-  suite_id: 'suiteId', section_id: 'sectionId', type_id: 'typeId', priority_id: 'priorityId',
-  template_id: 'templateId', milestone_id: 'milestoneId', created_after: 'createdAfter',
-  created_before: 'createdBefore', created_by: 'createdBy', filter: 'filter', updated_after: 'updatedAfter',
-  updated_before: 'updatedBefore', updated_by: 'updatedBy', label_id: 'labelId', refs: 'refs',
-} as const satisfies Readonly<Record<string, keyof CaseFilter>>;
-
-/** Filters the driver joins with commas; refs is repeated instead and the rest are scalars. */
-const listFilters = new Set(['type_id', 'priority_id', 'template_id', 'milestone_id', 'created_by', 'updated_by', 'label_id']);
-
-function caseFilterMappings(call: 'page' | 'all'): readonly ArgumentMapping[] {
-  return Object.entries(caseFilterNames).map(([name, property]) => ({
-    input: `query.${name}`, call, argument: 1, property,
-    serialization: name === 'refs' ? 'query-repeated' : listFilters.has(name) ? 'query-list' : 'query-scalar',
-  }));
-}
-
-/** Renamed filters, carried over only when supplied so the driver sends nothing for the rest. */
-function caseFilter(query: object | undefined): CaseFilter {
-  const source = (query ?? {}) as Record<string, unknown>;
-  const filter: Record<string, unknown> = {};
-  for (const [name, option] of Object.entries(caseFilterNames)) {
-    if (source[name] !== undefined) filter[option] = source[name];
-  }
-  // The schema has validated each value already; the argument map declares the mapping
-  // independently and the fixtures check the arguments actually sent.
-  return filter;
-}
 
 export const getCases = defineOperation({
   token: 'get_cases',
@@ -104,27 +69,15 @@ export const getCases = defineOperation({
   family: 'T02',
   driverBinding: 'cases.getCases',
   summary: 'List the test cases of a TestRail project, optionally within one suite or section and filtered by type, priority, template, milestone, label, creator, updater, creation or update time (Unix seconds), a title substring (filter) or references (refs). An ID filter takes one ID or a non-empty array. The suite is required unless the project runs in single-suite mode. Custom fields are returned as flat custom_* properties.',
-  inputSchema: getCasesInput,
-  argumentMap: [
-    { input: 'project_id', call: 'page', argument: 0, serialization: 'path' },
-    ...caseFilterMappings('page'),
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'project_id', call: 'all', argument: 0, serialization: 'path' },
-    ...caseFilterMappings('all'),
-    ...aggregateControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: CaseSchema },
-  pagination: (bind) => ({
-    kind: 'controlled',
-    page: bind('cases.getCasesPage', (method, input) => method(input.project_id, {
-      ...caseFilter(input.query),
-      ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    })),
-    all: bind('cases.getAllCases', (method, input, context) => method(input.project_id, {
-      ...caseFilter(input.query),
-      ...driverAllOptions(allControls(input._mcp), context.limits),
-    })),
+  ...getCasesList.bind({
+    page: {
+      binding: 'cases.getCasesPage',
+      call: (method, input, options) => method(input.project_id, options),
+    },
+    all: {
+      binding: 'cases.getAllCases',
+      call: (method, input, options) => method(input.project_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
@@ -152,7 +105,12 @@ export const getCaseTitles = defineOperation({
   retry: 'ordinary-read',
 });
 
-const getHistoryForCaseInput = createListInput({ path: { case_id: positiveIdSchema }, pagination: 'controlled' });
+const getHistoryForCaseList = createListDefinition({
+  path: { case_id: { schema: positiveIdSchema, argument: 0 } },
+  pagination: 'controlled',
+  optionsArgument: 1,
+  entitySchema: HistoryEntrySchema,
+});
 
 export const getHistoryForCase = defineOperation({
   token: 'get_history_for_case',
@@ -161,25 +119,15 @@ export const getHistoryForCase = defineOperation({
   family: 'T02',
   driverBinding: 'cases.getHistoryForCase',
   summary: 'List the change history of a TestRail test case (TestRail 6.5.4 or later). Each entry records who changed which fields, with the old and new values.',
-  inputSchema: getHistoryForCaseInput,
-  argumentMap: [
-    { input: 'case_id', call: 'page', argument: 0, serialization: 'path' },
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'case_id', call: 'all', argument: 0, serialization: 'path' },
-    ...aggregateControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: HistoryEntrySchema },
-  pagination: (bind) => ({
-    kind: 'controlled',
-    page: bind('cases.getHistoryForCasePage', (method, input) => method(
-      input.case_id,
-      pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    )),
-    all: bind('cases.getAllHistoryForCase', (method, input, context) => method(
-      input.case_id,
-      driverAllOptions(allControls(input._mcp), context.limits),
-    )),
+  ...getHistoryForCaseList.bind({
+    page: {
+      binding: 'cases.getHistoryForCasePage',
+      call: (method, input, options) => method(input.case_id, options),
+    },
+    all: {
+      binding: 'cases.getAllHistoryForCase',
+      call: (method, input, options) => method(input.case_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },

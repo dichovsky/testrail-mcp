@@ -1,6 +1,6 @@
 # Architecture refactoring plan
 
-Status: finalized input contracts implemented; list definitions and the operation executor remain accepted designs pending implementation. This plan covers the three deepening opportunities selected during the architecture review. It supplements the existing [implementation plan](implementation-plan.md) without changing the published endpoint contract.
+Status: finalized input contracts and list definitions implemented; the operation executor remains an accepted design pending implementation. This plan covers the three deepening opportunities selected during the architecture review. It supplements the existing [implementation plan](implementation-plan.md) without changing the published endpoint contract.
 
 ## Accepted decisions
 
@@ -48,6 +48,8 @@ Remove parser-instance patches for original-key handling once the finalized cont
 Migrate schema-identity checks to finalized-contract identity, and update parameter audits, `InputPaths` consumers, schema-emission mocks, and regression helpers together. Tests that expect `ZodError` from direct invocation should assert the input contract's error instead. Comparing two uses of the same compiled validator does not replace independent expected outcomes.
 
 ### List definitions
+
+Implemented in `src/operations/lists.ts` on 2026-11-18 for all 24 page/all pairs: 18 controlled and six response-driven. Explicit declarations own schema fields, filter projection and argument mappings; registration retains typed callbacks with explicit paths and driver methods. The module also prepares calls before admission, enforces configured bounds on standalone aggregate bindings, and interprets replies after acknowledgement. The unchanged-main baseline passed 7,040 tests; the completed change passed `npm run check` and `npm run test:coverage` on Node 24 with 7,162 tests and all coverage thresholds above 99%. Exact catalog comparison preserved all 133 tools' schemas and metadata. Independent review compared accepted and rejected calls and response cases against main, and checked every list's configured bounds before admission and direct driver lookup.
 
 Start with `src/operations/families/common.ts`, the list portion of `src/contracts/inputs.ts`, `src/contracts/pagination.ts`, the family declarations, and paging selection/bound checks in `src/transport/tool-call.ts`.
 

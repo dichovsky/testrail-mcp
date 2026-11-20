@@ -1,15 +1,15 @@
 import {
   AddProjectPayloadSchema, AddSectionPayloadSchema, AddSuitePayloadSchema, MoveSectionPayloadSchema,
-  ProjectSchema, SectionSchema, SuiteSchema,
+  ProjectSchema, SectionSchema, SuiteSchema, type GetProjectsOptions, type GetSectionsOptions,
   UpdateProjectPayloadSchema, UpdateSectionPayloadSchema, UpdateSuitePayloadSchema,
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
 import {
-  createListInput, nonnegativeIntegerSchema, payloadInput, positiveIdSchema, strictObject,
+  nonnegativeIntegerSchema, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
-import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
 import { defineOperation } from '../registry.js';
-import { allControls, control, flag, pageResponse, recordResponse, softDeletePreview } from './common.js';
+import { createListDefinition, type ListFilters } from '../lists.js';
+import { flag, recordResponse, softDeletePreview } from './common.js';
 
 const getProjectInput = strictObject({ project_id: positiveIdSchema });
 
@@ -32,16 +32,15 @@ export const getProject = defineOperation({
   retry: 'ordinary-read',
 });
 
-const getProjectsInput = createListInput({
-  query: { is_completed: z.boolean().optional() },
+// *Page helpers preserve continuation metadata that the convenience methods discard.
+const getProjectsList = createListDefinition({
   pagination: 'controlled',
+  optionsArgument: 0,
+  filters: {
+    is_completed: { schema: z.boolean().optional(), property: 'isCompleted', serialization: 'query-scalar' },
+  } satisfies ListFilters<GetProjectsOptions>,
+  entitySchema: ProjectSchema,
 });
-
-/** Renamed filter: the REST field is snake_case, the driver option is camelCase. */
-function projectFilter(query: object | undefined): { isCompleted?: boolean } {
-  const isCompleted = flag(query, 'is_completed');
-  return isCompleted === undefined ? {} : { isCompleted };
-}
 
 export const getProjects = defineOperation({
   token: 'get_projects',
@@ -50,37 +49,15 @@ export const getProjects = defineOperation({
   family: 'T01',
   driverBinding: 'projects.getProjects',
   summary: 'List TestRail projects, optionally filtered by completion state.',
-  inputSchema: getProjectsInput,
-  argumentMap: [
-    { input: 'query.is_completed', call: 'page', argument: 0, property: 'isCompleted', serialization: 'query-scalar' },
-    { input: 'query.limit', call: 'page', argument: 0, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 0, property: 'offset', serialization: 'query-scalar' },
-    { input: 'query.is_completed', call: 'all', argument: 0, property: 'isCompleted', serialization: 'query-scalar' },
-    { input: '_mcp.page_size', call: 'all', argument: 0, property: 'pageSize', serialization: 'aggregate-control' },
-    { input: '_mcp.start_offset', call: 'all', argument: 0, property: 'startOffset', serialization: 'aggregate-control' },
-    { input: '_mcp.max_items', call: 'all', argument: 0, property: 'maxItems', serialization: 'aggregate-control' },
-    { input: '_mcp.max_pages', call: 'all', argument: 0, property: 'maxPages', serialization: 'aggregate-control' },
-    { input: '_mcp.max_bytes', call: 'all', argument: 0, property: 'maxBytes', serialization: 'aggregate-control' },
-    { input: '_mcp.max_duration_ms', call: 'all', argument: 0, property: 'maxDurationMs', serialization: 'aggregate-control' },
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: ProjectSchema },
-  pagination: (bind) => ({
-    kind: 'controlled',
-    // The page helper is used rather than the convenience method, which discards the
-    // metadata the result needs to describe continuation honestly.
-    page: bind('projects.getProjectsPage', (method, input) => method({
-      ...projectFilter(input.query),
-      ...pageRequestDefaults({
-        ...(control(input.query, 'limit') === undefined ? {} : { limit: control(input.query, 'limit') }),
-        ...(control(input.query, 'offset') === undefined ? {} : { offset: control(input.query, 'offset') }),
-      }),
-    })),
-    // A bound the caller left unset falls back to the configured limit, never to the
-    // driver's own far larger default. Paging controls are forwarded only when supplied.
-    all: bind('projects.getAllProjects', (method, input, context) => method({
-      ...projectFilter(input.query),
-      ...driverAllOptions(allControls(input._mcp), context.limits),
-    })),
+  ...getProjectsList.bind({
+    page: {
+      binding: 'projects.getProjectsPage',
+      call: (method, _input, options) => method(options),
+    },
+    all: {
+      binding: 'projects.getAllProjects',
+      call: (method, _input, options) => method(options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
@@ -184,7 +161,12 @@ export const getSuite = defineOperation({
   retry: 'ordinary-read',
 });
 
-const getSuitesInput = createListInput({ path: { project_id: positiveIdSchema }, pagination: 'controlled' });
+const getSuitesList = createListDefinition({
+  path: { project_id: { schema: positiveIdSchema, argument: 0 } },
+  pagination: 'controlled',
+  optionsArgument: 1,
+  entitySchema: SuiteSchema,
+});
 
 export const getSuites = defineOperation({
   token: 'get_suites',
@@ -193,30 +175,15 @@ export const getSuites = defineOperation({
   family: 'T01',
   driverBinding: 'suites.getSuites',
   summary: 'List the test suites of a TestRail project.',
-  inputSchema: getSuitesInput,
-  argumentMap: [
-    { input: 'project_id', call: 'page', argument: 0, serialization: 'path' },
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'project_id', call: 'all', argument: 0, serialization: 'path' },
-    { input: '_mcp.page_size', call: 'all', argument: 1, property: 'pageSize', serialization: 'aggregate-control' },
-    { input: '_mcp.start_offset', call: 'all', argument: 1, property: 'startOffset', serialization: 'aggregate-control' },
-    { input: '_mcp.max_items', call: 'all', argument: 1, property: 'maxItems', serialization: 'aggregate-control' },
-    { input: '_mcp.max_pages', call: 'all', argument: 1, property: 'maxPages', serialization: 'aggregate-control' },
-    { input: '_mcp.max_bytes', call: 'all', argument: 1, property: 'maxBytes', serialization: 'aggregate-control' },
-    { input: '_mcp.max_duration_ms', call: 'all', argument: 1, property: 'maxDurationMs', serialization: 'aggregate-control' },
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: SuiteSchema },
-  pagination: (bind) => ({
-    kind: 'controlled',
-    page: bind('suites.getSuitesPage', (method, input) => method(
-      input.project_id,
-      pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    )),
-    all: bind('suites.getAllSuites', (method, input, context) => method(
-      input.project_id,
-      driverAllOptions(allControls(input._mcp), context.limits),
-    )),
+  ...getSuitesList.bind({
+    page: {
+      binding: 'suites.getSuitesPage',
+      call: (method, input, options) => method(input.project_id, options),
+    },
+    all: {
+      binding: 'suites.getAllSuites',
+      call: (method, input, options) => method(input.project_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
@@ -328,17 +295,15 @@ export const getSection = defineOperation({
   retry: 'ordinary-read',
 });
 
-const getSectionsInput = createListInput({
-  path: { project_id: positiveIdSchema },
-  query: { suite_id: positiveIdSchema.optional() },
+const getSectionsList = createListDefinition({
+  path: { project_id: { schema: positiveIdSchema, argument: 0 } },
   pagination: 'controlled',
+  optionsArgument: 1,
+  filters: {
+    suite_id: { schema: positiveIdSchema.optional(), property: 'suiteId', serialization: 'query-scalar' },
+  } satisfies ListFilters<GetSectionsOptions>,
+  entitySchema: SectionSchema,
 });
-
-/** Renamed filter: the REST field is snake_case, the driver option is camelCase. */
-function sectionFilter(query: object | undefined): { suiteId?: number } {
-  const suiteId = control(query, 'suite_id');
-  return suiteId === undefined ? {} : { suiteId };
-}
 
 export const getSections = defineOperation({
   token: 'get_sections',
@@ -347,32 +312,15 @@ export const getSections = defineOperation({
   family: 'T01',
   driverBinding: 'sections.getSections',
   summary: 'List the sections of a TestRail project, optionally within one test suite. The suite is required unless the project runs in single-suite mode.',
-  inputSchema: getSectionsInput,
-  argumentMap: [
-    { input: 'project_id', call: 'page', argument: 0, serialization: 'path' },
-    { input: 'query.suite_id', call: 'page', argument: 1, property: 'suiteId', serialization: 'query-scalar' },
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'project_id', call: 'all', argument: 0, serialization: 'path' },
-    { input: 'query.suite_id', call: 'all', argument: 1, property: 'suiteId', serialization: 'query-scalar' },
-    { input: '_mcp.page_size', call: 'all', argument: 1, property: 'pageSize', serialization: 'aggregate-control' },
-    { input: '_mcp.start_offset', call: 'all', argument: 1, property: 'startOffset', serialization: 'aggregate-control' },
-    { input: '_mcp.max_items', call: 'all', argument: 1, property: 'maxItems', serialization: 'aggregate-control' },
-    { input: '_mcp.max_pages', call: 'all', argument: 1, property: 'maxPages', serialization: 'aggregate-control' },
-    { input: '_mcp.max_bytes', call: 'all', argument: 1, property: 'maxBytes', serialization: 'aggregate-control' },
-    { input: '_mcp.max_duration_ms', call: 'all', argument: 1, property: 'maxDurationMs', serialization: 'aggregate-control' },
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: SectionSchema },
-  pagination: (bind) => ({
-    kind: 'controlled',
-    page: bind('sections.getSectionsPage', (method, input) => method(input.project_id, {
-      ...sectionFilter(input.query),
-      ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    })),
-    all: bind('sections.getAllSections', (method, input, context) => method(input.project_id, {
-      ...sectionFilter(input.query),
-      ...driverAllOptions(allControls(input._mcp), context.limits),
-    })),
+  ...getSectionsList.bind({
+    page: {
+      binding: 'sections.getSectionsPage',
+      call: (method, input, options) => method(input.project_id, options),
+    },
+    all: {
+      binding: 'sections.getAllSections',
+      call: (method, input, options) => method(input.project_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },

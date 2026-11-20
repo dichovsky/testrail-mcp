@@ -5,14 +5,12 @@ import {
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
 import {
-  bddFilenameSchema, contentTypeSchema, createListInput, filePathSchema, idFilterSchema,
+  bddFilenameSchema, contentTypeSchema, filePathSchema, idFilterSchema,
   nonnegativeIntegerSchema, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
-import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
 import { defineOperation } from '../registry.js';
-import {
-  aggregateControlMappings, allControls, control, flag, pageResponse, recordResponse, safetyControlMappings, staged,
-} from './common.js';
+import { createListDefinition, type ListFilters } from '../lists.js';
+import { flag, recordResponse, staged } from './common.js';
 
 const getBddInput = strictObject({ case_id: positiveIdSchema });
 
@@ -39,43 +37,19 @@ export const getBdd = defineOperation({
 /** One reference sends refs=; several send the repeated refs[] form TestRail 10.7 accepts. */
 const bddRefsSchema = z.union([z.string(), z.array(z.string()).min(1)]);
 
-const getBddsInput = createListInput({
-  path: { project_id: positiveIdSchema },
-  query: {
-    suite_id: positiveIdSchema.optional(),
-    section_id: positiveIdSchema.optional(),
-    label_id: idFilterSchema.optional(),
-    refs: bddRefsSchema.optional(),
-  },
+// BddSchema is an open record, but still warns if a returned item is a string or null.
+const getBddsList = createListDefinition({
+  path: { project_id: { schema: positiveIdSchema, argument: 0 } },
   pagination: 'controlled',
+  optionsArgument: 1,
+  filters: {
+    suite_id: { schema: positiveIdSchema.optional(), property: 'suiteId', serialization: 'query-scalar' },
+    section_id: { schema: positiveIdSchema.optional(), property: 'sectionId', serialization: 'query-scalar' },
+    label_id: { schema: idFilterSchema.optional(), property: 'labelId', serialization: 'query-list' },
+    refs: { schema: bddRefsSchema.optional(), property: 'refs', serialization: 'query-repeated' },
+  } satisfies ListFilters<GetBddsOptions>,
+  entitySchema: BddSchema,
 });
-
-/** Derived from the driver's own option type, so a rename there fails the build here. */
-type BddFilter = Omit<GetBddsOptions, 'limit' | 'offset'>;
-
-/** Each value is checked to be an option the driver still has. */
-const bddFilterNames = {
-  suite_id: 'suiteId', section_id: 'sectionId', label_id: 'labelId', refs: 'refs',
-} as const satisfies Readonly<Record<string, keyof BddFilter>>;
-
-/** Renamed filters, carried over only when supplied so the driver sends nothing for the rest. */
-function bddFilter(query: object | undefined): BddFilter {
-  const source = (query ?? {}) as Record<string, unknown>;
-  const filter: Record<string, unknown> = {};
-  for (const [name, option] of Object.entries(bddFilterNames)) {
-    if (source[name] !== undefined) filter[option] = source[name];
-  }
-  return filter;
-}
-
-function bddFilterMappings(call: 'page' | 'all') {
-  return [
-    { input: 'query.suite_id', call, argument: 1, property: 'suiteId', serialization: 'query-scalar' },
-    { input: 'query.section_id', call, argument: 1, property: 'sectionId', serialization: 'query-scalar' },
-    { input: 'query.label_id', call, argument: 1, property: 'labelId', serialization: 'query-list' },
-    { input: 'query.refs', call, argument: 1, property: 'refs', serialization: 'query-repeated' },
-  ] as const;
-}
 
 export const getBdds = defineOperation({
   token: 'get_bdds',
@@ -84,30 +58,15 @@ export const getBdds = defineOperation({
   family: 'T03',
   driverBinding: 'bdd.getBdds',
   summary: 'List the BDD feature content of a TestRail project (TestRail 10.5 or later), optionally filtered by suite, section, label or references. A label filter takes one ID or a non-empty array.',
-  inputSchema: getBddsInput,
-  argumentMap: [
-    { input: 'project_id', call: 'page', argument: 0, serialization: 'path' },
-    ...bddFilterMappings('page'),
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'project_id', call: 'all', argument: 0, serialization: 'path' },
-    ...bddFilterMappings('all'),
-    ...aggregateControlMappings(1),
-  ],
-  // The driver's item schema for this endpoint is an open record, so no field of a row
-  // is checked. It still says a row is an object, which is worth keeping: a page of
-  // strings or nulls would otherwise reach the caller with nothing said about it.
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: BddSchema },
-  pagination: (bind) => ({
-    kind: 'controlled',
-    page: bind('bdd.getBddsPage', (method, input) => method(input.project_id, {
-      ...bddFilter(input.query),
-      ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    })),
-    all: bind('bdd.getAllBdds', (method, input, context) => method(input.project_id, {
-      ...bddFilter(input.query),
-      ...driverAllOptions(allControls(input._mcp), context.limits),
-    })),
+  ...getBddsList.bind({
+    page: {
+      binding: 'bdd.getBddsPage',
+      call: (method, input, options) => method(input.project_id, options),
+    },
+    all: {
+      binding: 'bdd.getAllBdds',
+      call: (method, input, options) => method(input.project_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
@@ -199,44 +158,20 @@ export const getSharedStep = defineOperation({
   retry: 'ordinary-read',
 });
 
-const getSharedStepsInput = createListInput({
-  path: { project_id: positiveIdSchema },
-  query: {
-    created_after: nonnegativeIntegerSchema.optional(),
-    created_before: nonnegativeIntegerSchema.optional(),
-    created_by: idFilterSchema.optional(),
-    updated_after: nonnegativeIntegerSchema.optional(),
-    updated_before: nonnegativeIntegerSchema.optional(),
-    refs: z.string().optional(),
-  },
+const getSharedStepsList = createListDefinition({
+  path: { project_id: { schema: positiveIdSchema, argument: 0 } },
   pagination: 'controlled',
+  optionsArgument: 1,
+  filters: {
+    created_after: { schema: nonnegativeIntegerSchema.optional(), property: 'createdAfter', serialization: 'query-scalar' },
+    created_before: { schema: nonnegativeIntegerSchema.optional(), property: 'createdBefore', serialization: 'query-scalar' },
+    created_by: { schema: idFilterSchema.optional(), property: 'createdBy', serialization: 'query-list' },
+    updated_after: { schema: nonnegativeIntegerSchema.optional(), property: 'updatedAfter', serialization: 'query-scalar' },
+    updated_before: { schema: nonnegativeIntegerSchema.optional(), property: 'updatedBefore', serialization: 'query-scalar' },
+    refs: { schema: z.string().optional(), property: 'refs', serialization: 'query-scalar' },
+  } satisfies ListFilters<GetSharedStepsOptions>,
+  entitySchema: SharedStepSchema,
 });
-
-/** Derived from the driver's own option type, so a rename there fails the build here. */
-type SharedStepFilter = Omit<GetSharedStepsOptions, 'limit' | 'offset'>;
-
-/** Each value is checked to be an option the driver still has, which the type alone
- * does not do for an object built dynamically. */
-const sharedStepFilterNames = {
-  created_after: 'createdAfter', created_before: 'createdBefore', created_by: 'createdBy',
-  updated_after: 'updatedAfter', updated_before: 'updatedBefore', refs: 'refs',
-} as const satisfies Readonly<Record<string, keyof SharedStepFilter>>;
-
-function sharedStepFilter(query: object | undefined): SharedStepFilter {
-  const source = (query ?? {}) as Record<string, unknown>;
-  const filter: Record<string, unknown> = {};
-  for (const [name, option] of Object.entries(sharedStepFilterNames)) {
-    if (source[name] !== undefined) filter[option] = source[name];
-  }
-  return filter;
-}
-
-function sharedStepFilterMappings(call: 'page' | 'all') {
-  return Object.entries(sharedStepFilterNames).map(([name, property]) => ({
-    input: `query.${name}`, call, argument: 1, property,
-    serialization: name === 'created_by' ? 'query-list' as const : 'query-scalar' as const,
-  }));
-}
 
 export const getSharedSteps = defineOperation({
   token: 'get_shared_steps',
@@ -245,27 +180,15 @@ export const getSharedSteps = defineOperation({
   family: 'T03',
   driverBinding: 'sharedSteps.getSharedSteps',
   summary: 'List the shared step sets of a TestRail project (TestRail 7.0 or later), optionally filtered by creation or update time (Unix seconds), creator or a single reference. TestRail returns only the ID and title of each set in this list; read one set for its steps.',
-  inputSchema: getSharedStepsInput,
-  argumentMap: [
-    { input: 'project_id', call: 'page', argument: 0, serialization: 'path' },
-    ...sharedStepFilterMappings('page'),
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'project_id', call: 'all', argument: 0, serialization: 'path' },
-    ...sharedStepFilterMappings('all'),
-    ...aggregateControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: SharedStepSchema },
-  pagination: (bind) => ({
-    kind: 'controlled',
-    page: bind('sharedSteps.getSharedStepsPage', (method, input) => method(input.project_id, {
-      ...sharedStepFilter(input.query),
-      ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    })),
-    all: bind('sharedSteps.getAllSharedSteps', (method, input, context) => method(input.project_id, {
-      ...sharedStepFilter(input.query),
-      ...driverAllOptions(allControls(input._mcp), context.limits),
-    })),
+  ...getSharedStepsList.bind({
+    page: {
+      binding: 'sharedSteps.getSharedStepsPage',
+      call: (method, input, options) => method(input.project_id, options),
+    },
+    all: {
+      binding: 'sharedSteps.getAllSharedSteps',
+      call: (method, input, options) => method(input.project_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
@@ -274,9 +197,11 @@ export const getSharedSteps = defineOperation({
 
 // TestRail documents no request controls for this endpoint, so the driver's page helper
 // sends none and the caller cannot choose an offset: the server picks each page.
-const getSharedStepHistoryInput = createListInput({
-  path: { shared_step_id: positiveIdSchema },
+const getSharedStepHistoryList = createListDefinition({
+  path: { shared_step_id: { schema: positiveIdSchema, argument: 0 } },
   pagination: 'response-driven',
+  optionsArgument: 1,
+  entitySchema: StepHistoryEntrySchema,
 });
 
 export const getSharedStepHistory = defineOperation({
@@ -286,19 +211,15 @@ export const getSharedStepHistory = defineOperation({
   family: 'T03',
   driverBinding: 'sharedSteps.getSharedStepHistory',
   summary: 'List the change history of a TestRail shared step set (TestRail 7.3 or later). Each entry records who changed the set, when, and the steps as they stood. This endpoint accepts no paging controls, so the server chooses each page; a complete read that stops at one of its bounds cannot be resumed from where it stopped, and needs a larger bound instead.',
-  inputSchema: getSharedStepHistoryInput,
-  argumentMap: [
-    { input: 'shared_step_id', call: 'page', argument: 0, serialization: 'path' },
-    { input: 'shared_step_id', call: 'all', argument: 0, serialization: 'path' },
-    ...safetyControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: StepHistoryEntrySchema },
-  pagination: (bind) => ({
-    kind: 'response_driven',
-    page: bind('sharedSteps.getSharedStepHistoryPage',
-      (method, input) => method(input.shared_step_id)),
-    all: bind('sharedSteps.getAllSharedStepHistory',
-      (method, input, context) => method(input.shared_step_id, driverAllOptions(allControls(input._mcp), context.limits))),
+  ...getSharedStepHistoryList.bind({
+    page: {
+      binding: 'sharedSteps.getSharedStepHistoryPage',
+      call: (method, input) => method(input.shared_step_id),
+    },
+    all: {
+      binding: 'sharedSteps.getAllSharedStepHistory',
+      call: (method, input, options) => method(input.shared_step_id, options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },

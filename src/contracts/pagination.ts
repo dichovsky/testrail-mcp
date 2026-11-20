@@ -1,5 +1,4 @@
 import type { Page } from '@dichovsky/testrail-api-client';
-import type { Limits } from '../config/limits.js';
 
 export const DEFAULT_PAGE_SIZE = 50;
 export const MAX_PAGE_SIZE = 250;
@@ -146,37 +145,4 @@ export function aggregateMetadata(
     // Omitted on response-driven lists, which have no caller-controlled start.
     ...(options.startOffset === undefined ? {} : { start_offset: options.startOffset }),
   });
-}
-
-// Values may be explicitly undefined for the same reason as pageRequestDefaults: a
-// list input is a union of branches, and reading the all branch's controls totally
-// yields undefined for each one the caller left out.
-export interface AllControls {
-  readonly page_size?: number | undefined;
-  readonly start_offset?: number | undefined;
-  readonly max_items?: number | undefined;
-  readonly max_pages?: number | undefined;
-  readonly max_bytes?: number | undefined;
-  readonly max_duration_ms?: number | undefined;
-}
-
-/** Map adapter controls to the public aggregate helper. Configured maxima are the defaults. */
-export function driverAllOptions(controls: AllControls, limits: Limits): Readonly<Record<string, number>> {
-  return Object.freeze({
-    ...(controls.page_size === undefined ? {} : { pageSize: controls.page_size }),
-    ...(controls.start_offset === undefined ? {} : { startOffset: controls.start_offset }),
-    maxItems: controls.max_items ?? limits.max_all_items,
-    maxPages: controls.max_pages ?? limits.max_all_pages,
-    maxBytes: controls.max_bytes ?? limits.max_all_bytes,
-    maxDurationMs: controls.max_duration_ms ?? limits.max_all_duration_ms,
-  });
-}
-
-/** Page mode defaults: one page of 50 from the start unless the caller says otherwise. */
-export function pageRequestDefaults(
-  // Values may be explicitly undefined: a list input is a union of the page and all
-  // branches, so a caller reading one branch's controls gets undefined for the other's.
-  query: { readonly limit?: number | undefined; readonly offset?: number | undefined } | undefined,
-): { readonly limit: number; readonly offset: number } {
-  return Object.freeze({ limit: query?.limit ?? DEFAULT_PAGE_SIZE, offset: query?.offset ?? 0 });
 }

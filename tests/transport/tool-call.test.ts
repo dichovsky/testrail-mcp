@@ -107,7 +107,8 @@ describe('aggregate bounds above the configured limit', () => {
   /*
    * The list schemas cap each bound at the built-in default, because they are built
    * before the configuration is read. Each configured limit here sits below that default,
-   * so a value between the two passes the schema and only the transport can refuse it.
+   * so a value between the two passes the schema and the list's execution policy must
+   * refuse it before the transport requests an execution slot.
    */
   const configured = { max_all_items: 200, max_all_pages: 5, max_all_bytes: 4096, max_all_duration_ms: 9000 };
   const cases = [
@@ -134,20 +135,22 @@ describe('aggregate bounds above the configured limit', () => {
     const client = driver(requests);
     const aggregate = vi.spyOn(client.projects, 'getAllProjects');
     const runtime = createRuntime({ client, limits: limited.limits });
+    const admission = vi.spyOn(runtime, 'invoke');
     try {
       const result = await executeToolCall(getProjects, { _mcp: { pagination: 'all', [bound]: value } }, {
         runtime, configuration: limited,
       });
-      return { result, requests, aggregate };
+      return { result, requests, aggregate, admission };
     } finally { await runtime.shutdown(); }
   }
 
-  it.each(cases)('refuses %s above the configured %s before dispatch', async (bound, limit) => {
-    const { result, requests, aggregate } = await call(bound, configured[limit] + 1);
+  it.each(cases)('refuses %s above the configured %s before admission', async (bound, limit) => {
+    const { result, requests, aggregate, admission } = await call(bound, configured[limit] + 1);
     expect(result.isError).toBe(true);
     expect((result.structuredContent as { error: { code: string } }).error.code).toBe('INVALID_ARGUMENT');
     expect(aggregate).not.toHaveBeenCalled();
     expect(requests).not.toHaveBeenCalled();
+    expect(admission).not.toHaveBeenCalled();
   });
 
   // Below the limit as well as at it: a value equal to the limit reaches the driver

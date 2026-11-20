@@ -3,10 +3,10 @@ import {
   DynamicFilterFieldSchema, PrioritySchema, ResultFieldSchema, StatusSchema, TemplateSchema, TestRailVersionSchema,
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
-import { createListInput, payloadInput, positiveIdSchema, strictObject } from '../../contracts/inputs.js';
-import { driverAllOptions } from '../../contracts/pagination.js';
+import { payloadInput, positiveIdSchema, strictObject } from '../../contracts/inputs.js';
 import { defineOperation } from '../registry.js';
-import { allControls, pageResponse, recordResponse, safetyControlMappings } from './common.js';
+import { createListDefinition } from '../lists.js';
+import { recordResponse } from './common.js';
 
 /*
  * Every read in this family describes how the instance is configured rather than the
@@ -199,7 +199,11 @@ export const getResultFields = defineOperation({
  * summary says so, as the plan and run attachment lists do, without their next-offset
  * advice, which a list that takes no offset cannot follow.
  */
-const getCaseStatusesInput = createListInput({ path: {}, pagination: 'response-driven' });
+const getCaseStatusesList = createListDefinition({
+  pagination: 'response-driven',
+  optionsArgument: 0,
+  entitySchema: CaseStatusSchema,
+});
 
 export const getCaseStatuses = defineOperation({
   token: 'get_case_statuses',
@@ -208,14 +212,15 @@ export const getCaseStatuses = defineOperation({
   family: 'T10',
   driverBinding: 'metadata.getCaseStatuses',
   summary: 'List the TestRail case statuses: the statuses of test cases themselves, such as Draft or Approved, identified by case_status_id. is_approved marks an approved status and is_default the default status for test cases. These are not the execution statuses a test result records, which testrail_get_statuses lists. TestRail documents this endpoint as requiring TestRail Enterprise 7.3 or later. TestRail documents no paging controls for it, so this server sends none of its own and TestRail chooses each page; a complete read follows TestRail\'s next link, and one that stops at one of its bounds cannot be resumed from where it stopped, and needs a larger bound instead. TestRail\'s reference example, however, shows the reply as a bare array, which carries no continuation: a reply in that form is read as the whole list, with has_more false in page mode, and all mode stops after it while reporting complete, with no way to tell whether TestRail holds more.',
-  inputSchema: getCaseStatusesInput,
-  argumentMap: [...safetyControlMappings(0)],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: CaseStatusSchema },
-  pagination: (bind) => ({
-    kind: 'response_driven',
-    page: bind('metadata.getCaseStatusesPage', (method) => method()),
-    all: bind('metadata.getAllCaseStatuses',
-      (method, input, context) => method(driverAllOptions(allControls(input._mcp), context.limits))),
+  ...getCaseStatusesList.bind({
+    page: {
+      binding: 'metadata.getCaseStatusesPage',
+      call: (method) => method(),
+    },
+    all: {
+      binding: 'metadata.getAllCaseStatuses',
+      call: (method, _input, options) => method(options),
+    },
   }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },

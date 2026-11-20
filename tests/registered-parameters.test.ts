@@ -223,8 +223,9 @@ describe('configured limits reach the aggregate', () => {
     // Naming the kinds keeps a fourth from arriving unexamined: a new one fails here
     // rather than silently joining the set this gate never asks.
     expect([...kinds].sort()).toEqual(['controlled', 'response_driven']);
-    expect(aggregating.length).toBe(
-      operationRegistry.entries.filter(({ pagination }) => pagination.kind !== 'none').length);
+    expect(aggregating).toHaveLength(24);
+    expect(aggregating.filter(({ pagination }) => pagination.kind === 'controlled')).toHaveLength(18);
+    expect(aggregating.filter(({ pagination }) => pagination.kind === 'response_driven')).toHaveLength(6);
   });
 
   it.each(aggregating.map((entry) => [entry.tool, entry] as const))(
@@ -259,6 +260,47 @@ describe('configured limits reach the aggregate', () => {
         expect(options, tool).toMatchObject({ maxItems: 5, maxPages: 2, maxBytes: 512, maxDurationMs: 1_000 });
       } finally { client.destroy(); }
     });
+});
+
+describe('configured bounds protect direct registered list calls', () => {
+  const aggregating = operationRegistry.entries.filter(({ pagination }) => pagination.kind !== 'none');
+  const limits = { ...DEFAULT_LIMITS, max_all_items: 5, max_all_pages: 2, max_all_bytes: 512, max_all_duration_ms: 1_000 };
+  const bounds = [
+    ['max_items', 5], ['max_pages', 2], ['max_bytes', 512], ['max_duration_ms', 1_000],
+  ] as const;
+
+  it.each(aggregating.flatMap((entry) => bounds.map(([bound, maximum]) => [entry.tool, entry, bound, maximum] as const)))(
+    '%s refuses a direct aggregate with %s above %i before calling the driver',
+    async (tool, entry, bound, maximum) => {
+      if (entry.pagination.kind === 'none') throw new Error(`${tool}: does not aggregate`);
+      const manifest = manifests.find(({ endpoint }) => endpoint.tool === tool);
+      const fixture = manifest?.cases.find((candidate) => candidate.expect.kind === 'accepted'
+        && leavesEveryBoundToTheConfiguration(candidate.input));
+      if (!fixture) throw new Error(`${tool}: no aggregate fixture without explicit bounds`);
+      const input = Object.freeze({
+        ...fixture.input,
+        _mcp: Object.freeze({ ...(fixture.input._mcp as object), [bound]: maximum + 1 }),
+      });
+      // These values fit the advertised schema. The configured execution bound must
+      // still apply when a caller invokes the registration without the transport.
+      expect(entry.input.validate(input)).toBe(input);
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      const client = new TestRailClient({
+        baseUrl: 'https://example.test', email: 'fixture@example.test', apiKey: 'synthetic',
+        registerProcessHandlers: false, allowPrivateHosts: true, fetch,
+      });
+      const [moduleName = '', methodName = ''] = entry.pagination.all.binding.split('.');
+      const owner = Reflect.get(client, moduleName) as Record<string, (...args: unknown[]) => Promise<unknown>>;
+      const all = vi.spyOn(owner, methodName).mockResolvedValue([]);
+      try {
+        await expect(entry.pagination.all.invoke(client, input, { limits }))
+          .rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+        expect(all).not.toHaveBeenCalled();
+        expect(fetch).not.toHaveBeenCalled();
+        expect(input._mcp[bound]).toBe(maximum + 1);
+      } finally { client.destroy(); }
+    },
+  );
 });
 
 describe('independent fixture → schema → real public driver', () => {
