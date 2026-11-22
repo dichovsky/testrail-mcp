@@ -10,7 +10,6 @@ import { DEFAULT_LIMITS } from '../src/config/limits.js';
 import { AdapterError, classifyError, type ErrorContext } from '../src/contracts/errors.js';
 import {
   inputJsonSchema,
-  jsonValueSchema,
   payloadArray,
   payloadInput,
   strictObject,
@@ -19,11 +18,6 @@ import { successResult } from '../src/contracts/results.js';
 
 const read: ErrorContext = { mutates: false, dispatched: true, acknowledged: false };
 const aggregateRead: ErrorContext = { ...read, aggregate: true };
-
-/** An object whose own enumerable `__proto__` key survives, as a JSON body delivers it. */
-function ownProto(value: unknown): object {
-  return JSON.parse(`{"__proto__":${JSON.stringify(value)}}`) as object;
-}
 
 afterEach(() => { vi.restoreAllMocks(); });
 
@@ -104,39 +98,6 @@ describe('payloadInput construction guards', () => {
     vi.spyOn(prototype, 'refine').mockImplementation(function (this: unknown) { return this; });
     expect(() => payloadInput(source, { extensions: 'custom' }))
       .toThrow('Custom property check was not created');
-  });
-});
-
-describe('payloadInput __proto__ checks run synchronously only', () => {
-  it('refuses an asynchronous record result', async () => {
-    const record = payloadInput(z.record(z.string(), z.string().transform((value) => Promise.resolve(value))));
-    await expect(record.safeParseAsync({ name: 'value' }))
-      .rejects.toThrow('Payloads are validated synchronously');
-  });
-
-  it('refuses an asynchronous record key check on an own __proto__ key', async () => {
-    const record = payloadInput(z.record(z.string().refine(() => Promise.resolve(true)), z.string()));
-    await expect(record.safeParseAsync(ownProto('value')))
-      .rejects.toThrow('Payload records are validated synchronously');
-  });
-
-  it('refuses an asynchronous record value check on an own __proto__ key', async () => {
-    const record = payloadInput(z.record(z.string(), z.string().transform((value) => Promise.resolve(value))));
-    await expect(record.safeParseAsync(ownProto('value')))
-      .rejects.toThrow('Payload records are validated synchronously');
-  });
-
-  it('refuses an asynchronous JSON check on an own __proto__ extension', () => {
-    // Defensive: the JSON value schema has no asynchronous parts. If it ever gained
-    // one, the extension check must fail loudly instead of dropping the key's issues.
-    const object = payloadInput(z.object({ name: z.string().optional() }), { extensions: 'json' });
-    vi.spyOn(jsonValueSchema._zod, 'run').mockReturnValue(Promise.resolve({ value: 1, issues: [] }));
-    expect(() => object.safeParse(ownProto(1))).toThrow('Payload objects are validated synchronously');
-  });
-
-  it('still accepts a JSON own __proto__ extension synchronously', () => {
-    const object = payloadInput(z.object({ name: z.string().optional() }), { extensions: 'json' });
-    expect(object.safeParse(ownProto({ nested: [1, 'two', null] })).success).toBe(true);
   });
 });
 

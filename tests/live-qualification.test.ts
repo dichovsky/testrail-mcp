@@ -14,8 +14,7 @@ import { classifyError, ERROR_CODES } from '../src/contracts/errors.js';
 import { driverOptions, REQUEST_TIMEOUT_MS } from '../src/driver/configuration.js';
 import { operationRegistry } from '../src/operations/catalog.js';
 import type { Operation } from '../src/operations/registry.js';
-import { createRuntime } from '../src/runtime/invocation.js';
-import { executeToolCall } from '../src/transport/tool-call.js';
+import { createTestExecutor } from './support/executor.js';
 
 /*
  * R03: the live qualification runner, held offline. It must call every tool, touch
@@ -140,17 +139,16 @@ afterAll(async () => {
 function inProcess(inject?: (tool: string, input: unknown, real: Call) => Promise<ToolResult>) {
   return async ({ env }: { env: Environment }): Promise<Session> => {
     const configuration = await loadConfiguration(env);
-    const runtime = createRuntime({
+    const executor = createTestExecutor({
+      configuration,
       client: new TestRailClient({ ...driverOptions(configuration), rateLimiter: { maxRequests: 10_000, windowMs: 60_000 } }),
-      limits: configuration.limits,
     });
-    const staging = await mkdtemp(join(base, 'staging-'));
-    const real: Call = (tool, input) => executeToolCall(registered(tool), input, { runtime, configuration, stagingDirectory: () => Promise.resolve(staging) });
+    const real: Call = (tool, input) => executor.execute(registered(tool), input);
     return {
       call: inject === undefined ? real : (tool, input) => inject(tool, input, real),
       serverVersion: packageJson.version,
       protocol: undefined,
-      close: async () => { await runtime.shutdown(); },
+      close: async () => { await executor.shutdown(); },
     };
   };
 }
@@ -348,7 +346,7 @@ describe('the guard\'s view of every argument', () => {
         }
       }
     };
-    for (const { tool } of operationRegistry.entries) visit(z.toJSONSchema(registered(tool).inputSchema as z.ZodType, { unrepresentable: 'any', io: 'input' }), undefined);
+    for (const { tool } of operationRegistry.entries) visit(registered(tool).jsonSchema, undefined);
     const idLike = [...names].filter((name) => /_(?:id|ids|by)$/u.test(name) || ['id', 'labels', 'assigned_projects', 'groups', 'users'].includes(name));
     const known = new Set([...Object.keys(KINDS), ...REFERENCES, ...Object.keys(ITEMS), 'id', ...RELATIVE]);
     expect(idLike.filter((name) => !known.has(name))).toEqual([]);

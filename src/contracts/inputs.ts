@@ -82,6 +82,13 @@ type PayloadOutput<Source extends z.ZodType, Fields extends InputShape> =
 // pinned driver's payloads have reviewed structural equivalents below.
 const representedRefinements = new WeakMap<z.core.$ZodCheck, Record<string, unknown>>();
 
+function recordRefinement(check: z.core.$ZodCheck, equivalent: Record<string, unknown>): void {
+  // Authoring metadata remains mutable, so the reviewed representation must not
+  // share its nested arrays or objects. Otherwise changing a schema would also
+  // change the baseline against which registration audits that schema.
+  representedRefinements.set(check, structuredClone(equivalent));
+}
+
 function customChecks(schema: z.ZodType): z.core.$ZodCheck[] {
   return schema.def.checks?.filter((check) => check._zod.def.check === 'custom') ?? [];
 }
@@ -157,18 +164,18 @@ function adaptPayload(source: z.ZodType, options: PayloadOptions<InputShape> = {
       // The driver's existing refinement rejects empty edit payloads. JSON
       // Schema minProperties describes the identical rule, including custom_*.
       object = object.meta({ minProperties: 1 });
-      for (const check of customChecks(source)) representedRefinements.set(check, { minProperties: 1 });
+      for (const check of customChecks(source)) recordRefinement(check, { minProperties: 1 });
     }
     if (source === DeleteCasesPayloadSchema) {
       // Retain parity even when an explicit open-object policy or field override
       // would otherwise advertise `soft`: the driver always rejects body.soft.
       const forbidden = { required: ['soft'] };
       object = object.meta({ not: forbidden });
-      for (const check of customChecks(source)) representedRefinements.set(check, { not: forbidden });
+      for (const check of customChecks(source)) recordRefinement(check, { not: forbidden });
     }
     if (resultContentSchemas.has(source)) {
-      object = object.meta(resultContent);
-      for (const check of customChecks(source)) representedRefinements.set(check, resultContent);
+      object = object.meta(structuredClone(resultContent));
+      for (const check of customChecks(source)) recordRefinement(check, resultContent);
     }
     if (options.extensions === 'custom') {
       const names = new Set(Object.keys(shape));
@@ -186,22 +193,11 @@ function adaptPayload(source: z.ZodType, options: PayloadOptions<InputShape> = {
       });
       const customCheck = customChecks(object).at(-1);
       if (customCheck === undefined) throw new Error('Custom property check was not created');
-      representedRefinements.set(customCheck, { propertyNames });
-      // __proto__ is neither a declared field nor a custom_* name, so it is refused
-      // like any other name outside that policy.
-      return checkOwnPrototypeKey(object, (value) => [{
-        code: 'custom', message: 'Invalid input', input: value, path: ['__proto__'],
-      }]);
+      recordRefinement(customCheck, { propertyNames });
+      // Runtime validation uses the emitted propertyNames constraint against the
+      // original JSON, including own __proto__ keys. No parser-instance patch is needed.
+      return object;
     }
-    if (options.extensions === 'json') {
-      // Any name is open here, but the value must be JSON like every other extension.
-      return checkOwnPrototypeKey(object, (value, context) => {
-        const result = jsonValueSchema._zod.run({ value, issues: [] }, context);
-        if (result instanceof Promise) throw new Error('Payload objects are validated synchronously');
-        return z.core.util.prefixIssues('__proto__', result.issues);
-      });
-    }
-    // A strict object needs nothing more: Zod reports an own __proto__ as unrecognized.
     return object;
   }
   if (source instanceof z.ZodArray) {
@@ -217,71 +213,10 @@ function adaptPayload(source: z.ZodType, options: PayloadOptions<InputShape> = {
     return source.clone({ ...source.def, options: source.options.map((option) => adaptPayload(option as z.ZodType)) });
   }
   if (source instanceof z.ZodRecord) {
-    const record = source.clone({ ...source.def, valueType: adaptPayload(classic(source.valueType)) });
-    return checkOwnPrototypeKey(record, (value, context) => recordPrototypeIssues(record, value, context));
+    return source.clone({ ...source.def, valueType: adaptPayload(classic(source.valueType)) });
   }
   if (source instanceof z.ZodUnknown || source instanceof z.ZodAny) return jsonValueSchema;
   return source;
-}
-
-/*
- * Zod's record parser skips an own __proto__ key before either of the record's schemas
- * sees it, and its object parser skips the key in its catch-all, so neither the key's
- * name nor its value is checked. The driver is handed the caller's original object, key
- * included (see driver-call.ts), so a schema that validated one key less than it
- * forwards would accept what its declared policy refuses. This applies that policy to
- * the key as well.
- *
- * It wraps the parse rather than adding a refinement because a refinement receives the
- * parsed clone, which no longer has the key. The key stays out of the clone, as Zod
- * leaves it out: assigning it there would replace the clone's prototype. The wrapper
- * belongs to this instance, so a copy made from it by describe, meta or refine does not
- * carry it; adapted payloads are used as they are returned here.
- */
-type ProtoCheck = (value: unknown, context: z.core.ParseContextInternal) => z.core.$ZodRawIssue[];
-
-function checkOwnPrototypeKey<Schema extends z.ZodType>(schema: Schema, check: ProtoCheck): Schema {
-  const internals = schema._zod;
-  const run = internals.run.bind(internals);
-  internals.run = (payload, context) => {
-    const input: unknown = payload.value;
-    const result = run(payload, context);
-    if (result instanceof Promise) throw new Error('Payloads are validated synchronously');
-    const own = typeof input === 'object' && input !== null
-      ? Object.getOwnPropertyDescriptor(input, '__proto__')
-      : undefined;
-    if (own?.enumerable !== true) return result;
-    result.issues.push(...check(own.value as unknown, context));
-    return result;
-  };
-  return schema;
-}
-
-function recordPrototypeIssues(
-  record: z.ZodRecord,
-  value: unknown,
-  context: z.core.ParseContextInternal,
-): z.core.$ZodRawIssue[] {
-  const key = record.keyType._zod.run({ value: '__proto__', issues: [] }, context);
-  if (key instanceof Promise) throw new Error('Payload records are validated synchronously');
-  if (key.issues.length !== 0) {
-    // As for any other key: a loose record passes a key its schema refuses through
-    // unchecked, and a record whose keys are listed has already reported this one as
-    // unrecognized. Otherwise the key is invalid, and its value is not checked.
-    const listed = record.keyType._zod.values !== undefined && record._zod.def.partial !== true;
-    if (record._zod.def.mode === 'loose' || listed) return [];
-    return [{
-      code: 'invalid_key',
-      origin: 'record',
-      issues: key.issues.map((issue) => z.core.util.finalizeIssue(issue, context, z.core.config())),
-      input: '__proto__',
-      path: ['__proto__'],
-      inst: record,
-    }];
-  }
-  const result = record.valueType._zod.run({ value, issues: [] }, context);
-  if (result instanceof Promise) throw new Error('Payload records are validated synchronously');
-  return z.core.util.prefixIssues('__proto__', result.issues);
 }
 
 /** Preserve the driver's original array bounds while replacing its item schema. */
@@ -399,12 +334,37 @@ const annotationMetadata = new Set([
   'title', 'description', 'examples', 'deprecated', 'readOnly', 'writeOnly', '$comment',
 ]);
 
+// The emitter silently omits check kinds it does not understand, and writes a check's
+// constraint only on the schema types listed here: on a union, optional or nullable
+// wrapper it drops the constraint, which the validator would then never enforce. Accept
+// only reviewed kinds on those types, plus the custom refinements paired with
+// structural metadata above.
+const checkCarriers: Readonly<Record<string, readonly string[] | undefined>> = {
+  less_than: ['number'], greater_than: ['number'], number_format: ['number'],
+  min_length: ['string', 'array'], max_length: ['string', 'array'], length_equals: ['string', 'array'],
+  string_format: ['string'],
+};
+
+// Only a regex is fully described by its emitted pattern. email also publishes a
+// format, which the validator enforces beyond the pattern (a dotted domain the driver's
+// own rule does not require), and emoji publishes one the validator does not know.
+// Other built-ins can perform extra checks or transforms: URL trims even without
+// normalize, JWT inspects its payload, and checks supplied as functions cannot be
+// inferred from a format name.
+const representedStringFormats = new Set(['regex']);
+
 /** Generate SDK-compatible object schemas without silently dropping refinements. */
 export function inputJsonSchema(schema: z.ZodType<object>): Tool['inputSchema'] {
   const seen = new Set<z.ZodType>();
   function visit(current: z.ZodType): void {
     if (seen.has(current)) return;
     seen.add(current);
+    // Zod's object-schema emitter omits this explicitly named field. Open JSON
+    // and record values can still carry the key; their schemas do not declare it
+    // as an object field and are checked against the original caller value.
+    if (current instanceof z.ZodObject && Object.hasOwn(current.shape, '__proto__')) {
+      throw new Error('Input object field __proto__ has no reviewed JSON Schema equivalent');
+    }
     if (customChecks(current).some((check) => !refinementIsRepresented(check, current))) {
       throw new Error('Input refinement has no reviewed JSON Schema equivalent');
     }
@@ -428,15 +388,34 @@ export function inputJsonSchema(schema: z.ZodType<object>): Tool['inputSchema'] 
       if ('check' in definition && definition.check === 'multiple_of') {
         throw new Error('Input multipleOf has no reviewed JSON Schema equivalent');
       }
+      if ('check' in definition && definition.check === 'overwrite') {
+        throw new Error('Input transforms are not supported');
+      }
+      if ('check' in definition && definition.check !== 'custom') {
+        const carriers = checkCarriers[definition.check];
+        if (carriers === undefined) {
+          throw new Error(`Input check has no reviewed JSON Schema equivalent: ${definition.check}`);
+        }
+        if (!carriers.includes(current.def.type)) {
+          throw new Error(
+            `Input check has no reviewed JSON Schema equivalent on ${current.def.type} schemas: ${definition.check}`,
+          );
+        }
+      }
+      if ('check' in definition && definition.check === 'string_format' && (
+        !('format' in definition) || typeof definition.format !== 'string'
+        || !representedStringFormats.has(definition.format)
+        || !('pattern' in definition) || !(definition.pattern instanceof RegExp)
+        || 'fn' in definition
+      )) {
+        throw new Error('Input string format has no reviewed JSON Schema equivalent');
+      }
     }
     if ('coerce' in current.def && current.def.coerce === true) {
       throw new Error('Input coercion is not supported');
     }
     if (current instanceof z.ZodDefault || current instanceof z.ZodPrefault || current instanceof z.ZodCatch) {
       throw new Error('Input defaults and recovery transforms are not supported');
-    }
-    if (current.def.checks?.some((check) => check._zod.def.check === 'overwrite')) {
-      throw new Error('Input transforms are not supported');
     }
     if (current instanceof z.ZodIntersection) {
       throw new Error('Input intersections have different Zod and JSON Schema key semantics');

@@ -10,7 +10,7 @@ import { DEFAULT_LIMITS, FIXED_BUDGETS } from '../../src/config/limits.js';
 import { driverOptions } from '../../src/driver/configuration.js';
 import { getProject, updateProject } from '../../src/operations/families/t01.js';
 import { createRegistry } from '../../src/operations/registry.js';
-import { createRuntime } from '../../src/runtime/invocation.js';
+import { createTestExecutor } from '../support/executor.js';
 import { buildServer } from '../../src/transport/server.js';
 
 let directory: string;
@@ -34,7 +34,7 @@ async function call(revision: Revision, limit: number, write = false, invalid = 
       headers: { 'content-type': 'application/json' },
     })),
   });
-  const runtime = createRuntime({ client: testRail, limits: configuration.limits });
+  const executor = createTestExecutor({ client: testRail, configuration });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   let wire: object | undefined;
   const send = serverTransport.send.bind(serverTransport);
@@ -43,8 +43,7 @@ async function call(revision: Revision, limit: number, write = false, invalid = 
     await send(message, options);
   };
   const handle = serveStdio(() => buildServer({
-    configuration, runtime, registry: createRegistry(getProject, updateProject),
-    stagingDirectory: () => Promise.resolve(directory),
+    executor, registry: createRegistry(getProject, updateProject),
   }), { transport: serverTransport });
   const client = new Client({ name: 'wire-budget', version: '1.0.0' }, {
     versionNegotiation: { mode: revision === 'legacy' ? 'legacy' : { pin: revision } },
@@ -60,7 +59,7 @@ async function call(revision: Revision, limit: number, write = false, invalid = 
   } finally {
     await client.close();
     await handle.close();
-    await runtime.shutdown();
+    await executor.shutdown();
   }
 }
 

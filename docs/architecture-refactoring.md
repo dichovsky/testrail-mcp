@@ -1,6 +1,6 @@
 # Architecture refactoring plan
 
-Status: design accepted; implementation pending. This plan covers the three deepening opportunities selected during the architecture review. It supplements the existing [implementation plan](implementation-plan.md) without changing the published endpoint contract.
+Status: finalized input contracts and list definitions implemented; the operation executor is implemented and locally verified on 2026-11-21; both fresh independent reviews are complete; the test-review finding was fixed and rechecked. This plan covers the three deepening opportunities selected during the architecture review. It supplements the existing [implementation plan](implementation-plan.md) without changing the published endpoint contract.
 
 ## Accepted decisions
 
@@ -30,6 +30,8 @@ Registration owns the input and binding interface; list definitions own shared p
 
 ### Finalized input contract
 
+Implemented in `src/contracts/input-contract.ts` with registration-owned typed bindings. The 2026-11-17 verification passed `npm run check` and `npm run test:coverage` on Node 24: 7,030 tests passed, one platform-specific test skipped, and all coverage thresholds exceeded 99%. A captured catalog comparison confirmed identical schemas, descriptions, annotations, routes, bindings and argument maps for all 133 tools. Independent review found and verified fixes for omitted authoring checks, mutable review metadata, and inherited-property validation; its 2,041 malformed direct-call probes performed no driver lookup.
+
 Start with `src/contracts/inputs.ts`, `src/operations/driver-call.ts`, `src/operations/registry.ts`, and their consumers in transport and contract tests.
 
 - Endpoint authors compose schemas with the existing supported Zod constructs before registration. Registration captures an owned JSON Schema document, audits unsupported transforms/refinements and structural metadata, checks input layout, and compiles validation once per finalized contract.
@@ -47,7 +49,9 @@ Migrate schema-identity checks to finalized-contract identity, and update parame
 
 ### List definitions
 
-Start with `src/operations/families/common.ts`, the list portion of `src/contracts/inputs.ts`, `src/contracts/pagination.ts`, the family declarations, and paging selection/bound checks in `src/transport/tool-call.ts`.
+Implemented in `src/operations/lists.ts` on 2026-11-18 for all 24 page/all pairs: 18 controlled and six response-driven. Explicit declarations own schema fields, filter projection and argument mappings; registration retains typed callbacks with explicit paths and driver methods. The module also prepares calls before admission, enforces configured bounds on standalone aggregate bindings, and interprets replies after acknowledgement. The unchanged-main baseline passed 7,040 tests; the completed change passed `npm run check` and `npm run test:coverage` on Node 24 with 7,162 tests and all coverage thresholds above 99%. Exact catalog comparison preserved all 133 tools' schemas and metadata. Independent review compared accepted and rejected calls and response cases against main, and checked every list's configured bounds before admission and direct driver lookup.
+
+The implementation spans `src/operations/families/common.ts`, the list portion of `src/contracts/inputs.ts`, `src/contracts/pagination.ts`, the family declarations, and preparation before admission in `src/execution/executor.ts`.
 
 - Use a registration-owned list definition for the 24 existing page/all pairs. Each filter explicitly declares its input schema, driver property, and serialization (`query-scalar`, `query-list`, or `query-repeated`). Derive production projection and argument mappings from those declarations; do not infer names through case conversion.
 - Path arguments and driver bindings stay explicit. Preserve their order and the actual overloaded method types. Prefer the existing common path-plus-options layout without expanding the module into an arbitrary request dispatcher.
@@ -61,9 +65,29 @@ Independently authored parameter manifests, expected driver arguments, and expec
 
 ### Operation executor
 
-Start with `src/transport/tool-call.ts`, the runtime/staging composition in `src/transport/server.ts`, `src/runtime/invocation.ts`, and `src/files/`.
+Implemented in `src/execution/executor.ts` and locally verified on 2026-11-21. `createOperationExecutor(configuration, driver?)` recovers abandoned staging and constructs the configured driver once. Internal assembly owns one runtime and lazily creates one shared staging area, retrying creation after failure. `src/runtime/invocation.ts` and `src/files/` retain the admission, settlement and filesystem algorithms behind that owner. The former transport call pipeline has been removed.
 
-The intended caller-facing shape is a process-owned executor with `execute(operation, input, options)` and `shutdown()`. Execution options carry the caller's cancellation signal and the negotiated protocol fields needed for accurate result-byte accounting. The executor receives immutable configuration and owns the shared driver/runtime lifetime; individual protocol instances reuse it.
+The caller-facing shape is a process-owned executor with `execute(operation, input, options)` and `shutdown()`. Execution options carry the caller's cancellation signal and the negotiated protocol fields needed for accurate result-byte accounting. The executor receives immutable configuration and owns the shared driver/runtime lifetime; `buildServer({ executor, registry })` reuses it for individual protocol instances. Internal assembly exposes driver, timing and staging seams for tests without adding lifetime obligations to transport callers.
+
+Local verification on 2026-11-21 used Node 24.22.2. `npm run check` passed with 66 test files, 7,174 passing tests and one platform-specific skip. Package verification checked 81 files and all three protocol modes, each exposing 133 tools. `npm run test:coverage` passed with 99.94% statements, 99.71% branches, 100% functions and 100% lines. Exact comparisons against the pre-refactor baseline preserved catalog metadata and all 133 discovery tool definitions in both protocol eras.
+
+Fresh independent checks killed seven distinct mutations:
+
+| Mutation | Failing tests |
+| --- | ---: |
+| Remove the failure barrier around internal runtime shutdown | 2 |
+| Give staging disposal a fresh drain budget instead of the remaining time | 4 |
+| Break the executor's shared-shutdown latch | 1 |
+| Remove the cancellation check after the staged copy finishes | 2 |
+| Let a late download reply write after abandonment | 1 |
+| Acknowledge a soft-delete preview before checking for a named counter | 5 |
+| Remove per-copy settlement cleanup | 73 (3 T03 and 70 T12 family cases) |
+
+Both fresh independent reviews are complete. The production review found no issues and confirmed that the normalized execution pipeline was byte-identical to the original. The test review found that shutdown's directory removal had weakened family-level checks for per-copy cleanup. Those checks now wait for zero active slots and require the staging directory to contain only `owner.json` before shutdown, while retaining the post-shutdown `ENOENT` assertion. An independent baseline run passed all 240 targeted cases; removing per-copy settlement cleanup then failed 73 cases (3 T03 and 70 T12). This closes the test-review finding.
+
+The full check passed again after the final assertion strengthening: 66 test files, 7,174 passing tests, one platform-specific skip, and package verification of 81 files and 133 tools in all three protocol modes. The coverage figures above apply to the unchanged production implementation.
+
+`tests/executor-lifetime.test.ts` directly verifies one shared shutdown promise, admission stopped before settlement, one drain and one driver destruction. The composition and staging suites verify the same lifetime through transport, including cleanup after destruction throws and late failures after the drain deadline.
 
 - Input validation and configured list-bound checks precede admission. The executor then chooses the prepared registered call and performs ordinary or file execution under the same admission rules.
 - Staging begins only after admission, inside the tracked invocation and response watchdog. A refused call creates no staged copy. Cancellation or response-wait expiry stops copying and prevents a finished copy from being dispatched later.
@@ -106,7 +130,9 @@ The interface is the test surface. Replace obsolete helper-wiring tests once the
 
 Relevant existing suites include `tests/inputs.test.ts`, `tests/registered-parameters.test.ts`, `tests/paging-through-tools.test.ts`, `tests/result-contract.test.ts`, `tests/soft-delete-preview.test.ts`, `tests/runtime-*.test.ts`, and the lifetime, composition, cancellation, and result-budget tests under `tests/transport/`. Run `npm run check` and `npm run test:coverage` for the completed refactor, including the existing 99% coverage thresholds. Fixtures require no live TestRail credentials.
 
-## Review-time verification limitation
+## Review-time verification limitation (resolved)
+
+Before implementation, `npm ci` restored the pinned dependency set and the unchanged baseline passed `npm run check` with 6,988 tests. The completed input refactor passed the checks recorded above in a clean copy of the changes, excluding unrelated local worktrees. The following records the original review limitation, not the current verification state.
 
 The installed dependencies did not match the manifest and lockfile during this review:
 
@@ -117,4 +143,4 @@ The installed dependencies did not match the manifest and lockfile during this r
 | `zod` | 4.6.1 | 4.6.7 |
 | `vitest` | 4.1.11 | 5.1.0 |
 
-`npm test -- tests/registered-parameters.test.ts tests/inputs.test.ts` produced 54 passing and seven failing input tests; the registered-parameter suite failed during import. The cloning discrepancy was reproduced with current source against this installed dependency set, not verified against the pinned set. The design is accepted, but none of these observations establishes a passing pinned baseline or completed implementation.
+`npm test -- tests/registered-parameters.test.ts tests/inputs.test.ts` produced 54 passing and seven failing input tests; the registered-parameter suite failed during import. The cloning discrepancy was reproduced against that installed dependency set. Those observations alone did not establish a passing pinned baseline or completed implementation; the later verification above supersedes that limitation.

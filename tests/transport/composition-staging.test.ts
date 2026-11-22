@@ -1,6 +1,7 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { TestRailClient } from '@dichovsky/testrail-api-client';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -19,6 +20,8 @@ vi.mock('../../src/files/staging.js', async (importOriginal) => {
   return { ...original, createStagingArea: vi.fn(original.createStagingArea) };
 });
 
+const actualStaging = await vi.importActual<typeof import('../../src/files/staging.js')>('../../src/files/staging.js');
+
 let base: string;
 let roots: string;
 beforeAll(async () => {
@@ -34,9 +37,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function connect() {
+async function connect(upstream: typeof globalThis.fetch = () => Promise.reject(new Error('no request is expected'))) {
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  const fetch = vi.fn(() => Promise.reject(new Error('no request is expected')));
+  const fetch = vi.fn(upstream);
   const started = await startServer({
     TESTRAIL_BASE_URL: 'https://staging.testrail.io',
     TESTRAIL_EMAIL: 'user@example.com',
@@ -55,6 +58,53 @@ async function connect() {
   await client.connect(clientSide);
   return { started, client, fetch };
 }
+
+describe('an initialized staging area when driver destruction fails', () => {
+  it('still removes the area, shares one shutdown and records one stop without an unhandled failure', async () => {
+    const area = await actualStaging.createStagingArea(base);
+    const dispose = vi.fn(area.dispose);
+    vi.mocked(createStagingArea).mockResolvedValueOnce({ directory: area.directory, dispose });
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    const { started, client, fetch } = await connect();
+    // The configuration probe has already been destroyed; only the served driver fails.
+    const destroy = vi.spyOn(TestRailClient.prototype, 'destroy').mockImplementation(() => {
+      throw new Error(`destroy failed: ${base}`);
+    });
+    try {
+      // An admitted upload initializes staging even though the missing source cannot be sent.
+      const result = await client.callTool({
+        name: 'testrail_add_attachment_to_case',
+        arguments: { case_id: 1, file_path: join(roots, 'missing.txt'), filename: 'evidence.txt' },
+      });
+      expect(result.isError).toBe(true);
+      expect(createStagingArea).toHaveBeenCalledTimes(1);
+      expect(await readdir(area.directory)).toBeDefined();
+
+      const stop = started.shutdown();
+      expect(started.shutdown()).toBe(stop);
+      await expect(stop).resolves.toBeUndefined();
+      expect(started.shutdown()).toBe(stop);
+      expect(destroy).toHaveBeenCalledTimes(1);
+      expect(dispose).toHaveBeenCalledTimes(1);
+      await expect(readdir(area.directory)).rejects.toMatchObject({ code: 'ENOENT' });
+      await new Promise((resolve) => { setTimeout(resolve, 20); });
+
+      const lines = write.mock.calls.map(([line]) => String(line));
+      expect(lines.filter((line) => line.includes('"event":"server_stopping"'))).toHaveLength(1);
+      expect(lines.filter((line) => line.includes('"event":"server_stopped"'))).toHaveLength(1);
+      for (const line of lines) expect(line).not.toContain(base);
+      expect(fetch).not.toHaveBeenCalled();
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      await client.close().catch(() => undefined);
+      await started.shutdown();
+      await area.dispose();
+      process.off('unhandledRejection', unhandled);
+    }
+  });
+});
 
 describe('a staging area still being created at shutdown', () => {
   it('fails without failing the shutdown, which logs its stop and leaves nothing unhandled', async () => {
@@ -140,6 +190,82 @@ describe('a staging area still being created at shutdown', () => {
 });
 
 describe('a staging area whose disposal hangs at shutdown', () => {
+  it.each(['succeeds', 'throws'] as const)('uses only the remaining drain budget when driver destruction %s and observes a late disposal failure', async (destruction) => {
+    let answer: (response: Response) => void = () => undefined;
+    const upstream = new Promise<Response>((resolve) => { answer = resolve; });
+    let failDisposal: (error: Error) => void = () => undefined;
+    const dispose = vi.fn(() => new Promise<void>((_resolve, reject) => { failDisposal = reject; }));
+    vi.mocked(createStagingArea).mockResolvedValueOnce({ directory: base, dispose });
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    const { started, client, fetch } = await connect(() => upstream);
+    const destroy = vi.spyOn(TestRailClient.prototype, 'destroy');
+    if (destruction === 'throws') destroy.mockImplementation(() => { throw new Error(`destroy failed: ${base}`); });
+    let call: Promise<unknown> | undefined;
+    try {
+      const result = await client.callTool({
+        name: 'testrail_add_attachment_to_case',
+        arguments: { case_id: 1, file_path: join(roots, 'missing.txt'), filename: 'evidence.txt' },
+      });
+      expect(result.isError).toBe(true);
+      expect(createStagingArea).toHaveBeenCalledTimes(1);
+
+      // Fake the monotonic clock as well as timers: disposal uses the elapsed drain time.
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
+      call = client.callTool({ name: 'testrail_get_project', arguments: { project_id: 1 } })
+        .catch(() => undefined);
+      await vi.waitFor(() => { expect(fetch).toHaveBeenCalledTimes(1); });
+      const began = performance.now();
+      let stopped = false;
+      const stop = started.shutdown();
+      expect(started.shutdown()).toBe(stop);
+      void stop.then(() => { stopped = true; });
+      await vi.advanceTimersByTimeAsync(0);
+
+      // The runtime consumes part of the one shared budget before releasing the driver.
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(stopped).toBe(false);
+      expect(destroy).not.toHaveBeenCalled();
+      expect(dispose).not.toHaveBeenCalled();
+      answer(new Response(JSON.stringify({ id: 1, name: 'Project' }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      }));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(destroy).toHaveBeenCalledTimes(1);
+      expect(dispose).toHaveBeenCalledTimes(1);
+
+      const remaining = FIXED_BUDGETS.shutdown_drain_ms - (performance.now() - began);
+      expect(remaining).toBe(FIXED_BUDGETS.shutdown_drain_ms - 2_000);
+      await vi.advanceTimersByTimeAsync(remaining - 1);
+      expect(stopped).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(stopped).toBe(true);
+      await expect(stop).resolves.toBeUndefined();
+      expect(started.shutdown()).toBe(stop);
+
+      failDisposal(new Error(`late staging removal failure: ${base}`));
+      await vi.advanceTimersByTimeAsync(1);
+      await call;
+      const lines = write.mock.calls.map(([line]) => String(line));
+      expect(lines.filter((line) => line.includes('"event":"server_stopping"'))).toHaveLength(1);
+      expect(lines.filter((line) => line.includes('"event":"server_stopped"'))).toHaveLength(1);
+      for (const line of lines) expect(line).not.toContain(base);
+      expect(destroy).toHaveBeenCalledTimes(1);
+      expect(dispose).toHaveBeenCalledTimes(1);
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      answer(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }));
+      failDisposal(new Error('test cleanup'));
+      await vi.runAllTimersAsync();
+      await client.close().catch(() => undefined);
+      await started.shutdown();
+      await call;
+      process.off('unhandledRejection', unhandled);
+    }
+  });
+
   it('bounds removal and observes its rejection after shutdown has completed', async () => {
     let fail: (error: Error) => void = () => undefined;
     const dispose = vi.fn(() => new Promise<void>((_resolve, reject) => { fail = reject; }));

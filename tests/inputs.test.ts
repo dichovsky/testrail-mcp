@@ -18,6 +18,8 @@ import {
 import type { JsonSchemaType } from '@modelcontextprotocol/server';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/server/validators/ajv';
 import { describe, expect, expectTypeOf, it } from 'vitest';
+import { AdapterError } from '../src/contracts/errors.js';
+import { createInputContract } from '../src/contracts/input-contract.js';
 import { z } from 'zod';
 import {
   aggregateLimitCeilings,
@@ -42,25 +44,27 @@ import {
 const validator = new AjvJsonSchemaValidator();
 const uuid = '3933d74b-4282-0000-0000-f4faaf144175';
 
-/** Expectations are explicit cases, validated independently by Zod and AJV. */
-function acceptsBoth(schema: z.ZodType<object>, valid: object[], invalid: unknown[]): void {
-  const jsonSchema = inputJsonSchema(schema);
-  expect(jsonSchema.type).toBe('object');
-  const validateJson = validator.getValidator(jsonSchema as unknown as JsonSchemaType);
+/**
+ * Literal expected outcomes run through the finalized interface callers use and through
+ * the Zod schema that types the handlers, so a constraint the published schema drops or
+ * adds cannot leave a handler's type claiming more than the runtime enforces.
+ */
+function acceptsInput(schema: z.ZodType<object>, valid: object[], invalid: unknown[]): void {
+  const contract = createInputContract(schema);
+  expect(contract.jsonSchema.type).toBe('object');
   for (const value of valid) {
+    expect(contract.validate(value)).toBe(value);
     expect(schema.safeParse(value).success, JSON.stringify(value)).toBe(true);
-    expect(validateJson(value).valid, JSON.stringify(value)).toBe(true);
-    expect(schema.parse(value)).toEqual(value);
   }
   for (const value of invalid) {
+    expect(() => contract.validate(value)).toThrow(AdapterError);
     expect(schema.safeParse(value).success, JSON.stringify(value)).toBe(false);
-    expect(validateJson(value).valid, JSON.stringify(value)).toBe(false);
   }
 }
 
 describe('endpoint input domains', () => {
   it('preserves safe numeric IDs and the driver UUID layout without coercion', () => {
-    acceptsBoth(strictObject({ case_id: positiveIdSchema, entry_id: entryIdSchema, attachment_id: attachmentIdSchema }), [
+    acceptsInput(strictObject({ case_id: positiveIdSchema, entry_id: entryIdSchema, attachment_id: attachmentIdSchema }), [
       { case_id: 1, entry_id: uuid, attachment_id: 2 },
       { case_id: Number.MAX_SAFE_INTEGER, entry_id: uuid.toUpperCase(), attachment_id: uuid },
     ], [
@@ -81,7 +85,7 @@ describe('endpoint input domains', () => {
       role_id: nonnegativeIntegerSchema.nullable().optional(),
       query: strictObject({ refs: refsSchema.optional() }).optional(),
     });
-    acceptsBoth(schema, [
+    acceptsInput(schema, [
       {}, { role_id: 0 }, { role_id: null }, { role_id: 1 },
       { query: { refs: 'REQ-1,REQ-2' } }, { query: { refs: ['REQ-1', 'REQ-2'] } }, { query: { refs: [] } },
     ], [
@@ -93,7 +97,7 @@ describe('endpoint input domains', () => {
   });
 
   it('keeps multipart filename rules separate from media types', () => {
-    acceptsBoth(strictObject({ file_path: filePathSchema, filename: filenameSchema, content_type: contentTypeSchema }), [
+    acceptsInput(strictObject({ file_path: filePathSchema, filename: filenameSchema, content_type: contentTypeSchema }), [
       { file_path: '/tmp/test file.txt', filename: 'test file.txt', content_type: 'text/plain' },
       { file_path: 'C:\\upload\\file', filename: 'result.json', content_type: 'application/json; charset=utf-8' },
       { file_path: '/tmp/file', filename: 'é.txt', content_type: 'text/plain; profile="https://example.test/a"' },
@@ -121,7 +125,7 @@ describe('endpoint input domains', () => {
       { file_path: '/tmp/file', filename: 'file', content_type: 'text/plain; bad' },
       { file_path: '/tmp/file\u0000', filename: 'file', content_type: 'text/plain' },
     ]);
-    acceptsBoth(strictObject({ filename: bddFilenameSchema }), [{ filename: 'test.feature' }], [
+    acceptsInput(strictObject({ filename: bddFilenameSchema }), [{ filename: 'test.feature' }], [
       { filename: 'test.txt' }, { filename: '../test.feature' }, { filename: 'test.feature\n' },
     ]);
   });
@@ -146,15 +150,15 @@ describe('faithful input schema export', () => {
     const schema = strictObject({ value: z.string().regex(/^.$/) });
     expect(schema.safeParse({ value: '😀' }).success).toBe(false);
     expect(() => inputJsonSchema(schema)).toThrow('regex patterns require only the Unicode u flag');
-    acceptsBoth(strictObject({ value: z.string().regex(/^.$/u) }), [{ value: 'a' }, { value: '😀' }], [{ value: 'ab' }, { value: '' }]);
-    acceptsBoth(strictObject({ value: z.string().regex(/^abc$/u) }), [{ value: 'abc' }], [{ value: 'ABC' }]);
+    acceptsInput(strictObject({ value: z.string().regex(/^.$/u) }), [{ value: 'a' }, { value: '😀' }], [{ value: 'ab' }, { value: '' }]);
+    acceptsInput(strictObject({ value: z.string().regex(/^abc$/u) }), [{ value: 'abc' }], [{ value: 'ABC' }]);
   });
 
   it('checks patterns on standalone string formats and adapted driver fields', () => {
     expect(() => inputJsonSchema(strictObject({ value: z.email({ pattern: /^abc$/iu }) }))).toThrow('regex patterns');
     const source = z.object({ email: z.string().regex(/^abc$/i) });
     expect(() => inputJsonSchema(strictObject({ body: payloadInput(source) }))).toThrow('regex patterns');
-    acceptsBoth(strictObject({ body: payloadInput(source, { fields: { email: z.string().regex(/^[aA][bB][cC]$/u) } }) }), [
+    acceptsInput(strictObject({ body: payloadInput(source, { fields: { email: z.string().regex(/^[aA][bB][cC]$/u) } }) }), [
       { body: { email: 'abc' } }, { body: { email: 'ABC' } },
     ], [{ body: { email: 'def' } }]);
     // Adapting an endpoint must not rewrite the public driver's original schema.
@@ -185,15 +189,48 @@ describe('faithful input schema export', () => {
     expect(() => inputJsonSchema(strictObject({ value: z.string() }).meta({ additionalProperties: true }))).toThrow('metadata has no reviewed JSON Schema equivalent');
   });
 
+  it('keeps reviewed refinements separate from mutable authoring metadata', () => {
+    const custom = payloadInput(AddCasePayloadSchema, { extensions: 'custom' });
+    const customMetadata = custom.meta() as { propertyNames: { anyOf: [{ enum: string[] }, { pattern: string }] } };
+    customMetadata.propertyNames.anyOf[1].pattern = '.*';
+
+    const result = payloadInput(AddResultPayloadSchema, { extensions: 'custom' });
+    const resultMetadata = result.meta() as { anyOf: [{ required: string[] }] };
+    resultMetadata.anyOf[0].required.splice(0);
+
+    const deletion = payloadInput(DeleteCasesPayloadSchema, { extensions: 'json' });
+    const deletionMetadata = deletion.meta() as { not: { required: string[] } };
+    deletionMetadata.not.required.push('not_present');
+
+    for (const body of [custom, result, deletion]) {
+      expect(() => inputJsonSchema(strictObject({ body }))).toThrow('refinement has no reviewed JSON Schema equivalent');
+      expect(() => createInputContract(strictObject({ body }))).toThrow('refinement has no reviewed JSON Schema equivalent');
+    }
+
+    // Adapting the same driver schema again must neither inherit the modified
+    // result-content template nor bless the earlier weakened representation.
+    acceptsInput(strictObject({ body: payloadInput(AddResultPayloadSchema, { extensions: 'custom' }) }), [
+      { body: { comment: 'Recorded' } },
+    ], [{ body: {} }, { body: { ordinary_field: 1 } }]);
+    expect(() => createInputContract(strictObject({ body: result })))
+      .toThrow('refinement has no reviewed JSON Schema equivalent');
+    acceptsInput(strictObject({ body: payloadInput(AddCasePayloadSchema, { extensions: 'custom' }) }), [
+      { body: { title: 'Case', custom_flag: true } },
+    ], [{ body: { title: 'Case', ordinary_field: 1 } }]);
+    acceptsInput(strictObject({ body: payloadInput(DeleteCasesPayloadSchema, { extensions: 'json' }) }), [
+      { body: { case_ids: [1] } },
+    ], [{ body: { case_ids: [1], soft: 1 } }]);
+  });
+
   it('retains annotations and only the structural metadata tied to reviewed refinements', () => {
     const schema = strictObject({ value: z.string().max(1).meta({
       title: 'Value', description: 'A short value.', examples: ['a'],
       deprecated: false, readOnly: false, writeOnly: false, $comment: 'An annotation.',
     }) });
-    acceptsBoth(schema, [{ value: 'a' }], [{ value: 'abc' }, {}]);
+    acceptsInput(schema, [{ value: 'a' }], [{ value: 'abc' }, {}]);
     expect(inputJsonSchema(schema).properties?.value).toMatchObject({ title: 'Value', description: 'A short value.', maxLength: 1 });
     const reviewed = payloadInput(EditResultPayloadSchema, { extensions: 'custom' }).describe('Correct a result.');
-    acceptsBoth(strictObject({ body: reviewed }), [{ body: { custom_value: 0 } }], [{ body: {} }, { body: { unexpected: 1 } }]);
+    acceptsInput(strictObject({ body: reviewed }), [{ body: { custom_value: 0 } }], [{ body: {} }, { body: { unexpected: 1 } }]);
     expect(() => inputJsonSchema(strictObject({ body: reviewed.meta({ ...reviewed.meta(), maxProperties: 3 }) }))).toThrow('metadata has no reviewed JSON Schema equivalent: maxProperties');
   });
 });
@@ -209,7 +246,7 @@ describe('strict reuse of public driver payload schemas', () => {
       custom_note: 'note', custom_steps: [{ content: 'one', expected: ['a', null] }],
       custom_null: null, custom_zero: 0, custom_flag: false,
     };
-    acceptsBoth(schema, [
+    acceptsInput(schema, [
       { body: { title: 'Case', ...custom } },
       { body: { title: 'Case', priority_id: 2, labels: [1, 'label'], is_legacy: false } },
     ], [
@@ -218,8 +255,8 @@ describe('strict reuse of public driver payload schemas', () => {
       { body: { title: null } }, { body: { title: 'Case', labels: [false] } }, { body: {} },
     ]);
     for (const value of [undefined, () => 1, Symbol('x'), 1n, Infinity, NaN, new Date()]) {
-      expect(schema.safeParse({ body: { title: 'Case', custom_value: value } }).success).toBe(false);
-      expect(schema.safeParse({ body: { title: 'Case', custom_value: { nested: value } } }).success).toBe(false);
+      expect(() => createInputContract(schema).validate({ body: { title: 'Case', custom_value: value } })).toThrow(AdapterError);
+      expect(() => createInputContract(schema).validate({ body: { title: 'Case', custom_value: { nested: value } } })).toThrow(AdapterError);
     }
     // The original driver schema remains untouched and permissive.
     expect(AddCasePayloadSchema.safeParse({ title: '', unexpected: true }).success).toBe(true);
@@ -227,7 +264,7 @@ describe('strict reuse of public driver payload schemas', () => {
 
   it('rejects nested ordinary fields while preserving documented open records', () => {
     const plan = strictObject({ body: payloadInput(AddPlanPayloadSchema) });
-    acceptsBoth(plan, [
+    acceptsInput(plan, [
       { body: { name: 'Plan', entries: [{ runs: [{ refs: 'REQ-1', case_ids: [] }] }] } },
       { body: { name: 'Plan', entries: [{ dynamic_filters: { mode: 'and', filters: { priority_id: { values: [1, 2] } } } }] } },
     ], [
@@ -236,10 +273,10 @@ describe('strict reuse of public driver payload schemas', () => {
       { body: { name: 'Plan', entries: [{ dynamic_filters: { mode: 'and', filters: {}, unexpected: true } }] } },
     ]);
     const open = strictObject({ body: payloadInput(DynamicFiltersPayloadSchema, { extensions: 'json' }) });
-    acceptsBoth(open, [{ body: { mode: 'and', filters: {}, explicitly_open: { arbitrary: [true, null] } } }], [
+    acceptsInput(open, [{ body: { mode: 'and', filters: {}, explicitly_open: { arbitrary: [true, null] } } }], [
       { body: { mode: 'and', filters: 1 } },
     ]);
-    expect(open.safeParse({ body: { mode: 'and', filters: {}, explicitly_open: () => 1 } }).success).toBe(false);
+    expect(() => createInputContract(open).validate({ body: { mode: 'and', filters: {}, explicitly_open: () => 1 } })).toThrow(AdapterError);
   });
 
   it('checks a record\'s __proto__ key as it checks every other key', () => {
@@ -248,7 +285,8 @@ describe('strict reuse of public driver payload schemas', () => {
     const agree = (schema: z.ZodType<object>, text: string, valid: boolean): void => {
       const value: unknown = JSON.parse(text);
       const validateJson = validator.getValidator(inputJsonSchema(schema) as unknown as JsonSchemaType);
-      expect(schema.safeParse(value).success, text).toBe(valid);
+      if (valid) expect(createInputContract(schema).validate(value)).toBe(value);
+      else expect(() => createInputContract(schema).validate(value)).toThrow(AdapterError);
       expect(validateJson(value).valid, text).toBe(valid);
     };
     const dataset = strictObject({ body: payloadInput(AddDatasetPayloadSchema) });
@@ -269,8 +307,8 @@ describe('strict reuse of public driver payload schemas', () => {
     // A record whose keys are listed reports an undeclared one once, as unrecognized.
     const listed = strictObject({ body: payloadInput(z.record(z.enum(['a']), z.string())) });
     agree(listed, '{"body":{"a":"x","__proto__":"y"}}', false);
-    expect(listed.safeParse(JSON.parse('{"body":{"a":"x","__proto__":"y"}}')).error?.issues.map(({ code }) => code))
-      .toEqual(['unrecognized_keys']);
+    expect(() => createInputContract(listed).validate(JSON.parse('{"body":{"a":"x","__proto__":"y"}}')))
+      .toThrow(AdapterError);
   });
 
   it('checks an own __proto__ key against an object\'s extension policy', () => {
@@ -280,7 +318,8 @@ describe('strict reuse of public driver payload schemas', () => {
     const agree = (schema: z.ZodType<object>, text: string, valid: boolean): void => {
       const value: unknown = JSON.parse(text);
       const validateJson = validator.getValidator(inputJsonSchema(schema) as unknown as JsonSchemaType);
-      expect(schema.safeParse(value).success, text).toBe(valid);
+      if (valid) expect(createInputContract(schema).validate(value)).toBe(value);
+      else expect(() => createInputContract(schema).validate(value)).toThrow(AdapterError);
       expect(validateJson(value).valid, text).toBe(valid);
     };
     // Neither a declared field nor custom_*, so refused like any other unknown name.
@@ -292,47 +331,47 @@ describe('strict reuse of public driver payload schemas', () => {
     agree(open, '{"body":{"mode":"and","filters":{},"__proto__":{"a":[1]}}}', true);
     const body = { mode: 'and', filters: {} };
     Object.defineProperty(body, '__proto__', { value: () => 1, enumerable: true });
-    expect(open.safeParse({ body }).success).toBe(false);
+    expect(() => createInputContract(open).validate({ body })).toThrow(AdapterError);
   });
 
   it('retains driver array bounds and uses independently composed item extensions', () => {
     const schema = strictObject({
       body: payloadArray(AddCasesBulkPayloadSchema, payloadInput(AddCasePayloadSchema, { extensions: 'custom' })),
     });
-    acceptsBoth(schema, [{ body: [{ title: 'A', custom_flag: false }, { title: 'B' }] }], [
+    acceptsInput(schema, [{ body: [{ title: 'A', custom_flag: false }, { title: 'B' }] }], [
       { body: [] }, { body: [{ title: 'A', unexpected: true }] }, { body: [{ title: 1 }] },
     ]);
   });
 
   it('preserves documented nullable and sentinel fields in exported schemas', () => {
     const role = strictObject({ body: payloadInput(UpdateProjectUserAssignmentPayloadSchema) });
-    acceptsBoth(role, [
+    acceptsInput(role, [
       { body: { user_id: 1, role_id: 0 } }, { body: { user_id: 1, role_id: null } },
     ], [{ body: { user_id: 1, role_id: -1 } }]);
     const section = strictObject({ body: payloadInput(MoveSectionPayloadSchema) });
-    acceptsBoth(section, [
+    acceptsInput(section, [
       { body: {} }, { body: { parent_id: null, after_id: null } }, { body: { parent_id: 0 } },
     ], [{ body: { parent_id: '0' } }]);
   });
 
   it('represents the exported driver payload refinements in JSON Schema', () => {
-    acceptsBoth(strictObject({ body: payloadInput(DeleteCasesPayloadSchema) }), [
+    acceptsInput(strictObject({ body: payloadInput(DeleteCasesPayloadSchema) }), [
       { body: { case_ids: [1] } },
     ], [{ body: { case_ids: [1], soft: 1 } }]);
-    acceptsBoth(strictObject({ body: payloadInput(EditResultPayloadSchema, { extensions: 'custom' }) }), [
+    acceptsInput(strictObject({ body: payloadInput(EditResultPayloadSchema, { extensions: 'custom' }) }), [
       { body: { comment: 'corrected' } }, { body: { custom_value: null } },
     ], [{ body: {} }, { body: { unexpected: 1 } }]);
     // Custom result fields remain flat and JSON, rather than moved or stripped.
-    acceptsBoth(strictObject({ body: payloadInput(AddResultPayloadSchema, { extensions: 'custom' }) }), [
+    acceptsInput(strictObject({ body: payloadInput(AddResultPayloadSchema, { extensions: 'custom' }) }), [
       { body: { status_id: 1, custom_actual: { actual: 'ok' } } },
     ], [{ body: { status_id: 1, unexpected: 1 } }]);
-    acceptsBoth(strictObject({ body: payloadInput(DeleteCasesPayloadSchema, { extensions: 'json' }) }), [
+    acceptsInput(strictObject({ body: payloadInput(DeleteCasesPayloadSchema, { extensions: 'json' }) }), [
       { body: { case_ids: [1], explicitly_open: true } },
     ], [{ body: { case_ids: [1], soft: 1 } }]);
-    acceptsBoth(strictObject({ body: payloadInput(DeleteCasesPayloadSchema, { fields: { soft: z.number().optional() } }) }), [
+    acceptsInput(strictObject({ body: payloadInput(DeleteCasesPayloadSchema, { fields: { soft: z.number().optional() } }) }), [
       { body: { case_ids: [1] } },
     ], [{ body: { case_ids: [1], soft: 1 } }]);
-    acceptsBoth(strictObject({
+    acceptsInput(strictObject({
       body: payloadInput(EditResultPayloadSchema, { extensions: 'custom' }).describe('Correct an existing result.'),
     }), [{ body: { comment: 'corrected', custom_flag: false } }], [{ body: {} }, { body: { unexpected: true } }]);
   });
@@ -353,7 +392,7 @@ describe('strict reuse of public driver payload schemas', () => {
       fields: { status_id: z.number().int().positive().optional() },
     });
     const input = strictObject({ body });
-    acceptsBoth(input, [
+    acceptsInput(input, [
       { body: { ...id, status_id: 1 } }, { body: { ...id, comment: '' } }, { body: { ...id, assignedto_id: 2 } },
       { body: { ...id, comment: 'note', custom_actual: 'ok' } },
     ], [
@@ -412,6 +451,96 @@ describe('strict reuse of public driver payload schemas', () => {
       body: payloadInput(AddCasePayloadSchema, { extensions: 'custom' }).meta({ propertyNames: { pattern: '.*' } }),
     }))).toThrow('refinement');
   });
+
+  it.each([
+    ['ordinary URL', z.url()],
+    ['URL normalization disabled', z.url({ normalize: false })],
+    ['URL normalization', z.url({ normalize: true })],
+    ['URL protocol restriction', z.url({ protocol: /^https$/u })],
+    ['URL hostname restriction', z.url({ hostname: /^example\.com$/u })],
+    ['JWT validation', z.jwt()],
+    ['custom format function', z.stringFormat('only-ok', (value) => value === 'ok')],
+    // email also publishes a format the validator enforces beyond the pattern (a dotted
+    // domain), and emoji publishes one it does not know; neither is described by its pattern alone.
+    ['email format', z.email({ pattern: /^[^\s@]+@[^\s@]+(?![\s\S])/u })],
+    ['emoji format', z.emoji()],
+    ['custom function named as a supported format', z.stringFormat('regex', (value) => value === 'ok')],
+    ['custom format with a pattern', z.stringFormat('only-ok', /^ok$/u)],
+    ['custom format borrowing a supported name and pattern', z.stringFormat('regex', /^ok$/u)],
+  ] as const)('rejects unrepresented %s both standalone and attached to a string', (_name, field) => {
+    for (const value of [field, z.string().check(field)]) {
+      const schema = strictObject({ value });
+      expect(() => inputJsonSchema(schema)).toThrow('Input string format has no reviewed JSON Schema equivalent');
+      expect(() => createInputContract(schema)).toThrow('Input string format has no reviewed JSON Schema equivalent');
+    }
+  });
+
+  it('rejects URL checks attached through the string method', () => {
+    for (const value of [
+      z.string().url(), z.string().url({ normalize: true }),
+      z.string().url({ protocol: /^https$/u }), z.string().url({ hostname: /^example\.com$/u }),
+    ]) {
+      expect(() => createInputContract(strictObject({ value })))
+        .toThrow('Input string format has no reviewed JSON Schema equivalent');
+    }
+  });
+
+  it('refuses a check kind the schema emitter silently omits', () => {
+    const schema = strictObject({ value: z.string().check(z.property('length', z.literal(1))) });
+    expect(() => inputJsonSchema(schema)).toThrow('Input check has no reviewed JSON Schema equivalent: property');
+    expect(() => createInputContract(schema)).toThrow('Input check has no reviewed JSON Schema equivalent: property');
+  });
+
+  // The emitter writes a check's constraint only on the schema types that carry it. On a
+  // wrapper it drops the constraint, and the published schema, which is the runtime
+  // validator, would then never enforce what Zod did. The casts stand in for an untyped
+  // caller: the optional and nullable rows do not type-check without them.
+  it.each([
+    ['union', z.union([z.string(), z.array(z.string())]).check(z.minLength(2))],
+    ['optional string', z.string().optional().check(z.minLength(2) as never)],
+    ['nullable string', z.string().nullable().check(z.maxLength(2) as never)],
+    ['optional number', z.number().optional().check(z.gt(0) as never)],
+  ] as const)('refuses a check the emitter drops when a %s wrapper carries it', (_name, field) => {
+    const schema = strictObject({ value: field });
+    expect(() => inputJsonSchema(schema)).toThrow('Input check has no reviewed JSON Schema equivalent on');
+    expect(() => createInputContract(schema)).toThrow('Input check has no reviewed JSON Schema equivalent on');
+  });
+
+  it('still accepts those checks on the node that emits them', () => {
+    acceptsInput(strictObject({
+      text: z.string().min(2).optional(),
+      list: z.array(z.string()).min(1).nullable().optional(),
+    }), [
+      {}, { text: 'ab', list: ['x'] }, { list: null },
+    ], [{ text: 'a' }, { list: [] }]);
+  });
+
+  it.each([
+    ['required', z.string()],
+    ['optional', z.string().optional()],
+  ] as const)('rejects an explicitly declared %s __proto__ object field before invocation', (_name, field) => {
+    const object = strictObject({ ['__proto__']: field });
+    for (const schema of [object, strictObject({ body: object })]) {
+      expect(() => inputJsonSchema(schema))
+        .toThrow('Input object field __proto__ has no reviewed JSON Schema equivalent');
+      expect(() => createInputContract(schema))
+        .toThrow('Input object field __proto__ has no reviewed JSON Schema equivalent');
+    }
+  });
+
+  it('retains regex patterns and numeric and array checks', () => {
+    const schema = strictObject({
+      email: z.string().regex(/^[a-z]+@example\.com$/u),
+      count: z.number().int().gt(0).lte(5),
+      items: z.array(z.string().min(1).max(4)).length(1),
+    });
+    const valid = { email: 'user@example.com', count: 2, items: ['ok'] };
+    acceptsInput(schema, [valid], [
+      { ...valid, email: 'user@different.com' },
+      { ...valid, count: 0 }, { ...valid, count: 6 }, { ...valid, count: 1.5 },
+      { ...valid, items: [] }, { ...valid, items: [''] }, { ...valid, items: ['longer'] },
+    ]);
+  });
 });
 
 describe('structural page/all input discrimination', () => {
@@ -419,7 +548,7 @@ describe('structural page/all input discrimination', () => {
     const schema = createListInput({
       pagination: 'controlled', path: { project_id: positiveIdSchema }, query: { refs: refsSchema.optional() },
     });
-    acceptsBoth(schema, [
+    acceptsInput(schema, [
       { project_id: 1 }, { project_id: 1, _mcp: { pagination: 'page' } },
       { project_id: 1, query: { limit: 250, offset: 0, refs: ['REQ-1'] } },
       { project_id: 1, _mcp: { pagination: 'all' } },
@@ -447,7 +576,7 @@ describe('structural page/all input discrimination', () => {
 
   it('advertises first-page/all response-driven lists without controllable cursors', () => {
     const schema = createListInput({ pagination: 'response-driven' });
-    acceptsBoth(schema, [
+    acceptsInput(schema, [
       {}, { _mcp: { pagination: 'page' } }, { _mcp: { pagination: 'all', max_items: 2 } },
     ], [
       { query: { limit: 1 } }, { query: { offset: 0 } },
@@ -460,9 +589,9 @@ describe('structural page/all input discrimination', () => {
 
   it('uses configured maxima without clamping and rejects invalid configuration', () => {
     const lower = createListInput({ pagination: 'controlled', limits: { ...aggregateLimitDefaults, max_items: 2 } });
-    acceptsBoth(lower, [{ _mcp: { pagination: 'all', max_items: 2 } }], [{ _mcp: { pagination: 'all', max_items: 3 } }]);
+    acceptsInput(lower, [{ _mcp: { pagination: 'all', max_items: 2 } }], [{ _mcp: { pagination: 'all', max_items: 3 } }]);
     const higher = createListInput({ pagination: 'controlled', limits: aggregateLimitCeilings });
-    acceptsBoth(higher, [{ _mcp: { pagination: 'all', ...aggregateLimitCeilings } }], []);
+    acceptsInput(higher, [{ _mcp: { pagination: 'all', ...aggregateLimitCeilings } }], []);
     for (const max_items of [0, -1, 1.5, 10_001, NaN, Infinity]) {
       expect(() => createListInput({ pagination: 'controlled', limits: { ...aggregateLimitDefaults, max_items } })).toThrow('limit');
     }

@@ -7,11 +7,13 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { loadConfiguration, type Configuration } from '../src/config/environment.js';
+import { AdapterError } from '../src/contracts/errors.js';
+import { positiveIdSchema, strictObject } from '../src/contracts/inputs.js';
 import { operationRegistry } from '../src/operations/catalog.js';
-import { createRegistry, defineOperation, type Operation } from '../src/operations/registry.js';
+import { createRegistry, defineOperation, type Operation, type OperationDefinition } from '../src/operations/registry.js';
 import type { DriverCall } from '../src/operations/driver-call.js';
 import { assertRegistryParity, compareRegistry, parseInventory } from '../src/operations/parity.js';
-import { createRuntime } from '../src/runtime/invocation.js';
+import { createTestExecutor } from './support/executor.js';
 import { buildServer } from '../src/transport/server.js';
 import { runRegisteredFixture } from './contracts/fixture-runner.js';
 import { loadParameterManifests, type ParameterManifest } from './contracts/parameter-manifest.js';
@@ -160,11 +162,9 @@ describe('the served catalog is the inventory, in both protocol eras', () => {
       dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
       fetch: () => { requests += 1; return Promise.resolve(new Response('{}')); },
     });
-    const runtime = createRuntime({ client: driver, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client: driver });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const handle = serveStdio(() => buildServer({
-      configuration, runtime, registry: operationRegistry, stagingDirectory: () => Promise.resolve(base),
-    }), { transport: serverTransport });
+    const handle = serveStdio(() => buildServer({ executor, registry: operationRegistry }), { transport: serverTransport });
     const client = new Client({ name: 'regression-gates', version: '1.0.0' }, { versionNegotiation: { mode: negotiation } });
     try {
       await client.connect(clientTransport);
@@ -174,7 +174,7 @@ describe('the served catalog is the inventory, in both protocol eras', () => {
     } finally {
       await client.close().catch(() => undefined);
       await handle.close().catch(() => undefined);
-      await runtime.shutdown();
+      await executor.shutdown();
     }
   }
 
@@ -283,21 +283,26 @@ describe('each gate fails on the mistake it exists to catch', () => {
   it('refuses a registration that would accept unknown input', () => {
     const project = registered('testrail_get_project');
     if (project.pagination.kind !== 'none') throw new Error('get_project does not page');
-    const { single } = project.pagination;
+    const input = strictObject({ project_id: positiveIdSchema });
+    const definition = {
+      ...project, inputSchema: input,
+      pagination: (bind) => ({ kind: 'none', single: bind('projects.getProject', (method, value) => method(value.project_id)) }),
+    } satisfies OperationDefinition<string, typeof input>;
     const permissive = z.looseObject({ project_id: z.int().positive() });
     /*
-     * Refused where it is defined, before it can reach a catalog. The call must carry the
-     * same schema as the operation, or the definition fails its schema-identity check first
-     * and the looseness itself is never examined. Either closed-input guard may refuse it.
+     * Refused during input finalization, before it can reach a catalog. Registration
+     * supplies that same contract to its binding; neither path can hide the looseness.
      */
-    expect(() => defineOperation(project)).not.toThrow();
+    expect(() => defineOperation(definition)).not.toThrow();
     expect(() => defineOperation({
-      ...project, inputSchema: permissive,
-      pagination: { kind: 'none', single: { ...single, inputSchema: permissive } },
+      ...definition, inputSchema: permissive,
     })).toThrow(/explicitly reject unknown keys|must be closed objects/u);
     // Were it slipped in after definition, the audit sees the manifest's unknown-key rejection accepted.
     expect(auditRegisteredParameters(createRegistry(project), manifests)).toEqual([]);
-    const slipped = { ...project, inputSchema: permissive } as unknown as Operation;
+    const slipped: Operation = { ...project, input: { ...project.input, validate(value) {
+      if (!permissive.safeParse(value).success) throw new AdapterError('INVALID_ARGUMENT');
+      return value as object;
+    } } };
     const unknownKey = manifestFor('testrail_get_project').cases
       .filter(({ expect: outcome }) => outcome.kind === 'rejected')
       .filter(({ input }) => permissive.safeParse(input).success);

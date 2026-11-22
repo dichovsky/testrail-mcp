@@ -4,24 +4,18 @@ import { join } from 'node:path';
 import { TestRailClient } from '@dichovsky/testrail-api-client';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import type { ToolResult } from '../../src/contracts/results.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
-import { createRuntime, type Runtime } from '../../src/runtime/invocation.js';
+import { createTestExecutor, type TestExecutor } from '../support/executor.js';
 import { buildServer } from '../../src/transport/server.js';
-import { executeToolCall } from '../../src/transport/tool-call.js';
 
 /*
  * The SDK suppresses the response to a request it has seen cancelled, so the client never
  * receives what the handler returned. Wrapping the pipeline records that value without
  * changing it, which is the only way to check the classification a cancelled call reached.
  */
-vi.mock('../../src/transport/tool-call.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../../src/transport/tool-call.js')>();
-  return { ...original, executeToolCall: vi.fn(original.executeToolCall) };
-});
-
 let directory: string;
 let configuration: Configuration;
 
@@ -37,8 +31,6 @@ beforeAll(async () => {
 });
 
 afterAll(async () => { await rm(directory, { recursive: true, force: true }); });
-
-beforeEach(() => { vi.mocked(executeToolCall).mockClear(); });
 
 /** Every upstream request is held until the test releases it, and counted. */
 function heldUpstream(body: unknown) {
@@ -74,7 +66,8 @@ async function waitFor(condition: () => boolean, label: string, timeoutMs = 5_00
 
 interface Session {
   readonly client: Client;
-  readonly runtime: Runtime;
+  readonly executor: TestExecutor;
+  readonly execute: ReturnType<typeof vi.fn<TestExecutor['execute']>>;
   /** Every message the server wrote to the client, in order. */
   readonly sent: { readonly id?: unknown }[];
   /** Every message the client wrote to the server, in order. */
@@ -99,7 +92,8 @@ async function connect(
     dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
     fetch,
   });
-  const runtime = createRuntime({ client: driver, limits: configuration.limits });
+  const executor = createTestExecutor({ client: driver, configuration });
+  const execute = vi.spyOn(executor, 'execute');
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const sent: { id?: unknown }[] = [];
@@ -115,26 +109,25 @@ async function connect(
     return receive(message, options);
   };
   const handle = serveStdio(() => buildServer({
-    configuration, runtime, registry: operationRegistry,
-    stagingDirectory: () => Promise.resolve(directory),
+    executor, registry: operationRegistry,
   }), { transport: serverTransport });
 
   const client = new Client({ name: 'cancellation-test', version: '1.0.0' }, { versionNegotiation: { mode: era } });
   await client.connect(clientTransport);
   if (discover) await client.listTools();
   return {
-    client, runtime, sent, received,
+    client, executor, execute, sent, received,
     close: async () => {
       await client.close().catch(() => undefined);
       await handle.close().catch(() => undefined);
-      await runtime.shutdown();
+      await executor.shutdown();
     },
   };
 }
 
 /** The value the tool handler returned for the most recent call, response or not. */
-async function lastHandlerResult(): Promise<ToolResult> {
-  const results = vi.mocked(executeToolCall).mock.results;
+async function lastHandlerResult(session: Session): Promise<ToolResult> {
+  const results = session.execute.mock.results;
   const last = results.at(-1);
   if (last?.type !== 'return') throw new Error('The tool handler was not invoked');
   return await last.value;
@@ -166,8 +159,8 @@ describe.each([
       // server turns into an abort of the handler's signal.
       cancel.abort('caller gave up');
       await expect(call).rejects.toThrow();
-      await waitFor(() => vi.mocked(executeToolCall).mock.results.length > 0, 'the handler call');
-      const handled = await lastHandlerResult();
+      await waitFor(() => session.execute.mock.results.length > 0, 'the handler call');
+      const handled = await lastHandlerResult(session);
       expect(handled.isError).toBe(true);
       expect(errorOf(handled).code).toBe('CANCELLED');
       // A read carries no write outcome.
@@ -176,11 +169,11 @@ describe.each([
       // The driver cannot abort the request, so its slot is still owned. The pause lets an
       // early release happen first, so the assertion cannot pass on timing alone.
       await settle();
-      expect(session.runtime.stats().active).toBe(1);
+      expect(session.executor.stats().active).toBe(1);
 
       upstream.releaseAll();
       await waitFor(() => upstream.replies === 1, 'the late reply');
-      await waitFor(() => session.runtime.stats().active === 0, 'the slot released on settlement');
+      await waitFor(() => session.executor.stats().active === 0, 'the slot released on settlement');
 
       // The SDK suppresses the response to a cancelled request: nothing was written for it,
       // neither the CANCELLED result nor the late upstream reply.
@@ -213,20 +206,20 @@ describe.each([
       await waitFor(() => upstream.calls === 4, 'four dispatched requests');
       for (const cancel of cancels) cancel.abort('caller gave up');
       await Promise.all(calls);
-      await waitFor(() => vi.mocked(executeToolCall).mock.results.length >= 4, 'four handler calls');
-      for (const result of vi.mocked(executeToolCall).mock.results.slice(0, 4)) {
+      await waitFor(() => session.execute.mock.results.length >= 4, 'four handler calls');
+      for (const result of session.execute.mock.results.slice(0, 4)) {
         if (result.type !== 'return') throw new Error('The tool handler threw');
         expect(errorOf(await result.value)).toMatchObject({ code: 'CANCELLED' });
       }
       await settle();
       // Cancelling stopped the waiting, not the requests: every slot is still owned.
-      expect(session.runtime.stats().active).toBe(4);
+      expect(session.executor.stats().active).toBe(4);
       const refused = await session.client.callTool({ name: 'testrail_get_project', arguments: { project_id: 5 } });
       expect(errorOf(refused as ToolResult)).toMatchObject({ code: 'BUSY' });
       expect(upstream.calls).toBe(4);
 
       upstream.releaseAll();
-      await waitFor(() => session.runtime.stats().active === 0, 'slots released on settlement');
+      await waitFor(() => session.executor.stats().active === 0, 'slots released on settlement');
       const next = session.client.callTool({ name: 'testrail_get_project', arguments: { project_id: 6 } });
       await waitFor(() => upstream.calls === 5, 'exactly one new request');
       upstream.releaseAll();
@@ -251,16 +244,16 @@ describe.each([
       await waitFor(() => upstream.calls === 1, 'the dispatched write');
       cancel.abort('caller gave up');
       await expect(call).rejects.toThrow();
-      await waitFor(() => vi.mocked(executeToolCall).mock.results.length > 0, 'the handler call');
+      await waitFor(() => session.execute.mock.results.length > 0, 'the handler call');
 
-      const handled = await lastHandlerResult();
+      const handled = await lastHandlerResult(session);
       // The request was sent and never answered, so the write may already be applied.
       expect(errorOf(handled)).toMatchObject({ code: 'CANCELLED', write_outcome: 'unknown' });
       await settle();
-      expect(session.runtime.stats().active).toBe(1);
+      expect(session.executor.stats().active).toBe(1);
 
       upstream.releaseAll();
-      await waitFor(() => session.runtime.stats().active === 0, 'the slot released on settlement');
+      await waitFor(() => session.executor.stats().active === 0, 'the slot released on settlement');
     } finally {
       upstream.releaseAll();
       await session.close();
@@ -293,16 +286,16 @@ describe('a cancelled first request on a 2026-07-28 connection', () => {
       expect(session.received.filter(({ method }) => method === 'tools/call').map(({ id }) => id)).toEqual([0]);
       cancel.abort('caller gave up');
       await expect(call).rejects.toThrow();
-      await waitFor(() => vi.mocked(executeToolCall).mock.results.length > 0, 'the handler call');
+      await waitFor(() => session.execute.mock.results.length > 0, 'the handler call');
 
-      const handled = await lastHandlerResult();
+      const handled = await lastHandlerResult(session);
       // Before 2.3.0 the cancellation was dropped and this call completed normally.
       expect(errorOf(handled).code).toBe('CANCELLED');
       expect(errorOf(handled).write_outcome).toBeUndefined();
 
       upstream.releaseAll();
       await waitFor(() => upstream.replies === 1, 'the late reply');
-      await waitFor(() => session.runtime.stats().active === 0, 'the slot released on settlement');
+      await waitFor(() => session.executor.stats().active === 0, 'the slot released on settlement');
       // The SDK suppresses the response to a request it has seen cancelled.
       expect(session.sent.some((message) => message.id === 0)).toBe(false);
     } finally {

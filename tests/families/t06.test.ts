@@ -5,8 +5,7 @@ import { TestRailClient } from '@dichovsky/testrail-api-client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
-import { createRuntime } from '../../src/runtime/invocation.js';
-import { executeToolCall } from '../../src/transport/tool-call.js';
+import { createTestExecutor } from '../support/executor.js';
 
 let base: string;
 let configuration: Configuration;
@@ -30,15 +29,15 @@ function operation(tool: string) {
   return found;
 }
 
-function runtimeFor(fetch: ReturnType<typeof vi.fn>) {
-  return createRuntime({
+function executorFor(fetch: ReturnType<typeof vi.fn>) {
+  return createTestExecutor({
+    configuration,
     client: new TestRailClient({
       baseUrl: configuration.baseUrl, email: configuration.email, apiKey: configuration.apiKey,
       registerProcessHandlers: false, maxRetries: 0,
       dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
       fetch: fetch as unknown as typeof globalThis.fetch,
     }),
-    limits: configuration.limits,
   });
 }
 
@@ -80,14 +79,14 @@ describe('T06 entry identifiers in the request path', () => {
       `add_run_to_plan_entry/10/${UPPER_ENTRY_ID}`],
   ] as const)('%s sends the identifier verbatim', async (tool, input, endpoint) => {
     const fetch = vi.fn().mockResolvedValue(json(tool === 'testrail_add_run_to_plan_entry' ? RUN : PLAN_ENTRY));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), input, { runtime, configuration });
+      const result = await executor.execute(operation(tool), input);
       expect(result.isError).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(1);
       // The case the caller gave, not a lower-cased or percent-encoded rewrite of it.
       expect(requested(fetch)).toContain(endpoint);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -98,19 +97,17 @@ describe('T06 entry identifiers in the request path', () => {
    */
   it('routes an entry deletion and a run deletion to their own endpoints', async () => {
     const fetch = vi.fn().mockResolvedValue(json({}));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      await executeToolCall(operation('testrail_delete_plan_entry'),
-        { plan_id: 10, entry_id: ENTRY_ID }, { runtime, configuration });
-      await executeToolCall(operation('testrail_delete_run_from_plan_entry'),
-        { run_id: 13 }, { runtime, configuration });
+      await executor.execute(operation('testrail_delete_plan_entry'), { plan_id: 10, entry_id: ENTRY_ID });
+      await executor.execute(operation('testrail_delete_run_from_plan_entry'), { run_id: 13 });
       expect(requested(fetch, 0)).toContain(`delete_plan_entry/10/${ENTRY_ID}`);
       expect(requested(fetch, 1)).toContain('delete_run_from_plan_entry/13');
       // The run deletion names no entry. A tool that took the entry's identifier would
       // be addressing the group rather than the one run, which the route alone would
       // not reveal because both endpoints answer an empty body.
       expect(requested(fetch, 1)).not.toContain(ENTRY_ID);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -127,17 +124,16 @@ describe('T06 fields an entry update cannot carry', () => {
     ['suite_id', { suite_id: 1 }],
   ] as const)('refuses %s before any request is sent', async (_name, extra) => {
     const fetch = vi.fn().mockResolvedValue(json(PLAN_ENTRY));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_update_plan_entry'),
-        { plan_id: 10, entry_id: ENTRY_ID, body: extra }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_update_plan_entry'), { plan_id: 10, entry_id: ENTRY_ID, body: extra });
       expect(result.isError).toBe(true);
       const { error } = result.structuredContent as { error: { code: string; write_outcome?: string } };
       expect(error.code).toBe('INVALID_ARGUMENT');
       // Refused at the boundary, so nothing was written and the caller is told so.
       expect(error.write_outcome).toBe('not_started');
       expect(fetch).not.toHaveBeenCalled();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -159,16 +155,15 @@ describe('T06 nested plan creation', () => {
       }],
     };
     const fetch = vi.fn().mockResolvedValue(json({ ...PLAN, entries: [PLAN_ENTRY] }));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_add_plan'),
-        { project_id: 1, body }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_add_plan'), { project_id: 1, body });
       expect(result.isError).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(1);
       const sent = fetch.mock.calls[0]?.[1] as { body?: string } | undefined;
       // Order included: the combinations are matched to runs by position on TestRail's side.
       expect(JSON.parse(sent?.body ?? 'null')).toEqual(body);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -183,12 +178,12 @@ describe('T06 plan list filters', () => {
     const fetch = vi.fn().mockResolvedValue(json({
       offset: 0, limit: 250, size: 1, _links: { next: null, prev: null }, plans: [PLAN],
     }));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_plans'), {
+      const result = await executor.execute(operation('testrail_get_plans'), {
         project_id: 3,
         query: { is_completed: false, created_by: [1, 2], milestone_id: [7], created_after: 100, refs: 'TR-1' },
-      }, { runtime, configuration });
+      });
       expect(result.isError).toBeUndefined();
       const url = requested(fetch);
       // TestRail spells a boolean filter as 1 or 0, and the open plans are is_completed=0.
@@ -197,7 +192,7 @@ describe('T06 plan list filters', () => {
       expect(url).toContain('milestone_id=7');
       expect(url).toContain('created_after=100');
       expect(url).toContain('refs=TR-1');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('carries the same filters through every page of an aggregate call', async () => {
@@ -207,17 +202,17 @@ describe('T06 plan list filters', () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(page(0, '/api/v2/get_plans/3&is_completed=0&limit=1&offset=1'))
       .mockResolvedValueOnce(page(1, null));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_plans'), {
+      const result = await executor.execute(operation('testrail_get_plans'), {
         project_id: 3, query: { is_completed: false }, _mcp: { pagination: 'all', page_size: 1 },
-      }, { runtime, configuration });
+      });
       expect(result.isError).toBeUndefined();
       expect((result.structuredContent as { data: unknown[] }).data).toHaveLength(2);
       expect(fetch).toHaveBeenCalledTimes(2);
       // A filter that survives the first request and not the continuation would return
       // the right first page and the wrong rest of the list.
       for (const index of [0, 1]) expect(requested(fetch, index)).toContain('is_completed=0');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });

@@ -3,11 +3,10 @@ import {
   DynamicFilterFieldSchema, PrioritySchema, ResultFieldSchema, StatusSchema, TemplateSchema, TestRailVersionSchema,
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
-import { createListInput, payloadInput, positiveIdSchema, strictObject } from '../../contracts/inputs.js';
-import { driverAllOptions } from '../../contracts/pagination.js';
-import { driverCall } from '../driver-call.js';
-import { defineOperation, type OperationDefinition } from '../registry.js';
-import { allControls, pageResponse, recordResponse, safetyControlMappings } from './common.js';
+import { payloadInput, positiveIdSchema, strictObject } from '../../contracts/inputs.js';
+import { defineOperation } from '../registry.js';
+import { createListDefinition } from '../lists.js';
+import { recordResponse } from './common.js';
 
 /*
  * Every read in this family describes how the instance is configured rather than the
@@ -41,14 +40,14 @@ export const getCaseFields = defineOperation({
   inputSchema: noInput,
   argumentMap: [],
   response: { shape: 'array', outerSchema: arrayResponse, entitySchema: CaseFieldSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(noInput, 'metadata.getCaseFields', (method) => method()),
-  },
+    single: bind('metadata.getCaseFields', (method) => method()),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /*
  * The driver parses none of this payload: addCaseField posts it as given. Its exported
@@ -82,10 +81,10 @@ export const addCaseField = defineOperation({
   inputSchema: addCaseFieldInput,
   argumentMap: [{ input: 'body', call: 'single', argument: 0, serialization: 'json-body' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: AddCaseFieldResponseSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addCaseFieldInput, 'metadata.addCaseField', (method, input) => method(input.body)),
-  },
+    single: bind('metadata.addCaseField', (method, input) => method(input.body)),
+  }),
   files: { kind: 'none' },
   /*
    * Not idempotent: a repeat asks TestRail for a second field of the same name. Neither
@@ -94,7 +93,7 @@ export const addCaseField = defineOperation({
    */
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 // ------------------------------------------------------------------ case types
 
@@ -108,14 +107,14 @@ export const getCaseTypes = defineOperation({
   inputSchema: noInput,
   argumentMap: [],
   response: { shape: 'array', outerSchema: arrayResponse, entitySchema: CaseTypeSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(noInput, 'metadata.getCaseTypes', (method) => method()),
-  },
+    single: bind('metadata.getCaseTypes', (method) => method()),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 // ------------------------------------------------------- dynamic filter fields
 
@@ -131,15 +130,15 @@ export const getDynamicFilterFields = defineOperation({
   inputSchema: getDynamicFilterFieldsInput,
   argumentMap: [{ input: 'project_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'array', outerSchema: arrayResponse, entitySchema: DynamicFilterFieldSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getDynamicFilterFieldsInput, 'metadata.getDynamicFilterFields',
+    single: bind('metadata.getDynamicFilterFields',
       (method, input) => method(input.project_id)),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 // ------------------------------------------------------------------ priorities
 
@@ -153,14 +152,14 @@ export const getPriorities = defineOperation({
   inputSchema: noInput,
   argumentMap: [],
   response: { shape: 'array', outerSchema: arrayResponse, entitySchema: PrioritySchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(noInput, 'metadata.getPriorities', (method) => method()),
-  },
+    single: bind('metadata.getPriorities', (method) => method()),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 // --------------------------------------------------------------- result fields
 
@@ -174,14 +173,14 @@ export const getResultFields = defineOperation({
   inputSchema: noInput,
   argumentMap: [],
   response: { shape: 'array', outerSchema: arrayResponse, entitySchema: ResultFieldSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(noInput, 'metadata.getResultFields', (method) => method()),
-  },
+    single: bind('metadata.getResultFields', (method) => method()),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 // -------------------------------------------------------------------- statuses
 
@@ -200,7 +199,11 @@ export const getResultFields = defineOperation({
  * summary says so, as the plan and run attachment lists do, without their next-offset
  * advice, which a list that takes no offset cannot follow.
  */
-const getCaseStatusesInput = createListInput({ path: {}, pagination: 'response-driven' });
+const getCaseStatusesList = createListDefinition({
+  pagination: 'response-driven',
+  optionsArgument: 0,
+  entitySchema: CaseStatusSchema,
+});
 
 export const getCaseStatuses = defineOperation({
   token: 'get_case_statuses',
@@ -209,19 +212,20 @@ export const getCaseStatuses = defineOperation({
   family: 'T10',
   driverBinding: 'metadata.getCaseStatuses',
   summary: 'List the TestRail case statuses: the statuses of test cases themselves, such as Draft or Approved, identified by case_status_id. is_approved marks an approved status and is_default the default status for test cases. These are not the execution statuses a test result records, which testrail_get_statuses lists. TestRail documents this endpoint as requiring TestRail Enterprise 7.3 or later. TestRail documents no paging controls for it, so this server sends none of its own and TestRail chooses each page; a complete read follows TestRail\'s next link, and one that stops at one of its bounds cannot be resumed from where it stopped, and needs a larger bound instead. TestRail\'s reference example, however, shows the reply as a bare array, which carries no continuation: a reply in that form is read as the whole list, with has_more false in page mode, and all mode stops after it while reporting complete, with no way to tell whether TestRail holds more.',
-  inputSchema: getCaseStatusesInput,
-  argumentMap: [...safetyControlMappings(0)],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: CaseStatusSchema },
-  pagination: {
-    kind: 'response_driven',
-    page: driverCall(getCaseStatusesInput, 'metadata.getCaseStatusesPage', (method) => method()),
-    all: driverCall(getCaseStatusesInput, 'metadata.getAllCaseStatuses',
-      (method, input, context) => method(driverAllOptions(allControls(input._mcp), context.limits))),
-  },
+  ...getCaseStatusesList.bind({
+    page: {
+      binding: 'metadata.getCaseStatusesPage',
+      call: (method) => method(),
+    },
+    all: {
+      binding: 'metadata.getAllCaseStatuses',
+      call: (method, _input, options) => method(options),
+    },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 export const getStatuses = defineOperation({
   token: 'get_statuses',
@@ -233,14 +237,14 @@ export const getStatuses = defineOperation({
   inputSchema: noInput,
   argumentMap: [],
   response: { shape: 'array', outerSchema: arrayResponse, entitySchema: StatusSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(noInput, 'metadata.getStatuses', (method) => method()),
-  },
+    single: bind('metadata.getStatuses', (method) => method()),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 // ------------------------------------------------------------------- templates
 
@@ -256,14 +260,14 @@ export const getTemplates = defineOperation({
   inputSchema: getTemplatesInput,
   argumentMap: [{ input: 'project_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'array', outerSchema: arrayResponse, entitySchema: TemplateSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getTemplatesInput, 'metadata.getTemplates', (method, input) => method(input.project_id)),
-  },
+    single: bind('metadata.getTemplates', (method, input) => method(input.project_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 // --------------------------------------------------------------------- version
 
@@ -277,14 +281,14 @@ export const getVersion = defineOperation({
   inputSchema: noInput,
   argumentMap: [],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: TestRailVersionSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(noInput, 'metadata.getVersion', (method) => method()),
-  },
+    single: bind('metadata.getVersion', (method) => method()),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /** Registered in tool-name order by the registry; listed here in reviewed order. */
 export const t10 = [

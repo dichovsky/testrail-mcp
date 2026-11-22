@@ -1,13 +1,12 @@
 import { AttachmentSchema } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
 import {
-  attachmentIdSchema, contentTypeSchema, createListInput, entryIdSchema, filenameSchema, filePathSchema,
+  attachmentIdSchema, contentTypeSchema, entryIdSchema, filenameSchema, filePathSchema,
   positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
-import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
-import { driverCall } from '../driver-call.js';
-import { defineOperation, type OperationDefinition } from '../registry.js';
-import { aggregateControlMappings, allControls, control, pageResponse, recordResponse, staged } from './common.js';
+import { defineOperation } from '../registry.js';
+import { createListDefinition } from '../lists.js';
+import { recordResponse, staged } from './common.js';
 
 /*
  * Attachments are the one family that moves files both ways. A download is a GET, but
@@ -52,19 +51,24 @@ export const getAttachment = defineOperation({
   inputSchema: getAttachmentInput,
   argumentMap: [{ input: 'attachment_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'binary', outerSchema: z.instanceof(ArrayBuffer), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getAttachmentInput, 'attachments.getAttachment', (method, input) => method(input.attachment_id)),
-  },
+    single: bind('attachments.getAttachment', (method, input) => method(input.attachment_id)),
+  }),
   files: { kind: 'download' },
   // TestRail is only read; the new local file on every call is what makes this non-idempotent.
   effects: { testRail: 'read', destructive: false, idempotent: false },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 // --------------------------------------------------------------------- lists
 
-const getAttachmentsForCaseInput = createListInput({ path: { case_id: positiveIdSchema }, pagination: 'controlled' });
+const getAttachmentsForCaseList = createListDefinition({
+  path: { case_id: { schema: positiveIdSchema, argument: 0 } },
+  pagination: 'controlled',
+  optionsArgument: 1,
+  entitySchema: AttachmentSchema,
+});
 
 export const getAttachmentsForCase = defineOperation({
   token: 'get_attachments_for_case',
@@ -73,32 +77,27 @@ export const getAttachmentsForCase = defineOperation({
   family: 'T12',
   driverBinding: 'attachments.getAttachmentsForCase',
   summary: 'List the attachments of a TestRail test case (TestRail 5.7 or later; limit and offset need 6.7 or later). Each entry carries the attachment\'s id, an integer or a UUID from release 7.1 (cloud) on, with its name, size and upload time; pass the id to testrail_get_attachment to download the file. TestRail answers 400 for an invalid case ID and 403 when the configured user has no access to the project or lacks permission.',
-  inputSchema: getAttachmentsForCaseInput,
-  argumentMap: [
-    { input: 'case_id', call: 'page', argument: 0, serialization: 'path' },
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'case_id', call: 'all', argument: 0, serialization: 'path' },
-    ...aggregateControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: AttachmentSchema },
-  pagination: {
-    kind: 'controlled',
-    page: driverCall(getAttachmentsForCaseInput, 'attachments.getAttachmentsForCasePage', (method, input) => method(
-      input.case_id,
-      pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    )),
-    all: driverCall(getAttachmentsForCaseInput, 'attachments.getAllAttachmentsForCase', (method, input, context) => method(
-      input.case_id,
-      driverAllOptions(allControls(input._mcp), context.limits),
-    )),
-  },
+  ...getAttachmentsForCaseList.bind({
+    page: {
+      binding: 'attachments.getAttachmentsForCasePage',
+      call: (method, input, options) => method(input.case_id, options),
+    },
+    all: {
+      binding: 'attachments.getAllAttachmentsForCase',
+      call: (method, input, options) => method(input.case_id, options),
+    },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
-const getAttachmentsForPlanInput = createListInput({ path: { plan_id: positiveIdSchema }, pagination: 'controlled' });
+const getAttachmentsForPlanList = createListDefinition({
+  path: { plan_id: { schema: positiveIdSchema, argument: 0 } },
+  pagination: 'controlled',
+  optionsArgument: 1,
+  entitySchema: AttachmentSchema,
+});
 
 export const getAttachmentsForPlan = defineOperation({
   token: 'get_attachments_for_plan',
@@ -107,30 +106,20 @@ export const getAttachmentsForPlan = defineOperation({
   family: 'T12',
   driverBinding: 'attachments.getAttachmentsForPlan',
   summary: 'List the attachments of a TestRail test plan (TestRail 6.3 or later; limit and offset need 6.7 or later). Each entry carries the attachment\'s id, with its name, size and upload time; pass the id to testrail_get_attachment to download the file. TestRail\'s reference does not say whether attachments on the plan\'s entries are included; testrail_get_attachments_for_plan_entry lists an entry\'s own. ' + BARE_ARRAY + ' TestRail answers 400 for an invalid ID and 403 when the configured user has no access to the project or lacks permission.',
-  inputSchema: getAttachmentsForPlanInput,
-  argumentMap: [
-    { input: 'plan_id', call: 'page', argument: 0, serialization: 'path' },
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'plan_id', call: 'all', argument: 0, serialization: 'path' },
-    ...aggregateControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: AttachmentSchema },
-  pagination: {
-    kind: 'controlled',
-    page: driverCall(getAttachmentsForPlanInput, 'attachments.getAttachmentsForPlanPage', (method, input) => method(
-      input.plan_id,
-      pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    )),
-    all: driverCall(getAttachmentsForPlanInput, 'attachments.getAllAttachmentsForPlan', (method, input, context) => method(
-      input.plan_id,
-      driverAllOptions(allControls(input._mcp), context.limits),
-    )),
-  },
+  ...getAttachmentsForPlanList.bind({
+    page: {
+      binding: 'attachments.getAttachmentsForPlanPage',
+      call: (method, input, options) => method(input.plan_id, options),
+    },
+    all: {
+      binding: 'attachments.getAllAttachmentsForPlan',
+      call: (method, input, options) => method(input.plan_id, options),
+    },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const getAttachmentsForPlanEntryInput = strictObject({ plan_id: positiveIdSchema, entry_id: entryIdSchema });
 
@@ -147,17 +136,22 @@ export const getAttachmentsForPlanEntry = defineOperation({
     { input: 'entry_id', call: 'single', argument: 1, serialization: 'path' },
   ],
   response: { shape: 'array', outerSchema: arrayResponse, entitySchema: AttachmentSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getAttachmentsForPlanEntryInput, 'attachments.getAttachmentsForPlanEntry',
+    single: bind('attachments.getAttachmentsForPlanEntry',
       (method, input) => method(input.plan_id, input.entry_id)),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
-const getAttachmentsForRunInput = createListInput({ path: { run_id: positiveIdSchema }, pagination: 'controlled' });
+const getAttachmentsForRunList = createListDefinition({
+  path: { run_id: { schema: positiveIdSchema, argument: 0 } },
+  pagination: 'controlled',
+  optionsArgument: 1,
+  entitySchema: AttachmentSchema,
+});
 
 export const getAttachmentsForRun = defineOperation({
   token: 'get_attachments_for_run',
@@ -166,30 +160,20 @@ export const getAttachmentsForRun = defineOperation({
   family: 'T12',
   driverBinding: 'attachments.getAttachmentsForRun',
   summary: 'List the attachments of a TestRail test run (TestRail 6.3 or later; limit and offset need 6.7 or later). Each entry carries the attachment\'s id, with its name, size and upload time; pass the id to testrail_get_attachment to download the file. ' + BARE_ARRAY + ' TestRail answers 400 for an invalid ID and 403 when the configured user has no access to the project or lacks permission.',
-  inputSchema: getAttachmentsForRunInput,
-  argumentMap: [
-    { input: 'run_id', call: 'page', argument: 0, serialization: 'path' },
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'run_id', call: 'all', argument: 0, serialization: 'path' },
-    ...aggregateControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: AttachmentSchema },
-  pagination: {
-    kind: 'controlled',
-    page: driverCall(getAttachmentsForRunInput, 'attachments.getAttachmentsForRunPage', (method, input) => method(
-      input.run_id,
-      pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    )),
-    all: driverCall(getAttachmentsForRunInput, 'attachments.getAllAttachmentsForRun', (method, input, context) => method(
-      input.run_id,
-      driverAllOptions(allControls(input._mcp), context.limits),
-    )),
-  },
+  ...getAttachmentsForRunList.bind({
+    page: {
+      binding: 'attachments.getAttachmentsForRunPage',
+      call: (method, input, options) => method(input.run_id, options),
+    },
+    all: {
+      binding: 'attachments.getAllAttachmentsForRun',
+      call: (method, input, options) => method(input.run_id, options),
+    },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 const getAttachmentsForTestInput = strictObject({ test_id: positiveIdSchema });
 
@@ -203,14 +187,14 @@ export const getAttachmentsForTest = defineOperation({
   inputSchema: getAttachmentsForTestInput,
   argumentMap: [{ input: 'test_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'array', outerSchema: arrayResponse, entitySchema: AttachmentSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getAttachmentsForTestInput, 'attachments.getAttachmentsForTest', (method, input) => method(input.test_id)),
-  },
+    single: bind('attachments.getAttachmentsForTest', (method, input) => method(input.test_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 // ------------------------------------------------------------------- uploads
 
@@ -252,15 +236,15 @@ export const addAttachmentToCase = defineOperation({
     { input: 'filename', call: 'single', argument: 2, serialization: 'multipart' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: uploadReplySchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addAttachmentToCaseInput, 'attachments.addAttachmentToCase',
+    single: bind('attachments.addAttachmentToCase',
       (method, input, context) => method(input.case_id, staged(context), input.filename)),
-  },
+  }),
   files: { kind: 'upload', featureFilename: false },
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'never',
-} as const satisfies OperationDefinition);
+});
 
 const addAttachmentToPlanInput = strictObject({ plan_id: positiveIdSchema, ...uploadFields });
 
@@ -279,15 +263,15 @@ export const addAttachmentToPlan = defineOperation({
     { input: 'filename', call: 'single', argument: 2, serialization: 'multipart' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: uploadReplySchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addAttachmentToPlanInput, 'attachments.addAttachmentToPlan',
+    single: bind('attachments.addAttachmentToPlan',
       (method, input, context) => method(input.plan_id, staged(context), input.filename)),
-  },
+  }),
   files: { kind: 'upload', featureFilename: false },
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'never',
-} as const satisfies OperationDefinition);
+});
 
 const addAttachmentToPlanEntryInput = strictObject({ plan_id: positiveIdSchema, entry_id: entryIdSchema, ...uploadFields });
 
@@ -307,15 +291,15 @@ export const addAttachmentToPlanEntry = defineOperation({
     { input: 'filename', call: 'single', argument: 3, serialization: 'multipart' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: uploadReplySchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addAttachmentToPlanEntryInput, 'attachments.addAttachmentToPlanEntry',
+    single: bind('attachments.addAttachmentToPlanEntry',
       (method, input, context) => method(input.plan_id, input.entry_id, staged(context), input.filename)),
-  },
+  }),
   files: { kind: 'upload', featureFilename: false },
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'never',
-} as const satisfies OperationDefinition);
+});
 
 const addAttachmentToResultInput = strictObject({ result_id: positiveIdSchema, ...uploadFields });
 
@@ -334,15 +318,15 @@ export const addAttachmentToResult = defineOperation({
     { input: 'filename', call: 'single', argument: 2, serialization: 'multipart' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: uploadReplySchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addAttachmentToResultInput, 'attachments.addAttachmentToResult',
+    single: bind('attachments.addAttachmentToResult',
       (method, input, context) => method(input.result_id, staged(context), input.filename)),
-  },
+  }),
   files: { kind: 'upload', featureFilename: false },
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'never',
-} as const satisfies OperationDefinition);
+});
 
 const addAttachmentToRunInput = strictObject({ run_id: positiveIdSchema, ...uploadFields });
 
@@ -361,15 +345,15 @@ export const addAttachmentToRun = defineOperation({
     { input: 'filename', call: 'single', argument: 2, serialization: 'multipart' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: uploadReplySchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addAttachmentToRunInput, 'attachments.addAttachmentToRun',
+    single: bind('attachments.addAttachmentToRun',
       (method, input, context) => method(input.run_id, staged(context), input.filename)),
-  },
+  }),
   files: { kind: 'upload', featureFilename: false },
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'never',
-} as const satisfies OperationDefinition);
+});
 
 // -------------------------------------------------------------------- delete
 
@@ -385,15 +369,15 @@ export const deleteAttachment = defineOperation({
   inputSchema: deleteAttachmentInput,
   argumentMap: [{ input: 'attachment_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'void', outerSchema: z.undefined(), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteAttachmentInput, 'attachments.deleteAttachment', (method, input) => method(input.attachment_id)),
-  },
+    single: bind('attachments.deleteAttachment', (method, input) => method(input.attachment_id)),
+  }),
   files: { kind: 'none' },
   // The attachment is gone once TestRail accepts this, and a repeat names one that no longer exists.
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 /** Registered in tool-name order by the registry; listed here in reviewed order. */
 export const t12 = [

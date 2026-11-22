@@ -3,6 +3,7 @@ import type { Tool } from '@modelcontextprotocol/server';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { DEFAULT_LIMITS } from '../src/config/limits.js';
+import { createInputContract } from '../src/contracts/input-contract.js';
 import { createListInput, positiveIdSchema, strictObject } from '../src/contracts/inputs.js';
 import { driverCall, type DriverBinding } from '../src/operations/driver-call.js';
 import { InputPaths } from '../src/operations/input-paths.js';
@@ -32,9 +33,9 @@ const getProjectDefinition = {
   driverBinding: 'projects.getProject', summary: 'Get a TestRail project.', inputSchema: projectInput,
   argumentMap: [{ input: 'project_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: z.record(z.string(), z.unknown()), entitySchema: ProjectSchema },
-  pagination: { kind: 'none', single: driverCall(projectInput, 'projects.getProject', (method, input) => method(input.project_id)) },
+  pagination: (bind) => ({ kind: 'none', single: bind('projects.getProject', (method, input) => method(input.project_id)) }),
   files: { kind: 'none' }, effects: { testRail: 'read', destructive: false, idempotent: true }, retry: 'ordinary-read',
-} as const satisfies OperationDefinition;
+} as const satisfies OperationDefinition<string, typeof projectInput>;
 const getProject = defineOperation(getProjectDefinition);
 
 const writeEffects = { testRail: 'write', destructive: false, idempotent: false } as const;
@@ -43,12 +44,12 @@ const getProjectsDefinition = {
   ...getProjectDefinition, token: 'get_projects', route: 'get_projects', driverBinding: 'projects.getProjects', inputSchema: listInput,
   argumentMap: [],
   response: { shape: 'page', outerSchema: z.object({ kind: z.enum(['envelope', 'legacy-array']), items: z.array(z.unknown()) }), entitySchema: ProjectSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'controlled',
-    page: driverCall(listInput, 'projects.getProjectsPage', (method) => method()),
-    all: driverCall(listInput, 'projects.getAllProjects', (method) => method()),
-  },
-} as const satisfies OperationDefinition;
+    page: bind('projects.getProjectsPage', (method) => method()),
+    all: bind('projects.getAllProjects', (method) => method()),
+  }),
+} as const satisfies OperationDefinition<string, typeof listInput>;
 
 describe('endpoint definition validation', () => {
   it('rejects a family outside T01-T12 and a blank summary', () => {
@@ -58,8 +59,9 @@ describe('endpoint definition validation', () => {
   });
 
   it('rejects a single call bound to a different driver method than the endpoint', () => {
-    const single = driverCall(projectInput, 'suites.getSuite', (method, input) => method(input.project_id));
-    expect(() => defineOperation({ ...getProjectDefinition, pagination: { kind: 'none', single } }))
+    expect(() => defineOperation({ ...getProjectDefinition, pagination: (bind) => ({
+      kind: 'none', single: bind('suites.getSuite', (method, input) => method(input.project_id)),
+    }) }))
       .toThrow('Different endpoint driver binding: get_project');
   });
 
@@ -124,7 +126,7 @@ describe('endpoint input layout', () => {
     const input = strictObject({ project_id: positiveIdSchema, query: z.union([]) });
     expect(() => defineOperation({
       ...getProjectDefinition, inputSchema: input,
-      pagination: { kind: 'none', single: driverCall(input, 'projects.getProject', (method, value) => method(value.project_id)) },
+      pagination: (bind) => ({ kind: 'none', single: bind('projects.getProject', (method, value) => method(value.project_id)) }),
     })).toThrow('Operation inputs require object schemas');
   });
 
@@ -150,9 +152,9 @@ describe('driver call binding guards', () => {
   const fixtureClient = (shape: Record<string, unknown>): TestRailClient => shape as unknown as TestRailClient;
 
   it.each(['request.getProject', 'projects', 'constructor.name'])('refuses the unsupported binding %s after validating input', async (binding) => {
-    const call = driverCall(projectInput, binding as DriverBinding, () => Promise.resolve('unreachable'));
+    const call = driverCall(createInputContract(projectInput), binding as DriverBinding, () => Promise.resolve('unreachable'));
     const client = fixtureClient({ projects: { getProject: () => Promise.resolve('unreachable') } });
-    await expect(call.invoke(client, { project_id: 'x' }, { limits: DEFAULT_LIMITS })).rejects.toThrow(z.ZodError);
+    await expect(call.invoke(client, { project_id: 'x' }, { limits: DEFAULT_LIMITS })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     await expect(call.invoke(client, { project_id: 1 }, { limits: DEFAULT_LIMITS })).rejects.toThrow('Unsupported public driver binding');
   });
 
@@ -162,14 +164,14 @@ describe('driver call binding guards', () => {
     ['a primitive', { projects: 'projects' }],
   ])('refuses a client whose module is %s', async (_label, shape) => {
     const callback = vi.fn(() => Promise.resolve('unreachable'));
-    const call = driverCall(projectInput, 'projects.getProject', callback);
+    const call = driverCall(createInputContract(projectInput), 'projects.getProject', callback);
     await expect(call.invoke(fixtureClient(shape), { project_id: 1 }, { limits: DEFAULT_LIMITS })).rejects.toThrow('Missing public driver module');
     expect(callback).not.toHaveBeenCalled();
   });
 
   it('refuses a module whose selected member is not a method', async () => {
     const callback = vi.fn(() => Promise.resolve('unreachable'));
-    const call = driverCall(projectInput, 'projects.getProject', callback);
+    const call = driverCall(createInputContract(projectInput), 'projects.getProject', callback);
     for (const projects of [{}, { getProject: 'not callable' }]) {
       await expect(call.invoke(fixtureClient({ projects }), { project_id: 1 }, { limits: DEFAULT_LIMITS })).rejects.toThrow('Missing public driver method');
     }

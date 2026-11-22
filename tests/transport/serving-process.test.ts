@@ -182,7 +182,7 @@ describe('a legacy session over raw stdio against the built executable', () => {
 });
 
 describe('an initialize after a modern discover probe', () => {
-  it('re-creates its server without disposing the shared runtime, and keeps serving calls', async () => {
+  it('re-creates its server without disposing the shared executor, and keeps serving calls', async () => {
     // The SDK client's own modern probe, recorded rather than written by hand.
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     let probe: unknown;
@@ -213,7 +213,7 @@ describe('an initialize after a modern discover probe', () => {
       expect(((await session.reply(102)).result?.tools as unknown[]).length).toBe(133);
 
       // A real call reaches TestRail: discarding the probe's server did not dispose the
-      // shared runtime. (That the factory builds no second driver is held by #76.)
+      // shared executor. (That the factory builds no second driver is held by #76.)
       const before = requests;
       session.send({ jsonrpc: '2.0', id: 103, method: 'tools/call', params: { name: 'testrail_get_project', arguments: { project_id: 1 } } });
       const call = await session.reply(103);

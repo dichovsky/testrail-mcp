@@ -7,9 +7,8 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
-import { createRuntime } from '../../src/runtime/invocation.js';
+import { createTestExecutor } from '../support/executor.js';
 import { buildServer } from '../../src/transport/server.js';
-import { executeToolCall } from '../../src/transport/tool-call.js';
 
 let base: string;
 let configuration: Configuration;
@@ -42,8 +41,8 @@ function driverFor(fetch: ReturnType<typeof vi.fn>): TestRailClient {
   });
 }
 
-function runtimeFor(fetch: ReturnType<typeof vi.fn>) {
-  return createRuntime({ client: driverFor(fetch), limits: configuration.limits });
+function executorFor(fetch: ReturnType<typeof vi.fn>) {
+  return createTestExecutor({ configuration, client: driverFor(fetch) });
 }
 
 function json(body: unknown, status = 200): Response {
@@ -116,30 +115,30 @@ describe('T10 the two status vocabularies and the two field lists', () => {
     ['testrail_get_result_fields', [], 'get_result_fields'],
   ] as const)('%s reads its own endpoint and nothing else', async (tool, reply, endpoint) => {
     const fetch = replying(reply);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), {}, { runtime, configuration });
+      const result = await executor.execute(operation(tool), {});
       expect(result.isError).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(requested(fetch)).toMatch(new RegExp(`/api/v2/${endpoint}$`));
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('keeps each vocabulary under its own key', async () => {
     const fetch = vi.fn()
       .mockImplementationOnce(() => Promise.resolve(json([PASSED])))
       .mockImplementationOnce(() => Promise.resolve(json(envelope([APPROVED, DRAFT]))));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const results = await executeToolCall(operation('testrail_get_statuses'), {}, { runtime, configuration });
-      const cases = await executeToolCall(operation('testrail_get_case_statuses'), {}, { runtime, configuration });
+      const results = await executor.execute(operation('testrail_get_statuses'), {});
+      const cases = await executor.execute(operation('testrail_get_case_statuses'), {});
       expect(data(results)).toEqual([PASSED]);
       expect(data(cases)).toEqual([APPROVED, DRAFT]);
       // Each reply is checked against its own vocabulary's schema, so neither drifts.
       expect({ results: warnings(results), cases: warnings(cases) }).toEqual({ results: [], cases: [] });
       // Neither list is reshaped into the other's identifiers.
       expect((data(cases) as Record<string, unknown>[]).every((status) => !Object.hasOwn(status, 'id'))).toBe(true);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   // The descriptions are the contract a model reads, so each must point away from the other list.
@@ -170,33 +169,32 @@ describe('T10 the two status vocabularies and the two field lists', () => {
 describe('T10 case statuses in the shapes the driver reads', () => {
   it('reads the documented bare array as the whole list', async () => {
     const fetch = replying([APPROVED, DRAFT]);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_case_statuses'), {}, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_case_statuses'), {});
       expect(result.isError).toBeUndefined();
       expect(data(result)).toEqual([APPROVED, DRAFT]);
       const { pagination } = result.structuredContent as { pagination: Record<string, unknown> };
       expect(pagination.has_more).toBe(false);
       expect(pagination.next_action).toBe('none');
       expect(requested(fetch)).not.toMatch(/limit=|offset=/);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   // Nothing in this reply says whether TestRail holds more, so the aggregate reports it
   // complete, and the description must say that is all the word means here.
   it('reads the documented bare array in a complete read with one request', async () => {
     const fetch = replying([APPROVED, DRAFT]);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_case_statuses'),
-        { _mcp: { pagination: 'all' } }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_case_statuses'), { _mcp: { pagination: 'all' } });
       expect(result.isError).toBeUndefined();
       expect(data(result)).toEqual([APPROVED, DRAFT]);
       expect(fetch).toHaveBeenCalledTimes(1);
       // No start_offset: a response-driven list has no caller-chosen start to report.
       expect((result.structuredContent as { pagination: unknown }).pagination).toEqual({ mode: 'all', returned: 2, complete: true });
       expect(operation('testrail_get_case_statuses').description).toContain('TestRail\'s reference example, however, shows the reply as a bare array, which carries no continuation: a reply in that form is read as the whole list, with has_more false in page mode, and all mode stops after it while reporting complete, with no way to tell whether TestRail holds more.');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -208,27 +206,27 @@ describe('T10 case statuses in the shapes the driver reads', () => {
   it.each([{}, { _mcp: { pagination: 'all' } }] as const)(
     'reports an envelope keyed links, as the field table names it, as an invalid reply (%j)', async (input) => {
       const fetch = replying({ offset: 0, limit: 250, size: 1, links: { next: null, prev: null }, case_statuses: [APPROVED] });
-      const runtime = runtimeFor(fetch);
+      const executor = executorFor(fetch);
       try {
-        const result = await executeToolCall(operation('testrail_get_case_statuses'), input, { runtime, configuration });
+        const result = await executor.execute(operation('testrail_get_case_statuses'), input);
         expect(result.isError).toBe(true);
         expect(errorOf(result).code).toBe('INVALID_RESPONSE');
         expect(fetch).toHaveBeenCalledTimes(1);
-      } finally { await runtime.shutdown(); }
+      } finally { await executor.shutdown(); }
     });
 
   it('offers the bounded aggregate rather than an offset when the envelope has more', async () => {
     const fetch = replying(envelope([APPROVED], '/api/v2/get_case_statuses&limit=1&offset=1', 0, 1));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_case_statuses'), {}, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_case_statuses'), {});
       expect(result.isError).toBeUndefined();
       const { pagination } = result.structuredContent as { pagination: Record<string, unknown> };
       expect(pagination.has_more).toBe(true);
       expect(pagination.manual_continuation).toBe(false);
       expect(pagination.next_action).toBe('all');
       expect(pagination.next_offset).toBeUndefined();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -239,17 +237,16 @@ describe('T10 case statuses in the shapes the driver reads', () => {
     const fetch = vi.fn()
       .mockImplementationOnce(() => Promise.resolve(json(envelope([APPROVED], '/api/v2/get_case_statuses&limit=1&offset=1', 0, 1))))
       .mockImplementationOnce(() => Promise.resolve(json(envelope([DRAFT], null, 1, 1))));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_case_statuses'),
-        { _mcp: { pagination: 'all' } }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_case_statuses'), { _mcp: { pagination: 'all' } });
       expect(result.isError).toBeUndefined();
       expect(data(result)).toEqual([APPROVED, DRAFT]);
       expect(fetch).toHaveBeenCalledTimes(2);
       expect(requested(fetch, 0)).toMatch(/\/api\/v2\/get_case_statuses$/);
       expect(requested(fetch, 1)).toContain('offset=1');
       expect(requested(fetch, 1)).toContain('limit=1');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -277,13 +274,13 @@ describe('T10 field definitions arrive as TestRail sent them', () => {
   it.each(['testrail_get_case_fields', 'testrail_get_result_fields'] as const)(
     '%s keeps every encoding of project_ids and every option', async (tool) => {
       const fetch = replying([FIELD]);
-      const runtime = runtimeFor(fetch);
+      const executor = executorFor(fetch);
       try {
-        const result = await executeToolCall(operation(tool), {}, { runtime, configuration });
+        const result = await executor.execute(operation(tool), {});
         expect(result.isError).toBeUndefined();
         expect(data(result)).toEqual([FIELD]);
         expect(warnings(result)).toEqual([]);
-      } finally { await runtime.shutdown(); }
+      } finally { await executor.shutdown(); }
     });
 
   /*
@@ -301,13 +298,13 @@ describe('T10 field definitions arrive as TestRail sent them', () => {
       label: 'Preconditions', name: 'preconds', system_name: 'custom_case_preconds', type_id: 3,
     };
     const fetch = replying([documented]);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_case_fields'), {}, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_case_fields'), {});
       expect(result.isError).toBeUndefined();
       expect(data(result)).toEqual([documented]);
       expect(warnings(result)).toEqual([{ code: 'SCHEMA_DRIFT', count: 3 }]);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('keeps a dynamic filter field\'s choices as the newline-separated string TestRail sent', async () => {
@@ -316,14 +313,13 @@ describe('T10 field definitions arrive as TestRail sent them', () => {
       { type_id: 8, system_name: 'updated_on', label: 'Updated On', sub_filters: '1, Is\n2, Is Not\n3, Is Before\n4, Is After' },
     ];
     const fetch = replying(fields);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_dynamic_filter_fields'),
-        { project_id: 3 }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_dynamic_filter_fields'), { project_id: 3 });
       expect(result.isError).toBeUndefined();
       expect(requested(fetch)).toMatch(/\/api\/v2\/get_dynamic_filter_fields\/3$/);
       expect(data(result)).toEqual(fields);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -391,13 +387,13 @@ describe('T10 TestRail\'s documented examples', () => {
     ['testrail_get_version', {}, { version: '10.6.0.1041' }],
   ] as const)('%s returns the documented example unchanged and without drift', async (tool, input, example) => {
     const fetch = replying(example);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), input, { runtime, configuration });
+      const result = await executor.execute(operation(tool), input);
       expect(result.isError).toBeUndefined();
       expect(data(result)).toEqual(example);
       expect(warnings(result)).toEqual([]);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -414,16 +410,16 @@ describe('T10 a project the configured user cannot read', () => {
     ['testrail_get_dynamic_filter_fields', 403, 'PERMISSION_DENIED'],
   ] as const)('%s reports a %i as %s', async (tool, status, code) => {
     const fetch = replying({ error: 'Field :project_id is not a valid or accessible project.' }, status);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), { project_id: 99 }, { runtime, configuration });
+      const result = await executor.execute(operation(tool), { project_id: 99 });
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(result.isError).toBe(true);
       expect(errorOf(result).code).toBe(code);
       expect(errorOf(result).http_status).toBe(status);
       // A read carries no write outcome.
       expect(errorOf(result).write_outcome).toBeUndefined();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -449,23 +445,23 @@ describe('T10 creating a case field', () => {
 
   it('sends TestRail\'s own request example unchanged, choices string included', async () => {
     const fetch = replying(REPLY);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_add_case_field'), { body: REQUEST }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_add_case_field'), { body: REQUEST });
       expect(result.isError).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(requested(fetch)).toMatch(/\/api\/v2\/add_case_field$/);
       expect(JSON.parse(sentText(fetch))).toEqual(REQUEST);
       // The newline travels as a JSON escape inside one string, not as separate choices.
       expect(sentText(fetch)).toContain('"items":"1, One\\n2, Two"');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('returns TestRail\'s documented reply as sent, configs still a string', async () => {
     const fetch = replying(REPLY);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_add_case_field'), { body: REQUEST }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_add_case_field'), { body: REQUEST });
       expect(result.isError).toBeUndefined();
       const reply = data(result) as Record<string, unknown>;
       expect(reply).toEqual(REPLY);
@@ -473,29 +469,28 @@ describe('T10 creating a case field', () => {
       expect(reply.is_active).toBe(1);
       // The documented reply is the shape the driver's reply schema models, so nothing drifts.
       expect(warnings(result)).toEqual([]);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('refuses a type sent as a number before any request, as TestRail would refuse it after one', async () => {
     const fetch = replying(REPLY);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_add_case_field'),
-        { body: { ...REQUEST, type: 12 } }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_add_case_field'), { body: { ...REQUEST, type: 12 } });
       expect(result.isError).toBe(true);
       expect(errorOf(result).code).toBe('INVALID_ARGUMENT');
       expect(errorOf(result).write_outcome).toBe('not_started');
       expect(fetch).not.toHaveBeenCalled();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('forwards a request TestRail refuses on a per-type rule and reports its refusal', async () => {
     // TestRail does not allow default_value on a Multiselect; that rule is TestRail's alone.
     const body = { ...REQUEST, configs: [{ ...REQUEST.configs[0], options: { is_required: false, default_value: '1' } }] };
     const fetch = replying({ error: 'Field :default_value is not allowed for this field type.' }, 400);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_add_case_field'), { body }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_add_case_field'), { body });
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(JSON.parse(sentText(fetch))).toEqual(body);
       expect(result.isError).toBe(true);
@@ -503,7 +498,7 @@ describe('T10 creating a case field', () => {
       expect(errorOf(result).http_status).toBe(400);
       // TestRail's own sentence is not echoed back; the message is this server's.
       expect(JSON.stringify(result.structuredContent)).not.toContain('not allowed');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   // TestRail documents two refusals here, and they reach the caller as two different codes.
@@ -512,13 +507,13 @@ describe('T10 creating a case field', () => {
     [404, 'NOT_FOUND'],
   ] as const)('reports TestRail\'s documented %i as %s', async (status, code) => {
     const fetch = replying({ error: 'Field :type is not a valid field type.' }, status);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_add_case_field'), { body: REQUEST }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_add_case_field'), { body: REQUEST });
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(result.isError).toBe(true);
       expect(errorOf(result)).toMatchObject({ code, http_status: status, write_outcome: 'unknown' });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('publishes the write as neither destructive nor safe to repeat', () => {
@@ -536,11 +531,9 @@ describe('T10 the version is asked for only when a caller asks', () => {
   async function connect(fetch: ReturnType<typeof vi.fn>) {
     const driver = driverFor(fetch);
     const getVersion = vi.spyOn(driver.metadata, 'getVersion');
-    const runtime = createRuntime({ client: driver, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client: driver });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const handle = serveStdio(() => buildServer({
-      configuration, runtime, registry: operationRegistry, stagingDirectory: () => Promise.resolve(base),
-    }), { transport: serverTransport });
+    const handle = serveStdio(() => buildServer({ executor, registry: operationRegistry }), { transport: serverTransport });
     const client = new Client({ name: 't10-version', version: '1.0.0' });
     await client.connect(clientTransport);
     return {
@@ -548,7 +541,7 @@ describe('T10 the version is asked for only when a caller asks', () => {
       close: async () => {
         await client.close().catch(() => undefined);
         await handle.close().catch(() => undefined);
-        await runtime.shutdown();
+        await executor.shutdown();
       },
     };
   }
@@ -603,7 +596,7 @@ describe('T10 the version is asked for only when a caller asks', () => {
     });
 
   /*
-   * startServer composes the driver, runtime and transport over the process's own stdio,
+   * startServer composes the driver, executor and transport over the process's own stdio,
    * so it cannot be started in-process here, and the lifecycle suite that spawns it can
    * see its output but not its requests. The source is the gate for it instead: nothing
    * but the endpoint's own registration may name the endpoint or its driver method.

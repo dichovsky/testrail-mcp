@@ -1,69 +1,116 @@
-import type { Page, TestRailClient } from '@dichovsky/testrail-api-client';
+import { tmpdir } from 'node:os';
+import type { TestRailClient } from '@dichovsky/testrail-api-client';
 import type { Configuration } from '../config/environment.js';
-import type { Limits } from '../config/limits.js';
+import { FIXED_BUDGETS } from '../config/limits.js';
+import { createConfiguredDriver, type DriverSeams } from '../driver/configuration.js';
 import { advisoryWarnings } from '../contracts/drift.js';
 import { AdapterError, classifyError } from '../contracts/errors.js';
-import { aggregateMetadata, pageMetadata } from '../contracts/pagination.js';
 import { errorResult, successResult, validateOuter, type ProtocolResultFields, type ToolResult } from '../contracts/results.js';
 import { writeDownload } from '../files/download.js';
-import { stageUpload, type StagedUpload } from '../files/staging.js';
+import { createStagingArea, recoverAbandonedStaging, stageUpload, type StagedUpload, type StagingArea } from '../files/staging.js';
 import type { CallContext, DriverCall } from '../operations/driver-call.js';
+import { prepareListCall, type ListResult } from '../operations/lists.js';
 import type { Operation } from '../operations/registry.js';
-import type { Runtime } from '../runtime/invocation.js';
-import { correlationId, logEvent } from './diagnostics.js';
+import { createRuntime, type Runtime, type RuntimeDependencies, type RuntimeStats } from '../runtime/invocation.js';
+import { correlationId, logEvent } from '../transport/diagnostics.js';
 
-export interface CallDependencies {
-  readonly runtime: Runtime;
-  readonly configuration: Configuration;
+export interface ExecutionOptions {
   /** Include SDK-owned fields before measuring either complete-result budget. */
   readonly protocolResultFields?: ProtocolResultFields;
-  /** Aborted when the client cancels this request. */
   readonly signal?: AbortSignal;
-  /** Created on first use so a server that never uploads makes no staging directory. */
-  readonly stagingDirectory?: () => Promise<string>;
+}
+
+export interface OperationExecutor {
+  readonly execute: (operation: Operation, input: unknown, options?: ExecutionOptions) => Promise<ToolResult>;
+  readonly shutdown: () => Promise<void>;
+}
+
+/** Production startup recovers abandoned staging before creating the shared driver. */
+export async function createOperationExecutor(
+  configuration: Configuration,
+  driver?: DriverSeams,
+): Promise<OperationExecutor> {
+  const removed = await recoverAbandonedStaging(tmpdir());
+  if (removed > 0) logEvent('staging_recovered', { removed });
+  return assembleOperationExecutor(configuration, {
+    client: createConfiguredDriver(configuration, driver),
+  }).executor;
+}
+
+/** Internal construction seam for driver, clock and filesystem fault tests. */
+export interface ExecutorDependencies {
+  readonly client: TestRailClient;
+  readonly delay?: RuntimeDependencies['delay'];
+  readonly createStaging?: () => Promise<StagingArea>;
+}
+
+/**
+ * Own one runtime and staging lifetime. The read-only observation is for internal
+ * lifetime tests; transport receives only the executor, never the runtime.
+ */
+export function assembleOperationExecutor(
+  configuration: Configuration,
+  dependencies: ExecutorDependencies,
+): { executor: OperationExecutor; stats: () => RuntimeStats } {
+  const runtime = createRuntime({
+    client: dependencies.client, limits: configuration.limits,
+    ...(dependencies.delay === undefined ? {} : { delay: dependencies.delay }),
+  });
+  const createStaging = dependencies.createStaging ?? (() => createStagingArea(tmpdir()));
+  let staging: Promise<StagingArea> | undefined;
+  const stagingDirectory = async (): Promise<string> => {
+    // Share concurrent creation, but retry a failed creation on the next upload.
+    staging ??= createStaging().catch((error: unknown) => {
+      staging = undefined;
+      throw error;
+    });
+    return (await staging).directory;
+  };
+
+  let stopping: Promise<void> | undefined;
+  const shutdown = (): Promise<void> => {
+    stopping ??= (async () => {
+      const drainStarted = performance.now();
+      // Driver destruction can throw. It must not skip staging disposal or escape
+      // into the transport's stop/exit sequence.
+      await runtime.shutdown().catch(() => undefined);
+      if (staging !== undefined) {
+        // A late-created area is still disposed and late failures stay observed.
+        // Directory removal shares the drain budget; it never truncates a copy.
+        const cleanup = staging.then((area) => area.dispose()).catch(() => undefined);
+        const remaining = Math.max(0, FIXED_BUDGETS.shutdown_drain_ms - (performance.now() - drainStarted));
+        let timer: NodeJS.Timeout | undefined;
+        const expired = new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, remaining);
+          timer.unref();
+        });
+        try {
+          await Promise.race([cleanup, expired]);
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+    })();
+    return stopping;
+  };
+  return {
+    executor: {
+      execute: (operation, input, options = {}) => executeOperation(operation, input, {
+        runtime, configuration, stagingDirectory,
+      }, options),
+      shutdown,
+    },
+    stats: runtime.stats,
+  };
+}
+
+interface CallDependencies {
+  readonly runtime: Runtime;
+  readonly configuration: Configuration;
+  readonly stagingDirectory: () => Promise<string>;
 }
 
 type Mode = 'single' | 'page' | 'all';
-
-/** Reserved adapter input; never forwarded to TestRail as a parameter. */
-interface AdapterControls {
-  readonly pagination?: 'page' | 'all';
-  readonly start_offset?: number;
-  readonly max_items?: number;
-  readonly max_pages?: number;
-  readonly max_bytes?: number;
-  readonly max_duration_ms?: number;
-}
-
-/** Each aggregate bound a caller may state, and the configured limit it may not exceed. */
-const aggregateBounds = [
-  ['max_items', 'max_all_items'],
-  ['max_pages', 'max_all_pages'],
-  ['max_bytes', 'max_all_bytes'],
-  ['max_duration_ms', 'max_all_duration_ms'],
-] as const satisfies readonly (readonly [keyof AdapterControls, keyof Limits])[];
-
-/**
- * The operator's configured limit is the bound a caller may lower but never raise.
- *
- * The input schema is built when the module loads, before the configuration is read, so
- * the ceiling it enforces is the built-in default. A stated bound between the configured
- * limit and that default would otherwise pass validation and reach the driver verbatim.
- * It is refused rather than clamped, so the aggregate never quietly does less than the
- * caller asked.
- */
-function refuseBoundsAboveLimits(stated: AdapterControls, limits: Limits): void {
-  for (const [bound, limit] of aggregateBounds) {
-    const value = stated[bound];
-    if (value !== undefined && value > limits[limit]) throw new AdapterError('INVALID_ARGUMENT');
-  }
-}
-
-function controls(input: unknown): AdapterControls {
-  if (typeof input !== 'object' || input === null) return {};
-  const mcp = (input as { _mcp?: unknown })._mcp;
-  return typeof mcp === 'object' && mcp !== null && !Array.isArray(mcp) ? mcp : {};
-}
 
 /**
  * The registry reserves these as flat top-level inputs for upload operations
@@ -94,20 +141,6 @@ function attachmentId(input: unknown): number | string | undefined {
   return typeof value === 'number' || typeof value === 'string' ? value : undefined;
 }
 
-function selectMode(operation: Operation, input: unknown): Mode {
-  if (operation.pagination.kind === 'none') return 'single';
-  return controls(input).pagination === 'all' ? 'all' : 'page';
-}
-
-function selectCall(operation: Operation, mode: Mode): DriverCall {
-  if (operation.pagination.kind === 'none') return operation.pagination.single;
-  return mode === 'all' ? operation.pagination.all : operation.pagination.page;
-}
-
-function isPage(value: unknown): value is Page<unknown> {
-  return typeof value === 'object' && value !== null && Array.isArray((value as { items?: unknown }).items);
-}
-
 /** Whether a preview reply names at least one of its counters with a value. */
 function carriesCount(value: unknown, counters: readonly string[]): boolean {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
@@ -130,10 +163,11 @@ function carriesCount(value: unknown, counters: readonly string[]): boolean {
  * response watchdog and cancellable like the request itself. A call refused at
  * admission copies nothing.
  */
-export async function executeToolCall(
+async function executeOperation(
   operation: Operation,
   input: unknown,
   dependencies: CallDependencies,
+  options: ExecutionOptions,
 ): Promise<ToolResult> {
   const correlation = correlationId();
   const started = Date.now();
@@ -154,25 +188,32 @@ export async function executeToolCall(
    * that nothing was.
    */
   const abandon = new AbortController();
-  const stop = dependencies.signal === undefined
+  const stop = options.signal === undefined
     ? abandon.signal
-    : AbortSignal.any([abandon.signal, dependencies.signal]);
+    : AbortSignal.any([abandon.signal, options.signal]);
 
   try {
-    // Validate before anything is staged or dispatched. The original value is kept:
-    // a parsed clone may drop keys the caller legitimately sent.
-    if (!operation.inputSchema.safeParse(input).success) throw new AdapterError('INVALID_ARGUMENT');
+    // Validate before anything is staged or dispatched. Validation never replaces the
+    // caller's value, so every later step reads the original JSON, own __proto__ keys included.
+    operation.input.validate(input);
 
-    mode = selectMode(operation, input);
-    if (mode === 'all') refuseBoundsAboveLimits(controls(input), limits);
-    const call = selectCall(operation, mode);
+    let call: DriverCall;
+    let listResult: ((value: unknown) => ListResult) | undefined;
+    if (operation.pagination.kind === 'none') {
+      call = operation.pagination.single;
+    } else {
+      const list = prepareListCall(operation.pagination, operation.response.outerSchema, input, limits);
+      mode = list.mode;
+      call = list.call;
+      listResult = list.result;
+    }
     let request: ReturnType<typeof uploadRequest>;
     let stagingDirectory: (() => Promise<string>) | undefined;
 
     if (operation.files.kind === 'upload') {
       request = uploadRequest(input);
       stagingDirectory = dependencies.stagingDirectory;
-      if (request === undefined || stagingDirectory === undefined) {
+      if (request === undefined) {
         throw new AdapterError('FILE_ACCESS_DENIED');
       }
     }
@@ -223,7 +264,7 @@ export async function executeToolCall(
       },
       {
         binary: download,
-        ...(dependencies.signal === undefined ? {} : { signal: dependencies.signal }),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
         /*
          * The staged copy is retained until settlement, not until the result resolves,
          * and this is its only disposer. It runs only once the slot exists, so a call
@@ -247,19 +288,8 @@ export async function executeToolCall(
 
     if (download) {
       // The value is already the written file's identifier, path and size: bytes have no envelope to check.
-    } else if (mode === 'page') {
-      validateOuter(operation.response.outerSchema, value);
-      if (!isPage(value)) throw new AdapterError('INVALID_RESPONSE');
-      data = value.items;
-      pagination = pageMetadata(value, { responseDriven: operation.pagination.kind === 'response_driven' });
-    } else if (mode === 'all') {
-      // The aggregate helper returns a plain array, not the page envelope the
-      // operation's outer schema describes, so that schema does not apply here.
-      if (!Array.isArray(value)) throw new AdapterError('INVALID_RESPONSE');
-      const startOffset = controls(input).start_offset;
-      pagination = aggregateMetadata(value, operation.pagination.kind === 'response_driven'
-        ? {}
-        : { startOffset: startOffset ?? 0 });
+    } else if (listResult !== undefined) {
+      ({ data, pagination } = listResult(value));
     } else {
       validateOuter(operation.response.outerSchema, value);
     }
@@ -272,7 +302,7 @@ export async function executeToolCall(
       data,
       ...(pagination === undefined ? {} : { pagination }),
       ...(warnings.length === 0 ? {} : { warnings }),
-    }, limits, dependencies.protocolResultFields);
+    }, limits, options.protocolResultFields);
 
     logEvent('tool_call', {
       correlation, tool: operation.tool, outcome: 'success',
@@ -294,6 +324,6 @@ export async function executeToolCall(
       code: safe.code, duration_ms: Date.now() - started,
       ...(safe.write_outcome === undefined ? {} : { write_outcome: safe.write_outcome }),
     });
-    return errorResult(safe, dependencies.protocolResultFields);
+    return errorResult(safe, options.protocolResultFields);
   }
 }

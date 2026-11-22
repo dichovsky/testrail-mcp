@@ -25,30 +25,33 @@ Pin `@dichovsky/testrail-api-client` to the qualified published release **9.0.0*
 ```mermaid
 flowchart LR
     Host[Local MCP client] <--> Stdio[Stdio transport]
-    Stdio <--> Runtime[Invocation runtime]
-    Config[Validated process configuration] --> Runtime
-    Runtime <--> Contracts[Input and result contracts]
-    Runtime --> Operations[133 endpoint operations]
+    Stdio <--> Executor[Process-owned operation executor]
+    Config[Validated process configuration] --> Executor
+    Executor <--> Contracts[Input and result contracts]
+    Operations[133 registered endpoint operations] --> Executor
+    Executor --> Runtime[Internal admission and settlement]
     Operations --> Driver[TestRail driver integration]
+    Runtime --> Driver
     Driver <--> TestRail[TestRail API]
-    Operations --> Files[Attachment file service]
+    Executor --> Files[Attachment filesystem algorithms]
     Files <--> Disk[Allowed local directories]
 ```
 
-Proposed source boundaries:
+Source boundaries, updated for [ADR 0004](adr/0004-operation-executor-lifetime.md)'s executor implementation, locally verified on 2026-11-21. The [refactoring record](architecture-refactoring.md#operation-executor) lists the completed gates and resolved independent review:
 
 | Location | Responsibility |
 | --- | --- |
-| `src/cli.ts` | Composition root: load configuration, create the process-owned runtime and driver, start stdio, and coordinate shutdown. |
+| `src/cli.ts` | Executable entry: handle CLI commands, start the server and report sanitized startup failures. |
 | `src/config/` | Parse environment variables and validate immutable instance, credential, directory, and budget configuration. It does not make TestRail requests. |
-| `src/driver/` | Construct and dispose of the required public client; apply supported driver options and expose injection seams for tests. Own the small integration needed for driver errors and invocation-scoped advisory validation. |
-| `src/runtime/` | Admission and capacity accounting, per-call context, budget enforcement, warning isolation, diagnostics, cancellation state, and result/error completion. Own shared execution policy rather than duplicating it across 133 handlers. |
+| `src/driver/` | Validate and construct the required public client with supported driver options and network seams for tests. The executor owns the served client's lifetime. |
+| `src/execution/` | Execute ordinary calls and Attachment transfers; own the driver, runtime and lazy staging area. Validate and prepare before admission, record dispatch and acknowledgement, assemble results, and provide shared bounded shutdown. |
+| `src/runtime/` | Internal admission, capacity accounting, response watchdog, cancellation wait, driver-settlement observation and drain implementation used by the executor. |
 | `src/operations/` | Domain-grouped endpoint definitions and the canonical registry: tool names, route/method identity, effect classification, schemas, pagination capability, annotations, and explicit public driver-method bindings. |
 | `src/contracts/` | Runtime input validation, the stable result wrapper, outer response checks, advisory entity-drift handling, pagination metadata, and sanitized error/warning contracts. |
 | `src/files/` | Upload containment and file validation, download naming and exclusive creation, byte limits, incomplete-file cleanup, and persistent successful files. |
-| `src/transport/` | MCP server construction and registration, SDK stdio wiring, and protocol lifecycle adaptation. It contains no TestRail endpoint logic. |
+| `src/transport/` | Load configuration and create the process executor once; register each protocol server around it. Own SDK stdio wiring, cancellation delivery, the defensive handler-failure guard, protocol close, signals, stdout flushing and process exit. |
 
-Configuration flows into the process runtime once. The server factory registers the same operation catalog around that runtime without contacting TestRail during discovery. The process owns the driver lifetime; construction or disposal of an SDK protocol instance must not accidentally create another credential identity or destroy shared driver state. Endpoint executors use common contracts and policies, with file operations delegated to `src/files/` and all TestRail traffic delegated to the driver.
+Configuration flows into the process executor once. The server factory registers the same operation catalog around that executor without contacting TestRail during discovery. `createOperationExecutor` recovers abandoned staging and constructs the driver; its internal assembly owns runtime and staging lifetimes. The transport interface is `execute(operation, input, options)` and `shutdown()`, with only cancellation and negotiated result fields supplied per call. Construction or disposal of an SDK protocol instance cannot create another credential identity or destroy shared driver state. The executor delegates filesystem algorithms to `src/files/` and all TestRail traffic to the driver. Transport closes protocol intake before executor shutdown, so cancellation reaches active calls before draining.
 
 The registry is the single source for registration, generated endpoint documentation, and coverage comparison. It is not a generic request dispatcher exposed to callers: users provide typed endpoint arguments, never an arbitrary URL or raw driver method name. Shared helpers may encode repeated mechanics, but endpoint-specific requirements remain explicit and independently verified.
 

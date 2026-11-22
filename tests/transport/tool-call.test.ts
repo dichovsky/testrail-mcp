@@ -8,10 +8,8 @@ import { loadConfiguration, type Configuration } from '../../src/config/environm
 import { attachmentIdSchema, filePathSchema, strictObject } from '../../src/contracts/inputs.js';
 import { createStagingArea } from '../../src/files/staging.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
-import { driverCall } from '../../src/operations/driver-call.js';
 import { defineOperation, type Operation, type OperationDefinition } from '../../src/operations/registry.js';
-import { createRuntime, type Runtime } from '../../src/runtime/invocation.js';
-import { executeToolCall } from '../../src/transport/tool-call.js';
+import { createTestExecutor, type TestExecutor } from '../support/executor.js';
 
 let base: string;
 let roots: string;
@@ -49,14 +47,14 @@ const getAttachment = defineOperation({
   inputSchema: downloadInput,
   argumentMap: [{ input: 'attachment_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'binary', outerSchema: z.instanceof(ArrayBuffer), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(downloadInput, 'attachments.getAttachment', (method, input) => method(input.attachment_id)),
-  },
+    single: bind('attachments.getAttachment', (method, input) => method(input.attachment_id)),
+  }),
   files: { kind: 'download' },
   effects: { testRail: 'read', destructive: false, idempotent: false },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition) as Operation;
+} as const satisfies OperationDefinition<string, typeof downloadInput>) as Operation;
 
 /** An upload operation, used to prove the staged copy never outlives a refused call. */
 // The registry reserves these flat names for upload operations.
@@ -71,16 +69,16 @@ const addAttachment = defineOperation({
   inputSchema: uploadInput,
   argumentMap: [{ input: 'case_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: z.record(z.string(), z.unknown()), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(uploadInput, 'attachments.addAttachmentToCase', (method, input, context) =>
+    single: bind('attachments.addAttachmentToCase', (method, input, context) =>
       method(input.case_id, context.upload ?? { path: '' }, input.filename)),
-  },
+  }),
   files: { kind: 'upload', featureFilename: false },
   effects: { testRail: 'write', destructive: false, idempotent: false },
   // The registry requires this: a multipart upload is never retried.
   retry: 'never',
-} as const satisfies OperationDefinition) as Operation;
+} as const satisfies OperationDefinition<string, typeof uploadInput>) as Operation;
 
 /** A plain read, used to occupy execution slots: a download would take the one
  * binary slot instead and the rest would be refused before filling capacity. */
@@ -91,14 +89,14 @@ const getProject = defineOperation({
   inputSchema: projectInput,
   argumentMap: [{ input: 'project_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: z.record(z.string(), z.unknown()), entitySchema: null },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(projectInput, 'projects.getProject', (method, input) => method(input.project_id)),
-  },
+    single: bind('projects.getProject', (method, input) => method(input.project_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition) as Operation;
+} as const satisfies OperationDefinition<string, typeof projectInput>) as Operation;
 
 function binary(bytes: Uint8Array): Response {
   return new Response(bytes, { status: 200, headers: { 'content-type': 'application/octet-stream' } });
@@ -108,7 +106,8 @@ describe('aggregate bounds above the configured limit', () => {
   /*
    * The list schemas cap each bound at the built-in default, because they are built
    * before the configuration is read. Each configured limit here sits below that default,
-   * so a value between the two passes the schema and only the transport can refuse it.
+   * so a value between the two passes the schema and the list's execution policy must
+   * refuse it before the transport requests an execution slot.
    */
   const configured = { max_all_items: 200, max_all_pages: 5, max_all_bytes: 4096, max_all_duration_ms: 9000 };
   const cases = [
@@ -134,21 +133,21 @@ describe('aggregate bounds above the configured limit', () => {
     }), { headers: { 'content-type': 'application/json' } })));
     const client = driver(requests);
     const aggregate = vi.spyOn(client.projects, 'getAllProjects');
-    const runtime = createRuntime({ client, limits: limited.limits });
+    const executor = createTestExecutor({ client, configuration: limited });
+    const admission = vi.spyOn(client, 'trackOperation');
     try {
-      const result = await executeToolCall(getProjects, { _mcp: { pagination: 'all', [bound]: value } }, {
-        runtime, configuration: limited,
-      });
-      return { result, requests, aggregate };
-    } finally { await runtime.shutdown(); }
+      const result = await executor.execute(getProjects, { _mcp: { pagination: 'all', [bound]: value } });
+      return { result, requests, aggregate, admission };
+    } finally { await executor.shutdown(); }
   }
 
-  it.each(cases)('refuses %s above the configured %s before dispatch', async (bound, limit) => {
-    const { result, requests, aggregate } = await call(bound, configured[limit] + 1);
+  it.each(cases)('refuses %s above the configured %s before admission', async (bound, limit) => {
+    const { result, requests, aggregate, admission } = await call(bound, configured[limit] + 1);
     expect(result.isError).toBe(true);
     expect((result.structuredContent as { error: { code: string } }).error.code).toBe('INVALID_ARGUMENT');
     expect(aggregate).not.toHaveBeenCalled();
     expect(requests).not.toHaveBeenCalled();
+    expect(admission).not.toHaveBeenCalled();
   });
 
   // Below the limit as well as at it: a value equal to the limit reaches the driver
@@ -168,13 +167,13 @@ describe('aggregate bounds above the configured limit', () => {
 
 describe('download diagnostics', () => {
   it('logs a successful download without its local path', async () => {
-    const runtime = createRuntime({
+    const executor = createTestExecutor({
       client: driver(() => Promise.resolve(binary(new Uint8Array([1, 2, 3])))),
-      limits: configuration.limits,
+      configuration,
     });
     const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     try {
-      const result = await executeToolCall(getAttachment, { attachment_id: 9 }, { runtime, configuration });
+      const result = await executor.execute(getAttachment, { attachment_id: 9 });
       const path = (result.structuredContent as { data: { file_path: string } }).data.file_path;
       const lines = write.mock.calls.map(([chunk]) => String(chunk));
       expect(lines).toHaveLength(1);
@@ -186,7 +185,7 @@ describe('download diagnostics', () => {
       }
     } finally {
       write.mockRestore();
-      await runtime.shutdown();
+      await executor.shutdown();
     }
   });
 });
@@ -196,21 +195,19 @@ describe('download identifiers', () => {
     ['numeric', 7],
     ['UUID', '4f1b2c3d-5e6f-4a7b-8c9d-0e1f2a3b4c5d'],
   ])('returns the caller %s identifier unchanged', async (_label, identifier) => {
-    const runtime = createRuntime({
+    const executor = createTestExecutor({
       client: driver(() => Promise.resolve(binary(new Uint8Array([1, 2, 3])))),
-      limits: configuration.limits,
+      configuration,
     });
     try {
-      const result = await executeToolCall(getAttachment, { attachment_id: identifier }, {
-        runtime, configuration,
-      });
+      const result = await executor.execute(getAttachment, { attachment_id: identifier });
       expect(result.isError).toBeUndefined();
       const { data } = result.structuredContent as { data: { attachment_id: unknown; bytes: number } };
       // Coercing a UUID to a placeholder would break any caller matching a batch of
       // downloads back to what it requested.
       expect(data.attachment_id).toBe(identifier);
       expect(data.bytes).toBe(3);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -222,31 +219,25 @@ describe('staged uploads', () => {
 
     let release: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => { release = resolve; });
-    const runtime: Runtime = createRuntime({
+    let stagings = 0;
+    const executor: TestExecutor = createTestExecutor({
       client: driver(async () => {
         await gate;
         return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
       }),
-      limits: configuration.limits,
+      configuration, createStaging: () => { stagings += 1; return Promise.resolve(area); },
     });
-
-    let stagings = 0;
-    const dependencies = {
-      runtime, configuration,
-      stagingDirectory: () => { stagings += 1; return Promise.resolve(area.directory); },
-    };
 
     try {
       // Fill every slot so the next call is refused before the driver is ever entered.
       const inflight = Array.from({ length: configuration.limits.max_active_calls }, (_unused, index) =>
-        executeToolCall(getProject, { project_id: index + 1 }, dependencies));
+        executor.execute(getProject, { project_id: index + 1 }));
       await new Promise((resolve) => { setTimeout(resolve, 120); });
-      expect(runtime.stats().active).toBe(configuration.limits.max_active_calls);
+      expect(executor.stats().active).toBe(configuration.limits.max_active_calls);
 
-      const refused = await executeToolCall(
+      const refused = await executor.execute(
         addAttachment,
         { case_id: 1, file_path: source, filename: 'upload.txt' },
-        dependencies,
       );
       expect(refused.isError).toBe(true);
       expect((refused.structuredContent as { error: object }).error)
@@ -264,7 +255,7 @@ describe('staged uploads', () => {
       await Promise.all(inflight);
     } finally {
       release();
-      await runtime.shutdown();
+      await executor.shutdown();
       await area.dispose();
     }
   }, 20_000);
@@ -274,19 +265,17 @@ describe('staged uploads', () => {
     await writeFile(source, 'approved content');
     const area = await createStagingArea(base);
     const fetch = vi.fn(() => Promise.resolve(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })));
-    const runtime = createRuntime({
+    const executor = createTestExecutor({
       client: new TestRailClient({
         baseUrl: configuration.baseUrl, email: configuration.email, apiKey: configuration.apiKey,
         registerProcessHandlers: false, maxRetries: 0,
         dnsLookup: () => Promise.reject(Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' })),
         fetch,
       }),
-      limits: configuration.limits,
+      configuration, createStaging: () => Promise.resolve(area),
     });
     try {
-      const result = await executeToolCall(addAttachment, { case_id: 1, file_path: source, filename: 'dns.txt' }, {
-        runtime, configuration, stagingDirectory: () => Promise.resolve(area.directory),
-      });
+      const result = await executor.execute(addAttachment, { case_id: 1, file_path: source, filename: 'dns.txt' });
       // Decided 2026-10-03 and stated in docs/results-and-errors.md: the driver raises a
       // validation error for the failed lookup, which maps to an internal fault with an
       // unknown write outcome although nothing was sent. The taxonomy has no code for an
@@ -295,11 +284,10 @@ describe('staged uploads', () => {
         error: { code: 'INTERNAL_ERROR', message: 'The server failed to complete the call.', write_outcome: 'unknown' },
       });
       expect(fetch).not.toHaveBeenCalled();
-      await vi.waitFor(() => { expect(runtime.stats().active).toBe(0); });
+      await vi.waitFor(() => { expect(executor.stats().active).toBe(0); });
       expect(await readdir(area.directory)).toEqual(['owner.json']);
     } finally {
-      await runtime.shutdown();
-      await area.dispose();
+      await executor.shutdown();
     }
   });
 
@@ -322,22 +310,22 @@ describe('staged uploads', () => {
       sent = await new Response(init?.body).text();
       return new Response('{"attachment_id":1}', { status: 200, headers: { 'content-type': 'application/json' } });
     });
-    const runtime = createRuntime({
+    const executor = createTestExecutor({
       client: new TestRailClient({
         baseUrl: configuration.baseUrl, email: configuration.email, apiKey: configuration.apiKey,
         registerProcessHandlers: false, maxRetries: 0,
         dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
         fetch,
       }),
-      limits: configuration.limits,
+      configuration, createStaging: () => Promise.resolve(area),
     });
     const cancel = new AbortController();
 
     try {
-      const call = executeToolCall(
+      const call = executor.execute(
         addAttachment,
         { case_id: 1, file_path: source, filename: 'cancelled.txt' },
-        { runtime, configuration, signal: cancel.signal, stagingDirectory: () => Promise.resolve(area.directory) },
+        { signal: cancel.signal },
       );
       await vi.waitFor(() => { expect(fetch).toHaveBeenCalledTimes(1); });
       cancel.abort();
@@ -347,14 +335,13 @@ describe('staged uploads', () => {
       expect(await readdir(area.directory)).toHaveLength(2);
 
       release();
-      await vi.waitFor(() => { expect(runtime.stats().active).toBe(0); });
+      await vi.waitFor(() => { expect(executor.stats().active).toBe(0); });
       expect(sent).toContain('streamed after cancel');
       // Settlement disposes it: only the ownership marker remains.
       expect(await readdir(area.directory)).toEqual(['owner.json']);
     } finally {
       release();
-      await runtime.shutdown();
-      await area.dispose();
+      await executor.shutdown();
     }
   });
 });
@@ -383,35 +370,33 @@ describe('work that never reaches TestRail', () => {
 
   it('reports a write cancelled before dispatch as not started, with no lookup or request', async () => {
     const upstream = counted();
-    const runtime = createRuntime({ client: upstream.client, limits: configuration.limits });
+    const executor = createTestExecutor({ client: upstream.client, configuration });
     try {
-      const result = await executeToolCall(addProject, { body: { name: 'Never sent' } }, {
-        runtime, configuration, signal: AbortSignal.abort(), stagingDirectory: () => Promise.resolve(base),
+      const result = await executor.execute(addProject, { body: { name: 'Never sent' } }, {
+        signal: AbortSignal.abort(),
       });
       expect((result.structuredContent as { error: object }).error)
         .toMatchObject({ code: 'CANCELLED', write_outcome: 'not_started' });
       await new Promise((resolve) => { setTimeout(resolve, 30); });
       expect({ lookups: upstream.lookups, requests: upstream.requests }).toEqual({ lookups: 0, requests: 0 });
-      expect(runtime.stats().active).toBe(0);
-    } finally { await runtime.shutdown(); }
+      expect(executor.stats().active).toBe(0);
+    } finally { await executor.shutdown(); }
   });
 
   it('accepts no transport override from a tool argument', async () => {
     const upstream = counted();
-    const runtime = createRuntime({ client: upstream.client, limits: configuration.limits });
+    const executor = createTestExecutor({ client: upstream.client, configuration });
     try {
       // The only fetch and resolver seams are the composition root's; a caller naming one is refused whole.
       for (const input of [
         { body: { name: 'x' }, fetch: 'https://attacker.example' },
         { body: { name: 'x' }, _mcp: { dnsLookup: '127.0.0.1' } },
       ]) {
-        const result = await executeToolCall(addProject, input, {
-          runtime, configuration, stagingDirectory: () => Promise.resolve(base),
-        });
+        const result = await executor.execute(addProject, input);
         expect((result.structuredContent as { error: object }).error)
           .toMatchObject({ code: 'INVALID_ARGUMENT', write_outcome: 'not_started' });
       }
       expect({ lookups: upstream.lookups, requests: upstream.requests }).toEqual({ lookups: 0, requests: 0 });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });

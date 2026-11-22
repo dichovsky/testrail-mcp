@@ -1,7 +1,7 @@
 import type { Tool, ToolAnnotations } from '@modelcontextprotocol/server';
 import type { z } from 'zod';
-import { inputJsonSchema } from '../contracts/inputs.js';
-import type { DriverBinding, DriverCall } from './driver-call.js';
+import { createInputContract, type InputContract } from '../contracts/input-contract.js';
+import { driverCall, type DriverBinding, type DriverCall, type DriverCallBinder } from './driver-call.js';
 import { InputPaths, isRecord } from './input-paths.js';
 
 export type Family = `T0${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}` | `T${10 | 11 | 12}`;
@@ -51,17 +51,15 @@ export interface ArgumentMapping {
     | 'json-body' | 'multipart' | 'staged-file' | 'aggregate-control';
 }
 
-export interface OperationDefinition<Token extends string = string> {
+interface OperationMetadata<Token extends string = string> {
   readonly token: Token;
   readonly method: HttpMethod;
   readonly route: string;
   readonly family: Family;
   readonly driverBinding: DriverBinding;
   readonly summary: string;
-  readonly inputSchema: z.ZodType<object>;
   readonly argumentMap: readonly ArgumentMapping[];
   readonly response: ResponseContract;
-  readonly pagination: Pagination;
   readonly files: Files;
   readonly effects: {
     readonly testRail: 'read' | 'write' | 'report';
@@ -77,20 +75,34 @@ export interface OperationDefinition<Token extends string = string> {
   readonly retry: 'ordinary-read' | 'json-write' | 'rate-limit-only' | 'never';
 }
 
-export interface Operation<Token extends string = string> extends OperationDefinition<Token> {
+/** Authoring schemas stay here; registration publishes only the finalized contract. */
+export interface OperationDefinition<
+  Token extends string = string,
+  Schema extends z.ZodType<object> = z.ZodType<object>,
+> extends OperationMetadata<Token> {
+  readonly inputSchema: Schema;
+  readonly pagination: (bind: DriverCallBinder<z.output<Schema>>) => Pagination;
+}
+
+interface BoundOperationDefinition<Token extends string = string> extends OperationMetadata<Token> {
+  readonly input: InputContract;
+  readonly pagination: Pagination;
+}
+
+export interface Operation<Token extends string = string> extends BoundOperationDefinition<Token> {
   readonly tool: `testrail_${Token}`;
   readonly description: string;
   readonly annotations: Readonly<ToolAnnotations>;
   readonly jsonSchema: Tool['inputSchema'];
 }
 
-export function operationCalls(operation: OperationDefinition): readonly [CallMode, DriverCall][] {
+export function operationCalls(operation: Pick<BoundOperationDefinition, 'pagination'>): readonly [CallMode, DriverCall][] {
   return operation.pagination.kind === 'none'
     ? [['single', operation.pagination.single]]
     : [['page', operation.pagination.page], ['all', operation.pagination.all]];
 }
 
-function validateDefinition(operation: OperationDefinition): void {
+function validateDefinition(operation: BoundOperationDefinition): void {
   const { token, route, pagination, effects, files } = operation;
   if (!/^[a-z][a-z0-9_]*$/u.test(token) ||
       !new RegExp(`^${token}(?:/\\{[a-z][a-z0-9_]*\\})*$`, 'u').test(route)) {
@@ -104,7 +116,7 @@ function validateDefinition(operation: OperationDefinition): void {
   if (token === 'get_attachment' && files.kind !== 'download') throw new Error('get_attachment must declare persistent download behavior');
   const calls = operationCalls(operation);
   for (const [, call] of calls) {
-    if (call.inputSchema !== operation.inputSchema) throw new Error(`Different call input schema: ${token}`);
+    if (call.input !== operation.input) throw new Error(`Different call input contract: ${token}`);
   }
   if (pagination.kind === 'none' && pagination.single.binding !== operation.driverBinding) {
     throw new Error(`Different endpoint driver binding: ${token}`);
@@ -148,7 +160,7 @@ function validateDefinition(operation: OperationDefinition): void {
   if (effects.testRail === 'write' && files.kind === 'none' && operation.retry !== 'json-write') throw new Error(`Invalid JSON write retry policy: ${token}`);
 }
 
-function describeOperation(operation: OperationDefinition): string {
+function describeOperation(operation: BoundOperationDefinition): string {
   const parts = [operation.summary.trim()];
   const pathNames = [...operation.route.matchAll(/\{([a-z][a-z0-9_]*)\}/gu)].map((match) => match[1]);
   if (pathNames.length > 0) parts.push(`Required path arguments: ${pathNames.join(', ')}.`);
@@ -182,7 +194,7 @@ function objectVariants(paths: InputPaths, schema: unknown): Record<string, unkn
   return variants;
 }
 
-function validateInputLayout(operation: OperationDefinition, schema: Tool['inputSchema']): void {
+function validateInputLayout(operation: BoundOperationDefinition, schema: Tool['inputSchema']): void {
   const pathNames = [...operation.route.matchAll(/\{([a-z][a-z0-9_]*)\}/gu)].map((match) => match[1]);
   const allowed = new Set<string | undefined>([
     ...pathNames, 'query',
@@ -213,10 +225,16 @@ function validateInputLayout(operation: OperationDefinition, schema: Tool['input
   }
 }
 
-export function defineOperation<const Token extends string>(definition: OperationDefinition<Token>): Operation<Token> {
-  validateDefinition(definition);
-  const jsonSchema = inputJsonSchema(definition.inputSchema);
-  validateInputLayout(definition, jsonSchema);
+export function defineOperation<const Token extends string, Schema extends z.ZodType<object>>(
+  definition: OperationDefinition<Token, Schema>,
+): Operation<Token> {
+  const { inputSchema, pagination, ...metadata } = definition;
+  const input = createInputContract(inputSchema);
+  const bind: DriverCallBinder<z.output<Schema>> = (binding, call) => driverCall(input, binding, call);
+  const bound = { ...metadata, input, pagination: pagination(bind) };
+  validateDefinition(bound);
+  const jsonSchema = input.jsonSchema;
+  validateInputLayout(bound, jsonSchema);
   const annotations: Readonly<ToolAnnotations> = Object.freeze({
     readOnlyHint: definition.effects.testRail === 'read' && definition.files.kind === 'none',
     destructiveHint: definition.effects.destructive,
@@ -224,9 +242,9 @@ export function defineOperation<const Token extends string>(definition: Operatio
     openWorldHint: true,
   });
   return Object.freeze({
-    ...definition,
+    ...bound,
     tool: `testrail_${definition.token}`,
-    description: describeOperation(definition),
+    description: describeOperation(bound),
     annotations,
     jsonSchema,
   });

@@ -5,14 +5,11 @@ import {
 } from '@dichovsky/testrail-api-client';
 import { z } from 'zod';
 import {
-  createListInput, idFilterSchema, nonnegativeIntegerSchema, payloadInput, positiveIdSchema, strictObject,
+  idFilterSchema, nonnegativeIntegerSchema, payloadInput, positiveIdSchema, strictObject,
 } from '../../contracts/inputs.js';
-import { driverAllOptions, pageRequestDefaults } from '../../contracts/pagination.js';
-import { driverCall } from '../driver-call.js';
-import { defineOperation, type ArgumentMapping, type OperationDefinition } from '../registry.js';
-import {
-  aggregateControlMappings, allControls, control, flag, pageResponse, recordResponse, softDeletePreview,
-} from './common.js';
+import { defineOperation } from '../registry.js';
+import { createListDefinition, type ListFilters } from '../lists.js';
+import { flag, recordResponse, softDeletePreview } from './common.js';
 
 const getRunInput = strictObject({ run_id: positiveIdSchema });
 
@@ -26,68 +23,34 @@ export const getRun = defineOperation({
   inputSchema: getRunInput,
   argumentMap: [{ input: 'run_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: RunSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getRunInput, 'runs.getRun', (method, input) => method(input.run_id)),
-  },
+    single: bind('runs.getRun', (method, input) => method(input.run_id)),
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 // TestRail documents every creator as a comma-separated list, but the driver's option
 // for this one filter is an array alone, so this tool takes an array rather than
 // widening the value on the way through.
-const getRunsInput = createListInput({
-  path: { project_id: positiveIdSchema },
-  query: {
-    created_after: nonnegativeIntegerSchema.optional(),
-    created_before: nonnegativeIntegerSchema.optional(),
-    created_by: z.array(positiveIdSchema).min(1).optional(),
-    include_plan_runs: z.boolean().optional(),
-    is_completed: z.boolean().optional(),
-    milestone_id: idFilterSchema.optional(),
-    refs: z.string().optional(),
-    suite_id: idFilterSchema.optional(),
-  },
+const getRunsList = createListDefinition({
+  path: { project_id: { schema: positiveIdSchema, argument: 0 } },
   pagination: 'controlled',
+  optionsArgument: 1,
+  filters: {
+    created_after: { schema: nonnegativeIntegerSchema.optional(), property: 'createdAfter', serialization: 'query-scalar' },
+    created_before: { schema: nonnegativeIntegerSchema.optional(), property: 'createdBefore', serialization: 'query-scalar' },
+    created_by: { schema: z.array(positiveIdSchema).min(1).optional(), property: 'createdBy', serialization: 'query-list' },
+    include_plan_runs: { schema: z.boolean().optional(), property: 'includePlanRuns', serialization: 'query-scalar' },
+    is_completed: { schema: z.boolean().optional(), property: 'isCompleted', serialization: 'query-scalar' },
+    milestone_id: { schema: idFilterSchema.optional(), property: 'milestoneId', serialization: 'query-list' },
+    refs: { schema: z.string().optional(), property: 'refs', serialization: 'query-scalar' },
+    suite_id: { schema: idFilterSchema.optional(), property: 'suiteId', serialization: 'query-list' },
+  } satisfies ListFilters<GetRunsOptions>,
+  entitySchema: RunSchema,
 });
-
-/** Derived from the driver's own option type, so a rename there fails the build here. */
-type RunFilter = Omit<GetRunsOptions, 'limit' | 'offset'>;
-
-/*
- * Every value is checked to be an option the driver still has. Deriving the type alone
- * would not do that: the helper below builds its object dynamically, and a record of
- * unknown values stays assignable to a type whose properties are all optional, so a
- * renamed option would silently stop being sent rather than fail to compile.
- */
-const runFilterNames = {
-  created_after: 'createdAfter', created_before: 'createdBefore', created_by: 'createdBy',
-  include_plan_runs: 'includePlanRuns', is_completed: 'isCompleted', milestone_id: 'milestoneId',
-  refs: 'refs', suite_id: 'suiteId',
-} as const satisfies Readonly<Record<string, keyof RunFilter>>;
-
-function runFilter(query: object | undefined): RunFilter {
-  const source = (query ?? {}) as Record<string, unknown>;
-  const filter: Record<string, unknown> = {};
-  for (const [name, option] of Object.entries(runFilterNames)) {
-    if (source[name] !== undefined) filter[option] = source[name];
-  }
-  return filter;
-}
-
-/** Two filters are booleans here and 1 or 0 on the wire; the driver does that conversion. */
-const runListSerialization: Readonly<Record<string, ArgumentMapping['serialization']>> = {
-  created_by: 'query-list', milestone_id: 'query-list', suite_id: 'query-list',
-};
-
-function runFilterMappings(call: 'page' | 'all'): readonly ArgumentMapping[] {
-  return Object.entries(runFilterNames).map(([name, property]) => ({
-    input: `query.${name}`, call, argument: 1, property,
-    serialization: runListSerialization[name] ?? 'query-scalar',
-  }));
-}
 
 export const getRuns = defineOperation({
   token: 'get_runs',
@@ -96,32 +59,20 @@ export const getRuns = defineOperation({
   family: 'T04',
   driverBinding: 'runs.getRuns',
   summary: 'List the test runs of a TestRail project that do not belong to a test plan, unless query.include_plan_runs asks for those as well. Filter by creation time (Unix seconds), creator, completion, milestone, suite or a single reference. Read a plan for the runs inside it.',
-  inputSchema: getRunsInput,
-  argumentMap: [
-    { input: 'project_id', call: 'page', argument: 0, serialization: 'path' },
-    ...runFilterMappings('page'),
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'project_id', call: 'all', argument: 0, serialization: 'path' },
-    ...runFilterMappings('all'),
-    ...aggregateControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: RunSchema },
-  pagination: {
-    kind: 'controlled',
-    page: driverCall(getRunsInput, 'runs.getRunsPage', (method, input) => method(input.project_id, {
-      ...runFilter(input.query),
-      ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    })),
-    all: driverCall(getRunsInput, 'runs.getAllRuns', (method, input, context) => method(input.project_id, {
-      ...runFilter(input.query),
-      ...driverAllOptions(allControls(input._mcp), context.limits),
-    })),
-  },
+  ...getRunsList.bind({
+    page: {
+      binding: 'runs.getRunsPage',
+      call: (method, input, options) => method(input.project_id, options),
+    },
+    all: {
+      binding: 'runs.getAllRuns',
+      call: (method, input, options) => method(input.project_id, options),
+    },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /*
  * The case selection. TestRail reads include_all, case_ids and dynamic_filters together
@@ -156,15 +107,15 @@ export const addRun = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: RunSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(addRunInput, 'runs.addRun', (method, input) => method(input.project_id, input.body)),
-  },
+    single: bind('runs.addRun', (method, input) => method(input.project_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Repeating the call creates another run, so this is not idempotent.
   effects: { testRail: 'write', destructive: false, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateRunInput = strictObject({
   run_id: positiveIdSchema,
@@ -184,10 +135,10 @@ export const updateRun = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: RunSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateRunInput, 'runs.updateRun', (method, input) => method(input.run_id, input.body)),
-  },
+    single: bind('runs.updateRun', (method, input) => method(input.run_id, input.body)),
+  }),
   files: { kind: 'none' },
   /*
    * Applying the same field values again leaves the run in the same state, so this is
@@ -196,7 +147,7 @@ export const updateRun = defineOperation({
    */
   effects: { testRail: 'write', destructive: true, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const closeRunInput = strictObject({ run_id: positiveIdSchema });
 
@@ -210,15 +161,15 @@ export const closeRun = defineOperation({
   inputSchema: closeRunInput,
   argumentMap: [{ input: 'run_id', call: 'single', argument: 0, serialization: 'path' }],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: RunSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(closeRunInput, 'runs.closeRun', (method, input) => method(input.run_id)),
-  },
+    single: bind('runs.closeRun', (method, input) => method(input.run_id)),
+  }),
   files: { kind: 'none' },
   // Archiving cannot be undone, and a second call has nothing left to close.
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const deleteRunInput = strictObject({
   run_id: positiveIdSchema,
@@ -240,17 +191,17 @@ export const deleteRun = defineOperation({
   // Void after a deletion; TestRail's affected-entity counts after a preview, which are
   // drift-checked advisorily and must carry at least one count (see softDeletePreview).
   response: { shape: 'union', outerSchema: z.union([z.undefined(), recordResponse]), entitySchema: null, preview: softDeletePreview },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(deleteRunInput, 'runs.deleteRun', (method, input) => {
+    single: bind('runs.deleteRun', (method, input) => {
       const soft = flag(input.query, 'soft');
       return soft === undefined ? method(input.run_id) : method(input.run_id, { soft });
     }),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'write', destructive: true, idempotent: false },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 // The driver takes this control as the string TestRail reads, not as a boolean, and
 // rejects any other value before dispatch.
@@ -277,50 +228,31 @@ export const getTest = defineOperation({
     { input: 'query.with_data', call: 'single', argument: 1, property: 'withData', serialization: 'query-scalar' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: TestSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(getTestInput, 'tests.getTest', async (method, input) => {
+    single: bind('tests.getTest', async (method, input) => {
       const data = withData(input.query);
       // With the data, the driver assembles one record from TestRail's test, results and
       // attachments, and refuses a reply that is not that shape as an invalid response.
       return data === undefined ? method(input.test_id) : method(input.test_id, { withData: data });
     }),
-  },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
-
-// Both filters are arrays in the driver's option type and comma-joined on the wire.
-const getTestsInput = createListInput({
-  path: { run_id: positiveIdSchema },
-  query: {
-    status_id: z.array(positiveIdSchema).min(1).optional(),
-    label_id: z.array(positiveIdSchema).min(1).optional(),
-  },
-  pagination: 'controlled',
 });
 
-type TestFilter = Omit<GetTestsOptions, 'limit' | 'offset' | 'status_id' | 'label_id'>;
-
-/** Checked against the driver's option type for the same reason as the run filters. */
-const testFilterNames = { status_id: 'statusId', label_id: 'labelId' } as const satisfies Readonly<Record<string, keyof TestFilter>>;
-
-function testFilter(query: object | undefined): TestFilter {
-  const source = (query ?? {}) as Record<string, unknown>;
-  const filter: Record<string, unknown> = {};
-  for (const [name, option] of Object.entries(testFilterNames)) {
-    if (source[name] !== undefined) filter[option] = source[name];
-  }
-  return filter;
-}
-
-function testFilterMappings(call: 'page' | 'all'): readonly ArgumentMapping[] {
-  return [
-    { input: 'query.status_id', call, argument: 1, property: 'statusId', serialization: 'query-list' },
-    { input: 'query.label_id', call, argument: 1, property: 'labelId', serialization: 'query-list' },
-  ];
-}
+// Both filters are arrays in the driver's option type and comma-joined on the wire.
+const getTestsList = createListDefinition({
+  path: { run_id: { schema: positiveIdSchema, argument: 0 } },
+  pagination: 'controlled',
+  optionsArgument: 1,
+  filters: {
+    status_id: { schema: z.array(positiveIdSchema).min(1).optional(), property: 'statusId', serialization: 'query-list' },
+    label_id: { schema: z.array(positiveIdSchema).min(1).optional(), property: 'labelId', serialization: 'query-list' },
+  } satisfies ListFilters<GetTestsOptions>,
+  entitySchema: TestSchema,
+});
 
 export const getTests = defineOperation({
   token: 'get_tests',
@@ -329,32 +261,20 @@ export const getTests = defineOperation({
   family: 'T04',
   driverBinding: 'tests.getTests',
   summary: 'List the tests of a TestRail test run, optionally filtered by current status or by label. Each filter takes a non-empty array of IDs.',
-  inputSchema: getTestsInput,
-  argumentMap: [
-    { input: 'run_id', call: 'page', argument: 0, serialization: 'path' },
-    ...testFilterMappings('page'),
-    { input: 'query.limit', call: 'page', argument: 1, property: 'limit', serialization: 'query-scalar' },
-    { input: 'query.offset', call: 'page', argument: 1, property: 'offset', serialization: 'query-scalar' },
-    { input: 'run_id', call: 'all', argument: 0, serialization: 'path' },
-    ...testFilterMappings('all'),
-    ...aggregateControlMappings(1),
-  ],
-  response: { shape: 'page', outerSchema: pageResponse, entitySchema: TestSchema },
-  pagination: {
-    kind: 'controlled',
-    page: driverCall(getTestsInput, 'tests.getTestsPage', (method, input) => method(input.run_id, {
-      ...testFilter(input.query),
-      ...pageRequestDefaults({ limit: control(input.query, 'limit'), offset: control(input.query, 'offset') }),
-    })),
-    all: driverCall(getTestsInput, 'tests.getAllTests', (method, input, context) => method(input.run_id, {
-      ...testFilter(input.query),
-      ...driverAllOptions(allControls(input._mcp), context.limits),
-    })),
-  },
+  ...getTestsList.bind({
+    page: {
+      binding: 'tests.getTestsPage',
+      call: (method, input, options) => method(input.run_id, options),
+    },
+    all: {
+      binding: 'tests.getAllTests',
+      call: (method, input, options) => method(input.run_id, options),
+    },
+  }),
   files: { kind: 'none' },
   effects: { testRail: 'read', destructive: false, idempotent: true },
   retry: 'ordinary-read',
-} as const satisfies OperationDefinition);
+});
 
 /**
  * A label is named by its ID or its title, as TestRail documents for these two tools.
@@ -385,15 +305,15 @@ export const updateTest = defineOperation({
     { input: 'body', call: 'single', argument: 1, serialization: 'json-body' },
   ],
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: TestSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateTestInput, 'tests.updateTest', (method, input) => method(input.test_id, input.body)),
-  },
+    single: bind('tests.updateTest', (method, input) => method(input.test_id, input.body)),
+  }),
   files: { kind: 'none' },
   // Assigning the same labels again leaves the test in the same state.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 const updateTestsInput = strictObject({
   body: payloadInput(UpdateTestsLabelsPayloadSchema, {
@@ -412,15 +332,15 @@ export const updateTests = defineOperation({
   argumentMap: [{ input: 'body', call: 'single', argument: 0, serialization: 'json-body' }],
   // The acknowledgement, not the tests: it carries the IDs and the labels applied.
   response: { shape: 'record', outerSchema: recordResponse, entitySchema: UpdateTestsResponseSchema },
-  pagination: {
+  pagination: (bind) => ({
     kind: 'none',
-    single: driverCall(updateTestsInput, 'tests.updateTests', (method, input) => method(input.body)),
-  },
+    single: bind('tests.updateTests', (method, input) => method(input.body)),
+  }),
   files: { kind: 'none' },
   // Assigning the same labels again leaves every named test in the same state.
   effects: { testRail: 'write', destructive: false, idempotent: true },
   retry: 'json-write',
-} as const satisfies OperationDefinition);
+});
 
 /** Registered in tool-name order by the registry; listed here in reviewed order. */
 export const t04 = [
