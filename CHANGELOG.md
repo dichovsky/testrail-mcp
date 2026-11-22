@@ -2,7 +2,7 @@
 
 All notable changes to `@dichovsky/testrail-mcp` are recorded here. Versions follow [semantic versioning](https://semver.org/) as [docs/release.md](docs/release.md#versioning-and-compatibility) defines it for this server. Move `Unreleased` entries into a dated version section when preparing a release; the release workflow refuses to publish a version whose section is not dated.
 
-## [Unreleased]
+## [2.0.0] - 2026-11-23
 
 ### Breaking changes
 

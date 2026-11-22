@@ -20,7 +20,7 @@ The 2.0.0 line requires Node 26 or later and is tested on Node 26. The published
 Install an exact version from npm:
 
 ```sh
-npm install --global @dichovsky/testrail-mcp@1.0.0
+npm install --global @dichovsky/testrail-mcp@2.0.0
 testrail-mcp --version
 ```
 
