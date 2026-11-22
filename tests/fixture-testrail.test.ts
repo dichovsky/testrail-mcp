@@ -373,7 +373,8 @@ describe('the stand-in\'s reserved IDs', () => {
     try {
       const begun = performance.now();
       const timed = (promise: Promise<{ structuredContent?: unknown }>) => promise.then((result) => ({ error: payload(result).error, after: performance.now() - begun }));
-      const results = await Promise.all(Array.from({ length: 5 }, () => timed(call('testrail_get_project', { project_id: ID.slow }, production))));
+      const results = await Promise.all(Array.from({ length: 5 }, (_value, index) =>
+        timed(call('testrail_get_project', { project_id: ID.slow + index }, production))));
       const busy = results.filter(({ error }) => error?.code === 'BUSY');
       // The driver gave up waiting, so no status is claimed.
       const timeouts = results.filter(({ error }) => error?.code === 'TIMEOUT' && error.http_status === undefined);
@@ -456,7 +457,7 @@ describe('the stand-in\'s memory of deletions', () => {
     ...(method === 'POST' ? { body: '{}' } : {}),
   });
 
-  it('answers a read of a deleted project, group or attachment as TestRail does only when asked to, until a creation hands its ID out again', async () => {
+  it('remembers deleted IDs and gives each upload a new ID in stateful mode', async () => {
     for (const remember of [false, true]) {
       const standIn = await startFixtureTestRail({ rememberDeletions: remember });
       try {
@@ -469,9 +470,14 @@ describe('the stand-in\'s memory of deletions', () => {
           expect(after.status, label).toBe(remember ? 400 : 200);
           if (remember) expect(await after.json(), label).toEqual({ error: `Field :${kind}_id is not a valid or accessible ${kind}.` });
           else await after.arrayBuffer();
-          // A creation that hands the ID out again brings it back.
-          await (await send(standIn.baseUrl, 'POST', add)).arrayBuffer();
-          expect((await send(standIn.baseUrl, 'GET', `get_${kind}/${id}`)).status, label).toBe(200);
+          const newId = String(((await (await send(standIn.baseUrl, 'POST', add)).json()) as Record<string, unknown>)[field]);
+          if (remember && kind === 'attachment') {
+            expect(newId).not.toBe(id);
+            expect((await send(standIn.baseUrl, 'GET', `get_${kind}/${id}`)).status).toBe(400);
+          } else {
+            expect(newId).toBe(id);
+          }
+          expect((await send(standIn.baseUrl, 'GET', `get_${kind}/${newId}`)).status, label).toBe(200);
         }
       } finally {
         await standIn.close();
@@ -526,7 +532,10 @@ describe('the stand-in\'s paged lists', () => {
     const entries = text.trim().split('\n').map((line) => JSON.parse(line) as Record<string, unknown>);
     expect(entries.length).toBeGreaterThan(133);
     expect(entries.every(({ authorized }) => authorized === true)).toBe(true);
-    for (const entry of entries) expect(Object.keys(entry).sort()).toEqual(['abandoned', 'authorized', 'bytes', 'endpoint', 'method', 'status', 'tool']);
+    for (const entry of entries) {
+      expect(Object.keys(entry).sort()).toEqual(['abandoned', 'authorized', 'bytes', 'endpoint', 'method', 'received_at', 'status', 'tool']);
+      expect(entry.received_at).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/u);
+    }
     expect(entries).toContainEqual(expect.objectContaining({ method: 'GET', endpoint: `get_project/${String(ID.notFound)}`, tool: 'testrail_get_project', status: 404, abandoned: false }));
     expect(entries).toContainEqual(expect.objectContaining({ method: 'POST', endpoint: `add_case/${String(ID.failed)}`, tool: 'testrail_add_case', status: 500, abandoned: false }));
     for (const secret of ['fixture-api-key', 'fixture@example.invalid', 'Basic ', Buffer.from('fixture@example.invalid:fixture-api-key').toString('base64')]) {

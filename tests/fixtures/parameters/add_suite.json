@@ -3,10 +3,10 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "9.0.0",
-    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
+    "driver_version": "10.0.0",
+    "driver_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-10-03",
+    "reviewed_on": "2026-11-22",
     "evidence": [
       {
         "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
@@ -21,6 +21,13 @@
           { "path": "src/modules/suites.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/suites.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
           { "path": "src/schemas/suites.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/suites.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
+      },
+      {
+        "from_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "to_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9", "reviewed_on": "2026-11-22",
+        "files": [
+          { "path": "src/modules/suites.ts", "changed": true, "note": "Soft delete captures the preview mode and passes its optional schema to the request. The soft=1 query and fixture response match the previous contract." },
+          { "path": "src/schemas/suites.ts", "changed": true, "note": "Removed redundant response type declarations. The cited runtime schema and its shipped JavaScript are identical." }
+        ]
       }
     ]
   },
@@ -34,12 +41,12 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/suites.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/modules/suites.ts",
       "supports": "addSuite validates the project ID, places it as the only path segment and sends the payload as the JSON body."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/suites.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/schemas/suites.ts",
       "supports": "AddSuitePayloadSchema requires name and leaves description optional; it permits additional properties."
     },
     {

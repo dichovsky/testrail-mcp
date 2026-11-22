@@ -16,11 +16,11 @@ The first release covers TestRail's **10.7.0** API reference, and its live quali
 
 ## Runtime and component boundaries
 
-Use TypeScript compiled to ESM, with Node engines `>=24`. Run the release test matrix on Node 24; an engine range that admits another Node version is not a claim that it has been certified. The planned npm package is `@dichovsky/testrail-mcp`, exposing the `testrail-mcp` executable.
+Use TypeScript compiled to ESM, with Node engines `>=26`. Run the release test matrix on Node 26; an engine range that admits another Node version is not a claim that it has been certified. The planned npm package is `@dichovsky/testrail-mcp`, exposing the `testrail-mcp` executable.
 
 Use the official `@modelcontextprotocol/server` SDK pinned to **2.3.0**, with `@modelcontextprotocol/client` **2.3.0** for protocol tests. Host the server through `serveStdio(factory)` and retain its default legacy compatibility. Test both the earlier initialization flow and MCP 2026-07-28 discovery; do not assume that a required client uses the modern revision by default. The [released stdio entry point](https://raw.githubusercontent.com/modelcontextprotocol/typescript-sdk/@modelcontextprotocol%2Fserver@2.3.0/packages/server/src/server/serveStdio.ts) supports both.
 
-Pin `@dichovsky/testrail-api-client` to the qualified published release **9.0.0**. It contains the network-guard fixes, the fixes preventing report execution from being cached or coalesced, and the public per-operation result/settlement handle specified in the contracts; without that handle a public method deadline can reject before its DNS/fetch/body descendants settle. Its qualification checks run as standing tests against the installed artifact, with one recorded deviation for rate-limited report retries. Re-run parity and contract tests against any future exact version before release. Do not substitute a floating branch, an independent HTTP implementation, or silent omission of affected endpoints. See [implementation contracts](implementation-contracts.md) and [implementation plan](implementation-plan.md) for the release dependencies and verification.
+Pin `@dichovsky/testrail-api-client` to the qualified published release **10.0.0**. It contains the network-guard fixes, the fixes preventing report execution from being cached or coalesced, and the public per-operation result/settlement handle specified in the contracts; without that handle a public method deadline can reject before its DNS/fetch/body descendants settle. Its qualification checks run as standing tests against the installed artifact, with one recorded deviation for rate-limited report retries. Re-run parity and contract tests against any future exact version before release. Do not substitute a floating branch, an independent HTTP implementation, or silent omission of affected endpoints. See [implementation contracts](implementation-contracts.md) and [implementation plan](implementation-plan.md) for the release dependencies and verification.
 
 ```mermaid
 flowchart LR
@@ -175,7 +175,7 @@ Release acceptance requires:
 - Passing deterministic contracts for every endpoint, including administrative and destructive operations against synthetic upstream fixtures.
 - Passing pagination, field-preservation, response-structure, attachment containment/lifetime, budget, cancellation, and indeterminate-outcome tests.
 - A published, exactly pinned driver release containing the required network and report-execution fixes and public operation-settlement API, followed by rerun integration tests.
-- Passing Node 24 checks and recorded results for each required client surface with the complete catalog.
+- Passing Node 26 checks and recorded results for each required client surface with the complete catalog.
 - A packed npm executable, configuration examples, sanitized diagnostics, and documented TestRail/version/permission limitations that match verified behavior.
 
 Do not turn unavailable live infrastructure or an untested client into a passing result. TestRail permissions and licenses can limit live smoke coverage; distinguish that coverage from the exhaustive fixture-based adapter contract tests. No live production writes are necessary to verify destructive endpoint mappings.

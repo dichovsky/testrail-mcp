@@ -3,10 +3,10 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "9.0.0",
-    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
+    "driver_version": "10.0.0",
+    "driver_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-10-03",
+    "reviewed_on": "2026-11-22",
     "evidence": [
       {
         "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
@@ -23,6 +23,14 @@
           { "path": "src/schemas/results.ts", "changed": true, "note": "Changed between the releases: status_id is optional on the three add payloads, which now carry a refinement requiring at least one of status_id, comment or assignedto_id, and through them the bulk entries. The claim is rewritten for the refinement, which the boundary represents in JSON Schema as anyOf over single-name required lists. EditResultPayloadSchema is unchanged." },
           { "path": "src/schemas/common.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/common.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
+      },
+      {
+        "from_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "to_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9", "reviewed_on": "2026-11-22",
+        "files": [
+          { "path": "src/modules/results.ts", "changed": true, "note": "Result list preparation checks timestamps and ID filters, and edit checks for a defined payload value. The accepted request shapes and parsed result contract match the fixtures." },
+          { "path": "src/schemas/results.ts", "changed": true, "note": "ResultSchema accepts a numeric or object quality rating. EditResultPayloadSchema checks for a defined value, which agrees with the tested JSON bodies." },
+          { "path": "src/schemas/common.ts", "changed": false }
+        ]
       }
     ]
   },
@@ -36,17 +44,17 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/results.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/modules/results.ts",
       "supports": "addResultsForCases validates the run ID, places it as the only path segment of add_results_for_cases, forwards the JSON payload unchanged in one request and parses the reply as an array of results."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/results.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/schemas/results.ts",
       "supports": "AddResultPayloadSchema makes every field optional, accepting status_id, comment, version, elapsed, defects, assignedto_id and a custom_fields record, and refines the payload to need at least one of status_id, comment or assignedto_id. The bulk payloads wrap an array of the same fields under results, each entry additionally requiring test_id or case_id and carrying the same refinement. EditResultPayloadSchema makes every field optional, declares custom_step_results outright and carries no custom_fields record; its refinement rejects an empty payload. None of these is parsed by the public method, which forwards the payload as given, so every payload rule is enforced at the MCP boundary alone."
     },
     {
       "id": "driver-common",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/common.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/schemas/common.ts",
       "supports": "zObject uses passthrough, so the declared payload type admits unknown and custom_ properties alike; the MCP boundary must reject ordinary unknown names separately."
     },
     {

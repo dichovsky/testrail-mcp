@@ -3,10 +3,10 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "9.0.0",
-    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
+    "driver_version": "10.0.0",
+    "driver_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-10-03",
+    "reviewed_on": "2026-11-22",
     "evidence": [
       {
         "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
@@ -29,6 +29,17 @@
           { "path": "src/validation.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/validation.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
           { "path": "src/schemas/attachments.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/attachments.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
+      },
+      {
+        "from_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "to_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9", "reviewed_on": "2026-11-22",
+        "files": [
+          { "path": "src/modules/attachments.ts", "changed": true, "note": "Each upload delegates source ownership to withMultipartUpload before validation. The bound methods keep their route, positional identifiers, multipart parts, and response." },
+          { "path": "src/modules/paginated-list.ts", "changed": true, "note": "The captured request snapshot has a distinct type and assumes the captured path array exists. Its emitted paths, parameters, paging modes, and bounds match the fixtures." },
+          { "path": "src/pagination.ts", "changed": false },
+          { "path": "src/url.ts", "changed": true, "note": "The URL builder also omits null inputs from untyped callers. Accepted query values retain their ordering and scalar, repeated, or comma-separated encoding." },
+          { "path": "src/validation.ts", "changed": true, "note": "IDs and offsets use safe integers, and the driver adds explicit bulk-list and timestamp validators. UUID validation and the accepted ID and paging ranges in the fixtures still apply." },
+          { "path": "src/schemas/attachments.ts", "changed": true, "note": "Removed redundant response type declarations. The cited runtime schema and its shipped JavaScript are identical." }
+        ]
       }
     ]
   },
@@ -42,32 +53,32 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/attachments.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/modules/attachments.ts",
       "supports": "getAttachmentsForCasePage and getAllAttachmentsForCase validate the case ID and place it as the only path segment of get_attachments_for_case; the executor is declared with the attachments collection key and an envelope response, with request controls."
     },
     {
       "id": "driver-paginated-list",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/paginated-list.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/modules/paginated-list.ts",
       "supports": "The executor validates limit and offset before dispatch and appends them after the path. The page helper decodes with the strict page schema; the all helper copies only pageSize, startOffset, maxPages, maxItems, maxDurationMs and maxBytes from its options and runs collectAllPages with request controls."
     },
     {
       "id": "driver-pagination",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/pagination.ts",
       "supports": "decodePage returns a bare array as a legacy-array page and an envelope with its offset, limit, size and _links. collectAllPages defaults pageSize to 250 and startOffset to 0, requires an envelope's offset to equal the offset it asked for, and ends at a legacy array or a null next link."
     },
     {
       "id": "driver-url",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/url.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/url.ts",
       "supports": "buildEndpoint appends controls path-style after an ampersand, skips undefined values and percent-encodes each key and value."
     },
     {
       "id": "driver-validation",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/validation.ts",
-      "supports": "validateId accepts any positive integer: it tests Number.isInteger and has no safe-integer bound, so the largest-safe-integer ceiling on these identifiers is this server's own. validateEntryId accepts only a UUID, case-insensitively, with nothing before or after it; validatePaginationParams holds limit to 1..250 and offset to a non-negative integer."
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/validation.ts",
+      "supports": "validateId requires a positive safe integer. validateEntryId accepts only a UUID, case-insensitively, with nothing before or after it; validatePaginationParams holds limit to 1..250 and offset to a non-negative safe integer."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/attachments.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/schemas/attachments.ts",
       "supports": "AttachmentSchema is one passthrough object for every attachment shape TestRail documents: the upload reply, the legacy case and test entries, the plan, plan-entry and run entries with entity_attachments_id and icon_name, and the 7.1 cloud entries whose id is a UUID string. Every field is nullish and id and entity_id admit a number or a string, so each documented entity parses unchanged."
     },
     {

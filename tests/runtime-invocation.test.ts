@@ -271,7 +271,7 @@ describe('runtime admission and invocation', () => {
         dnsLookup: () => Promise.reject(Object.assign(new Error('getaddrinfo ENOTFOUND'), { code: 'ENOTFOUND' })),
       }),
       (target) => target.projects.getProject(1),
-      /DNS validation failed/u,
+      /Network error: DNS lookup failed/u,
     ],
   ])('observes a result that rejects before the event loop turns: %s', async (_source, instance, call, error) => {
     // The race is the result's only observer, and it subscribes in the turn that

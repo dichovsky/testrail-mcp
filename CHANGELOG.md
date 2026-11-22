@@ -4,6 +4,11 @@ All notable changes to `@dichovsky/testrail-mcp` are recorded here. Versions fol
 
 ## [Unreleased]
 
+### Breaking changes
+
+- Require Node.js 26 or later with TestRail API driver 10.0.0. Install Node 26 before upgrading, then restart the MCP client. Node 24 users can pin 1.0.0.
+- Failed or empty DNS lookups and connections interrupted while reading a successful response now report `INVALID_RESPONSE` with no `http_status`. Affected writes still report `write_outcome: "unknown"`. Eligible reads retry DNS failures.
+
 ### Added
 
 - A self-hosted Proxmox VE script creates a Debian 13 container for the server. MCP clients start it over SSH, the TestRail credentials stay in the container, and Debian security updates install automatically. The script lives in `proxmox/` and is not part of the npm package.

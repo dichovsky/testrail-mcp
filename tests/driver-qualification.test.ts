@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { TestRailClient } from '@dichovsky/testrail-api-client';
+import { TestRailApiError, TestRailClient } from '@dichovsky/testrail-api-client';
 import { describe, expect, it } from 'vitest';
 import { parseInventory } from '../src/operations/parity.js';
 
@@ -15,8 +15,8 @@ const inventory = parseInventory(
 );
 
 const qualified = {
-  version: '9.0.0',
-  integrity: 'sha512-CfGOEAkrEfrJTHaVY57YqzUBla3V0FP0cXXFyEfY7FcW+PdMJBp0Ro39MS9qLdz748X7fKOhdy971mZQ/rzkmg==',
+  version: '10.0.0',
+  integrity: 'sha512-PFMg3PnYaihenrHnbvrtiNRG9YPeRlNx5PizPkWaTzYYKPZk9VjRJOzkIFGRVooXtr26yrXtUdXv3GqJl46nuA==',
 };
 
 function client(fetch: typeof globalThis.fetch, overrides: Record<string, unknown> = {}): TestRailClient {
@@ -114,10 +114,36 @@ describe('F01 published driver qualification', () => {
     )).toBe(2);
   });
 
+  it.each([
+    ['a rejected lookup', () => Promise.reject(new Error('resolver failed'))],
+    ['an empty lookup', () => Promise.resolve([])],
+  ] as const)('limits DNS retries after %s to ordinary reads', async (_, failedLookup) => {
+    const calls: ReadonlyArray<readonly [(instance: TestRailClient) => Promise<unknown>, number]> = [
+      [(instance) => instance.projects.getProject(1), 2],
+      [(instance) => instance.projects.addProject({ name: 'Project' }), 1],
+      [(instance) => instance.reports.runReport(1), 1],
+    ];
+    for (const [call, expectedLookups] of calls) {
+      let lookups = 0;
+      let requests = 0;
+      const instance = client(() => { requests += 1; return Promise.resolve(json({})); }, {
+        maxRetries: 1,
+        dnsLookup: () => { lookups += 1; return failedLookup(); },
+      });
+      try {
+        const result = call(instance);
+        await expect(result).rejects.toBeInstanceOf(TestRailApiError);
+        await expect(result).rejects.toHaveProperty('status', 0);
+        expect(lookups).toBe(expectedLookups);
+        expect(requests).toBe(0);
+      } finally { instance.destroy(); }
+    }
+  });
+
   it('retries a rate-limited report generation, which F01 accepts as safe', async () => {
     // A rate-limited report generation is re-sent: 7.2.0 named the rateLimitOnly policy on
     // the report methods, and 8.0.0 derives it from their side-effecting-read intent.
-    // Accepted 2026-09-17, and unchanged at the 8.0.0 and 9.0.0 re-qualifications on 2026-10-03: TestRail rejects a rate-limited
+    // Accepted 2026-09-17 and rechecked through 10.0.0. TestRail rejects a rate-limited
     // request before handling it, so a re-send cannot generate the report twice or send a
     // duplicate template email. A 5xx stays non-retryable because generation may have
     // begun. Asserted so that an upstream change to this returns for a fresh decision.

@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "review": {
-    "driver_version": "9.0.0",
-    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
+    "driver_version": "10.0.0",
+    "driver_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-10-03",
+    "reviewed_on": "2026-11-22",
     "evidence": [
       {
         "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
@@ -23,6 +23,15 @@
           { "path": "src/utils.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/utils.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
           { "path": "src/modules/cases.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/cases.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
+      },
+      {
+        "from_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "to_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9", "reviewed_on": "2026-11-22",
+        "files": [
+          { "path": "src/validation.ts", "changed": true, "note": "IDs and offsets use safe integers, and the driver adds explicit bulk-list and timestamp validators. UUID validation and the accepted ID and paging ranges in the fixtures still apply." },
+          { "path": "src/pagination.ts", "changed": false },
+          { "path": "src/utils.ts", "changed": true, "note": "serializeIdFilter now rejects non-array objects and checks every list position with safe ID validation. It retains scalar and comma-separated array serialization and omits an empty list." },
+          { "path": "src/modules/cases.ts", "changed": true, "note": "Bulk writes now validate their case IDs, bulk add checks for an empty array, list timestamps are checked, and soft-delete mode is captured before dispatch. The configured bindings and accepted request shapes still match." }
+        ]
       }
     ]
   },
@@ -30,8 +39,8 @@
     "positive_id": {
       "source": {
         "id": "driver-validation",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/validation.ts",
-        "supports": "validateId(id, name) rejects non-numbers, non-integers and values at or below zero. Its name argument only shapes the message, so every identifier in the API shares one domain; it is applied at 129 call sites."
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/validation.ts",
+        "supports": "validateId(id, name) requires a positive safe integer. Its name argument shapes the validation message."
       },
       "probe": {
         "binding": "projects.getProject",
@@ -72,7 +81,7 @@
         {
           "id": "above-upper-bound",
           "kind": "invalid",
-          "description": "Reject a value above the largest safe integer. The driver accepts it, because it checks Number.isInteger rather than Number.isSafeInteger, so this is an MCP boundary check: a value that cannot round-trip through JSON would address a different record than the caller named."
+          "description": "Reject a value above the largest safe integer. The driver also refuses unsafe values through validateId."
         },
         {
           "id": "omitted",
@@ -89,14 +98,14 @@
         { "id": "negative", "value": -1, "requirements": ["invalid"], "rejected_by": "driver" },
         { "id": "fractional", "value": 1.5, "requirements": ["invalid"], "rejected_by": "driver" },
         { "id": "numeric-string", "value": "7", "requirements": ["invalid"], "rejected_by": "driver" },
-        { "id": "above-safe-integer", "value": 9007199254740992, "requirements": ["above-upper-bound"], "rejected_by": "adapter" }
+        { "id": "above-safe-integer", "value": 9007199254740992, "requirements": ["above-upper-bound"], "rejected_by": "driver" }
       ],
       "omitted": { "id": "missing", "requirements": ["required"] }
     },
     "pagination_limit": {
       "source": {
         "id": "driver-validation",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/validation.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/validation.ts",
         "supports": "validatePaginationParams rejects a limit that is not a positive integer, and one above the documented maximum of 250."
       },
       "probe": {
@@ -155,7 +164,7 @@
     "pagination_offset": {
       "source": {
         "id": "driver-validation",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/validation.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/validation.ts",
         "supports": "validatePaginationParams rejects an offset that is not a non-negative integer. Zero is valid and means the first page."
       },
       "probe": {
@@ -208,7 +217,7 @@
     "aggregate_page_size": {
       "source": {
         "id": "driver-pagination",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/pagination.ts",
         "supports": "resolveCollectionOptions validates pageSize as a positive integer not exceeding 250 before the first request, and defaults it to 250."
       },
       "probe": {
@@ -239,7 +248,7 @@
     "aggregate_start_offset": {
       "source": {
         "id": "driver-pagination",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/pagination.ts",
         "supports": "resolveCollectionOptions validates startOffset as a non-negative safe integer before the first request, defaults it to 0, and requires the first envelope's offset to equal it."
       },
       "probe": {
@@ -268,7 +277,7 @@
     "aggregate_max_items": {
       "source": {
         "id": "driver-pagination",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/pagination.ts",
         "supports": "resolveCollectionOptions validates maxItems as a positive safe integer before the first request and defaults it to 25,000. The adapter's aggregateLimitDefaults (src/contracts/inputs.ts) caps what a caller may request at 1,000, and DEFAULT_LIMITS forwards 1,000 when the caller sets none."
       },
       "probe": {
@@ -299,7 +308,7 @@
     "aggregate_max_pages": {
       "source": {
         "id": "driver-pagination",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/pagination.ts",
         "supports": "resolveCollectionOptions validates maxPages as a positive safe integer before the first request and defaults it to 100. The adapter's aggregateLimitDefaults caps what a caller may request at 20, and DEFAULT_LIMITS forwards 20 when the caller sets none."
       },
       "probe": {
@@ -329,7 +338,7 @@
     "aggregate_max_bytes": {
       "source": {
         "id": "driver-pagination",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/pagination.ts",
         "supports": "resolveCollectionOptions validates maxBytes as a positive safe integer not exceeding 1 GiB before the first request and defaults it to 100 MiB. The adapter's aggregateLimitDefaults caps what a caller may request at 1 MiB, and DEFAULT_LIMITS forwards 1 MiB when the caller sets none."
       },
       "probe": {
@@ -359,7 +368,7 @@
     "aggregate_max_duration_ms": {
       "source": {
         "id": "driver-pagination",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/pagination.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/pagination.ts",
         "supports": "resolveCollectionOptions validates maxDurationMs as a positive safe integer not exceeding five minutes before the first request and defaults it to five minutes. The adapter's aggregateLimitDefaults caps what a caller may request at 45,000 ms, and DEFAULT_LIMITS forwards 45,000 when the caller sets none."
       },
       "probe": {
@@ -389,7 +398,7 @@
     "id_filter": {
       "source": {
         "id": "driver-utils",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/utils.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/utils.ts",
         "supports": "serializeIdFilter(value, name) accepts one identifier or an array of them, validates each member with validateId, joins an array with commas, and returns undefined for an empty array so the filter is omitted from the request."
       },
       "probe": {
@@ -409,7 +418,7 @@
         { "id": "list", "kind": "valid", "description": "Accept several identifiers and send them comma-joined." },
         { "id": "upper-bound", "kind": "valid", "description": "Accept the largest safe integer, which is the largest value that can round-trip through JSON." },
         { "id": "invalid", "kind": "invalid", "description": "Reject a representative invalid value or list member before driver invocation." },
-        { "id": "above-upper-bound", "kind": "invalid", "description": "Reject a value above the largest safe integer, alone or as a member. The driver checks Number.isInteger only, so this is an MCP boundary check." },
+        { "id": "above-upper-bound", "kind": "invalid", "description": "Reject a value above the largest safe integer, alone or as a member. The driver also requires safe integer identifiers." },
         { "id": "empty-list", "kind": "invalid", "description": "Reject an empty list rather than letting the driver drop the filter." },
         { "id": "omitted", "kind": "omitted", "description": "Omit the filter entirely when the caller did not supply it rather than sending a default." }
       ],
@@ -428,24 +437,24 @@
         { "id": "zero", "value": 0, "requirements": ["invalid"], "rejected_by": "driver" },
         { "id": "negative", "value": -1, "requirements": ["invalid"], "rejected_by": "driver" },
         { "id": "fractional", "value": 1.5, "requirements": ["invalid"], "rejected_by": "driver" },
-        { "id": "numeric-string", "value": "7", "requirements": ["invalid"], "rejected_by": "driver_crash" },
+        { "id": "numeric-string", "value": "7", "requirements": ["invalid"], "rejected_by": "driver" },
         { "id": "zero-member", "value": [3, 0], "requirements": ["invalid"], "rejected_by": "driver" },
         { "id": "string-member", "value": ["3"], "requirements": ["invalid"], "rejected_by": "driver" },
         { "id": "fractional-member", "value": [1.5], "requirements": ["invalid"], "rejected_by": "driver" },
-        { "id": "above-safe-integer", "value": 9007199254740992, "requirements": ["above-upper-bound"], "rejected_by": "adapter" },
-        { "id": "above-safe-member", "value": [9007199254740992], "requirements": ["above-upper-bound"], "rejected_by": "adapter" },
+        { "id": "above-safe-integer", "value": 9007199254740992, "requirements": ["above-upper-bound"], "rejected_by": "driver" },
+        { "id": "above-safe-member", "value": [9007199254740992], "requirements": ["above-upper-bound"], "rejected_by": "driver" },
         { "id": "empty", "value": [], "requirements": ["empty-list"], "rejected_by": "adapter" }
       ]
     },
     "unix_timestamp": {
       "source": {
         "id": "driver-module",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/cases.ts",
-        "supports": "The get_cases preparation forwards createdAfter, createdBefore, updatedAfter and updatedBefore to the query unchanged and applies no validation to them, so their domain is held entirely at the MCP boundary."
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/modules/cases.ts",
+        "supports": "The get_cases preparation applies validateTimestamp to createdAfter, createdBefore, updatedAfter and updatedBefore and forwards accepted values unchanged."
       },
       "probe": {
         "binding": "cases.getCasesPage",
-        "note": "Proven through createdAfter. The driver accepts every invalid value below, which the library records rather than implies."
+        "note": "The public createdAfter filter exercises timestamp validation before dispatch. Body fields that receive no driver validation state their own override."
       },
       "domain": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
       "semantics": "Seconds since the Unix epoch, as TestRail documents its timestamp filters. No coercion; zero is the epoch and is sent.",
@@ -454,7 +463,7 @@
         { "id": "valid", "kind": "valid", "description": "Accept a representative timestamp." },
         { "id": "zero", "kind": "valid", "description": "Accept zero, the epoch, and send it rather than treating it as absent." },
         { "id": "upper-bound", "kind": "valid", "description": "Accept the largest safe integer, which is the largest value that can round-trip through JSON." },
-        { "id": "invalid", "kind": "invalid", "description": "Reject a negative, fractional or string value before driver invocation; the driver would forward each of them." },
+        { "id": "invalid", "kind": "invalid", "description": "Reject a negative, fractional or string value before driver invocation." },
         { "id": "above-upper-bound", "kind": "invalid", "description": "Reject a value above the largest safe integer, which cannot round-trip through JSON." },
         { "id": "omitted", "kind": "omitted", "description": "Omit the filter entirely when the caller did not supply it rather than sending a default." }
       ],
@@ -464,21 +473,21 @@
         { "id": "largest-safe", "value": 9007199254740991, "requirements": ["upper-bound"] }
       ],
       "invalid": [
-        { "id": "negative", "value": -1, "requirements": ["invalid"], "rejected_by": "adapter" },
-        { "id": "fractional", "value": 1646317844.5, "requirements": ["invalid"], "rejected_by": "adapter" },
-        { "id": "numeric-string", "value": "1646317844", "requirements": ["invalid"], "rejected_by": "adapter" },
-        { "id": "above-safe-integer", "value": 9007199254740992, "requirements": ["above-upper-bound"], "rejected_by": "adapter" }
+        { "id": "negative", "value": -1, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "fractional", "value": 1646317844.5, "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "numeric-string", "value": "1646317844", "requirements": ["invalid"], "rejected_by": "driver" },
+        { "id": "above-safe-integer", "value": 9007199254740992, "requirements": ["above-upper-bound"], "rejected_by": "driver" }
       ]
     },
     "case_ids": {
       "source": {
         "id": "driver-module",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/cases.ts",
-        "supports": "getCaseTitles refuses an empty list and validates every member with validateId before joining them with commas. The bulk case payload schemas declare case_ids as an array of numbers and forward it unchecked; the MCP boundary holds each member to the identifier domain and requires at least one."
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/modules/cases.ts",
+        "supports": "getCaseTitles refuses an empty list and validates every member with validateId before joining them with commas. The four bulk case methods call validateIdList and forward the accepted nonempty safe identifier list unchanged."
       },
       "probe": {
         "binding": "cases.getCaseTitles",
-        "note": "The public title lookup takes the list positionally and validates it the way the bulk endpoints need, so it proves the domain without a payload. It is the query-side proof only: the bulk bodies that also reference this domain are forwarded unchecked, which each body reference records in its semantics and with rejected_by, so their guarantee is the adapter's alone. Passing a bare number crashes the lookup rather than failing a stated check, which its own entry records."
+        "note": "The public title lookup takes the list positionally and checks its members. A bare number crashes this probe. The bulk write methods explicitly reject a bare number, as their overrides record."
       },
       "domain": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 } },
       "semantics": "A non-empty list of case identifiers. Sent comma-joined as a query control by get_case_titles and as a JSON array in every bulk body.",
@@ -487,7 +496,7 @@
         { "id": "valid", "kind": "valid", "description": "Accept a representative list of identifiers." },
         { "id": "upper-bound", "kind": "valid", "description": "Accept a member equal to the largest safe integer." },
         { "id": "invalid", "kind": "invalid", "description": "Reject a list with a non-positive, fractional or string member, or a value that is not a list, before driver invocation." },
-        { "id": "above-upper-bound", "kind": "invalid", "description": "Reject a member above the largest safe integer. The driver checks Number.isInteger only, so this is an MCP boundary check." },
+        { "id": "above-upper-bound", "kind": "invalid", "description": "Reject a member above the largest safe integer. The driver also requires safe integer identifiers." },
         { "id": "empty", "kind": "invalid", "description": "Reject an empty list; there is nothing to act on and TestRail answers 400." },
         { "id": "required", "kind": "required", "description": "Reject a missing list." }
       ],
@@ -502,14 +511,14 @@
         { "id": "fractional-member", "value": [1.5], "requirements": ["invalid"], "rejected_by": "driver" },
         { "id": "string-member", "value": ["42"], "requirements": ["invalid"], "rejected_by": "driver" },
         { "id": "scalar", "value": 42, "requirements": ["invalid"], "rejected_by": "driver_crash" },
-        { "id": "above-safe-member", "value": [9007199254740992], "requirements": ["above-upper-bound"], "rejected_by": "adapter" }
+        { "id": "above-safe-member", "value": [9007199254740992], "requirements": ["above-upper-bound"], "rejected_by": "driver" }
       ],
       "omitted": { "id": "missing", "requirements": ["required"] }
     },
     "entry_id": {
       "source": {
         "id": "driver-validation",
-        "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/validation.ts",
+        "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/validation.ts",
         "supports": "validateEntryId tests the value against a case-insensitive RFC 4122 layout anchored at both ends and rejects anything else before a request is issued. The comment records why a plain string is refused: a plan-entry identifier reaches the URL path, so accepting arbitrary text would let a traversal sequence be injected into it."
       },
       "probe": {

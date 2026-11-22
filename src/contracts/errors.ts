@@ -73,10 +73,17 @@ export interface ErrorContext {
   readonly acknowledged: boolean;
   /** The call was an all-mode aggregate, whose own deadline the driver may report as a timeout. */
   readonly aggregate?: boolean;
+  /** The registered TestRail endpoint token, without the MCP tool prefix. */
+  readonly token?: string;
 }
 
 /** Driver aggregation stops that are a safety bound rather than a broken response. */
 const BOUND_REASONS = new Set(['max_pages', 'max_items', 'max_bytes', 'max_duration']);
+
+/** Single-resource reads used to verify qualification cleanup. */
+const CLEANUP_READ_RESOURCES = new Map([
+  ['get_project', 'project'], ['get_group', 'group'], ['get_attachment', 'attachment'],
+]);
 
 /*
  * The driver bounds each request inside an aggregate with timers set to the budget that
@@ -142,6 +149,21 @@ function classifyApi(error: TestRailApiError): ErrorCode {
   return 'UPSTREAM_ERROR';
 }
 
+function isMissingResourceResponse(error: TestRailApiError, token: string | undefined): boolean {
+  if (error.status !== 400 || typeof error.response !== 'string' || token === undefined) return false;
+  const resource = CLEANUP_READ_RESOURCES.get(token);
+  if (resource === undefined) return false;
+  try {
+    const body: unknown = JSON.parse(error.response);
+    if (typeof body !== 'object' || body === null) return false;
+    const message: unknown = Object.getOwnPropertyDescriptor(body, 'error')?.value;
+    return message === `Field :${resource}_id is not a valid ${resource}.`
+      || message === `Field :${resource}_id is not a valid or accessible ${resource}.`;
+  } catch {
+    return false;
+  }
+}
+
 function codeFor(error: unknown): ErrorCode {
   if (error instanceof AdapterError) return error.code;
   if (error instanceof RuntimeError) return error.code;
@@ -153,9 +175,8 @@ function codeFor(error: unknown): ErrorCode {
   }
   if (error instanceof TestRailApiError) return classifyApi(error);
   // Inputs are validated before invocation, so a driver parameter rejection here
-  // means the adapter mapped them wrongly. That is ours, not TestRail's. A host the
-  // driver refuses to reach (a failed, empty or private lookup) is the same class and
-  // also lands here, kept as INTERNAL_ERROR on 2026-10-03; see docs/results-and-errors.md.
+  // means the adapter mapped them wrongly. A malformed or private resolver answer
+  // also lands here. Driver 10 classifies failed or empty lookups as network errors.
   if (error instanceof TestRailValidationError) return 'INTERNAL_ERROR';
   return 'INTERNAL_ERROR';
 }
@@ -186,6 +207,10 @@ export function classifyError(error: unknown, context: ErrorContext): SafeError 
     safe.reason = error.reason;
     if (Number.isSafeInteger(error.pagesFetched)) safe.pages_fetched = error.pagesFetched;
     if (Number.isSafeInteger(error.itemsFetched)) safe.items_fetched = error.itemsFetched;
+  }
+  if (code === 'UPSTREAM_ERROR' && !context.mutates && context.dispatched && !context.acknowledged
+    && error instanceof TestRailApiError && isMissingResourceResponse(error, context.token)) {
+    safe.reason = 'resource_not_found';
   }
   const outcome = writeOutcome(context);
   if (outcome !== undefined) safe.write_outcome = outcome;

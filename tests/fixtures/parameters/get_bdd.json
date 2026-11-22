@@ -3,10 +3,10 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "9.0.0",
-    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
+    "driver_version": "10.0.0",
+    "driver_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-10-03",
+    "reviewed_on": "2026-11-22",
     "evidence": [
       {
         "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
@@ -21,6 +21,13 @@
           { "path": "src/modules/bdd.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/bdd.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
           { "path": "src/client-core.ts", "changed": true, "note": "Changed between the releases: request() now starts the attempt timer before the host guard's DNS lookup and races it, connects through a dispatcher pinned to the validated DNS answers when the guard runs (not with allowPrivateHosts), labels a timer the aggregate budget owns as its duration stop, normalizes a fetch rejection that is not an Error, watches a multipart upload's transport so an aborted upload closes its part cleanly, and sends a single-token User-Agent. The text pipeline cited here still returns the raw response body unparsed." }
         ]
+      },
+      {
+        "from_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "to_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9", "reviewed_on": "2026-11-22",
+        "files": [
+          { "path": "src/modules/bdd.ts", "changed": true, "note": "BDD writes use the shared multipart lifetime and advise against CaseSchema within the request. BDD list refs use an array check and retain the scalar and repeated query names." },
+          { "path": "src/client-core.ts", "changed": true, "note": "The request core now classifies failed DNS as a network error and tracks multipart transport through a shared lifetime. Report intent, rate-limit handling, and the cited request shapes still match the fixtures." }
+        ]
       }
     ]
   },
@@ -34,12 +41,12 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/bdd.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/modules/bdd.ts",
       "supports": "getBdd validates the case ID, places it as the only path segment and dispatches with responseKind 'text', which keeps the retry, rate-limit and timeout pipeline of a JSON read but reads the body as text. The method is documented as returning the feature file body, an empty string when the case has no scenario."
     },
     {
       "id": "driver-client",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/client-core.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/client-core.ts",
       "supports": "The text pipeline returns the raw response body without parsing it, so nothing between TestRail and the caller can alter the Gherkin."
     },
     {

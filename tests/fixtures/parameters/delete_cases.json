@@ -3,10 +3,10 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "9.0.0",
-    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
+    "driver_version": "10.0.0",
+    "driver_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-10-03",
+    "reviewed_on": "2026-11-22",
     "evidence": [
       {
         "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
@@ -21,13 +21,20 @@
           { "path": "src/modules/cases.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/cases.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
           { "path": "src/schemas/cases.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/cases.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
+      },
+      {
+        "from_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "to_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9", "reviewed_on": "2026-11-22",
+        "files": [
+          { "path": "src/modules/cases.ts", "changed": true, "note": "Bulk writes now validate their case IDs, bulk add checks for an empty array, list timestamps are checked, and soft-delete mode is captured before dispatch. The configured bindings and accepted request shapes still match." },
+          { "path": "src/schemas/cases.ts", "changed": true, "note": "Bulk case schemas now require nonempty positive safe identifier arrays, and the add comment describes the existing wire wrapper. The reviewed MCP shape already meets those requirements." }
+        ]
       }
     ]
   },
   "endpoint": { "family_id": "T02", "http_method": "POST", "route": "delete_cases/{suite_id}", "tool": "testrail_delete_cases", "driver_method": "cases.deleteCases" },
   "sources": [
-    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/cases.ts", "supports": "deleteCases validates the suite and project IDs, sends the suite in the path and project_id as a query control followed by soft=1 only when the soft option is true, forwards the JSON body unchanged, resolves with no value after a deletion and with the parsed preview after a soft request." },
-    { "id": "driver-schema", "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/cases.ts", "supports": "DeleteCasesPayloadSchema declares case_ids as an array of numbers and refines away a body-level soft key, because TestRail toggles the preview through the query and a pasted example must not turn a preview into a deletion. That refinement belongs to the exported type: the public method forwards the payload without parsing it, so the rule is enforced at the MCP boundary alone. SoftDeletePreviewSchema describes the optional affected counts." },
+    { "id": "driver-module", "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/modules/cases.ts", "supports": "deleteCases validates the suite and project IDs and the case_ids list, sends the suite in the path and project_id as a query control followed by soft=1 only when the soft option is true, forwards the JSON body unchanged, resolves with no value after a deletion and with the parsed preview after a soft request." },
+    { "id": "driver-schema", "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/schemas/cases.ts", "supports": "DeleteCasesPayloadSchema declares a nonempty case_ids array of positive safe integers and refines away a body-level soft key, because TestRail toggles the preview through the query and a pasted example must not turn a preview into a deletion. That refinement belongs to the exported type: the public method forwards the payload without parsing it, so the rule is enforced at the MCP boundary alone. SoftDeletePreviewSchema describes the optional affected counts." },
     { "id": "testrail-cases", "url": "https://support.testrail.com/hc/en-us/articles/7077292642580-Cases", "supports": "delete_cases/{suite_id}&soft=1 deletes multiple cases from a project or suite and cannot be undone; case_ids and project_id are required, suite_id is required in multi-suite mode, and soft=1 returns information about the data that would be deleted without proceeding." }
   ],
   "input_policy": { "ordinary_fields": "reject", "custom_fields": "reject", "notes": "Strictness is an MCP boundary requirement at every depth. The suite is a path argument, the project and the preview flag are query controls, and the body carries only the case identifiers. A body-level soft key is refused here rather than forwarded, matching the refinement the driver's exported payload type declares but never runs." },
@@ -83,8 +90,8 @@
       ]
     },
     {
-      "id": "body.case_ids", "input_path": ["body", "case_ids"], "scope": "body", "requiredness": "required", "domain_ref": "case_ids", "rejected_by": "adapter",
-      "semantics": "The cases to delete. The driver forwards the payload unchecked, so the boundary holds every member to the identifier domain and requires at least one; the list is sent as a JSON array.",
+      "id": "body.case_ids", "input_path": ["body", "case_ids"], "scope": "body", "requiredness": "required", "domain_ref": "case_ids", "rejected_by": { "scalar": "driver" },
+      "semantics": "The cases to delete. The boundary and driver require a nonempty list of positive safe integers, sent as a JSON array.",
       "driver": { "argument": 2, "path": ["case_ids"] },
       "wire": { "location": "json", "names": ["case_ids"], "encoding": "JSON array of integers under case_ids." },
       "sources": ["driver-module", "driver-schema", "testrail-cases"]

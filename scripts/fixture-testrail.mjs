@@ -219,9 +219,9 @@ const json = (body) => ({ kind: 'json', body });
 /*
  * TestRail answers a read of a project, group or attachment it has deleted with a 400, as it
  * answers any ID it does not have, and the live runner checks its cleanup that way. With
- * `rememberDeletions` the stand-in does the same. It hands every creation the same few IDs,
- * so it remembers a deletion only until a creation hands that ID out again. Without it, the
- * stand-in keeps no state, and every request gets its fixture's reply.
+ * `rememberDeletions` the stand-in does the same. New uploads receive distinct attachment IDs.
+ * It remembers a project or group deletion until a creation hands that ID out again.
+ * Without it, the stand-in keeps no state, and every request gets its fixture's reply.
  */
 const DELETES = { testrail_delete_project: 'project', testrail_delete_group: 'group', testrail_delete_attachment: 'attachment' };
 const READS = { testrail_get_project: 'project', testrail_get_group: 'group', testrail_get_attachment: 'attachment' };
@@ -245,6 +245,7 @@ export async function startFixtureTestRail({
   const routes = await loadRoutes();
   const requests = [];
   const deleted = new Set();
+  let nextAttachmentId = 443;
   // A log that cannot be written is refused now, not discovered on the first request.
   if (log !== undefined) {
     try {
@@ -255,6 +256,7 @@ export async function startFixtureTestRail({
   }
 
   const server = createServer((request, response) => {
+    const receivedAt = new Date().toISOString();
     const chunks = [];
     request.on('data', (chunk) => { chunks.push(chunk); });
     request.on('end', () => {
@@ -293,7 +295,9 @@ export async function startFixtureTestRail({
           status = 400;
           reply = json({ error: `Field :${READS[route.tool]}_id is not a valid or accessible ${READS[route.tool]}.` });
         } else {
-          if (reserved !== undefined && DELAYS_MS[reserved] !== undefined) await sleep(DELAYS_MS[reserved] * delayScale);
+          // Distinct C10 project IDs exercise four real requests, even if identical reads coalesce.
+          const delay = /^get_project\/99002[1-4]$/u.test(path) ? DELAYS_MS[RESERVED.slow] : DELAYS_MS[reserved];
+          if (delay !== undefined) await sleep(delay * delayScale);
           reply = route.reply;
           if (reply.kind === 'json') {
             let body = reply.body;
@@ -305,14 +309,17 @@ export async function startFixtureTestRail({
             if (reserved === RESERVED.drift) body = withDrift(body);
             reply = json(body);
           }
-          if (rememberDeletions && DELETES[route.tool] !== undefined) deleted.add(`${DELETES[route.tool]}:${String(segments[0])}`);
-          const [made, field] = CREATES[route.tool] ?? [];
-          if (made !== undefined && reply.kind === 'json') deleted.delete(`${made}:${String(reply.body?.[field])}`);
+          if (rememberDeletions) {
+            if (DELETES[route.tool] !== undefined) deleted.add(`${DELETES[route.tool]}:${String(segments[0])}`);
+            const [made, field] = CREATES[route.tool] ?? [];
+            if (made === 'attachment') reply = json({ ...reply.body, [field]: nextAttachmentId++ });
+            else if (made !== undefined) deleted.delete(`${made}:${String(reply.body?.[field])}`);
+          }
         }
         const entry = { method: request.method, endpoint: path + (query.length === 0 ? '' : `&${query.join('&')}`),
           tool: route?.tool ?? null, status, authorized: typeof request.headers.authorization === 'string', bytes: Buffer.concat(chunks).length,
           // A client that gave up, such as the driver at its request timeout, never gets the status.
-          abandoned: response.destroyed };
+          abandoned: response.destroyed, received_at: receivedAt };
         requests.push(entry);
         let logFailure;
         if (log !== undefined) await appendFile(log, `${JSON.stringify(entry)}\n`).catch((error) => { logFailure = error; });

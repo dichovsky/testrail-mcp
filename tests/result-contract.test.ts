@@ -492,11 +492,11 @@ describe('F05 result evidence through registered tools', () => {
      * A connection that breaks after the headers. The driver keeps an error reply's status
      * and drops only its text, so the status decides the code: a whole licence text sent
      * before the break is lost, and the reply is a plain 403. A success body that breaks
-     * reaches the adapter as the raw fetch error.
+     * reaches the adapter as a status-zero network error.
      */
     ['a 500 reply whose body breaks', () => Promise.resolve(breaking(500, '{"error":"x"}')), { code: 'UPSTREAM_ERROR', http_status: 500 }],
     ['a 403 licence reply whose body breaks', () => Promise.resolve(breaking(403, '{"error":"Not an Enterprise license/subscription."}')), { code: 'PERMISSION_DENIED', http_status: 403 }],
-    ['a 200 reply whose body breaks', () => Promise.resolve(breaking(200, '{"id":')), { code: 'INTERNAL_ERROR' }],
+    ['a 200 reply whose body breaks', () => Promise.resolve(breaking(200, '{"id":')), { code: 'INVALID_RESPONSE' }],
   ] as const)('reports a JSON write whose reply is lost to %s as unknown, sent once', async (_label, respond, error) => {
     const fetch = vi.fn(respond);
     const client = new TestRailClient({

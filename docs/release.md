@@ -15,7 +15,7 @@ Versions follow semantic versioning, applied to what a client and its model depe
 - **TestRail.** The tools cover TestRail's 10.7.0 API reference. 10.8.1 is the baseline, the version the live qualification runs against. Older versions are best effort: a tool the instance does not support fails with TestRail's own error, and the server never hides it.
 - **TypeScript.** TypeScript 7 (`typescript`) builds the package and runs `typecheck`.
 - **Lint.** `oxlint` with `oxlint-tsgolint` runs type-aware lint on its own embedded TypeScript 7 checker, so it needs no `typescript` package. Both are pinned exactly and updated together.
-- **Node.** The engine range is `>=24`, which the pinned driver 9.0.0 requires as well. CI runs the newest 24 release on Linux, macOS and Windows. Later majors satisfy the range but are untested and best effort.
+- **Node.** The engine range is `>=26`, which the pinned driver 10.0.0 requires as well. CI runs the newest Node 26 release on Linux, macOS and Windows. Later majors satisfy the range but are untested and best effort.
 - **Driver.** Each release pins one exact, qualified driver version. The pin changes only with the review that [driver qualification](driver-qualification.md) describes.
 
 ## One-time setup
@@ -55,50 +55,33 @@ The Publish workflow publishes with `--ignore-scripts`, which runs no package sc
 
 ### Prepare
 
-1. **Gates.**
-   - CI passes on `main`.
-   - Every required client has its record in [client evidence](evidence/clients/), or the owner has decided to release without it and the release notes say so. For 1.0.0 the owner closed [R02](https://github.com/dichovsky/testrail-mcp/issues/23) with Claude Code recorded, Codex CLI owner-reported, and Codex desktop and Copilot CLI not tested.
-   - The live TestRail qualification evidence is complete: a [live qualification](live-qualification.md) record for 10.8.1 with no `fail`, made with the driver the release pins (its `server.driver_version`), and every `blocked` or `not_run` tool explained and listed as a known limitation in the release notes.
-   - [Client configuration](client-compatibility.md) and the [release gates](implementation-plan.md#release-gates-and-evidence) list what each must contain.
-2. **Version pull request.** Choose a stable version newer than every published stable version. Set it with `npm version X.Y.Z --no-git-tag-version --ignore-scripts`, which updates `package.json` and both root version fields of `package-lock.json`. Move the `Unreleased` entries into a [changelog](../CHANGELOG.md) section headed `## [X.Y.Z] - YYYY-MM-DD`, using the release version and date. Merge the pull request once CI passes on Linux, macOS and Windows, then fetch `main` and check CI on the merge commit.
+1. Merge the migration with green offline checks on Linux, macOS and Windows. Run the independent driver ledger and production dependency audits during release preparation. Publish repeats the release audits.
+2. Open the version pull request. Use `npm version 2.0.0 --no-git-tag-version --ignore-scripts`, update the README's install example, and move the Unreleased changelog entries into a dated 2.0.0 section. Merge after CI passes and wait for green CI on the merge commit.
+3. Run [Prepare Candidate](../.github/workflows/prepare-candidate.yml) on that commit from `main`. It uses Node 26.13.1 and npm 11.20.0. Download `candidate.tgz` and `candidate.json` from the same successful run attempt and keep them together for qualification and publication. Start qualification after that attempt finishes. If you prepare the candidate again, use the new attempt's files and rerun qualification, even if the tarball digest stays the same.
+4. Run [client qualification](client-runbook.md) for Claude Code, Codex desktop, Codex CLI and Copilot CLI on Node 26. Run [live TestRail 10.8.1 qualification](live-qualification.md) with the same candidate. Run the [Proxmox rehearsal](../proxmox/README.md#release-rehearsal) on disposable guests. The 1.0.0 evidence and its exceptions remain part of that release's record.
+5. Assemble a sanitized `qualification.json` with `schema_version: 1`, a `clients` array of four evidence records, and the `live` record produced by the packaged runner. Each record identifies the same commit, tarball integrity, Prepare Candidate run ID and attempt. Client records also include the actual version in `client.node_machine_version`, the C10 trace facts, and run start and finish times. Use the live runner's complete record, including its version check, planned steps, cleanup dispositions and sanitized readbacks.
 
 ### Publish
 
-1. **Tag** the verified merge commit as `release/X.Y.Z` and push the tag. Never move an existing release tag.
+1. Tag the verified candidate commit `release/2.0.0` and push that tag. Make a draft GitHub Release for the existing tag. Attach `candidate.json`, `candidate.tgz`, and `qualification.json`. Review the assets for credentials and instance data before making them public.
+2. Generate the release notes from the dated changelog and append the live limitations block. Set `CANDIDATE_DIR` to the directory holding the two files downloaded from Prepare Candidate. The local check validates the files and records. Publish also checks the original GitHub Actions artifact and its recorded lifetime.
 
    ```sh
-   git fetch origin main --tags
-   git tag release/X.Y.Z <merge commit>
-   git push origin release/X.Y.Z
+   node scripts/release-notes.mjs release/2.0.0 > release-notes.md
+   node scripts/release-evidence.mjs limitations qualification.json >> release-notes.md
+   node scripts/release-evidence.mjs check "$CANDIDATE_DIR" qualification.json release-notes.md
    ```
 
-2. **Publish a stable GitHub Release** for that existing tag, with the changelog section as its notes, marked latest. `--verify-tag` refuses to create a tag, so a typo cannot release another commit. `scripts/release-notes.mjs` prints the section and refuses a tag that does not match `package.json` or a section that is missing or undated; it points the section's relative links at the tagged tree.
+3. Publish the draft GitHub Release. The read-only Verify job checks the tag and compares the release assets with the successful Prepare Candidate attempt. It independently rebuilds the tagged source and checks the archive digest. The qualification records must fall within the candidate's verified lifetime. The live run must observe TestRail 10.8.1 and account for the planned steps. It must create and delete its project and record a confirmed absence for each successful project, group, or attachment creation. Any created group or attachment must finish with a successful planned or cleanup deletion. Publish matches each attachment's deletion and readback to its plan label. It requires zero cleanup residue and rejects successful steps that leave a generated report, user, or case field behind. The live limitations block must match the evidence.
+4. Approve the protected npm job after Verify passes. This job rehashes the verified tarball, checks that the Prepare Candidate artifact is still within its lifetime, and uploads those same bytes through trusted publishing. It checks npm's version, `latest`, `gitHead`, and tarball integrity, then checks the provenance subject, repository, tagged ref, workflow path, and source commit. The already-published path requires the same identity.
+5. Verify a clean install of the published version and both protocol eras. Use the SHA-512 integrity from `candidate.json`.
 
    ```sh
-   node scripts/release-notes.mjs release/X.Y.Z > release-notes.md
-   gh release create release/X.Y.Z --verify-tag --title X.Y.Z --latest --notes-file release-notes.md
+   node scripts/verify-published.mjs @dichovsky/testrail-mcp@2.0.0 \
+     --version 2.0.0 --integrity "$QUALIFIED_INTEGRITY" --require-provenance
    ```
 
-3. **Follow the Publish run, and approve it.** It runs two jobs:
-
-| Job | Permission | What it does |
-| --- | --- | --- |
-| `verify` | `contents: read` | Before any repository code runs, checks that the event is a published, stable release, that the tag is `release/X.Y.Z`, and that the tag, the event's commit and the checkout are one commit reachable from `main`. Then, with `scripts/release-preflight.mjs context`, it checks that `package.json` and the lockfile name this package at that version, and that npm and Node support trusted publishing. It requires the version's dated changelog section, then runs every gate: build, registry check, typecheck, lint, the tests with coverage, `npm audit --omit=dev`, and the packed-package smoke test. `scripts/release-preflight.mjs registry` then asks npm, with an isolated configuration, whether the version is published. A new version must be newer than `latest` and every published stable version. An identical release (same `gitHead`, `latest`, provenance and files) is skipped. Any other answer stops the release. Last, it archives the tested `dist` with its SHA-256 |
-| `publish` | `contents: read`, `id-token: write`, in `npm-publish` | Waits for approval. Repeats the identity check before any repository code runs, verifies the archive's SHA-256 and paths, and restores the tested `dist`. It installs and runs no repository or dependency code. With an empty npm configuration it re-checks that the version is absent and still newer than what npm holds, then publishes with `--provenance --ignore-scripts`. Afterwards it waits up to five minutes for npm to report the version, the release commit as `gitHead`, the version as `latest` and an SLSA provenance attestation, and checks with `npm diff` that every published file is the tested build |
-
-Check the approval gate while the run waits; this, not this guide, says what the gate is:
-
-```sh
-gh api repos/dichovsky/testrail-mcp/actions/runs/<run-id>/pending_deployments
-```
-
-### Verify after publication
-
-- Require the whole Publish run to succeed.
-- Install the published version into a clean directory and drive it, with `node scripts/verify-published.mjs @dichovsky/testrail-mcp@X.Y.Z --version X.Y.Z --require-provenance`. It checks that npm holds a provenance attestation and that the installed executable serves all 133 tools over MCP in both protocol eras.
-- Confirm the GitHub Release is public, stable and latest, and points at the verified commit.
-
-If publication or its verification fails, look at the exact version on npm before anything else: npm may accept an upload while the version still answers 404 during processing. Never publish again under the same version. Re-run the whole workflow, `verify` included: re-running `publish` alone reuses its earlier decision and fails the version-absence check. `verify` recognises an already published release only when its identity, provenance, `latest` and files all match. If the published package itself is faulty, never unpublish it. Fix forward with a new patch version, and deprecate the faulty one if users should avoid it.
+If publication or verification fails, inspect the exact version on npm before retrying. npm can accept an upload before the version appears in metadata. Re-run the whole workflow, starting with Verify. A faulty published artifact is fixed by a new patch version and can be deprecated if users should avoid it. Users on Node 24 can install the exact 1.0.0 release.
 
 ## Dependency maintenance
 
