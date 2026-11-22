@@ -118,7 +118,10 @@ The TestRail domain terms (Test Case, Test Run, Test, Test Result, Attachment, C
 - Headings stay as they are, because GitHub creates link anchors from them and other documents link to those anchors.
 - Table rows that a test asserts stay as they are.
 - The prompts in the client runbook stay as they are, because the client scenarios use the exact text.
-- Some table cells contain more than one sentence, because a Markdown table cell cannot contain a vertical list.
+- Some table cells contain more than one sentence, because a Markdown table cell cannot contain a vertical list. Some cells are lists of nouns, which stay as they are.
+- Quoted text stays as it is: test titles, TestRail messages and the driver's match phrases. Some sentences that contain a quote are longer than the limit.
+- "cancelled" keeps its British spelling, because the error code `CANCELLED` and the MCP notification `notifications/cancelled` use it.
+- Older sentences that were not rewritten can keep British spelling (for example "behaviour" or "licence"). Use US spelling when you rewrite such a sentence.
 
 ## Validation
 
