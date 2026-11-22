@@ -38,7 +38,7 @@ The driver receives a path, never an adapter-owned descriptor. Ownership of such
 
 Where inode identity is meaningful, the opened handle is checked against the path it came from after opening. Thus, a file replaced once it is open is caught. Identities are compared exactly, as 64-bit values. A Windows (NTFS) file ID routinely exceeds 2^53. At that size, a JavaScript number would round two different files to the same identity.
 
-`O_NOFOLLOW` refuses a final component swapped for a symlink before the open (the open fails with `ELOOP`), where the platform provides the flag. Neither closes every window. A regular file swapped in between resolution and open is read. So is an intermediate directory replaced by a symlink, because `O_NOFOLLOW` guards only the last component. Those are races that a process running as the same user would have to win. This layer does not claim to prevent these races. Such a process could as easily copy any file that it can read into a root.
+`O_NOFOLLOW` refuses a final component swapped for a symlink before the open (the open fails with `ELOOP`), where the platform provides the flag. Neither the identity check nor `O_NOFOLLOW` closes every window. A regular file swapped in between resolution and open is read. So is an intermediate directory replaced by a symlink, because `O_NOFOLLOW` guards only the last component. Those are races that a process running as the same user would have to win. This layer does not claim to prevent these races. Such a process could as easily copy any file that it can read into a root.
 
 On Windows, the flag does not exist. The open follows a swapped-in link, and the identity check is what refuses the swap. That check runs only if the platform reports a file ID.
 
@@ -81,7 +81,7 @@ The descriptor behavior was measured on Linux with Node 22.22.2 and 24.21.0. The
 
 ## Recovery deletes only what it can prove
 
-At startup, the executor calls recovery before it constructs the shared driver. Recovery removes an abandoned staging directory only with positive evidence. The evidence is:
+At startup, the executor calls recovery before it constructs the shared driver. Recovery removes an abandoned staging directory only with all of this positive evidence:
 
 - the staging name prefix;
 - our marker;

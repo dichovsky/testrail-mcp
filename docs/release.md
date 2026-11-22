@@ -47,7 +47,7 @@ npm allows a trusted publisher only on a package that already exists. Thus, the 
 
 When you run `npm publish` from a working tree, it first runs `scripts/check-publish.mjs`. This check runs before the build. The check refuses:
 
-- the `-dev` version of the tree, under all tags;
+- the `-dev` version of the tree, whatever the tag;
 - a pre-release without a `--tag` other than `latest`. npm 10 publishes such a pre-release under `latest`. npm 11 refuses it without `--tag`, but only after the build.
 
 The Publish workflow publishes with `--ignore-scripts`. This flag runs no package scripts, so the check does not apply to the workflow. `--ignore-scripts` skips both the check and the build.
@@ -58,7 +58,7 @@ The Publish workflow publishes with `--ignore-scripts`. This flag runs no packag
 
 1. **Gates.**
    - CI passes on `main`.
-   - Each required client has its record in [client evidence](evidence/clients/). Alternatively, the owner decided to release without the record, and the release notes say so. For 1.0.0, the owner closed [R02](https://github.com/dichovsky/testrail-mcp/issues/23). Claude Code was recorded, Codex CLI was owner-reported, and Codex desktop and Copilot CLI were not tested.
+   - Each required client has its record in [client evidence](evidence/clients/). Alternatively, the owner decided to release without the record, and the release notes say so. For 1.0.0, the owner closed [R02](https://github.com/dichovsky/testrail-mcp/issues/23) with these results: Claude Code was recorded, Codex CLI was owner-reported, and Codex desktop and Copilot CLI were not tested.
    - The live TestRail qualification evidence is complete. It has these properties:
      - A [live qualification](live-qualification.md) record for 10.8.1 has no `fail`.
      - The record was made with the driver that the release pins (its `server.driver_version`).

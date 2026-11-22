@@ -61,7 +61,7 @@ The composition root exits 250 ms after shutdown completes and stdout has flushe
 
 A host that never reads keeps the process alive until it reads or closes the pipe. With a request hung upstream and stdout draining, the process exits about 5.3 seconds after stdin closes or `SIGINT` or `SIGTERM` arrives.
 
-The signal handlers stay installed for the whole shutdown. Thus, a second signal waits for the same shutdown instead of killing the process before the client is destroyed. Transport absorbs a connection-close failure. The executor absorbs driver-destruction and staging-disposal failures. Thus, when destruction throws, an initialized staging area is still disposed, the stop is still logged and the exit is still scheduled.
+The signal handlers stay installed for the whole shutdown. Thus, a second signal waits for the same shutdown instead of killing the process before the client is destroyed. Transport absorbs a connection-close failure. The executor absorbs driver-destruction and staging-disposal failures. Thus, an initialized staging area is still disposed when destruction throws. The stop is still logged and the exit is still scheduled.
 
 A failed attempt to create the staging area is forgotten, so the next upload tries again instead of inheriting the failure. Concurrent uploads share an in-flight staging creation.
 
@@ -91,9 +91,9 @@ These regressions passed locally on 2026-11-21. The [refactoring plan](architect
 
 Releasing on `result` and ignoring cleanup also fail tests in the pipeline suites below.
 
-A yield to the event loop before the race fails the three "observes a result that rejects before the event loop turns" cases. It fails no other test in this file. Its "still held" checks after the watchdog, a cancellation or an aggregate deadline pause before they look. Thus, a slot released one timer tick after the caller is answered fails each of them.
+A yield to the event loop before the race fails the three "observes a result that rejects before the event loop turns" cases. It fails no other test in this file. The "still held" checks in this file, after the watchdog, a cancellation or an aggregate deadline, pause before they look. Thus, a slot released one timer tick after the caller is answered fails each of them.
 
-Its aggregates get a one-second budget. The tests count the requests before they check a slot or a cleanup. Thus, a budget spent before dispatch appears as a missing request.
+The aggregates in this file get a one-second budget. The tests count the requests before they check a slot or a cleanup. Thus, a budget spent before dispatch appears as a missing request.
 
 `tests/runtime-lifetime.test.ts` proves the same rules through the production registrations and the tool pipeline. Thus, a registration or pipeline stage that released capacity early would fail there even with the runtime intact. It fills all four slots with `testrail_get_project` held past the watchdog and with `testrail_get_projects` in all mode held past its own deadline. It shows that the next call is `BUSY` with no new request until real settlement. It covers these cases:
 

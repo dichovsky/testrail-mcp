@@ -91,4 +91,4 @@ After you add an entry to `src/operations/catalog.ts`, run `npm run registry:gen
 - identity or binding differences;
 - stale reference output.
 
-R01 switched it to this full-catalog mode after all families were registered. `tests/regression-gates.test.ts` repeats the missing, extra and binding checks inside the test suite. Thus, an endpoint dropped from the catalog fails there even if the reference is regenerated to match. Only `registry:check` compares the reference itself. Pending endpoint and parameter counts must never be presented as completed coverage.
+R01 switched `registry:check` to this full-catalog mode after all families were registered. `tests/regression-gates.test.ts` repeats the missing, extra and binding checks inside the test suite. Thus, an endpoint dropped from the catalog fails there even if the reference is regenerated to match. Only `registry:check` compares the reference itself. Pending endpoint and parameter counts must never be presented as completed coverage.
