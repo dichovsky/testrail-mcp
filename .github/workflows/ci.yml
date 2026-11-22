@@ -37,17 +37,17 @@ jobs:
 
       - name: Fetch locked dependencies and packed-install metadata
         shell: bash
+        env:
+          NPM_CONFIG_CACHE: ${{ runner.temp }}/testrail-npm-cache
         run: |
           npm ci --ignore-scripts --no-audit --no-fund --engine-strict
-          prefix=$(node -p "require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'testrail-mcp-cache-'))")
-          trap 'node -e "require(\"node:fs\").rmSync(process.argv[1], { recursive: true, force: true })" "$prefix"' EXIT
-          node -e 'require("node:fs").writeFileSync(require("node:path").join(process.argv[1], "package.json"), JSON.stringify({ private: true, dependencies: require("./package.json").dependencies }))' "$prefix"
-          npm install --prefix "$prefix" --ignore-scripts --no-audit --no-fund --engine-strict
+          node scripts/prime-package-cache.mjs
 
       - name: Verify offline with isolated networking and coverage
         if: runner.os == 'Linux'
         shell: bash
         env:
+          NPM_CONFIG_CACHE: ${{ runner.temp }}/testrail-npm-cache
           TESTRAIL_MCP_REPORT_DIR: ${{ runner.temp }}/coverage-reports
         run: |
           namespace=testrail-mcp-ci
@@ -57,6 +57,7 @@ jobs:
           sudo ip -n "$namespace" address add 203.0.113.10/32 dev lo
           sudo ip netns exec "$namespace" sudo -u "$(id -un)" env \
             HOME="$HOME" PATH="$PATH" npm_config_offline=true VITEST_MAX_WORKERS=3 \
+            NPM_CONFIG_CACHE="$NPM_CONFIG_CACHE" \
             GITHUB_ACTIONS="$GITHUB_ACTIONS" GITHUB_EVENT_NAME="$GITHUB_EVENT_NAME" GITHUB_EVENT_PATH="$GITHUB_EVENT_PATH" GITHUB_SHA="$GITHUB_SHA" \
             TESTRAIL_MCP_REPORT_DIR="$TESTRAIL_MCP_REPORT_DIR" TESTRAIL_MCP_GUARDED_TEST_ADDRESS=203.0.113.10 \
             bash -e -c '
@@ -77,6 +78,7 @@ jobs:
         shell: bash
         env:
           npm_config_offline: 'true'
+          NPM_CONFIG_CACHE: ${{ runner.temp }}/testrail-npm-cache
           VITEST_MAX_WORKERS: '3'
           TESTRAIL_MCP_REPORT_DIR: ${{ runner.temp }}/coverage-reports
         run: |
