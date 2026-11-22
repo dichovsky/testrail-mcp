@@ -58,16 +58,54 @@ The Publish workflow publishes with `--ignore-scripts`. This flag runs no packag
 
 ### Prepare
 
-1. Merge the migration with green offline checks on Linux, macOS and Windows. Run the independent driver ledger and production dependency audits during release preparation. Publish repeats the release audits.
-2. Open the version pull request. Use `npm version 2.0.0 --no-git-tag-version --ignore-scripts`, update the README's install example, and move the Unreleased changelog entries into a dated 2.0.0 section. Merge after CI passes and wait for green CI on the merge commit.
-3. Run [Prepare Candidate](../.github/workflows/prepare-candidate.yml) on that commit from `main`. It uses Node 26.13.1 and npm 11.20.0. Download `candidate.tgz` and `candidate.json` from the same successful run attempt and keep them together for qualification and publication. Start qualification after that attempt finishes. If you prepare the candidate again, use the new attempt's files and rerun qualification, even if the tarball digest stays the same.
-4. Run [client qualification](client-runbook.md) for Claude Code, Codex desktop, Codex CLI and Copilot CLI on Node 26. Run [live TestRail 10.8.1 qualification](live-qualification.md) with the same candidate. Run the [Proxmox rehearsal](../proxmox/README.md#release-rehearsal) on disposable guests. The 1.0.0 evidence and its exceptions remain part of that release's record.
-5. Assemble a sanitized `qualification.json` with `schema_version: 1`, a `clients` array of four evidence records, and the `live` record produced by the packaged runner. Each record identifies the same commit, tarball integrity, Prepare Candidate run ID and attempt. Client records also include the actual version in `client.node_machine_version`, the C10 trace facts, and run start and finish times. Use the live runner's complete record, including its version check, planned steps, cleanup dispositions and sanitized readbacks.
+1. Merge the migration after the offline checks pass on Linux, macOS and Windows. During release preparation, do these audits:
+   - Run the independent driver ledger audit.
+   - Run the production dependency audits.
+
+   The Publish workflow repeats the release audits.
+2. Open the version pull request:
+   1. Run `npm version 2.0.0 --no-git-tag-version --ignore-scripts`.
+   2. Update the install example in the README.
+   3. Move the Unreleased changelog entries into a dated 2.0.0 section.
+   4. Merge the pull request after CI passes.
+   5. Wait until CI passes on the merge commit.
+3. Run [Prepare Candidate](../.github/workflows/prepare-candidate.yml) on that commit from `main`. The workflow uses Node 26.13.1 and npm 11.20.0.
+   1. Download `candidate.tgz` and `candidate.json` from the same successful run attempt.
+   2. Keep the two files together for qualification and publication.
+   3. Start qualification after that attempt finishes.
+
+   If you prepare the candidate again, use the files of the new attempt. Then run qualification again, even if the tarball digest stays the same.
+4. Qualify the candidate:
+   - Run [client qualification](client-runbook.md) for Claude Code, Codex desktop, Codex CLI and Copilot CLI on Node 26.
+   - Run [live TestRail 10.8.1 qualification](live-qualification.md) with the same candidate.
+   - Run the [Proxmox rehearsal](../proxmox/README.md#release-rehearsal) on disposable guests.
+
+   The 1.0.0 evidence and its exceptions stay part of the record of that release.
+5. Assemble a sanitized `qualification.json` with these contents:
+   - `schema_version: 1`;
+   - a `clients` array of four evidence records;
+   - the `live` record that the packaged runner produced.
+
+   Each record identifies the same commit, tarball integrity, Prepare Candidate run ID and attempt. Client records also include these items:
+   - the actual version in `client.node_machine_version`;
+   - the C10 trace facts;
+   - the start and finish times of the run.
+
+   Use the complete record of the live runner. This record includes its version check, planned steps, cleanup dispositions and sanitized readbacks.
 
 ### Publish
 
-1. Tag the verified candidate commit `release/2.0.0` and push that tag. Make a draft GitHub Release for the existing tag. Attach `candidate.json`, `candidate.tgz`, and `qualification.json`. Review the assets for credentials and instance data before making them public.
-2. Generate the release notes from the dated changelog and append the live limitations block. Set `CANDIDATE_DIR` to the directory holding the two files downloaded from Prepare Candidate. The local check validates the files and records. Publish also checks the original GitHub Actions artifact and its recorded lifetime.
+1. Make the draft release:
+   1. Tag the verified candidate commit `release/2.0.0`.
+   2. Push that tag.
+   3. Make a draft GitHub Release for the existing tag.
+   4. Attach `candidate.json`, `candidate.tgz` and `qualification.json`.
+   5. Examine the assets for credentials and instance data before you make them public.
+2. Prepare the release notes and check the evidence:
+   1. Generate the release notes from the dated changelog.
+   2. Append the live limitations block.
+   3. Set `CANDIDATE_DIR` to the directory that holds the two files that you downloaded from Prepare Candidate.
+   4. Run the local check.
 
    ```sh
    node scripts/release-notes.mjs release/2.0.0 > release-notes.md
@@ -75,8 +113,29 @@ The Publish workflow publishes with `--ignore-scripts`. This flag runs no packag
    node scripts/release-evidence.mjs check "$CANDIDATE_DIR" qualification.json release-notes.md
    ```
 
-3. Publish the draft GitHub Release. The read-only Verify job checks the tag and compares the release assets with the successful Prepare Candidate attempt. It independently rebuilds the tagged source and checks the archive digest. The qualification records must fall within the candidate's verified lifetime. The live run must observe TestRail 10.8.1 and account for the planned steps. It must create and delete its project and record a confirmed absence for each successful project, group, or attachment creation. Any created group or attachment must finish with a successful planned or cleanup deletion. Publish matches each attachment's deletion and readback to its plan label. It requires zero cleanup residue and rejects successful steps that leave a generated report, user, or case field behind. The live limitations block must match the evidence.
-4. Approve the protected npm job after Verify passes. This job rehashes the verified tarball, checks that the Prepare Candidate artifact is still within its lifetime, and uploads those same bytes through trusted publishing. It checks npm's version, `latest`, `gitHead`, and tarball integrity, then checks the provenance subject, repository, tagged ref, workflow path, and source commit. The already-published path requires the same identity.
+   The local check validates the files and records. The Publish workflow also checks the original GitHub Actions artifact and its recorded lifetime.
+
+3. Publish the draft GitHub Release. Then the read-only Verify job does these checks:
+   - It checks the tag.
+   - It compares the release assets with the successful Prepare Candidate attempt.
+   - It rebuilds the tagged source independently and checks the archive digest.
+
+   The job also requires these conditions:
+   - The qualification records must fall within the verified lifetime of the candidate.
+   - The live run must observe TestRail 10.8.1 and account for the planned steps.
+   - The live run must create and delete its project. It must record a confirmed absence for each successful creation of a project, group or attachment.
+   - Each created group or attachment must finish with a successful planned or cleanup deletion.
+   - The live limitations block must match the evidence.
+
+   The Publish workflow matches the deletion and readback of each attachment to its plan label. It requires zero cleanup residue. It rejects successful steps that leave a generated report, user or case field behind.
+4. After Verify passes, approve the protected npm job. This job does these steps:
+   1. It rehashes the verified tarball.
+   2. It checks that the Prepare Candidate artifact is still within its lifetime.
+   3. It uploads those same bytes through trusted publishing.
+   4. It checks the version, `latest`, `gitHead` and tarball integrity on npm.
+   5. It checks the provenance subject, repository, tagged ref, workflow path and source commit.
+
+   The already-published path requires the same identity.
 5. Verify a clean install of the published version and both protocol eras. Use the SHA-512 integrity from `candidate.json`.
 
    ```sh
@@ -84,7 +143,12 @@ The Publish workflow publishes with `--ignore-scripts`. This flag runs no packag
      --version 2.0.0 --integrity "$QUALIFIED_INTEGRITY" --require-provenance
    ```
 
-If publication or verification fails, inspect the exact version on npm before retrying. npm can accept an upload before the version appears in metadata. Re-run the whole workflow, starting with Verify. A faulty published artifact is fixed by a new patch version and can be deprecated if users should avoid it. Users on Node 24 can install the exact 1.0.0 release.
+If publication or verification fails, do these steps:
+
+1. Before you retry, examine the exact version on npm. npm can accept an upload before the version appears in metadata.
+2. Run the full workflow again, starting with Verify.
+
+If a published artifact is faulty, release the fix as a new patch version. You can deprecate the faulty version if users should avoid it. Users on Node 24 can install the exact 1.0.0 release.
 
 ## Dependency maintenance
 
