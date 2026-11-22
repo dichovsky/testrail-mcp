@@ -271,7 +271,37 @@ export async function runQualification({
   const cleanup = { project: 'not_created', group: 'not_created' };
   let verified;
   const readbacks = { project: null, group: null, attachments: [] };
+  const attachmentDeletions = new Map();
   let residue;
+  // Clean up through the session while it answers, then try a fresh one if needed.
+  let cleaner = invoke;
+  let fresh = false;
+  const clean = async (tool, input) => {
+    try {
+      return (await cleaner(tool, input)).result;
+    } catch (error) {
+      if (fresh || reconnect === undefined) throw error;
+      fresh = true;
+      cleaner = pacedCaller(await reconnect(), pacing);
+      return (await cleaner(tool, input)).result;
+    }
+  };
+  const cleanAttachment = async (id) => {
+    const key = identityKey('attachment', id);
+    const label = attachmentDeletions.get(key)?.label;
+    const result = await clean(`${TOOL_PREFIX}delete_attachment`, { attachment_id: id }).catch(() => undefined);
+    const deletedBy = result !== undefined && classify(result).status === 'pass' ? 'cleanup' : null;
+    attachmentDeletions.set(key, { label, deletedBy });
+  };
+  let attemptedPendingDeletes = false;
+  const cleanPendingAttachments = async () => {
+    if (attemptedPendingDeletes) return;
+    attemptedPendingDeletes = true;
+    // Retry unacknowledged deletes while the project and its permissions are still in place.
+    for (const id of ledger.ids('attachment')) {
+      if (!attachmentDeletions.get(identityKey('attachment', id))?.deletedBy) await cleanAttachment(id);
+    }
+  };
   try {
     for (const step of plan) {
       stopped ??= shouldStop();
@@ -295,6 +325,7 @@ export async function runQualification({
         else throw error;
         continue;
       }
+      if (step.tool === 'delete_project') await cleanPendingAttachments();
       let result;
       let retries;
       try {
@@ -334,34 +365,17 @@ export async function runQualification({
           continue;
         }
       }
+      if (step.tool === 'delete_attachment') {
+        const key = identityKey('attachment', input.attachment_id);
+        attachmentDeletions.set(key, { label: step.label, deletedBy: outcome.status === 'pass' ? 'planned' : null });
+      }
       if (outcome.status === 'pass' && step.residue !== undefined) c.residue(step.residue);
       if (outcome.code === 'AUTHENTICATION_FAILED') stopped = 'TestRail refused the credentials';
       record(step, message === undefined ? outcome : { ...outcome, message });
     }
   } finally {
-    // Clean up through the session while it answers; once it cannot, through a fresh one.
-    let cleaner = invoke;
-    let fresh = false;
-    const clean = async (tool, input) => {
-      try {
-        return (await cleaner(tool, input)).result;
-      } catch (error) {
-        if (fresh || reconnect === undefined) throw error;
-        fresh = true;
-        cleaner = pacedCaller(await reconnect(), pacing);
-        return (await cleaner(tool, input)).result;
-      }
-    };
-    const deleteAttachments = async () => {
-      for (const id of ledger.ids('attachment')) {
-        // One the plan already deleted is refused, and the check below decides.
-        await clean(`${TOOL_PREFIX}delete_attachment`, { attachment_id: id }).catch(() => undefined);
-      }
-    };
-    // Attachments are stored apart from what they hang on, so a run that stops early deletes
-    // each one itself before the project, rather than leaving them to go with it.
-    const project = c.named.get('project');
-    if (project !== undefined && !ledger.isGone(project.kind, project.id)) await deleteAttachments();
+    // A run that stops early still tries to remove pending attachments before the project.
+    await cleanPendingAttachments();
     for (const [kind, tool, key] of [['project', 'delete_project', 'project_id'], ['group', 'delete_group', 'group_id']]) {
       const entry = c.named.get(kind);
       if (entry === undefined) continue;
@@ -411,12 +425,19 @@ export async function runQualification({
       const input = { attachment_id: id };
       let found = await readback('get_attachment', input);
       if (found.state === 'present') {
-        await clean(`${TOOL_PREFIX}delete_attachment`, input).catch(() => undefined);
+        // Seeing the attachment again invalidates any earlier successful deletion.
+        await cleanAttachment(id);
         found = await readback('get_attachment', input);
       }
-      verified[found.state] += 1;
-      if (found.proof !== undefined) readbacks.attachments.push(found.proof);
-      else c.residue(found.state === 'present' ? 'attachment' : 'unverified attachment');
+      const { label, deletedBy } = attachmentDeletions.get(identityKey('attachment', id)) ?? {};
+      if (found.proof !== undefined && deletedBy) {
+        verified.gone += 1;
+        if (label !== undefined) readbacks.attachments.push({ label, deleted_by: deletedBy, readback: found.proof });
+      } else {
+        const state = found.state === 'present' ? 'present' : 'unverified';
+        verified[state] += 1;
+        c.residue(state === 'present' ? 'attachment' : 'unverified attachment');
+      }
     }
     residue = [...c.leftBehind].map(([kind, count]) => ({ kind, count }));
     // Said here, so a run that throws still says what cleanup did.

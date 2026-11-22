@@ -20,6 +20,7 @@ interface Candidate {
 }
 interface ToolEvidence { status: string; steps: { label: string | null; status: string; reason?: string; code?: string; http_status?: number }[] }
 interface ReadbackEvidence { code: string; http_status: number; reason?: string }
+interface AttachmentReadbackEvidence { label: string; deleted_by: 'planned' | 'cleanup'; readback: ReadbackEvidence }
 interface ValidationOptions {
   candidate: Candidate;
   tools: string[];
@@ -81,6 +82,9 @@ function qualification() {
     c10: { admitted: 4, busy: 1, busy_upstream_requests: 0, timed_out: 4, cancelled_request_id: 6, notification_request_id: 6, late_reply: false, recovered: true },
   }));
   const results = structuredClone(priorLiveRun.tools);
+  const attachmentReadbacks = results.testrail_delete_attachment!.steps.flatMap(({ label, status }): AttachmentReadbackEvidence[] => (
+    label !== null && status === 'pass' ? [{ label, deleted_by: 'planned', readback: { ...notFound } }] : []
+  ));
   const live = {
     ...identity, schema_version: 2, provenance: 'live_testrail', testrail_version: priorLiveRun.testrail_version, stopped: null, tools: results,
     options: { ...priorLiveRun.options },
@@ -90,7 +94,7 @@ function qualification() {
     cleanup: {
       ...structuredClone(priorLiveRun.cleanup), project_verified_absent: true, project_readback: { ...invalidResource },
       group_readback: null as ReadbackEvidence | null,
-      attachment_readbacks: Array.from({ length: priorLiveRun.cleanup.verified.gone - 1 }, () => ({ ...notFound })),
+      attachment_readbacks: attachmentReadbacks,
     },
   };
   const options = {
@@ -164,7 +168,8 @@ describe('the release-only qualification gate', () => {
 
   it.each([3, 5])('rejects %i attachment absence readbacks when four uploads passed', (length) => {
     const { value, options } = qualification();
-    value.live.cleanup.attachment_readbacks = Array.from({ length }, () => ({ ...notFound }));
+    const { attachment_readbacks: readbacks } = value.live.cleanup;
+    value.live.cleanup.attachment_readbacks = Array.from({ length }, (_, index) => readbacks[index % readbacks.length]!);
     expect(() => validateQualification(value, options)).toThrow(/include 4 attachment absence readbacks/u);
   });
 
@@ -173,9 +178,47 @@ describe('the release-only qualification gate', () => {
     const { live } = input.value;
     const bare400 = { code: 'UPSTREAM_ERROR', http_status: 400 };
     if (field === 'group_readback') recordGroupCleanup(input, 'pass');
-    if (field === 'attachment_readbacks') live.cleanup.attachment_readbacks[0] = bare400;
+    if (field === 'attachment_readbacks') live.cleanup.attachment_readbacks[0]!.readback = bare400;
     else live.cleanup[field] = bare400;
     expect(() => validateQualification(input.value, input.options)).toThrow(new RegExp(field, 'u'));
+  });
+
+  it.each([notFound, invalidResource])('rejects an attachment readback without evidence of deletion (%o)', (readback) => {
+    const { value, options } = qualification();
+    const { live } = value;
+    const { cleanup } = live;
+    const attachmentReadbacks = [readback, ...cleanup.attachment_readbacks.slice(1)];
+    expect(() => validateQualification({
+      ...value, live: { ...live, cleanup: { ...cleanup, attachment_readbacks: attachmentReadbacks } },
+    }, options)).toThrow(/attachment_readbacks/u);
+  });
+
+  it.each(['entry attachment', 'unknown attachment', 'run attachment'])('rejects an unexpected or duplicate proof label (%s)', (label) => {
+    const { value, options } = qualification();
+    value.live.cleanup.attachment_readbacks.find((proof) => proof.label === 'case attachment')!.label = label;
+    expect(() => validateQualification(value, options)).toThrow(/unexpected or duplicate attachment absence readback label/u);
+  });
+
+  it.each([notFound, invalidResource])('requires cleanup deletion when the attachment’s planned deletion was refused (%o)', (readback) => {
+    const input = qualification();
+    const { live } = input.value;
+    const deletion = live.tools.testrail_delete_attachment!;
+    const caseAttachment = deletion.steps.find(({ label }) => label === 'case attachment')!;
+    Object.assign(caseAttachment, { status: 'blocked', code: 'PERMISSION_DENIED', http_status: 403 });
+    deletion.status = 'blocked';
+    summarizeLive(input);
+    const proof = live.cleanup.attachment_readbacks.find(({ label }) => label === 'case attachment')!;
+    proof.readback = readback;
+    expect(() => validateQualification(input.value, input.options)).toThrow(/successful cleanup deletion for the case attachment/u);
+
+    proof.deleted_by = 'cleanup';
+    expect(() => validateQualification(input.value, input.options)).not.toThrow();
+  });
+
+  it('accepts a successful cleanup retry after a planned attachment deletion passed', () => {
+    const { value, options } = qualification();
+    value.live.cleanup.attachment_readbacks[0]!.deleted_by = 'cleanup';
+    expect(() => validateQualification(value, options)).not.toThrow();
   });
 
   it('requires a group that was never created to have neither deletion nor an absence readback', () => {

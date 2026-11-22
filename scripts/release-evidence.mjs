@@ -96,7 +96,9 @@ const liveSchema = z.object({
     project_verified_absent: z.literal(true),
     project_readback: absenceReadback,
     group_readback: absenceReadback.nullable(),
-    attachment_readbacks: z.array(absenceReadback),
+    attachment_readbacks: z.array(z.strictObject({
+      label: z.string().min(1), deleted_by: z.enum(['planned', 'cleanup']), readback: absenceReadback,
+    })),
     verified: z.object({ gone: z.int().positive(), present: z.literal(0), unverified: z.literal(0) }),
     residue: z.array(z.never()),
   }),
@@ -242,6 +244,19 @@ export function validateQualification(value, { candidate, tools, preparedAt, pub
   if (live.cleanup.attachment_readbacks.length !== expectedAttachmentReadbacks) {
     throw new Error(`Live cleanup must include ${expectedAttachmentReadbacks} attachment absence readbacks for successful uploads`);
   }
+  // Plan validation has checked that a 403 came from a step whose attachment was uploaded.
+  const attachmentDeletes = new Map(live.tools.testrail_delete_attachment.steps
+    .filter(({ status: verdict, http_status: httpStatus }) => verdict === 'pass' || (verdict === 'blocked' && httpStatus === 403))
+    .map(({ label, status: verdict }) => [label, verdict]));
+  for (const { label, deleted_by: deletedBy } of live.cleanup.attachment_readbacks) {
+    const plannedDelete = attachmentDeletes.get(label);
+    if (plannedDelete === undefined) throw new Error('Live cleanup contains an unexpected or duplicate attachment absence readback label');
+    if (deletedBy === 'planned' && plannedDelete !== 'pass') {
+      throw new Error(`Live cleanup requires a successful cleanup deletion for the ${label} after its planned deletion was refused`);
+    }
+    attachmentDeletes.delete(label);
+  }
+  if (attachmentDeletes.size > 0) throw new Error('Live cleanup must include an attachment absence readback for every uploaded attachment');
   if (expectedResidue.length > 0) {
     throw new Error(`Live qualification requires zero residue, but successful steps leave residue: ${expectedResidue.join(', ')}`);
   }

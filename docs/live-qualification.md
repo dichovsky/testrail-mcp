@@ -17,7 +17,7 @@ A guard checks every write before it is sent. Each ID the write names, in the pa
 
 A read whose answer later steps use is checked the same way, since what it returns can become the run's own. The run's tests, for example, are read from the run it created. A refused call is a failure: it means a fault in the plan, or an answer the plan did not expect.
 
-Before the project, the run deletes each attachment it uploaded: TestRail stores attachments apart from what they hang on, so they are not left to go with the project. The last step deletes the project and everything in it. If the run stops early, because a call fails, the MCP session breaks or you press Ctrl-C, the runner still deletes the project, and the group when there is one, on the way out. Closing the terminal (SIGHUP) and SIGTERM stop the run the same way.
+Before deleting the project, the run deletes each attachment it uploaded and retries any deletion that did not succeed. TestRail stores attachments apart from what they hang on. The last step deletes the project and everything in it. If the run stops early, cleanup still tries to delete pending attachments, the project, and any group the run created. Ctrl-C, SIGHUP, and SIGTERM all enter this cleanup path.
 
 Ctrl-C at a terminal stops the server as well as the runner, so the runner starts a fresh server to clean up through. It also stops a `| tee` that keeps the log; output that can no longer be written does not stop the cleanup.
 
@@ -25,6 +25,8 @@ Then the runner asks TestRail for the project, the group and each attachment aga
 - `gone` means the read returned `NOT_FOUND` with HTTP 404 or a recognized TestRail ID error for that endpoint with HTTP 400.
 - `present` means TestRail still served it. The runner retries deletion for that attachment and reads it again.
 - `unverified` covers other outcomes, including a generic HTTP 400, a permission refusal, a server error or a lost session.
+
+An attachment also needs a successful DELETE for that same ID. If a later read serves the attachment again, the next DELETE must succeed before another readback can confirm absence. Candidate evidence records the attachment's plan label, where deletion succeeded, and the sanitized readback.
 
 Anything still present is listed in `cleanup.residue`, as is anything unverified, under `unverified <kind>`. Either one fails the run.
 
