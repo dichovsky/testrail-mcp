@@ -1,6 +1,10 @@
 # Live TestRail qualification
 
-`scripts/live-qualification.mjs` drives every one of the 133 tools against a real TestRail instance and writes one evidence record. It is R03's live qualification: offline fixtures show what the server sends, and this run shows what TestRail does with it. It has run three times against TestRail 10.8.1, the baseline: on 2026-09-29, on 2026-10-03 with the cleanup checks, and on 2026-10-04 with driver 9.0.0.
+`scripts/live-qualification.mjs` drives every one of the 133 tools against a real TestRail instance and writes one evidence record. It is R03's live qualification. Offline fixtures show what the server sends, and this run shows what TestRail does with the requests. The script has run three times against TestRail 10.8.1, the baseline:
+
+- on 2026-09-29;
+- on 2026-10-03 with the cleanup checks;
+- on 2026-10-04 with driver 9.0.0.
 
 ## What it touches
 
@@ -9,43 +13,49 @@ The run must not change or delete data that existed before it.
 | Kind of call | What the run does |
 | --- | --- |
 | Reads | May read existing data, such as the project list, users, groups, statuses and fields. |
-| Writes inside the project | The run creates one project, named `testrail-mcp qualification <stamp> project`, and makes every other write inside it, to entities it created. |
-| Writes outside the project | `add_user`, `update_user`, `add_group`, `update_group`, `delete_group` and `add_case_field` run only with `--instance-writes`. Use it only on a disposable instance. |
-| Report generation | `run_report` and `run_cross_project_report` run only from templates you name, because each run generates a report and may email it. TestRail's API cannot delete a generated report, so the evidence lists each one, and you delete it in TestRail. |
+| Writes inside the project | The run creates one project, named `testrail-mcp qualification <stamp> project`. It makes every other write inside that project, to entities that it created. |
+| Writes outside the project | `add_user`, `update_user`, `add_group`, `update_group`, `delete_group` and `add_case_field` run only with `--instance-writes`. Use that option only on a disposable instance. |
+| Report generation | `run_report` and `run_cross_project_report` run only from templates that you name, because each run generates a report and may email it. TestRail's API cannot delete a generated report. Thus, the evidence lists each report. Delete each report in TestRail. |
 
-A guard checks every write before it is sent. Each ID the write names, in the path, the query or the body, must be an entity of that kind the run created, or the call is not made. That includes the group and user IDs in a project's access rows. Status, priority, type, template, role and user references choose among the instance's settings and change nothing, so the guard allows them. The exception is `add_case_field`'s `template_ids`, which adds the field to the templates it names. The run creates no templates, so the guard refuses any.
+A guard checks every write before the runner sends it. Each ID that the write names, in the path, the query or the body, must be an entity of that kind that the run created. Otherwise, the call is not made. This rule includes the group and user IDs in a project's access rows.
 
-A read whose answer later steps use is checked the same way, since what it returns can become the run's own. The run's tests, for example, are read from the run it created. A refused call is a failure: it means a fault in the plan, or an answer the plan did not expect.
+Status, priority, type, template, role and user references choose among the instance's settings and change nothing. Thus, the guard allows them. The exception is `add_case_field`'s `template_ids`, which adds the field to the templates it names. The run creates no templates. Thus, the guard refuses any.
 
-Before the project, the run deletes each attachment it uploaded: TestRail stores attachments apart from what they hang on, so they are not left to go with the project. The last step deletes the project and everything in it. If the run stops early, because a call fails, the MCP session breaks or you press Ctrl-C, the runner still deletes the project, and the group when there is one, on the way out. Closing the terminal (SIGHUP) and SIGTERM stop the run the same way.
+A read whose answer later steps use is checked the same way, because what the read returns can become the run's own. For example, the run's Tests are read from the Test Run that it created. A refused call is a failure. It means a fault in the plan, or an answer that the plan did not expect.
 
-Ctrl-C at a terminal stops the server as well as the runner, so the runner starts a fresh server to clean up through. It also stops a `| tee` that keeps the log; output that can no longer be written does not stop the cleanup.
+Before the project, the run deletes each attachment that it uploaded. TestRail stores attachments apart from what they are attached to. Thus, the run does not leave them to be deleted with the project. The last step deletes the project and everything in it.
+
+The run stops early if a call fails, the MCP session breaks or you press Ctrl-C. In that case, the runner still deletes the project, and the group when there is one, when it exits. Closing the terminal (SIGHUP) and SIGTERM stop the run the same way.
+
+Ctrl-C at a terminal stops the server as well as the runner. Thus, the runner starts a fresh server and cleans up through that server. Ctrl-C also stops a `| tee` that keeps the log. Output that can no longer be written does not stop the cleanup.
 
 Then the runner asks TestRail for the project, the group and each attachment again, and counts the answers in the evidence's `cleanup.verified`:
 - `gone`: TestRail answered `NOT_FOUND`, or the 400 it gives for an ID it does not have.
-- `present`: TestRail still served it. An attachment still served is deleted once more and asked for again.
+- `present`: TestRail still served it. The runner deletes an attachment that is still served once more and asks for it again.
 - `unverified`: any other answer, such as a permission refusal, a server error or no session.
 
 Anything still present is listed in `cleanup.residue`, as is anything unverified, under `unverified <kind>`. Either one fails the run.
 
 A second Ctrl-C abandons that cleanup. The runner removes its temporary files, names what may be left, and exits with 2 without writing evidence.
 
-TestRail's API cannot delete users or case fields. With `--instance-writes`, one inactive user and one case field stay behind, and the evidence lists them. When TestRail's answer to creating one is unknown, it lists it as possible, and so it does for the project and the group. A request the driver gave up waiting on is a `TIMEOUT` with `write_outcome: "unknown"`, and counts as possible, since TestRail may still have acted on it; so does a 408 that TestRail sent. The user's name and the case field's label start with `testrail-mcp qualification`; the case field's system name is `tmq_<id>_f`, and the user's address ends in `@example.invalid`.
+TestRail's API cannot delete users or case fields. With `--instance-writes`, one inactive user and one case field remain. The evidence lists them. When TestRail's answer to creating one is unknown, the evidence lists it as possible. It does the same for the project and the group. A request that the driver stopped waiting for is a `TIMEOUT` with `write_outcome: "unknown"`. It counts as possible, because TestRail may still have acted on it. A 408 that TestRail sent counts as possible too.
+
+The user's name and the case field's label start with `testrail-mcp qualification`; the case field's system name is `tmq_<id>_f`, and the user's address ends in `@example.invalid`.
 
 ## Running it
 
-1. Build, and rehearse against the fixture stand-in, which needs no account:
+1. Build. Then rehearse against the fixture stand-in, which needs no account:
 
    ```sh
    npm ci && npm run build
    node scripts/fixture-testrail.mjs --remember-deletions
    ```
 
-   `--remember-deletions` makes the stand-in answer a read of a deleted project, group or attachment with TestRail's 400, so the rehearsal checks the cleanup as a live run does.
+   `--remember-deletions` makes the stand-in answer a read of a deleted project, group or attachment with TestRail's 400. Thus, the rehearsal checks the cleanup as a live run does.
 
-   In a second terminal, export the five `TESTRAIL_` variables it prints, then run the command in step 3 with `--instance-writes --report-template-id 1 --cross-project-report-template-id 2`; the runner makes its own upload and download directories. Every tool passes against the stand-in. Without those options, the six writes outside the project and the two reports are `not_run`.
+   In a second terminal, export the five `TESTRAIL_` variables that the stand-in prints. Then run the command in step 3 with `--instance-writes --report-template-id 1 --cross-project-report-template-id 2`. The runner makes its own upload and download directories. Every tool passes against the stand-in. Without those options, the six writes outside the project and the two reports are `not_run`.
 
-2. Give the runner the instance through the environment only; it never takes credentials as arguments:
+2. Give the runner the instance through the environment only. The runner never takes credentials as arguments:
 
    ```sh
    export TESTRAIL_BASE_URL=https://example.testrail.io
@@ -62,17 +72,17 @@ TestRail's API cannot delete users or case fields. With `--instance-writes`, one
 | Option | Effect |
 | --- | --- |
 | `--create-qualification-project` | Required. Confirms that the run may create, use and delete a project. |
-| `--out <file>` | Required. Where the evidence goes; its directory is created if needed. A directory, or a path that cannot be written, is refused before anything is sent. An existing file is checked without being changed. |
+| `--out <file>` | Required. Where the evidence goes. The runner creates its directory if needed. The runner refuses a directory, or a path that cannot be written, before it sends anything. The runner checks an existing file without changing it. |
 | `--instance-writes` | Also run the writes outside the project. Disposable instances only. |
 | `--report-template-id <id>` | A single-project report template configured for the test. |
 | `--cross-project-report-template-id <id>` | A cross-project report template configured for the test. |
 | `--command <cmd>` and repeated `--arg <arg>` | The server to drive, such as an installed `testrail-mcp`. By default the runner drives `node dist/cli.js`. Write an argument that starts with a dash as `--arg=-y`. |
 
-The runner starts the server itself, gives it a temporary upload root holding the two files it uploads and a temporary download directory, and removes both afterwards. The server's driver allows 100 TestRail requests a minute. The runner keeps under that pace and retries a rate-limited call after the window has moved on, since a 429 means TestRail did not handle the request. A full run takes about two minutes.
+The runner starts the server itself. It gives the server a temporary upload root that holds the two files it uploads, and a temporary download directory. It removes both afterwards. The server's driver allows 100 TestRail requests a minute. The runner stays below that pace. It retries a rate-limited call after the window has passed, because a 429 means TestRail did not handle the request. A full run takes about two minutes.
 
-Before it sends anything, it refuses a configured value that the evidence's own words contain, such as an API key that is also a status, since evidence that names it could never be checked. The host is checked as a whole name, so a host such as `testrail` does not match `testrail_add_case`.
+Before the runner sends anything, it refuses a configured value that the evidence's own words contain, such as an API key that is also a status. Evidence that names such a value could never be checked. The runner checks the host as a whole name. Thus, a host such as `testrail` does not match `testrail_add_case`.
 
-It prints one line per step, with the error code and the server's message for any failure, then what cleanup did and a summary. What cleanup did is printed even when the evidence cannot be written. A server that will not start is reported with its own reason.
+The runner prints one line for each step, with the error code and the server's message for any failure. Then it prints what cleanup did and a summary. It prints what cleanup did even when it cannot write the evidence. It reports a server that will not start with its own reason.
 
 | Exit code | When |
 | --- | --- |
@@ -99,7 +109,7 @@ The record holds statuses, error codes, HTTP statuses, warning codes and the rea
 - the Basic credential;
 - the signed-in user's address.
 
-If any of them appears, it refuses to write the file.
+If any of these items appears, the runner refuses to write the file.
 
 ```json
 {
@@ -116,26 +126,26 @@ If any of them appears, it refuses to write the file.
 }
 ```
 
-Version 1 has no `cleanup.verified`: that runner did not ask TestRail again after cleanup. The first live run's record was version 1; the second run's replaced it, and it stays in commit `51dd910`. The third run's record replaced the second's, which stays in commit `2088cb1`.
+Version 1 has no `cleanup.verified`. That runner did not ask TestRail again after cleanup. The first live run's record was version 1. The record of the second run replaced it. The first record stays in commit `51dd910`. The record of the third run replaced the second record. The second record stays in commit `2088cb1`.
 
-`driver_version` is the driver installed beside the runner, which its own server loads. With `--command` it is `null`: the runner cannot see which driver another server loads, and `package_version` names the release, which pins one driver.
+`driver_version` is the driver installed beside the runner, which its own server loads. With `--command`, `driver_version` is `null`. The runner cannot see which driver another server loads. `package_version` names the release, which pins one driver.
 
-`tests/live-qualification.test.ts` holds the runner offline. It checks that:
+`tests/live-qualification.test.ts` holds the runner offline. The test checks that:
 - the plan calls every registered tool;
 - each step's scope matches the tool's effect;
 - only the six instance writes need `--instance-writes`;
 - the project comes first and is deleted last.
 
-It checks the guard against:
+The test checks the guard against:
 - foreign, nested, differently-kinded and parent IDs;
 - GUID entry and attachment IDs;
 - the IDs in a project's access rows;
 - every target kind;
 - reads whose answers later steps use.
 
-Every ID-like argument any tool accepts is either a target or a named reference to the instance's settings. Inside a run, a refused write is never sent, and it fails its tool and the run.
+Every ID-like argument any tool accepts is either a target or a named reference to the instance's settings. Inside a run, a refused write is never sent. A refused write fails its tool and the run.
 
-It runs the whole plan through the registered tools and the real driver against the stand-in, where every tool passes and nothing is refused. In that run, every entity the run creates gets an ID of its own, so a write aimed at anything else is refused. It also runs by default, where the instance writes and reports are not run and never reach the stand-in. Further runs cover:
+The test runs the whole plan through the registered tools and the real driver against the stand-in. Every tool passes there, and nothing is refused. In that run, every entity that the run creates gets an ID of its own. Thus, a write aimed at anything else is refused. The test also runs the plan by default. In that run, the instance writes and reports are not run and never reach the stand-in. Further runs cover:
 - a project TestRail refuses to create;
 - a missing licence;
 - a session that fails part-way;
@@ -154,7 +164,7 @@ It runs the whole plan through the registered tools and the real driver against 
 - an instance with no groups;
 - evidence that would carry any configured or personal value.
 
-It also covers:
+The test also covers:
 - the pace against the server's rate limit, and what is repeated;
 - the tool statuses and exit codes;
 - the command line's refusals, including an evidence file it cannot overwrite, and a server that will not start;
