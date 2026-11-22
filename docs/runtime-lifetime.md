@@ -4,7 +4,9 @@
 
 ## Capacity follows settlement, never the result
 
-The runtime releases a slot when the driver's `settled` signal fires and any adapter-owned cleanup has finished. The runtime never releases a slot when the caller's `result` settles. The two are genuinely different moments. An aggregate rejects at its own `maxDurationMs` while its fetch is still in flight. The adapter's response-wait watchdog rejects independently of both. Releasing on `result` would let the next call begin work the previous one has not finished. The slot limit exists precisely to prevent this early start.
+The runtime releases a slot when the driver's `settled` signal fires and any adapter-owned cleanup has finished. The runtime never releases a slot when the caller's `result` settles. The two are genuinely different moments. An aggregate rejects at its own `maxDurationMs` while its fetch is still in flight. The adapter's response-wait watchdog rejects independently of both.
+
+Releasing on `result` would let the next call begin work the previous one has not finished. The slot limit exists precisely to prevent this early start.
 
 Thus, F01 had to deliver `trackOperation`. Without an observable settlement signal there is no correct moment to release a slot, only a guess.
 
@@ -30,7 +32,9 @@ Each case requires the caller to get the error and no unhandled rejection. Thus,
 
 The response-wait watchdog is a fixed 60 seconds. It bounds how long the adapter waits, and reports `TIMEOUT`. It does not abort upstream work and must never be described as a hard deadline.
 
-The watchdog and the driver's aggregate deadline differ in one way that matters for capacity. The driver never learns that the adapter stopped waiting. Thus, a DNS lookup answered after the watchdog still goes on to send its request, and the slot covers that request too. The aggregate deadline is the driver's own, so a lookup answered after it starts nothing. Either way the slot is held until the last of that work settles. The aggregate deadline reaches the caller as `PAGINATION_LIMIT` with reason `max_duration`, never as `TIMEOUT`. [Results and errors](results-and-errors.md) explains the driver timeouts that are recognized as the same bound.
+The watchdog and the driver's aggregate deadline differ in one way that matters for capacity. The driver never learns that the adapter stopped waiting. Thus, a DNS lookup answered after the watchdog still goes on to send its request, and the slot covers that request too.
+
+The aggregate deadline is the driver's own, so a lookup answered after it starts nothing. Either way the slot is held until the last of that work settles. The aggregate deadline reaches the caller as `PAGINATION_LIMIT` with reason `max_duration`, never as `TIMEOUT`. [Results and errors](results-and-errors.md) explains the driver timeouts that are recognized as the same bound.
 
 Slow or hung requests can therefore hold all four slots until they settle or the process restarts. Every further call is refused with `BUSY` and sends nothing in the meantime. This trade is intended. The alternative is starting work that the process cannot account for.
 
@@ -129,9 +133,13 @@ Each outcome is shown arriving at its own instant and not a millisecond before.
 - a write pending at shutdown is recorded as `unknown` in the `tool_call` diagnostic, and its request failing during the drain leaves no unhandled rejection;
 - a connection close that rejects neither fails the shutdown nor ends it early. The drain still waits for the call in flight, the driver is destroyed and the stop is logged. The test stubs that rejection, so it shows only that the composition root absorbs a rejecting close.
 
-`tests/transport/lifecycle.test.ts` runs the built executable against a loopback TestRail that never answers. With a request in flight, the executable exits with code 0 within the drain window after stdin closure, `SIGINT` and `SIGTERM`. It logs one stop pair. It exits within 1.5 seconds of the `server_stopped` line. A second `SIGINT` or `SIGTERM` during the drain does not cut the shutdown short. After a staging failure, the next upload stages and is sent. Shutdown still exits 0 with nothing but JSON events on stderr.
+`tests/transport/lifecycle.test.ts` runs the built executable against a loopback TestRail that never answers. With a request in flight, the executable exits with code 0 within the drain window after stdin closure, `SIGINT` and `SIGTERM`. It logs one stop pair. It exits within 1.5 seconds of the `server_stopped` line.
 
-Node cannot deliver a catchable signal to a child on Windows. `kill` terminates the child outright. The four signal tests therefore run on POSIX only. Stdin closure, the path stdio hosts use, runs on every platform. A host closes stdin with two catalog listings still unread. The host reads them three seconds later through a shell pipe. The host receives every response whole (skipped on Windows, which has no `sh`).
+A second `SIGINT` or `SIGTERM` during the drain does not cut the shutdown short. After a staging failure, the next upload stages and is sent. Shutdown still exits 0 with nothing but JSON events on stderr.
+
+Node cannot deliver a catchable signal to a child on Windows. `kill` terminates the child outright. The four signal tests therefore run on POSIX only.
+
+Stdin closure, the path stdio hosts use, runs on every platform. A host closes stdin with two catalog listings still unread. The host reads them three seconds later through a shell pipe. The host receives every response whole (skipped on Windows, which has no `sh`).
 
 `tests/transport/composition.test.ts` holds the 250 ms grace on a fake clock. It shows that the grace does not start until stdout has flushed. It also shows that its timer never holds the process open by itself.
 
@@ -142,7 +150,11 @@ It was mutation-checked by these changes:
 - disposing a staged copy after dispatch;
 - making a late lookup start a request after the aggregate deadline.
 
-The first mutation exposed a flaw in the tests themselves. A "still held" assertion made in the same tick the caller is answered runs before an early release could. Thus, each assertion now pauses first. Review found two more such checks in the cancellation suite. A release deferred by one timer tick passed them. They pause too. That mutation now fails them. F07's closing work added three more mutations. Each fails an upload-staging test:
+The first mutation exposed a flaw in the tests themselves. A "still held" assertion made in the same tick the caller is answered runs before an early release could. Thus, each assertion now pauses first.
+
+Review found two more such checks in the cancellation suite. A release deferred by one timer tick passed them. They pause too. That mutation now fails them.
+
+F07's closing work added three more mutations. Each fails an upload-staging test:
 
 - staging before admission;
 - dispatching an upload after its wait has ended;

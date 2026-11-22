@@ -13,7 +13,9 @@ Pin these dependencies exactly:
 
 Use public SDK entry points and public root exports of `@dichovsky/testrail-api-client`. Do not run the driver's CLI, copy its HTTP engine, import private registries, or add direct TestRail fetches.
 
-The qualified driver is exactly `9.0.0`, release commit `a5ccffbfa176e9c6675bd81fff61859bd7b6be5d`, pinned in the package and lockfile. It carries the network-guard fixes, independent report execution and the operation-settlement API below. Its 133 operations and 48 additional helpers match the versioned inventory. Its acceptance checks run as standing tests against the installed artifact. One deviation is recorded in [driver qualification](driver-qualification.md): the driver still retries a rate-limited report generation. Update provenance and regression evidence with any future dependency change. Do not guess a version number.
+The qualified driver is exactly `9.0.0`, release commit `a5ccffbfa176e9c6675bd81fff61859bd7b6be5d`, pinned in the package and lockfile. It carries the network-guard fixes, independent report execution and the operation-settlement API below. Its 133 operations and 48 additional helpers match the versioned inventory. Its acceptance checks run as standing tests against the installed artifact.
+
+One deviation is recorded in [driver qualification](driver-qualification.md): the driver still retries a rate-limited report generation. Update provenance and regression evidence with any future dependency change. Do not guess a version number.
 
 `run_report` and `run_cross_project_report` are GET endpoints with side effects. Their public driver methods must bypass both result caching and in-flight GET coalescing, and must not retry a network error or 5xx. The baseline asked for `retry: 'none'` and `bypassCache: true`. 7.2.0 declared `bypassCache: true` with a rate-limit-only retry. 8.0.0 derives the same behavior from the methods' `side-effecting-read` intent, which 9.0.0 keeps. Require upstream tests that prove separate sequential and concurrent calls execute separately and that network and 5xx failures are not retried.
 
@@ -97,7 +99,9 @@ When capacity is exhausted, reject new calls with `BUSY`. Do not add an unbounde
 
 Invoke each public method through the qualified driver's operation handle. Use `result` for response/error and TestRail acknowledgment classification. Retain slots until both `settled` and adapter-owned file work finish. This applies even when an aggregate's own deadline rejects before the adapter watchdog. Neither the public method result nor a watchdog/`Promise.race` rejection may release capacity while descendants continue.
 
-The request timeout includes DNS resolution (from driver 9.0.0, which starts the timeout before the lookup). A lookup cannot be cancelled, so its slot is held until the lookup settles. The body timeout is separate, and retries add time. These settings do not promise a hard 30-second upstream deadline. The 60-second watchdog bounds the adapter's response wait under normal event-loop operation. It does not abort upstream work. The driver has no public per-request `AbortSignal`.
+The request timeout includes DNS resolution (from driver 9.0.0, which starts the timeout before the lookup). A lookup cannot be cancelled, so its slot is held until the lookup settles. The body timeout is separate, and retries add time. These settings do not promise a hard 30-second upstream deadline.
+
+The 60-second watchdog bounds the adapter's response wait under normal event-loop operation. It does not abort upstream work. The driver has no public per-request `AbortSignal`.
 
 Before invocation, an aborted call starts no upstream request. After invocation, do these steps:
 - Stop adapter-scheduled follow-up work.
@@ -164,7 +168,9 @@ Descriptions include effects, required identifiers, pagination limitations and f
 
 For controlled page mode, accept `query.limit` (default 50, supported maximum 250) and nonnegative `query.offset` (default 0), plus endpoint filters. `_mcp` may be absent or `{ "pagination": "page" }`. Reject aggregate-only fields in page mode. Invoke the public page helper, not the convenience method that discards metadata.
 
-Explicit all mode is `{ "_mcp": { "pagination": "all", "page_size": 50, "start_offset": 0 } }`, with optional lower `max_items`, `max_pages`, `max_bytes` and `max_duration_ms`. A stated bound above its configured limit is `INVALID_ARGUMENT`. Reject `query.limit` and `query.offset` in all mode. Map the controls to the public `getAll*` helper's `pageSize`, `startOffset`, `maxItems`, `maxPages`, `maxBytes` and `maxDurationMs`. Preserve endpoint filters on every page. All means every remaining match from `start_offset`, which defaults to zero. All mode is not a transactional snapshot.
+Explicit all mode is `{ "_mcp": { "pagination": "all", "page_size": 50, "start_offset": 0 } }`, with optional lower `max_items`, `max_pages`, `max_bytes` and `max_duration_ms`. A stated bound above its configured limit is `INVALID_ARGUMENT`. Reject `query.limit` and `query.offset` in all mode. Map the controls to the public `getAll*` helper's `pageSize`, `startOffset`, `maxItems`, `maxPages`, `maxBytes` and `maxDurationMs`.
+
+Preserve endpoint filters on every page. All means every remaining match from `start_offset`, which defaults to zero. All mode is not a transactional snapshot.
 
 The six response-driven lists are variables, datasets, shared-step history, roles, groups and case statuses. They accept neither `query.limit/offset` nor `_mcp.page_size/start_offset`. Page mode returns the server-selected first page. All mode accepts only the four safety limits and the operation's supported filters/IDs. Do not synthesize a cursor or expose a driver continuation URL as a caller-controlled request target.
 
@@ -178,7 +184,9 @@ Successful page tools place the driver page's item collection in `data`. `pagina
 
 Map `kind: "legacy-array"` to `source: "legacy_array"`. Derive `returned` from `items.length`, and keep driver `size` separately. For envelopes, `has_more` is `_links.next !== null`. Set `next_offset` only after validating a controllable continuation, and `next_action: "page" | "all" | "none"`.
 
-A response-driven nonterminal page uses `manual_continuation: false`, and `next_action: "all"` when its continuation validates. A nonterminal page of either kind whose continuation fails validation uses `manual_continuation: false` and `next_action: "none"`. The reason is that the driver's aggregate refuses the same link. A terminal legacy array has `source: "legacy_array"`, `has_more: false` and `next_action: "none"`. These values describe the observed response and are not independent proof of the upstream dataset's completeness. Preserve any other driver page metadata under `pagination.driver`, including returned links. These links are data, never fetch authority.
+A response-driven nonterminal page uses `manual_continuation: false`, and `next_action: "all"` when its continuation validates. A nonterminal page of either kind whose continuation fails validation uses `manual_continuation: false` and `next_action: "none"`. The reason is that the driver's aggregate refuses the same link. A terminal legacy array has `source: "legacy_array"`, `has_more: false` and `next_action: "none"`. These values describe the observed response and are not independent proof of the upstream dataset's completeness.
+
+Preserve any other driver page metadata under `pagination.driver`, including returned links. These links are data, never fetch authority.
 
 The public page type supplies `_links`, not parsed continuation controls. Implement a small metadata-only parser in the MCP pagination adapter. Use URL/URLSearchParams to collect offset/limit from both conventional query links and TestRail path-style `&limit=...&offset=...` links. Apply these rules:
 - Require exactly one canonical nonnegative safe-integer offset.
@@ -188,7 +196,9 @@ The public page type supplies `_links`, not parsed continuation controls. Implem
 
 Expose validated controls only. Discard host/path as request authority, and retain original caller filters. Do not import the driver's unexported parser or implement a fetch loop. The public driver all helper still owns aggregation.
 
-Successful aggregation uses `pagination: { "mode": "all", "returned": N, "complete": true, "start_offset": 0 }` (use the actual effective `start_offset`, not always zero; omit it on response-driven lists). Emit pages-fetched or byte counts only if the public driver exposes them. The final aggregate must also meet the data/result budgets. A driver safety stop returns `PAGINATION_LIMIT` with allowlisted reason and available numeric progress counts, and with no partial `data`. Map only driver `max_pages`, `max_items`, `max_bytes` and `max_duration` reasons to `PAGINATION_LIMIT`. Map `invalid_page`, `invalid_continuation` and `non_progress` to `INVALID_RESPONSE`. Lists without helper support have no invented `_mcp` options and retain their supported one-response shape.
+Successful aggregation uses `pagination: { "mode": "all", "returned": N, "complete": true, "start_offset": 0 }` (use the actual effective `start_offset`, not always zero; omit it on response-driven lists). Emit pages-fetched or byte counts only if the public driver exposes them. The final aggregate must also meet the data/result budgets.
+
+A driver safety stop returns `PAGINATION_LIMIT` with allowlisted reason and available numeric progress counts, and with no partial `data`. Map only driver `max_pages`, `max_items`, `max_bytes` and `max_duration` reasons to `PAGINATION_LIMIT`. Map `invalid_page`, `invalid_continuation` and `non_progress` to `INVALID_RESPONSE`. Lists without helper support have no invented `_mcp` options and retain their supported one-response shape.
 
 ## Results, drift and errors
 
@@ -201,7 +211,9 @@ Strictly validate required outer structures:
 - page/envelope metadata;
 - required collection keys.
 
-Advisory entity validation is separate. Validate the value for **each caller** against that operation's entity schema without using the parsed/transformed result. Return the original value on usable field-level drift with `warnings: [{ "code": "SCHEMA_DRIFT", "count": N }]`, using a bounded positive issue count. Include at most ten warning entries. Warning codes come from a fixed registry. Do not include raw values, arbitrary response field names or arbitrary Zod paths. A shared `onSchemaMismatch` hook plus async context is insufficient, because coalesced GET joiners do not necessarily trigger the hook. Two concurrent callers must each receive their own correct warnings. Optional hook diagnostics must be nonthrowing and supplementary.
+Advisory entity validation is separate. Validate the value for **each caller** against that operation's entity schema without using the parsed/transformed result. Return the original value on usable field-level drift with `warnings: [{ "code": "SCHEMA_DRIFT", "count": N }]`, using a bounded positive issue count. Include at most ten warning entries. Warning codes come from a fixed registry. Do not include raw values, arbitrary response field names or arbitrary Zod paths.
+
+A shared `onSchemaMismatch` hook plus async context is insufficient, because coalesced GET joiners do not necessarily trigger the hook. Two concurrent callers must each receive their own correct warnings. Optional hook diagnostics must be nonthrowing and supplementary.
 
 Output schemas strictly describe wrapper/outer variants while allowing arbitrary JSON entity fields. They must not reintroduce strict entity validation and turn advisory drift into a transport failure. Tool errors use `isError: true` and the same structured/text representation of `{ "error": { "code": "...", "message": "..." } }`. They carry these allowlisted optional fields:
 - `http_status`;

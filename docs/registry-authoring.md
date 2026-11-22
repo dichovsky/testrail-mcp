@@ -22,7 +22,9 @@ Declare execution modes with `pagination: (bind) => ({ ... })`. Use `bind(bindin
 - the original validated input, inferred from the authoring schema;
 - a context that contains limits and any staged upload that F07 supplies.
 
-Call the method with explicitly mapped arguments. Never derive driver option names through a generic case converter. A mapping such as `query.is_completed` → argument 0 property `isCompleted` is recorded in `argumentMap`. Fixtures verify it independently. Invalid input rejects before a driver method is selected or called. The process executor in `src/execution/executor.ts` owns admission, staging, cancellation and result wrapping around these bindings. It uses the F03, F05 and F07 implementations.
+Call the method with explicitly mapped arguments. Never derive driver option names through a generic case converter. A mapping such as `query.is_completed` → argument 0 property `isCompleted` is recorded in `argumentMap`. Fixtures verify it independently. Invalid input rejects before a driver method is selected or called.
+
+The process executor in `src/execution/executor.ts` owns admission, staging, cancellation and result wrapping around these bindings. It uses the F03, F05 and F07 implementations.
 
 Every mapping source must resolve through its complete input path in a schema variant applicable to its call mode. Use `[]` to traverse array items, as in `body.groups[].role_id`. Optional and union fields remain available when declared in an applicable branch. Custom/open JSON paths must follow the explicit extension policy of the schema. Registration rejects misspelled nested fields and controls declared only for a different pagination mode.
 

@@ -38,7 +38,9 @@ Anything still present is listed in `cleanup.residue`, as is anything unverified
 
 A second Ctrl-C abandons that cleanup. The runner removes its temporary files, names what may be left, and exits with 2 without writing evidence.
 
-TestRail's API cannot delete users or case fields. With `--instance-writes`, one inactive user and one case field remain. The evidence lists them. When TestRail's answer to creating one is unknown, the evidence lists it as possible. It does the same for the project and the group. A request that the driver stopped waiting for is a `TIMEOUT` with `write_outcome: "unknown"`. It counts as possible, because TestRail may still have acted on it. A 408 that TestRail sent counts as possible too.
+TestRail's API cannot delete users or case fields. With `--instance-writes`, one inactive user and one case field remain. The evidence lists them. When TestRail's answer to creating one is unknown, the evidence lists it as possible. It does the same for the project and the group.
+
+A request that the driver stopped waiting for is a `TIMEOUT` with `write_outcome: "unknown"`. It counts as possible, because TestRail may still have acted on it. A 408 that TestRail sent counts as possible too.
 
 The user's name and the case field's label start with `testrail-mcp qualification`; the case field's system name is `tmq_<id>_f`, and the user's address ends in `@example.invalid`.
 
@@ -78,7 +80,9 @@ The user's name and the case field's label start with `testrail-mcp qualificatio
 | `--cross-project-report-template-id <id>` | A cross-project report template configured for the test. |
 | `--command <cmd>` and repeated `--arg <arg>` | The server to drive, such as an installed `testrail-mcp`. By default the runner drives `node dist/cli.js`. Write an argument that starts with a dash as `--arg=-y`. |
 
-The runner starts the server itself. It gives the server a temporary upload root that holds the two files it uploads, and a temporary download directory. It removes both afterwards. The server's driver allows 100 TestRail requests a minute. The runner stays below that pace. It retries a rate-limited call after the window has passed, because a 429 means TestRail did not handle the request. A full run takes about two minutes.
+The runner starts the server itself. It gives the server a temporary upload root that holds the two files it uploads, and a temporary download directory. It removes both afterwards.
+
+The server's driver allows 100 TestRail requests a minute. The runner stays below that pace. It retries a rate-limited call after the window has passed, because a 429 means TestRail did not handle the request. A full run takes about two minutes.
 
 Before the runner sends anything, it refuses a configured value that the evidence's own words contain, such as an API key that is also a status. Evidence that names such a value could never be checked. The runner checks the host as a whole name. Thus, a host such as `testrail` does not match `testrail_add_case`.
 
@@ -126,7 +130,9 @@ If any of these items appears, the runner refuses to write the file.
 }
 ```
 
-Version 1 has no `cleanup.verified`. That runner did not ask TestRail again after cleanup. The first live run's record was version 1. The record of the second run replaced it. The first record stays in commit `51dd910`. The record of the third run replaced the second record. The second record stays in commit `2088cb1`.
+Version 1 has no `cleanup.verified`. That runner did not ask TestRail again after cleanup. The first live run's record was version 1. The record of the second run replaced it. The first record stays in commit `51dd910`.
+
+The record of the third run replaced the second record. The second record stays in commit `2088cb1`.
 
 `driver_version` is the driver installed beside the runner, which its own server loads. With `--command`, `driver_version` is `null`. The runner cannot see which driver another server loads. `package_version` names the release, which pins one driver.
 

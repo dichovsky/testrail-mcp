@@ -14,7 +14,9 @@ Status: accepted implementation architecture, 2026-09-09. Implementation and rel
 
 The server is a local adapter between MCP clients and the TestRail API. It translates typed endpoint tools into calls to the required driver. It enforces the MCP input and result contracts. It manages local attachment files. TestRail remains the system of record and the authority for the configured user's permissions.
 
-The first release covers TestRail's **10.7.0** API reference. Its live qualification runs against TestRail **10.8.1**, the baseline. Older TestRail versions are supported on a best-effort basis. Preserve compatible responses. Surface unavailable endpoints, parameters, permissions, and license requirements clearly. Do not promise full endpoint availability on older versions. Do not infer compatibility merely from a successful connection. A later compatibility guarantee requires explicit version-specific verification.
+The first release covers TestRail's **10.7.0** API reference. Its live qualification runs against TestRail **10.8.1**, the baseline. Older TestRail versions are supported on a best-effort basis.
+
+Preserve compatible responses. Surface unavailable endpoints, parameters, permissions, and license requirements clearly. Do not promise full endpoint availability on older versions. Do not infer compatibility merely from a successful connection. A later compatibility guarantee requires explicit version-specific verification.
 
 ## Runtime and component boundaries
 
@@ -168,7 +170,9 @@ Use the directory configuration and file-size limits in the [implementation cont
 
 Preserve the field names and values returned by the driver, including additional TestRail response fields and flat `custom_*` properties. Place returned data in a stable MCP result wrapper with `data`, plus `pagination` and `warnings` when applicable. Keep TestRail data separate from the wrapper's own metadata. Do not rename, drop, coerce, or relocate custom fields into a new `custom_fields` container. Preserve such a legacy container only if it was actually returned.
 
-Validate tool inputs at runtime before invoking the driver. Path identifiers, known query fields, and write payloads must meet their declared contracts. Reuse exported driver payload schemas while adding missing MCP boundary checks. Retain permitted custom fields. TypeScript declarations alone do not validate model-supplied JSON. The driver does not uniformly validate programmatic write payloads. Instance-specific field requirements and permissions remain subject to TestRail's validation.
+Validate tool inputs at runtime before invoking the driver. Path identifiers, known query fields, and write payloads must meet their declared contracts. Reuse exported driver payload schemas while adding missing MCP boundary checks. Retain permitted custom fields.
+
+TypeScript declarations alone do not validate model-supplied JSON. The driver does not uniformly validate programmatic write payloads. Instance-specific field requirements and permissions remain subject to TestRail's validation.
 
 Validate the MCP wrapper and each operation's required outer response structure independently of its advisory entity-field schema. When a usable response disagrees with expected entity-field types, preserve the returned values. Report a warning. Do not accidentally restore strict entity validation through an MCP output schema. Output descriptions and examples can document expected fields without making response drift an automatic outage.
 

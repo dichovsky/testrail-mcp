@@ -41,7 +41,9 @@ gh api repos/dichovsky/testrail-mcp/environments/npm-publish \
 | Environment name | `npm-publish` |
 | Permissions | `npm publish` allowed. If the relationship allows only `npm stage publish`, it refuses the workflow's `npm publish`. The first 1.0.0 attempt showed this refusal |
 
-npm allows a trusted publisher only on a package that already exists. Thus, the first version had to be published another way. For this reason, the owner published the deprecated placeholder `0.0.0-bootstrap.0` on 2026-10-02, under the `bootstrap` tag. npm points `latest` at the first version of a package, whatever its tag. Thus, `latest` names the placeholder until 1.0.0. The registry check in the workflow accepts a pre-release `latest` only while no stable version is published. Only this bootstrap case meets that condition. After you configure the trusted publisher, revoke all tokens that you used for the bootstrap.
+npm allows a trusted publisher only on a package that already exists. Thus, the first version had to be published another way. For this reason, the owner published the deprecated placeholder `0.0.0-bootstrap.0` on 2026-10-02, under the `bootstrap` tag. npm points `latest` at the first version of a package, whatever its tag. Thus, `latest` names the placeholder until 1.0.0.
+
+The registry check in the workflow accepts a pre-release `latest` only while no stable version is published. Only this bootstrap case meets that condition. After you configure the trusted publisher, revoke all tokens that you used for the bootstrap.
 
 ### Publishing by hand
 

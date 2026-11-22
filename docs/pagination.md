@@ -8,7 +8,9 @@ A controlled list returns one page of 50 unless the caller says otherwise, up to
 
 A stated bound may lower a configured maximum but never raise it. The server refuses `max_items`, `max_pages`, `max_bytes` or `max_duration_ms` above `max_all_items`, `max_all_pages`, `max_all_bytes` or `max_all_duration_ms` with `INVALID_ARGUMENT`. The list module checks these limits before transport admission and before driver lookup on standalone aggregate bindings.
 
-The input schema cannot enforce operator limits. The server builds schemas when the catalog loads, before it reads `TESTRAIL_MCP_LIMITS`. Thus, the ceiling that the schemas advertise and enforce is the built-in default. The server refuses a bound rather than clamping it, so the aggregate never quietly does less than the caller asked. One consequence remains. A configured limit above the built-in default applies when the caller states no bound. But a caller cannot state a value above the default.
+The input schema cannot enforce operator limits. The server builds schemas when the catalog loads, before it reads `TESTRAIL_MCP_LIMITS`. Thus, the ceiling that the schemas advertise and enforce is the built-in default. The server refuses a bound rather than clamping it, so the aggregate never quietly does less than the caller asked.
+
+One consequence remains. A configured limit above the built-in default applies when the caller states no bound. But a caller cannot state a value above the default.
 
 "All" means every remaining match from the effective `start_offset`, as far as TestRail's replies show. "All" is not a transactional snapshot. The reported `start_offset` is the one the caller asked for, which is also where the first request starts, rather than always zero. A reply that arrives as a bare array is the exception.
 
@@ -23,9 +25,13 @@ The description gives no next-offset advice, because the list takes no offset. O
 
 ## Links are metadata, never fetch authority
 
-The driver's page type supplies `_links`, not parsed controls. This layer validates a next link into caller-controllable arguments and exposes **only the validated numbers**. It discards host and path. Thus, the caller's original filters are reused rather than whatever the link happens to encode. The driver's aggregate does the same when it follows a link. It rebuilds each request from its own endpoint and the caller's filters. It takes the link's offset, and its limit only on a response-driven list. A controlled list keeps its own page size.
+The driver's page type supplies `_links`, not parsed controls. This layer validates a next link into caller-controllable arguments and exposes **only the validated numbers**. It discards host and path. Thus, the caller's original filters are reused rather than whatever the link happens to encode. The driver's aggregate does the same when it follows a link.
 
-The layer reads controls from both places where TestRail puts them. A conventional link carries `?offset=50&limit=25` in the query. The real `_links.next`, however, carries **no question mark at all**. It is the fragment a client appends after its own `index.php?`, as in `/api/v2/get_cases/1&limit=250&offset=250`. A URL parse puts the fragment entirely in `pathname` and leaves `search` empty. Thus, reading only the query would discard every genuine continuation. The layer reads and validates both locations together. Thus, a control repeated across the two forms is seen twice and rejected rather than silently preferred.
+The driver's aggregate rebuilds each request from its own endpoint and the caller's filters. It takes the link's offset, and its limit only on a response-driven list. A controlled list keeps its own page size.
+
+The layer reads controls from both places where TestRail puts them. A conventional link carries `?offset=50&limit=25` in the query. The real `_links.next`, however, carries **no question mark at all**. It is the fragment a client appends after its own `index.php?`, as in `/api/v2/get_cases/1&limit=250&offset=250`.
+
+A URL parse puts the fragment entirely in `pathname` and leaves `search` empty. Thus, reading only the query would discard every genuine continuation. The layer reads and validates both locations together. Thus, a control repeated across the two forms is seen twice and rejected rather than silently preferred.
 
 The layer accepts a continuation only with all of these items:
 
@@ -87,7 +93,9 @@ In all mode, each list must do these things:
 
 Each list must also stop at `max_items` with `PAGINATION_LIMIT`, reason `max_items`, no data and no request for the second page. `max_pages`, `max_bytes` and `max_duration_ms` are exercised on one list of each kind, and each must report its own reason.
 
-Each list is also served a bare array, the case history's included. The case history's bare array goes through the driver's nested decoder. When the bare array is the first reply, page mode must describe it as a terminal `legacy_array` with `has_more: false`, `next_action: "none"` and no `limit` or `offset`. All mode must return it as complete after one request. After an envelope, all mode must join the bare array and report complete after two requests. That second case pins what the driver does today, so this page cannot fall out of date. It does not endorse that behavior.
+Each list is also served a bare array, the case history's included. The case history's bare array goes through the driver's nested decoder. When the bare array is the first reply, page mode must describe it as a terminal `legacy_array` with `has_more: false`, `next_action: "none"` and no `limit` or `offset`. All mode must return it as complete after one request.
+
+After an envelope, all mode must join the bare array and report complete after two requests. That second case pins what the driver does today, so this page cannot fall out of date. It does not endorse that behavior.
 
 The F06 acceptance audit added boundary and continuation cases on one list of each kind (`get_projects`, `get_groups`). The expected values come from the driver source (`collectAllPages`):
 - Each of `max_items`, `max_pages` and `max_bytes` set exactly to what the list needs succeeds. The exact values are two items, two pages, or the two pages' exact serialized item bytes in UTF-8. The items carry multi-byte text, so a count of code units misses the boundary. One byte less stops at `max_bytes`. (`max_duration_ms` has no exact value to hit.)
@@ -104,7 +112,9 @@ The F06 acceptance audit added boundary and continuation cases on one list of ea
 
 The 109 unpaged tools say nothing about pages, offsets, continuations or cursors. The exception is the exact warning sentences on two attachment lists. TestRail documents no paging for these lists. Their input schemas refuse `_mcp` and `query.limit`/`offset`. Neither a description nor the server instructions claim a consistent snapshot.
 
-Exactly three paged lists say what a bare-array reply means. They say `bare array`, `has_more false`, and that all mode stops after the reply while reporting complete. These are the three lists whose hand-authored manifests carry an accepted bare-array reply: `get_attachments_for_plan`, `get_attachments_for_run` and `get_case_statuses`. No other paged list says this. The test checks the set against the manifests. Thus, a bare-array fixture added to another list demands a disclosure there too. An accepted reply counts as a bare array the way the driver reads it. Any array counts, except on the case history, where an array holding the list's envelope is not a bare array.
+Exactly three paged lists say what a bare-array reply means. They say `bare array`, `has_more false`, and that all mode stops after the reply while reporting complete. These are the three lists whose hand-authored manifests carry an accepted bare-array reply: `get_attachments_for_plan`, `get_attachments_for_run` and `get_case_statuses`. No other paged list says this.
+
+The test checks the set against the manifests. Thus, a bare-array fixture added to another list demands a disclosure there too. An accepted reply counts as a bare array the way the driver reads it. Any array counts, except on the case history, where an array holding the list's envelope is not a bare array.
 
 The suite also scans `src/` for any import of a private driver file. It also checks that only the page describer, `src/contracts/pagination.ts`, does either of these things, comments aside:
 
@@ -180,4 +190,6 @@ An older test also catches the other five:
 
 The held first page in the duration test of this suite is stopped sometimes by the driver's own deadline check. Sometimes one of its request timers stops it. Both must be reported as `max_duration`. A fault in recognizing the timer spellings therefore fails that test only in some runs. `tests/runtime-lifetime.test.ts` forces each spelling by freezing the clock and fails every time.
 
-Two of those checks came from earlier mistakes. An early mutation that did *not* fail showed that a hand-rolled splitter was reimplementing `URLSearchParams`. `URLSearchParams` replaced the splitter. Review then found that the remaining parser read only `url.search`. The shape that TestRail actually emits has no `?`. Thus, the parser was internally consistent and tested against a fixture that TestRail never sends. It would have returned no continuation in production.
+Two of those checks came from earlier mistakes. An early mutation that did *not* fail showed that a hand-rolled splitter was reimplementing `URLSearchParams`. `URLSearchParams` replaced the splitter.
+
+Review then found that the remaining parser read only `url.search`. The shape that TestRail actually emits has no `?`. Thus, the parser was internally consistent and tested against a fixture that TestRail never sends. It would have returned no continuation in production.

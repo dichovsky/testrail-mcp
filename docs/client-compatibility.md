@@ -171,7 +171,9 @@ Merge this entry into `~/.copilot/mcp-config.json`. Unlike Codex's forwarding li
 
 The CLI documents this configuration, variable expansion, and a millisecond timeout covering discovery and calls. Its local tool snapshot can precede live discovery. Thus, force live discovery in an isolated test configuration for cold-start verification. Then exercise normal cached startup separately. Do not use VS Code configuration or settings. Source: [Copilot CLI command reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference).
 
-Keep personal `toolSearch` at its automatic default. Use a supported model. Current docs activate search at approximately 30 tools and defer external definitions. `deferTools: "never"` and named custom-agent tool declarations can defeat this behavior. Test the ordinary agent first. No CLI-specific fixed catalog cap was established in this research. Do not import VS Code's 128-tools-per-request restriction or claim unlimited capacity. Source: [Copilot CLI tool search](https://docs.github.com/en/copilot/concepts/agents/copilot-cli/tool-search).
+Keep personal `toolSearch` at its automatic default. Use a supported model. Current docs activate search at approximately 30 tools and defer external definitions. `deferTools: "never"` and named custom-agent tool declarations can defeat this behavior. Test the ordinary agent first.
+
+No CLI-specific fixed catalog cap was established in this research. Do not import VS Code's 128-tools-per-request restriction or claim unlimited capacity. Source: [Copilot CLI tool search](https://docs.github.com/en/copilot/concepts/agents/copilot-cli/tool-search).
 
 The observed 1.0.67 binary is not a minimum-supported-version commitment. Model support can change between releases: Haiku tool search was added in the later 1.0.72-0 prerelease. Select and record a model supported by the tested CLI release. Source: [official release note](https://github.com/github/copilot-cli/releases/tag/v1.0.72-0).
 

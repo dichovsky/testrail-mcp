@@ -38,7 +38,9 @@ The driver receives a path, never an adapter-owned descriptor. Ownership of such
 
 Where inode identity is meaningful, the opened handle is checked against the path it came from after opening. Thus, a file replaced once it is open is caught. Identities are compared exactly, as 64-bit values. A Windows (NTFS) file ID routinely exceeds 2^53. At that size, a JavaScript number would round two different files to the same identity.
 
-`O_NOFOLLOW` refuses a final component swapped for a symlink before the open (the open fails with `ELOOP`), where the platform provides the flag. Neither the identity check nor `O_NOFOLLOW` closes every window. A regular file swapped in between resolution and open is read. So is an intermediate directory replaced by a symlink, because `O_NOFOLLOW` guards only the last component. Those are races that a process running as the same user would have to win. This layer does not claim to prevent these races. Such a process could as easily copy any file that it can read into a root.
+`O_NOFOLLOW` refuses a final component swapped for a symlink before the open (the open fails with `ELOOP`), where the platform provides the flag. Neither the identity check nor `O_NOFOLLOW` closes every window. A regular file swapped in between resolution and open is read. So is an intermediate directory replaced by a symlink, because `O_NOFOLLOW` guards only the last component. Those are races that a process running as the same user would have to win.
+
+This layer does not claim to prevent these races. Such a process could as easily copy any file that it can read into a root.
 
 On Windows, the flag does not exist. The open follows a swapped-in link, and the identity check is what refuses the swap. That check runs only if the platform reports a file ID.
 
@@ -73,9 +75,13 @@ In both cases, the copy stops before its next 64 KiB chunk and is removed. Nothi
 
 Once the request has been dispatched, a staged copy outlives cancellation and the response watchdog until the driver settles. The reason: the request may still be reading the copy. Settlement cleanup is the only disposer of the copy.
 
-Shutdown is the exception. Once the 5-second drain gives up, the staging area is removed even if an upload has still not settled. This removal is deliberate. The process exits 250 ms later. On POSIX, removing a file does not disturb a request body that is already reading the file. A copy that is still being made at that point is never sent. By then, the driver client has been destroyed, and the driver refuses new requests.
+Shutdown is the exception. Once the 5-second drain gives up, the staging area is removed even if an upload has still not settled. This removal is deliberate. The process exits 250 ms later.
 
-Disposing of a copy empties it before removing it. After a request body is abandoned part-way through, Node's file-backed Blob inside the driver keeps a descriptor on the copy until garbage collection. An unlinked file keeps its blocks while any descriptor is open. On a memory-backed `/tmp`, an unemptied copy would hold up to `max_file_bytes` of memory per abandoned upload. The copy would hold this memory for as long as an idle server goes without a collection. Emptied first, the lingering descriptor holds no data. The descriptor itself belongs to Node and the driver, not to this layer, and closes only at garbage collection.
+On POSIX, removing a file does not disturb a request body that is already reading the file. A copy that is still being made at that point is never sent. By then, the driver client has been destroyed, and the driver refuses new requests.
+
+Disposing of a copy empties it before removing it. After a request body is abandoned part-way through, Node's file-backed Blob inside the driver keeps a descriptor on the copy until garbage collection. An unlinked file keeps its blocks while any descriptor is open.
+
+On a memory-backed `/tmp`, an unemptied copy would hold up to `max_file_bytes` of memory per abandoned upload. The copy would hold this memory for as long as an idle server goes without a collection. Emptied first, the lingering descriptor holds no data. The descriptor itself belongs to Node and the driver, not to this layer, and closes only at garbage collection.
 
 The descriptor behavior was measured on Linux with Node 22.22.2 and 24.21.0. The measurement read a Blob from `openAsBlob` part-way and cancelled it. One descriptor stays open after cancellation and after unlinking. No descriptor stays open after a forced collection. At shutdown, the server only removes the staging area and never empties it, since an upload may still be reading its copy then.
 
@@ -158,7 +164,11 @@ Mutation-checked. Each of these mutations fails one of these tests:
 - leaving the caller's cancellation out of that signal;
 - dropping the settlement cleanup.
 
-`tests/transport/file-lifetime.test.ts` proves that the registered tools actually route through this layer. `testrail_add_attachment_to_case` refuses a `../` traversal. It also refuses a symlink that escapes its root. The refusals use `FILE_ACCESS_DENIED` and `write_outcome: "not_started"`, and they occur before any DNS lookup or request. The tool follows a symlink that stays inside a root, and it sends the content of the target. A `testrail_get_attachment` download survives runtime shutdown and staging disposal. The packaged executable, pointed at a local stand-in for TestRail, keeps a download through stdin-closure shutdown and a restart. The restart's recovery removes an abandoned staging directory whose owner is provably gone, and a new download creates a second distinct file. Mutation-checked. Each of these mutations fails it:
+`tests/transport/file-lifetime.test.ts` proves that the registered tools actually route through this layer. `testrail_add_attachment_to_case` refuses a `../` traversal. It also refuses a symlink that escapes its root. The refusals use `FILE_ACCESS_DENIED` and `write_outcome: "not_started"`, and they occur before any DNS lookup or request.
+
+`testrail_add_attachment_to_case` follows a symlink that stays inside a root, and it sends the content of the target. A `testrail_get_attachment` download survives runtime shutdown and staging disposal.
+
+The packaged executable, pointed at a local stand-in for TestRail, keeps a download through stdin-closure shutdown and a restart. The restart's recovery removes an abandoned staging directory whose owner is provably gone, and a new download creates a second distinct file. Mutation-checked. Each of these mutations fails it:
 
 - dropping the root comparison;
 - refusing every symlink;

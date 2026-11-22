@@ -4,7 +4,9 @@
 
 ## The executor lives outside the factory
 
-`serveStdio(factory)` pins one server instance for each connection. The factory can run more than once during an opening when an era falls back. `startServer` loads configuration and awaits `createOperationExecutor` one time. The executor recovers abandoned staging, and it constructs its configured driver and runtime. The factory only calls `buildServer({ executor, registry })`. That call constructs an `McpServer` and registers the catalog around the same executor. Thus, a second server instance cannot mean a second credential, a second rate budget, or a disposal that tears down state that another instance uses.
+`serveStdio(factory)` pins one server instance for each connection. The factory can run more than once during an opening when an era falls back. `startServer` loads configuration and awaits `createOperationExecutor` one time.
+
+The executor recovers abandoned staging, and it constructs its configured driver and runtime. The factory only calls `buildServer({ executor, registry })`. That call constructs an `McpServer` and registers the catalog around the same executor. Thus, a second server instance cannot mean a second credential, a second rate budget, or a disposal that tears down state that another instance uses.
 
 `tests/transport/serving-process.test.ts` holds part of this. It replays the SDK client's own modern `server/discover` probe to the built executable, and then it sends a legacy `initialize`. Thus, `serveStdio` discards the probe's server and calls the factory again on one connection. A real call afterwards still reaches TestRail, so discarding a server does not dispose the shared executor. The composition tests in `tests/transport/composition.test.ts` hold that the factory builds no second driver or budget, for consumers in one era or in two.
 
@@ -111,7 +113,9 @@ The server cannot answer a write that is already dispatched when the connection 
 
 The same holds for valid JSON that is not a valid JSON-RPC message, even with an id (`{"jsonrpc":"2.0","id":9}`). JSON-RPC 2.0 asks for `-32600`, but the SDK's transport drops the message and reports it through `onerror`. The server logs only the class name of the error, as a `transport_error` event, and keeps serving (`tests/transport/serving-process.test.ts`). The name is whatever the thrower set, so the server logs a name that is not a plain identifier as `Error`. R01 should record this behavior as evidence rather than assert the contract sentence unqualified.
 
-**A cancelled request id 0 is cancelled like any other.** Through SDK 2.0.0 the server dropped a `notifications/cancelled` whose `requestId` was falsy (`if (!notification.params.requestId) return;`). It treated id 0 as naming no request. A legacy connection spends id 0 on `initialize`, which is never cancelled. A 2026-07-28 client opens with a string-id discover probe, so its first ordinary request gets id 0. Thus, cancelling that tool call never reached the handler. SDK 2.3.0 tests `requestId === undefined` instead. Thus, the handler resolves `CANCELLED` and the SDK suppresses the response, as for any other id. A test pins this behavior, so a change of it in the SDK surfaces here.
+**A cancelled request id 0 is cancelled like any other.** Through SDK 2.0.0 the server dropped a `notifications/cancelled` whose `requestId` was falsy (`if (!notification.params.requestId) return;`). It treated id 0 as naming no request. A legacy connection spends id 0 on `initialize`, which is never cancelled. A 2026-07-28 client opens with a string-id discover probe, so its first ordinary request gets id 0. Thus, cancelling that tool call never reached the handler.
+
+SDK 2.3.0 tests `requestId === undefined` instead. Thus, the handler resolves `CANCELLED` and the SDK suppresses the response, as for any other id. A test pins this behavior, so a change of it in the SDK surfaces here.
 
 ## Verification
 
@@ -163,7 +167,9 @@ The pipes and process of the automatic session belong to the SDK, so that sessio
 - The executable exits 0 on stdin closure, and every stdout line, read after the streams close, is a JSON-RPC message.
 - The discover-then-initialize session is described above.
 
-`tests/transport/cancellation.test.ts` sends `notifications/cancelled` from a real client, in both eras, for registered tools that have already reached TestRail. The handler's signal aborts and the call ends `CANCELLED`, a write with `write_outcome: "unknown"`. The SDK then suppresses the response, so the client gets nothing for that id: neither the result nor the upstream reply that arrives later. The slot stays owned until that reply settles. The late reply raises no unhandled rejection, and the connection keeps serving. Because nothing is written back, the test wraps the pipeline to read the result that the handler produced. Two mutations each fail the test: not passing the handler's signal, and never recording dispatch.
+`tests/transport/cancellation.test.ts` sends `notifications/cancelled` from a real client, in both eras, for registered tools that have already reached TestRail. The handler's signal aborts and the call ends `CANCELLED`, a write with `write_outcome: "unknown"`. The SDK then suppresses the response, so the client gets nothing for that id: neither the result nor the upstream reply that arrives later. The slot stays owned until that reply settles. The late reply raises no unhandled rejection, and the connection keeps serving.
+
+Because nothing is written back, the test wraps the pipeline to read the result that the handler produced. Two mutations each fail the test: not passing the handler's signal, and never recording dispatch.
 
 `tests/transport/tool-call.test.ts` covers the pipeline directly with synthetic download and upload operations. These rules apply:
 - A caller's identifier survives unchanged, whether it is a number or a UUID.
@@ -230,9 +236,13 @@ The suites are mutation-checked. Each mutation below fails the tests that the it
 
 Both were real and neither would have surfaced until an endpoint family was added.
 
-**Identifiers were coerced.** TestRail accepts a positive integer **or a UUID** for an attachment id. The driver's own signature is `getAttachment(attachmentId: number | string)`. The download branch collapsed anything non-numeric to `0`. That collapse would have labelled every UUID download with a placeholder. It would also have broken any caller that matches a batch of downloads back to what it requested. The validated value now passes through untouched. An operation registered without an identifier raises an internal error rather than inventing one.
+**Identifiers were coerced.** TestRail accepts a positive integer **or a UUID** for an attachment id. The driver's own signature is `getAttachment(attachmentId: number | string)`. The download branch collapsed anything non-numeric to `0`. That collapse would have labelled every UUID download with a placeholder. It would also have broken any caller that matches a batch of downloads back to what it requested.
 
-**Staged uploads leaked on refusal.** The runtime rejects `BUSY` and pre-dispatch cancellation *before* it creates the slot that runs cleanup. Thus, a call refused at admission left its staged copy in the staging directory for the life of the process. The catch now disposes it, but only for a call that never entered the driver. Once the call is dispatched, the runtime's settlement cleanup disposes the copy instead, because a cancelled or timed-out upload may still be reading the copy into its request. Disposing the copy from the catch would fail that request part-way. F07's closing work later removed that catch disposal. Staging now runs inside the slot, so a call refused at admission has staged nothing, and settlement cleanup is the copy's only disposer.
+The validated value now passes through untouched. An operation registered without an identifier raises an internal error rather than inventing one.
+
+**Staged uploads leaked on refusal.** The runtime rejects `BUSY` and pre-dispatch cancellation *before* it creates the slot that runs cleanup. Thus, a call refused at admission left its staged copy in the staging directory for the life of the process.
+
+The catch now disposes it, but only for a call that never entered the driver. Once the call is dispatched, the runtime's settlement cleanup disposes the copy instead, because a cancelled or timed-out upload may still be reading the copy into its request. Disposing the copy from the catch would fail that request part-way. F07's closing work later removed that catch disposal. Staging now runs inside the slot, so a call refused at admission has staged nothing, and settlement cleanup is the copy's only disposer.
 
 A third fault surfaced while writing the test for the second. The reserved upload inputs are **flat**: `file_path`, `filename` and `content_type`. The pipeline was reading a nested `file` object that it had invented. That object would never have matched a real registered upload, so staging would silently never have happened. The registry's own layout check caught the fault.
 

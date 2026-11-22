@@ -85,7 +85,9 @@ Fresh independent checks killed seven distinct mutations:
 | Acknowledge a soft-delete preview before checking for a named counter | 5 |
 | Remove per-copy settlement cleanup | 73 (3 T03 and 70 T12 family cases) |
 
-Both fresh independent reviews are complete. The production review found no issues and confirmed that the normalized execution pipeline was byte-identical to the original. The test review found that shutdown's directory removal had weakened family-level checks for per-copy cleanup. Those checks now wait for zero active slots. They also require the staging directory to contain only `owner.json` before shutdown. They retain the post-shutdown `ENOENT` assertion. An independent baseline run passed all 240 targeted cases. Removing per-copy settlement cleanup then failed 73 cases (3 T03 and 70 T12). That result closes the test-review finding.
+Both fresh independent reviews are complete. The production review found no issues and confirmed that the normalized execution pipeline was byte-identical to the original. The test review found that shutdown's directory removal had weakened family-level checks for per-copy cleanup. Those checks now wait for zero active slots. They also require the staging directory to contain only `owner.json` before shutdown. They retain the post-shutdown `ENOENT` assertion.
+
+An independent baseline run passed all 240 targeted cases. Removing per-copy settlement cleanup then failed 73 cases (3 T03 and 70 T12). That result closes the test-review finding.
 
 The full check passed again after the final assertion strengthening. The result was 66 test files, 7,174 passing tests and one platform-specific skip. It also included package verification of 81 files and 133 tools in all three protocol modes. The coverage figures above apply to the unchanged production implementation.
 
