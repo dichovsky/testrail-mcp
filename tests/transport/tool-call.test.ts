@@ -276,12 +276,10 @@ describe('staged uploads', () => {
     });
     try {
       const result = await executor.execute(addAttachment, { case_id: 1, file_path: source, filename: 'dns.txt' });
-      // Decided 2026-10-03 and stated in docs/results-and-errors.md: the driver raises a
-      // validation error for the failed lookup, which maps to an internal fault with an
-      // unknown write outcome although nothing was sent. The taxonomy has no code for an
-      // unreachable TestRail, and the adapter cannot prove that nothing was sent.
+      // A failed resolver is a status-zero network error. Once the call enters the
+      // driver the adapter conservatively reports an unknown write outcome.
       expect(result.structuredContent).toEqual({
-        error: { code: 'INTERNAL_ERROR', message: 'The server failed to complete the call.', write_outcome: 'unknown' },
+        error: { code: 'INVALID_RESPONSE', message: 'The TestRail response could not be used.', write_outcome: 'unknown' },
       });
       expect(fetch).not.toHaveBeenCalled();
       await vi.waitFor(() => { expect(executor.stats().active).toBe(0); });

@@ -28,11 +28,9 @@ Full coverage means that every listed HTTP verb/path operation has an MCP-access
 
 ### Development dependency and production prerequisite
 
-**Resolved in 7.2.0.** The package pinned the published `@dichovsky/testrail-api-client@7.2.0` (tag commit `cc7751c01c3d3956d061073283bee6b23bf33422`). Then it pinned `8.0.0` (tag commit `7680ab6c0d1973749e3178016a3d133af27bfb0a`). Now it pins `9.0.0` (tag commit `a5ccffbfa176e9c6675bd81fff61859bd7b6be5d`).
+**Resolved in 7.2.0.** The package now pins `@dichovsky/testrail-api-client@10.0.0` at tag commit `b7cde3748f8f937acb79b0004985a43ea9f916a9`. The driver meets the requirements below, including the accepted report retry for HTTP 429. TestRail rejects a rate-limited request before it handles the request. Thus, the retry cannot generate the report twice. The [driver qualification](driver-qualification.md) records standing offline tests and earlier releases.
 
-Each of these versions meets all three requirements listed below, with one accepted deviation. Each of these versions re-sends a rate-limited (429) report run. TestRail rejects a rate-limited request before it handles the request, so the re-send cannot generate a report twice. The [driver qualification](driver-qualification.md) records the evidence and runs it as standing tests.
-
-The rest of this section is the original baseline. It is kept for provenance.
+The rest of this section records the original baseline.
 
 The exact npm dependency **`@dichovsky/testrail-api-client@7.0.0` is the development baseline only**. It has a committed lockfile. As checked on 2026-09-09, [npm metadata](https://registry.npmjs.org/@dichovsky%2Ftestrail-api-client/7.0.0) and [GitHub release/7.0.0](https://github.com/dichovsky/testrail-api-client/releases/tag/release/7.0.0) identify commit `71a80d984aea14713d8eeaf6ac9a0d41c1fba12b` as the latest published stable release.
 

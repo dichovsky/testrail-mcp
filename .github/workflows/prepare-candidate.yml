@@ -1,0 +1,41 @@
+name: Prepare candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the candidate commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up the release Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26.13.1'
+          package-manager-cache: false
+
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --engine-strict --ignore-scripts --registry=https://registry.npmjs.org/
+
+      - name: Build the candidate
+        run: npm run build
+
+      - name: Pack the candidate and record its identity
+        run: node scripts/prepare-candidate.mjs "$RUNNER_TEMP/candidate" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+
+      - name: Keep the candidate for qualification
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-release-candidate-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate/
+          if-no-files-found: error
+          include-hidden-files: false

@@ -48,25 +48,24 @@ Subclass precedence is essential, because the driver's own hierarchy makes the g
 
 A 404 is `NOT_FOUND`, and its message says only that the resource does not exist. Nothing infers an unsupported TestRail version from a reply. An older TestRail's `400` for an unknown method stays TestRail's own error, `UPSTREAM_ERROR` with its status.
 
+On `get_project`, `get_group` and `get_attachment`, a 400 with a recognized JSON error for an invalid or inaccessible ID carries the fixed reason `resource_not_found`. The result also carries `UPSTREAM_ERROR` and `http_status: 400`. Live qualification uses the reason when it reads back deleted IDs. The server matches the exact error text for the endpoint. Thus, generic 400 responses have no such reason.
+
 Status 0 and status 200 both map to `INVALID_RESPONSE`. A status-zero failure is not automatically a transport failure. Malformed success JSON reaches the adapter the same way. The one exception is the driver's own body timeout, described below.
 
-Two failures happen before TestRail has answered at all, and the taxonomy has no code for an unreachable TestRail. Adding a code would change what clients receive. Thus, on 2026-10-03 both failures were kept as they were, and this document states them:
-- Unless `TESTRAIL_ALLOW_PRIVATE_HOSTS` is set, the driver resolves the TestRail host name before every request. It connects to the address that it approved. A lookup with one of these results is a driver validation error:
-  - The lookup fails.
-  - The lookup returns no address.
-  - The lookup returns a malformed answer.
-  - The lookup returns an address in a private, loopback or other non-routable range (from driver 9.0.0 also `198.18.0.0/15`, `224.0.0.0/4` and `240.0.0.0/4`).
+Unless `TESTRAIL_ALLOW_PRIVATE_HOSTS` is set, the driver resolves the host before a request and connects to an approved address. The lookup results have these outcomes:
 
-  This error reaches the caller as `INTERNAL_ERROR`, whose fixed message says the server failed to complete the call. No request is sent. When `TESTRAIL_ALLOW_PRIVATE_HOSTS` is set, the driver does not look the name up itself. A name that does not resolve then fails when the connection is made, as the next case describes.
-- A connection that fails before any response headers arrive, such as one refused or reset, is the driver's status-0 network error. It reaches the caller as `INVALID_RESPONSE`, whose fixed message says the TestRail response could not be used, although none arrived. The error shares that code with the driver's other status-zero errors, all but its body timeout.
+- Malformed resolver answers and private, loopback or other denied addresses raise driver validation errors. These errors reach the caller as `INTERNAL_ERROR`.
+- A failed lookup or a lookup with no answers is a status-zero network error on driver 10. It reaches the caller as `INVALID_RESPONSE` without `http_status`. Eligible reads retry failed lookups. Writes and report generation do not retry them.
 
-In both cases a write or report run carries `write_outcome: "unknown"`. The adapter entered the driver, so the adapter cannot prove that nothing was sent, even though after a failed lookup nothing was. The messages are imprecise. The outcome is not wrong. `tests/transport/tool-call.test.ts` pins the lookup failure exactly, and `tests/result-contract.test.ts` pins the network error on a write sent once.
+A connection failure before headers is also a status-zero network error with the same code. When private hosts are allowed, Node resolves the name when it connects.
+
+A write or report run carries `write_outcome: "unknown"` for these errors. The adapter entered the driver, so it conservatively reports the outcome as unknown. `tests/transport/tool-call.test.ts` covers the lookup failure. `tests/result-contract.test.ts` covers a connection failure on a write sent once.
 
 A lookup that does not answer at all is neither case. From driver 9.0.0 the lookup counts against the 15-second request timeout. It reaches the caller as `TIMEOUT` with no `http_status`, as the request timeout below does. No request is sent, and the call keeps its slot until the lookup settles. `tests/runtime-timing.test.ts` shows this case on a fake clock.
 
-A connection that breaks after the headers arrive is neither case. The decision did not cover it. What follows is what the pinned driver does. A break during an error body loses only the reply's text. The error keeps TestRail's status and is classified by it, as any reply with that status would be. Thus, a 500 is `UPSTREAM_ERROR`, and a 403 is `PERMISSION_DENIED` even when the text that the error lost was a license restriction.
+When the connection breaks after the headers arrive, a break during an error body loses only the reply's text. The error keeps TestRail's status and is classified by it, as any reply with that status would be. Thus, a 500 is `UPSTREAM_ERROR`, and a 403 is `PERMISSION_DENIED` even when the text that the error lost was a license restriction.
 
-A break during a success body reaches the adapter as the raw fetch error. The adapter reports `INTERNAL_ERROR`. A write carries `write_outcome: "unknown"` in both cases. `tests/result-contract.test.ts` pins these three on a write sent once. An error body that stalls instead of breaking, or runs over the driver's JSON size limit, loses its status as well. The description comes below, after the driver's own timeouts.
+Driver 10 wraps a break during a success body as a status-zero network error. Thus, the adapter reports `INVALID_RESPONSE` without `http_status`. A write carries `write_outcome: "unknown"` in both cases. `tests/result-contract.test.ts` pins these three on a write sent once. An error body that stalls instead of breaking, or runs over the driver's JSON size limit, loses its status as well. The description comes below, after the driver's own timeouts.
 
 A tool call whose pipeline rejects is answered within the taxonomy too. The pipeline is built never to reject. If the pipeline did reject, the SDK would send the raw error message as the tool result, with no code and no write outcome. The server catches the rejection and answers `INTERNAL_ERROR` with its fixed message and one `tool_call` diagnostic. On a write or report run, the answer also carries `write_outcome: "unknown"`, since whether the driver was entered is not known.
 

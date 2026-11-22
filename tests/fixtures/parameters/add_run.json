@@ -3,10 +3,10 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "9.0.0",
-    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
+    "driver_version": "10.0.0",
+    "driver_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-10-03",
+    "reviewed_on": "2026-11-22",
     "evidence": [
       {
         "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
@@ -21,6 +21,13 @@
           { "path": "src/modules/runs.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/runs.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
           { "path": "src/schemas/runs.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/runs.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
+      },
+      {
+        "from_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "to_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9", "reviewed_on": "2026-11-22",
+        "files": [
+          { "path": "src/modules/runs.ts", "changed": true, "note": "Run list preparation validates timestamps and soft delete captures its mode before dispatch. Accepted list parameters and the preview query remain the same." },
+          { "path": "src/schemas/runs.ts", "changed": true, "note": "Removed redundant response type declarations. The cited runtime schema and its shipped JavaScript are identical." }
+        ]
       }
     ]
   },
@@ -34,12 +41,12 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/runs.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/modules/runs.ts",
       "supports": "addRun validates the project ID, places it as the only path segment of add_run, forwards the JSON payload unchanged and parses the reply advisorily against RunSchema."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/runs.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/schemas/runs.ts",
       "supports": "AddRunPayloadSchema requires name and accepts suite_id, description, milestone_id, assignedto_id, include_all, case_ids, refs, start_on, due_on and dynamic_filters, whose mode is a string and whose filters is a record of records. UpdateRunPayloadSchema is the same without suite_id and with name optional. Neither is parsed by the public method, which forwards the payload as given, so every payload rule is enforced at the MCP boundary alone."
     },
     {
@@ -522,6 +529,7 @@
       "scope": "body",
       "requiredness": "optional",
       "domain_ref": "unix_timestamp",
+      "rejected_by": "adapter",
       "semantics": "The run's start date. Seconds since the Unix epoch, as TestRail documents. The driver forwards any number, so the boundary holds it to the timestamp domain.",
       "driver": {
         "argument": 1,
@@ -550,6 +558,7 @@
       "scope": "body",
       "requiredness": "optional",
       "domain_ref": "unix_timestamp",
+      "rejected_by": "adapter",
       "semantics": "The run's end date. Seconds since the Unix epoch, as TestRail documents. The driver forwards any number, so the boundary holds it to the timestamp domain.",
       "driver": {
         "argument": 1,

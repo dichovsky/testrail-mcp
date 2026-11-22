@@ -21,7 +21,7 @@
  *   TESTRAIL_BASE_URL=... TESTRAIL_EMAIL=... TESTRAIL_API_KEY=... \
  *   node scripts/live-qualification.mjs --create-qualification-project --out evidence.json \
  *     [--instance-writes] [--report-template-id N] [--cross-project-report-template-id N] \
- *     [--command testrail-mcp] [--arg ...]
+ *     [--command testrail-mcp] [--arg ...] [--fixture] [--candidate candidate.json --tarball candidate.tgz]
  */
 import { randomBytes } from 'node:crypto';
 import { realpathSync, rmSync } from 'node:fs';
@@ -31,13 +31,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { installCandidate } from './install-candidate.mjs';
 import { NotApplicable, PLAN, QUALIFICATION_PREFIX, UPLOADS } from './live-plan.mjs';
 
 export { PLAN };
 
 export const TOOL_PREFIX = 'testrail_';
 /** Codes that mean the instance lacks a licensed feature or the user a permission. */
-const BLOCKING = new Set(['LICENSE_REQUIRED', 'PERMISSION_DENIED']);
+export const BLOCKING = new Set(['LICENSE_REQUIRED', 'PERMISSION_DENIED']);
 const REQUIRED_VARIABLES = ['TESTRAIL_BASE_URL', 'TESTRAIL_EMAIL', 'TESTRAIL_API_KEY'];
 /** Ctrl-C, a closed terminal, and a polite kill. */
 const SIGNALS = ['SIGINT', 'SIGHUP', 'SIGTERM'];
@@ -81,11 +82,19 @@ export class MissingDependency extends Error {
   }
 }
 
+export const missingOptionReason = (name) => `needs --${name.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}`;
+
 export class GuardRefusal extends Error {
   constructor(message) {
     super(message);
     this.name = 'GuardRefusal';
   }
+}
+
+/** Attachment UUIDs name the same attachment in either hex case. */
+function identityKey(kind, id) {
+  const key = String(id);
+  return kind === 'attachment' ? key.toLowerCase() : key;
 }
 
 /** What the run created, by kind, and what it has deleted since. */
@@ -95,7 +104,7 @@ export class Ledger {
 
   add(kind, id) {
     if (!this.#kinds.has(kind)) this.#kinds.set(kind, new Map());
-    this.#kinds.get(kind).set(String(id), id);
+    this.#kinds.get(kind).set(identityKey(kind, id), id);
   }
 
   /** Every ID of a kind the run created, deleted or not, as TestRail gave it. */
@@ -104,15 +113,15 @@ export class Ledger {
   }
 
   has(kind, id) {
-    return this.#kinds.get(kind)?.has(String(id)) ?? false;
+    return this.#kinds.get(kind)?.has(identityKey(kind, id)) ?? false;
   }
 
   remove(kind, id) {
-    this.#gone.add(`${kind}:${String(id)}`);
+    this.#gone.add(`${kind}:${identityKey(kind, id)}`);
   }
 
   isGone(kind, id) {
-    return this.#gone.has(`${kind}:${String(id)}`);
+    return this.#gone.has(`${kind}:${identityKey(kind, id)}`);
   }
 }
 
@@ -165,6 +174,7 @@ function createContext({ ledger, options, stamp, uploads }) {
   return {
     named, values, leftBehind,
     own(kind, id, name = kind) {
+      if (kind === 'attachment' && ledger.has(kind, id)) throw new Error('the upload returned an attachment ID already created by this run');
       ledger.add(kind, id);
       named.set(name, { kind, id });
       return id;
@@ -260,7 +270,38 @@ export async function runQualification({
   };
   const cleanup = { project: 'not_created', group: 'not_created' };
   let verified;
+  const readbacks = { project: null, group: null, attachments: [] };
+  const attachmentDeletions = new Map();
   let residue;
+  // Clean up through the session while it answers, then try a fresh one if needed.
+  let cleaner = invoke;
+  let fresh = false;
+  const clean = async (tool, input) => {
+    try {
+      return (await cleaner(tool, input)).result;
+    } catch (error) {
+      if (fresh || reconnect === undefined) throw error;
+      fresh = true;
+      cleaner = pacedCaller(await reconnect(), pacing);
+      return (await cleaner(tool, input)).result;
+    }
+  };
+  const cleanAttachment = async (id) => {
+    const key = identityKey('attachment', id);
+    const label = attachmentDeletions.get(key)?.label;
+    const result = await clean(`${TOOL_PREFIX}delete_attachment`, { attachment_id: id }).catch(() => undefined);
+    const deletedBy = result !== undefined && classify(result).status === 'pass' ? 'cleanup' : null;
+    attachmentDeletions.set(key, { label, deletedBy });
+  };
+  let attemptedPendingDeletes = false;
+  const cleanPendingAttachments = async () => {
+    if (attemptedPendingDeletes) return;
+    attemptedPendingDeletes = true;
+    // Retry unacknowledged deletes while the project and its permissions are still in place.
+    for (const id of ledger.ids('attachment')) {
+      if (!attachmentDeletions.get(identityKey('attachment', id))?.deletedBy) await cleanAttachment(id);
+    }
+  };
   try {
     for (const step of plan) {
       stopped ??= shouldStop();
@@ -269,7 +310,7 @@ export async function runQualification({
         continue;
       }
       if (step.requires !== undefined && !options[step.requires]) {
-        record(step, { status: 'not_run', reason: `needs --${step.requires.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}` });
+        record(step, { status: 'not_run', reason: missingOptionReason(step.requires) });
         continue;
       }
       let input;
@@ -284,6 +325,7 @@ export async function runQualification({
         else throw error;
         continue;
       }
+      if (step.tool === 'delete_project') await cleanPendingAttachments();
       let result;
       let retries;
       try {
@@ -314,39 +356,26 @@ export async function runQualification({
       if (outcome.status === 'pass' && step.capture !== undefined) {
         try {
           step.capture(data, c);
+          for (const name of step.provides ?? []) {
+            if (!c.has(name) && !c.values.has(name)) throw new MissingDependency(name);
+          }
         } catch (error) {
           if (step.unconfirmed !== undefined) c.residue(`possible ${step.unconfirmed}`);
           record(step, { ...outcome, status: 'fail', reason: `unexpected response: ${error instanceof Error ? error.message : String(error)}` });
           continue;
         }
       }
+      if (step.tool === 'delete_attachment') {
+        const key = identityKey('attachment', input.attachment_id);
+        attachmentDeletions.set(key, { label: step.label, deletedBy: outcome.status === 'pass' ? 'planned' : null });
+      }
+      if (outcome.status === 'pass' && step.residue !== undefined) c.residue(step.residue);
       if (outcome.code === 'AUTHENTICATION_FAILED') stopped = 'TestRail refused the credentials';
       record(step, message === undefined ? outcome : { ...outcome, message });
     }
   } finally {
-    // Clean up through the session while it answers; once it cannot, through a fresh one.
-    let cleaner = invoke;
-    let fresh = false;
-    const clean = async (tool, input) => {
-      try {
-        return (await cleaner(tool, input)).result;
-      } catch (error) {
-        if (fresh || reconnect === undefined) throw error;
-        fresh = true;
-        cleaner = pacedCaller(await reconnect(), pacing);
-        return (await cleaner(tool, input)).result;
-      }
-    };
-    const deleteAttachments = async () => {
-      for (const id of ledger.ids('attachment')) {
-        // One the plan already deleted is refused, and the check below decides.
-        await clean(`${TOOL_PREFIX}delete_attachment`, { attachment_id: id }).catch(() => undefined);
-      }
-    };
-    // Attachments are stored apart from what they hang on, so a run that stops early deletes
-    // each one itself before the project, rather than leaving them to go with it.
-    const project = c.named.get('project');
-    if (project !== undefined && !ledger.isGone(project.kind, project.id)) await deleteAttachments();
+    // A run that stops early still tries to remove pending attachments before the project.
+    await cleanPendingAttachments();
     for (const [kind, tool, key] of [['project', 'delete_project', 'project_id'], ['group', 'delete_group', 'group_id']]) {
       const entry = c.named.get(kind);
       if (entry === undefined) continue;
@@ -362,37 +391,53 @@ export async function runQualification({
       }
     }
     /*
-     * Then TestRail is asked for each one again. A deleted ID is answered NOT_FOUND, or 400 as
-     * TestRail answers an ID it does not have; any other answer leaves it unverified. An
-     * attachment still served is deleted once more and asked for again.
+     * Ask for each one again. A 400 only confirms absence when the server recognizes
+     * TestRail's rejection of that endpoint's ID. An attachment still served is deleted
+     * once more and asked for again.
      */
-    const state = async (tool, input) => {
+    const readback = async (tool, input) => {
       try {
-        const { status, code, http_status: httpStatus } = classify(await clean(`${TOOL_PREFIX}${tool}`, input));
-        if (status === 'pass') return 'present';
-        return code === 'NOT_FOUND' || httpStatus === 400 ? 'gone' : 'unverified';
+        const result = await clean(`${TOOL_PREFIX}${tool}`, input);
+        const { status, code, http_status: httpStatus } = classify(result);
+        if (status === 'pass') return { state: 'present' };
+        if (code === 'NOT_FOUND' && httpStatus === 404) return { state: 'gone', proof: { code, http_status: httpStatus } };
+        const reason = result.structuredContent?.error?.reason;
+        if (code === 'UPSTREAM_ERROR' && httpStatus === 400 && reason === 'resource_not_found') {
+          return { state: 'gone', proof: { code, http_status: httpStatus, reason } };
+        }
       } catch {
-        return 'unverified';
+        // A session or transport failure provides no evidence about the resource.
       }
+      return { state: 'unverified' };
     };
     verified = { gone: 0, present: 0, unverified: 0 };
     for (const [kind, tool, key] of [['project', 'get_project', 'project_id'], ['group', 'get_group', 'group_id']]) {
       const entry = c.named.get(kind);
       if (entry === undefined) continue;
-      const found = await state(tool, { [key]: entry.id });
-      verified[found] += 1;
+      const { state, proof } = await readback(tool, { [key]: entry.id });
+      verified[state] += 1;
+      if (proof !== undefined) readbacks[kind] = proof;
       // One whose deletion failed and that TestRail cannot be asked about is left behind.
-      if (found === 'present' || (found === 'unverified' && cleanup[kind] === 'left_behind')) c.residue(kind);
-      else if (found === 'unverified') c.residue(`unverified ${kind}`);
+      if (state === 'present' || (state === 'unverified' && cleanup[kind] === 'left_behind')) c.residue(kind);
+      else if (state === 'unverified') c.residue(`unverified ${kind}`);
     }
     for (const id of ledger.ids('attachment')) {
-      let found = await state('get_attachment', { attachment_id: id });
-      if (found === 'present') {
-        await clean(`${TOOL_PREFIX}delete_attachment`, { attachment_id: id }).catch(() => undefined);
-        found = await state('get_attachment', { attachment_id: id });
+      const input = { attachment_id: id };
+      let found = await readback('get_attachment', input);
+      if (found.state === 'present') {
+        // Seeing the attachment again invalidates any earlier successful deletion.
+        await cleanAttachment(id);
+        found = await readback('get_attachment', input);
       }
-      verified[found] += 1;
-      if (found !== 'gone') c.residue(found === 'present' ? 'attachment' : 'unverified attachment');
+      const { label, deletedBy } = attachmentDeletions.get(identityKey('attachment', id)) ?? {};
+      if (found.proof !== undefined && deletedBy) {
+        verified.gone += 1;
+        if (label !== undefined) readbacks.attachments.push({ label, deleted_by: deletedBy, readback: found.proof });
+      } else {
+        const state = found.state === 'present' ? 'present' : 'unverified';
+        verified[state] += 1;
+        c.residue(state === 'present' ? 'attachment' : 'unverified attachment');
+      }
     }
     residue = [...c.leftBehind].map(([kind, count]) => ({ kind, count }));
     // Said here, so a run that throws still says what cleanup did.
@@ -401,7 +446,9 @@ export async function runQualification({
   // The signed-in user's address is kept only to prove the evidence does not carry it.
   const personal = [c.values.get('current_user_email')].filter((value) => typeof value === 'string');
   return {
-    steps, cleanup: { ...cleanup, verified, residue }, stopped: stopped ?? null, testrailVersion: c.values.get('testrail_version') ?? null, personal,
+    steps, cleanup: { ...cleanup, verified, residue }, readbacks,
+    existingGroupFound: c.values.has('existing_group') ? c.values.get('existing_group') !== null : null,
+    stopped: stopped ?? null, testrailVersion: c.values.get('testrail_version') ?? null, personal,
   };
 }
 
@@ -417,7 +464,7 @@ export function toolStatus(steps) {
 }
 
 /** The evidence record: statuses and codes only. */
-export function buildEvidence({ run, tools, options, testedOn, server }) {
+export function buildEvidence({ run, tools, options, testedOn, server, provenance = 'live_testrail' }) {
   const byTool = Object.fromEntries([...tools].sort().map((tool) => {
     const steps = run.steps.filter((step) => step.tool === tool).map(({ label, status, code, http_status: httpStatus, reason, warnings, retries }) => ({
       label, status, ...(code === undefined ? {} : { code }), ...(httpStatus === undefined ? {} : { http_status: httpStatus }),
@@ -428,7 +475,7 @@ export function buildEvidence({ run, tools, options, testedOn, server }) {
   const summary = Object.fromEntries(RANK.map((status) => [status, Object.values(byTool).filter((entry) => entry.status === status).length]));
   return {
     schema_version: 2,
-    provenance: 'live_testrail',
+    provenance,
     tested_on: testedOn,
     testrail_version: run.testrailVersion,
     server,
@@ -491,7 +538,8 @@ export function mcpCaller(client) {
 }
 
 const USAGE = `Usage: node scripts/live-qualification.mjs --create-qualification-project --out <evidence.json>
-  [--instance-writes] [--report-template-id N] [--cross-project-report-template-id N] [--command testrail-mcp] [--arg ...]
+  [--instance-writes] [--report-template-id N] [--cross-project-report-template-id N]
+  [--fixture] [--candidate candidate.json --tarball candidate.tgz | --command testrail-mcp [--arg ...]]
 Reads TESTRAIL_BASE_URL, TESTRAIL_EMAIL and TESTRAIL_API_KEY from the environment. See docs/live-qualification.md.`;
 
 function positiveInteger(value, flag) {
@@ -510,12 +558,19 @@ export function parseOptions(argv) {
       'instance-writes': { type: 'boolean', default: false },
       'report-template-id': { type: 'string' },
       'cross-project-report-template-id': { type: 'string' },
+      fixture: { type: 'boolean', default: false },
+      candidate: { type: 'string' },
+      tarball: { type: 'string' },
       command: { type: 'string' },
       arg: { type: 'string', multiple: true, default: [] },
     },
   });
   if (!values['create-qualification-project']) throw new Error(`The run creates, uses and deletes a TestRail project; pass --create-qualification-project to confirm.\n${USAGE}`);
   if (values.out === undefined || values.out === '') throw new Error(`Name the evidence file with --out.\n${USAGE}`);
+  if ((values.candidate === undefined) !== (values.tarball === undefined)
+    || (values.candidate !== undefined && (values.command !== undefined || values.arg.length > 0))) {
+    throw new Error('Use --candidate and --tarball together, without --command or --arg.');
+  }
   const options = { instanceWrites: values['instance-writes'] };
   const report = positiveInteger(values['report-template-id'], '--report-template-id');
   const crossProject = positiveInteger(values['cross-project-report-template-id'], '--cross-project-report-template-id');
@@ -524,7 +579,8 @@ export function parseOptions(argv) {
   const server = values.command === undefined
     ? { command: process.execPath, args: [fileURLToPath(new URL('../dist/cli.js', import.meta.url))] }
     : { command: values.command, args: values.arg };
-  return { out: values.out, options, server, ownServer: values.command === undefined };
+  return { out: values.out, options, server, ownServer: values.command === undefined,
+    fixture: values.fixture, candidateFile: values.candidate, tarballFile: values.tarball };
 }
 
 /** Write the plan's upload files into a fresh directory. */
@@ -547,15 +603,11 @@ async function checkOut(out) {
   await mkdir(dirname(out), { recursive: true });
   const existing = await stat(out).catch(() => undefined);
   if (existing?.isDirectory() === true) throw new Error(`--out ${out} is a directory; name the evidence file.`);
+  if (existing !== undefined) throw new Error(`--out ${out} already exists; name a new evidence file.`);
   try {
-    if (existing === undefined) {
-      const probe = `${out}.${randomBytes(4).toString('hex')}.tmp`;
-      await writeFile(probe, '');
-      await rm(probe, { force: true });
-    } else {
-      // Opened for writing without truncating it, so a refusal leaves the file as it was.
-      await (await open(out, 'r+')).close();
-    }
+    const probe = `${out}.${randomBytes(4).toString('hex')}.tmp`;
+    await (await open(probe, 'wx')).close();
+    await rm(probe, { force: true });
   } catch (error) {
     throw new Error(`--out ${out} cannot be written: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
@@ -583,9 +635,13 @@ export async function main({
   argv = process.argv.slice(2), env = process.env, connect = connectStdio, pacing = LIVE_PACING, log = (line) => { process.stderr.write(`${line}\n`); },
   signals = process, exit = (code) => process.exit(code),
 } = {}) {
-  const { out, options, server, ownServer } = parseOptions(argv);
+  const { out, options, server, ownServer, fixture, candidateFile, tarballFile } = parseOptions(argv);
+  const provenance = fixture ? 'fixture_stand_in' : 'live_testrail';
   const missing = REQUIRED_VARIABLES.filter((key) => (env[key] ?? '') === '');
   if (missing.length > 0) throw new Error(`Set ${missing.join(', ')} in the environment; the runner never takes credentials as arguments.`);
+  if (fixture && !['127.0.0.1', '[::1]'].includes(URL.parse(env.TESTRAIL_BASE_URL)?.hostname)) {
+    throw new Error('Fixture qualification requires a loopback stand-in.');
+  }
   // Before any request: a configured value that the evidence's own words contain would make
   // every run's evidence unwritable, and a finished run is never lost to an unusable --out.
   const tools = new Set(PLAN.map(({ tool }) => `${TOOL_PREFIX}${tool}`));
@@ -594,7 +650,7 @@ export async function main({
       steps: PLAN.map((step) => ({ tool: `${TOOL_PREFIX}${step.tool}`, label: step.label ?? null, status: 'not_run', reason: 'interrupted' })),
       cleanup: { project: 'left_behind', group: 'left_behind', verified: { gone: 0, present: 0, unverified: 0 }, residue: [] }, stopped: 'interrupted', testrailVersion: null,
     },
-    tools, options, testedOn: '2000-01-01', server: { package_version: null, protocol: null, driver_version: null },
+    tools, options, testedOn: '2000-01-01', provenance, server: { package_version: null, protocol: null, driver_version: null },
   });
   try {
     assertSanitized(JSON.stringify(blank), secretsOf(env));
@@ -621,6 +677,9 @@ export async function main({
   for (const signal of SIGNALS) signals.on(signal, onSignal);
   const sessions = [];
   try {
+    const candidate = candidateFile === undefined ? undefined
+      : await installCandidate(candidateFile, tarballFile, join(work, 'package'), env);
+    const startedAt = new Date().toISOString();
     const uploadRoot = join(work, 'uploads');
     const downloadDirectory = join(work, 'downloads');
     await Promise.all([uploadRoot, downloadDirectory].map((directory) => mkdir(directory)));
@@ -628,7 +687,7 @@ export async function main({
     const serverEnv = { ...env, TESTRAIL_MCP_UPLOAD_ROOTS: JSON.stringify([uploadRoot]), TESTRAIL_MCP_DOWNLOAD_DIR: downloadDirectory };
     delete serverEnv.NODE_OPTIONS;
     const open = async () => {
-      const opened = await connect({ ...server, env: serverEnv });
+      const opened = await connect({ command: candidate?.command ?? server.command, args: candidate?.args ?? server.args, env: serverEnv });
       sessions.push(opened);
       return opened;
     };
@@ -636,6 +695,9 @@ export async function main({
     log(`Qualification project: ${QUALIFICATION_PREFIX} ${stamp} project`);
     let run;
     try {
+      if (candidate !== undefined && session.serverVersion !== candidate.package_version) {
+        throw new Error('The candidate server reported a different package version.');
+      }
       run = await runQualification({
         call: session.call, options, stamp, uploads, pacing, shouldStop: () => stop,
         reconnect: async () => {
@@ -660,17 +722,31 @@ export async function main({
       run,
       tools,
       options,
+      provenance,
       testedOn: new Date().toISOString().slice(0, 10),
       server: {
         package_version: session.serverVersion ?? null,
         protocol: session.protocol ?? null,
         // Another server's driver cannot be seen from here; its package version names the release.
-        driver_version: ownServer ? await installedDriverVersion() : null,
+        driver_version: candidate?.driver_version ?? (ownServer ? await installedDriverVersion() : null),
+        ...(candidate === undefined ? {} : {
+          node_version: candidate.node_version, production_dependencies: candidate.production_dependencies,
+        }),
       },
     });
+    if (candidate !== undefined) {
+      Object.assign(evidence, { source_commit: candidate.source_commit, integrity: candidate.integrity,
+        prepare_run_id: candidate.prepare_run_id, prepare_run_attempt: candidate.prepare_run_attempt,
+        started_at: startedAt, finished_at: new Date().toISOString() });
+      evidence.cleanup.project_verified_absent = run.readbacks.project !== null;
+      evidence.cleanup.project_readback = run.readbacks.project;
+      evidence.cleanup.group_readback = run.readbacks.group;
+      evidence.cleanup.attachment_readbacks = run.readbacks.attachments;
+      evidence.observations = { existing_group_found: run.existingGroupFound };
+    }
     const text = `${JSON.stringify(evidence, null, 2)}\n`;
     assertSanitized(text, secretsOf(env, run.personal));
-    await writeFile(out, text);
+    await writeFile(out, text, { flag: 'wx' });
     log(`Evidence written to ${out}: ${Object.entries(evidence.summary).map(([status, count]) => `${String(count)} ${status}`).join(', ')}${evidence.stopped === null ? '' : `; stopped early: ${evidence.stopped}`}.`);
     return evidence;
   } finally {

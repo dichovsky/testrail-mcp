@@ -1,6 +1,6 @@
 # Implementation plan
 
-Status: the original delivery backlog is complete. F01 is qualified. The package pins published `9.0.0`. Its [qualification evidence](driver-qualification.md) runs as standing tests against the installed artifact.
+Status: the original delivery backlog is complete. F01 is qualified. The package pins published `10.0.0`. Its [qualification evidence](driver-qualification.md) runs as standing tests against the installed artifact.
 
 The foundations that the endpoint families depend on are merged:
 
@@ -52,7 +52,7 @@ Tracking epic: [EPIC](https://github.com/dichovsky/testrail-mcp/issues/1). There
 | [R02](https://github.com/dichovsky/testrail-mcp/issues/23) | Document and qualify Codex, Claude Code and Copilot CLI | [R01](https://github.com/dichovsky/testrail-mcp/issues/22), [F07](https://github.com/dichovsky/testrail-mcp/issues/8), [F08](https://github.com/dichovsky/testrail-mcp/issues/9) | — |
 | [R03](https://github.com/dichovsky/testrail-mcp/issues/24) | Qualify TestRail 10.7 and ship the complete npm release | [F01](https://github.com/dichovsky/testrail-mcp/issues/2), [R01](https://github.com/dichovsky/testrail-mcp/issues/22), [R02](https://github.com/dichovsky/testrail-mcp/issues/23) | — |
 
-Dependencies describe completion prerequisites. An implementer may prepare fixtures or parallel code ahead of a dependency, but cannot close an item until its prerequisites and acceptance checks are satisfied. F01's published driver is now qualified and pinned at exact `9.0.0` (first qualified at `7.2.0`, then `8.0.0`). Thus, F03 runtime completion, T11 and R03 are no longer waiting on an upstream release.
+Dependencies describe completion prerequisites. An implementer may prepare fixtures or parallel code ahead of a dependency, but cannot close an item until its prerequisites and acceptance checks are satisfied. F01's published driver is pinned at exact `10.0.0` (first qualified at `7.2.0`). Thus, F03 runtime completion, T11 and R03 are no longer waiting on an upstream release.
 
 A public method result deadline is not proof that DNS/fetch/body cleanup has settled. The added F03 → F01 dependency makes that runtime prerequisite explicit.
 
@@ -79,7 +79,7 @@ A public method result deadline is not proof that DNS/fetch/body cleanup has set
 | Published driver | Exact version/integrity with required runtime fixes. Public export and endpoint parity. Report requests execute independently without retries. Per-operation settlement remains pending for deadline losers | F01 |
 | Endpoint and parameter coverage | All 133 bindings, 28 resources, 24 page/all pairs and every supported parameter; independent positive/negative fixtures and omission-detection regressions | T01–T12, R01 |
 | Runtime and local files | Bounded calls/downloads, per-caller warnings, complete-result byte caps, honest cancellation/write outcomes, staging cleanup after actual descendant settlement, persistent completed downloads and accurate local-effect annotations | F03, F05–F07, R01 |
-| Protocol and packaging | Legacy initialization plus MCP 2026-07-28 discovery; protocol-only stdout; tarball install and executable checks on Node 24 across Linux/macOS/Windows | F02, F08, R01 |
+| Protocol and packaging | Legacy initialization plus MCP 2026-07-28 discovery; protocol-only stdout; tarball install and executable checks on Node 26 across Linux/macOS/Windows | F02, F08, R01 |
 | Required clients | Exact versions/builds, models/providers, settings and C01–C12 results for Codex desktop, Codex CLI, Claude Code and Copilot CLI. For 1.0.0 the owner accepted Claude Code's record, Codex CLI's reported result and no test of the other two. The release notes list all of them (owner's decision, 2026-10-04, in [R02](issues/R02.md)) | R02 |
 | TestRail 10.8.1 | Dedicated disposable project, operation-level live evidence and truthful availability reporting. A tool that the license of the instance or its permissions block is a documented limitation in the release notes, never a pass (owner's decision, 2026-10-03, in [R03](issues/R03.md)) | R03 |
 | Published artifact | Tested version/tag/lockfile/provenance, authorized npm release and post-publication install verification | R03 |

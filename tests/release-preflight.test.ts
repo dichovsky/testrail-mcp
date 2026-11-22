@@ -24,7 +24,7 @@ interface ReleaseContextInput {
   tagSha: string;
   mainContainsRelease: boolean;
 }
-interface PublishedVersionMetadata { version: string; gitHead?: string; latestVersion?: string; provenancePredicate?: string }
+interface PublishedVersionMetadata { version: string; gitHead?: string; latestVersion?: string; provenancePredicate?: string; integrity?: string }
 interface Preflight {
   EXPECTED_PACKAGE_NAME: string;
   SLSA_PROVENANCE_PREDICATE: string;
@@ -32,9 +32,9 @@ interface Preflight {
   parseNpmStringList: (output: string, label: string) => string[];
   parseNpmViewResult: (status: number, output: string) => PublishedVersionMetadata | null;
   parsePackageIdentity: (value: unknown, source: string) => PackageIdentity;
-  shouldSkipPublishedVersion: (input: { packageVersion: string; releaseSha: string; publishedMetadata: PublishedVersionMetadata | null }) => boolean;
+  shouldSkipPublishedVersion: (input: { packageVersion: string; releaseSha: string; qualifiedIntegrity: string; publishedMetadata: PublishedVersionMetadata | null }) => boolean;
   validateNewStableVersion: (input: { candidateVersion: string; publishedVersions: readonly string[]; latestVersion: string }) => void;
-  validateNpmDiffResult: (status: number, output: string) => void;
+  validatePublishedProvenance: (value: unknown, options: { spec: string; qualifiedIntegrity: string; releaseRef: string; releaseSha: string }) => void;
   validateReleaseContext: (input: ReleaseContextInput) => PackageIdentity;
   validateTrustedPublishingNodeVersion: (version: string) => void;
   validateTrustedPublishingNpmVersion: (version: string) => void;
@@ -42,13 +42,16 @@ interface Preflight {
 
 const {
   EXPECTED_PACKAGE_NAME, SLSA_PROVENANCE_PREDICATE, parseLockfileIdentity, parseNpmStringList, parseNpmViewResult, parsePackageIdentity,
-  shouldSkipPublishedVersion, validateNewStableVersion, validateNpmDiffResult, validateReleaseContext, validateTrustedPublishingNodeVersion,
+  shouldSkipPublishedVersion, validateNewStableVersion, validatePublishedProvenance, validateReleaseContext, validateTrustedPublishingNodeVersion,
   validateTrustedPublishingNpmVersion,
 } = (await import(new URL('../scripts/release-preflight.mjs', import.meta.url).href)) as Preflight;
 
 const VERSION = '1.0.0';
 const RELEASE_SHA = '1234567890abcdef1234567890abcdef12345678';
-const IDENTICAL_PUBLISHED_METADATA = { version: VERSION, gitHead: RELEASE_SHA, latestVersion: VERSION, provenancePredicate: SLSA_PROVENANCE_PREDICATE } as const;
+const INTEGRITY = `sha512-${Buffer.alloc(64, 85).toString('base64')}`;
+const IDENTICAL_PUBLISHED_METADATA = {
+  version: VERSION, gitHead: RELEASE_SHA, latestVersion: VERSION, provenancePredicate: SLSA_PROVENANCE_PREDICATE, integrity: INTEGRITY,
+} as const;
 
 function validContext(overrides: Partial<ReleaseContextInput> = {}): ReleaseContextInput {
   return {
@@ -138,7 +141,8 @@ describe('the npm registry preflight', () => {
 
   it('parses present metadata and treats only an exact E404 as absence', () => {
     expect(parseNpmViewResult(0, JSON.stringify([{
-      version: VERSION, gitHead: RELEASE_SHA, 'dist-tags.latest': VERSION, 'dist.attestations': { provenance: { predicateType: SLSA_PROVENANCE_PREDICATE } },
+      version: VERSION, gitHead: RELEASE_SHA, 'dist-tags.latest': VERSION, 'dist.integrity': INTEGRITY,
+      'dist.attestations': { provenance: { predicateType: SLSA_PROVENANCE_PREDICATE } },
     }]))).toEqual(IDENTICAL_PUBLISHED_METADATA);
     expect(parseNpmViewResult(0, JSON.stringify({ version: VERSION }))).toEqual({ version: VERSION });
     expect(parseNpmViewResult(1, JSON.stringify({ error: { code: 'E404' } }))).toBeNull();
@@ -185,16 +189,46 @@ describe('the npm registry preflight', () => {
     expect(() => validateNewStableVersion({ candidateVersion, publishedVersions, latestVersion })).toThrow();
   });
 
-  it('requires an empty, successful npm diff for an idempotent skip', () => {
-    expect(() => validateNpmDiffResult(0, '')).not.toThrow();
-    expect(() => validateNpmDiffResult(0, '\n')).not.toThrow();
-    expect(() => validateNpmDiffResult(0, 'dist/cli.js\n')).toThrow();
-    expect(() => validateNpmDiffResult(1, '')).toThrow();
+  it('requires provenance for the qualified package and the exact Publish source', () => {
+    const subject = { name: 'pkg:npm/%40dichovsky/testrail-mcp@1.0.0', digest: { sha512: '55'.repeat(64) } };
+    const repository = 'https://github.com/dichovsky/testrail-mcp';
+    const releaseRef = `refs/tags/release/${VERSION}`;
+    const workflow = { repository, ref: releaseRef, path: '.github/workflows/publish.yml' };
+    const source = { uri: `git+${repository}@${releaseRef}`, digest: { gitCommit: RELEASE_SHA } };
+    const buildDefinition = { externalParameters: { workflow }, resolvedDependencies: [source] };
+    const bundle = (name: string, sha512: string, build = buildDefinition) => ({ attestations: [{
+      predicateType: SLSA_PROVENANCE_PREDICATE,
+      bundle: { dsseEnvelope: { payload: Buffer.from(JSON.stringify({
+        predicateType: SLSA_PROVENANCE_PREDICATE, subject: [{ name, digest: { sha512 } }],
+        predicate: { buildDefinition: build },
+      })).toString('base64') } },
+    }] });
+    const options = { spec: `${EXPECTED_PACKAGE_NAME}@${VERSION}`, qualifiedIntegrity: INTEGRITY, releaseRef, releaseSha: RELEASE_SHA };
+    expect(() => validatePublishedProvenance(bundle(subject.name, subject.digest.sha512), options)).not.toThrow();
+    expect(() => validatePublishedProvenance(bundle(subject.name, '44'.repeat(64)), options)).toThrow();
+    expect(() => validatePublishedProvenance(bundle('pkg:npm/other@1.0.0', subject.digest.sha512), options)).toThrow();
+
+    for (const changedWorkflow of [
+      { ...workflow, repository: 'https://github.com/example/another-repo' },
+      { ...workflow, ref: 'refs/tags/release/0.9.0' },
+      { ...workflow, path: '.github/workflows/ci.yml' },
+    ]) {
+      const build = { ...buildDefinition, externalParameters: { workflow: changedWorkflow } };
+      expect(() => validatePublishedProvenance(bundle(subject.name, subject.digest.sha512, build), options)).toThrow(/release repository/u);
+    }
+    for (const dependencies of [
+      [{ ...source, digest: { gitCommit: 'a'.repeat(40) } }],
+      [{ ...source, uri: `git+${repository}@refs/heads/main` }],
+      [],
+    ]) {
+      const build = { ...buildDefinition, resolvedDependencies: dependencies };
+      expect(() => validatePublishedProvenance(bundle(subject.name, subject.digest.sha512, build), options)).toThrow(/release repository/u);
+    }
   });
 
   it('publishes when the exact version is absent, and skips only an identical immutable release', () => {
-    expect(shouldSkipPublishedVersion({ packageVersion: VERSION, releaseSha: RELEASE_SHA, publishedMetadata: null })).toBe(false);
-    expect(shouldSkipPublishedVersion({ packageVersion: VERSION, releaseSha: RELEASE_SHA, publishedMetadata: IDENTICAL_PUBLISHED_METADATA })).toBe(true);
+    expect(shouldSkipPublishedVersion({ packageVersion: VERSION, releaseSha: RELEASE_SHA, qualifiedIntegrity: INTEGRITY, publishedMetadata: null })).toBe(false);
+    expect(shouldSkipPublishedVersion({ packageVersion: VERSION, releaseSha: RELEASE_SHA, qualifiedIntegrity: INTEGRITY, publishedMetadata: IDENTICAL_PUBLISHED_METADATA })).toBe(true);
   });
 
   it.each([
@@ -206,7 +240,9 @@ describe('the npm registry preflight', () => {
     ['different latest', { ...IDENTICAL_PUBLISHED_METADATA, latestVersion: '0.9.0' }],
     ['missing provenance', { version: VERSION, gitHead: RELEASE_SHA, latestVersion: VERSION }],
     ['different provenance', { ...IDENTICAL_PUBLISHED_METADATA, provenancePredicate: 'other' }],
+    ['missing qualified integrity', { version: VERSION, gitHead: RELEASE_SHA, latestVersion: VERSION, provenancePredicate: SLSA_PROVENANCE_PREDICATE }],
+    ['different qualified integrity', { ...IDENTICAL_PUBLISHED_METADATA, integrity: `sha512-${Buffer.alloc(64).toString('base64')}` }],
   ])('blocks an unsafe duplicate with %s', (_label, metadata) => {
-    expect(() => shouldSkipPublishedVersion({ packageVersion: VERSION, releaseSha: RELEASE_SHA, publishedMetadata: metadata })).toThrow();
+    expect(() => shouldSkipPublishedVersion({ packageVersion: VERSION, releaseSha: RELEASE_SHA, qualifiedIntegrity: INTEGRITY, publishedMetadata: metadata })).toThrow();
   });
 });

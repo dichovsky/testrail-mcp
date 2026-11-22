@@ -561,7 +561,7 @@ To re-check every entry against its sources, run `node scripts/audit-driver-ledg
 - it compares each integrity and shipped-file SHA-256 with the tarball that npm serves;
 - it exits non-zero on any mismatch.
 
-The [driver ledger workflow](../.github/workflows/driver-ledger.yml) runs the script on Linux. The workflow runs whenever a pull request or a push to `main` changes the ledger, the script or the workflow itself. The workflow can also be started by hand.
+Run the online [driver ledger workflow](../.github/workflows/driver-ledger.yml) during release preparation. Publish also repeats the audit for the tagged source.
 
 This script is the only check that compares the recorded blob IDs with the git history of the driver. This comparison matters most at a driver bump. The blob IDs of the new installed entry cannot be checked offline, and the ledger records `dist/x.js` but not the declaration files. Thus, a source change that leaves the compiled JavaScript identical would otherwise rest on the author's word. Neither the main CI workflow, with its three-platform matrix, nor `npm test` runs the script or clones the driver.
 
@@ -588,9 +588,11 @@ Today 103 of the 117 manifests that use `domain_ref` reference a domain whose dr
 
 The library's rule is stricter than a manifest's in one respect: each domain has one source and is authored from the driver's code. Thus, every domain's source must be a blob URL pinned at the library's `driver_commit`, recorded in the ledger at that commit. A domain whose only source is other documentation is refused.
 
-The library was authored at `cc7751c` and carries one step to `7680ab6`, in which only `src/pagination.ts` changed. The page request carries an intent instead of a cache bypass, and a budget expiry reads as `max_duration`. Neither of these changes touches the option validation, defaults or first-offset check that its domains cite. A second step, to `a5ccffb`, records all four of its files as changed only in their shipped build, by the dropped source-map comment. None of their sources changed in 9.0.0.
+The library was authored at `cc7751c` and carries one step to `7680ab6`, in which only `src/pagination.ts` changed. The page request carries an intent instead of a cache bypass, and a budget expiry reads as `max_duration`. Neither of these changes touches the option validation, defaults or first-offset check that its domains cite. A second step, to `a5ccffb`, records changes from dropped source-map comments. A third step, to `b7cde374`, records the safe-integer, scalar-or-list and timestamp checks introduced by 10.0.0.
 
 The `authored_commit` of the library is declared like a manifest's. The test "records the installed driver release, and pins the commit it was authored at" in [`tests/domains.test.ts`](../tests/domains.test.ts) pins it. The "domain library provenance" tests in that file hold the rest.
+
+The 10.0.0 review adds a step from `a5ccffb` to `b7cde374` for all 133 manifests. Its ledger measures 35 changed source blobs and 23 changed shipped files across the 50 cited paths. Runtime changes include shared multipart ownership, safe identifier and timestamp validation, and advisory result validation. Source-only changes include removed duplicate response type declarations and an equivalent project-list options type.
 
 To advance the driver, do these steps:
 
@@ -605,7 +607,7 @@ The audit's negative tests are in [`tests/parameter-manifest.test.ts`](../tests/
 
 ## Shared parameter domains
 
-`validateId(id, name)` is a single implementation applied at **129 call sites**, and its `name` argument only shapes the error message. Every TestRail identifier therefore shares one domain, as do `limit` and `offset` through `validatePaginationParams`. Writing that domain out per parameter would mean a hundred copies of "reject `-1`". This duplication has these effects:
+`validateId(id, name)` requires a positive safe integer and uses `name` in validation messages. Numeric identifiers can share one domain. Pagination bounds have their own domains. Writing that domain out per parameter would mean a hundred copies of "reject `-1`". This duplication has these effects:
 
 - it carries no signal;
 - it makes a genuinely wrong entry harder to spot among near-identical neighbors;
@@ -628,7 +630,7 @@ The package does not export its validators, and the contracts forbid importing i
 - `driver_crash` where the client stops before dispatch but by throwing from an unguarded operation rather than a stated check;
 - `adapter` where only the MCP boundary refuses the value.
 
-The `driver_crash` label matters because a crash is not a contract. `serializeIdFilter` and `getCaseTitles` both stop a wrongly typed argument today, but neither documents doing so. `validateId` uses `Number.isInteger`, not `Number.isSafeInteger`. Thus, a value above 2^53 passes the driver and is refused only here. The library says so rather than implying that the driver guarantees it.
+`getCaseTitles` still throws from an unguarded operation when given a bare number. Driver 10.0.0 makes `serializeIdFilter` reject a wrongly typed scalar explicitly, and it uses `Number.isSafeInteger` in `validateId`.
 
 **A reference is proven where it is used, not only at the probe.** A domain labels each invalid value by what happened at its probe, but another binding can treat the same value differently. The driver validates a path identifier with `validateId` yet forwards most body fields unchecked. The bulk case bodies take a list that the title lookup would validate. Thus, [`tests/domains.test.ts`](../tests/domains.test.ts) also drives every value of every reference through the binding that the reference is used at. There are 394 values, across more than 100 bindings. For each value, the test does these things:
 
@@ -645,14 +647,7 @@ An override must change at least one inherited label, so a restated or empty ove
 
 Two separate checks hold that the value landed where TestRail reads it. The registration audit pairs each location with the argument map. The published-driver evidence compares the wire request of each accepted case. The test asserts the effective label for each value in both directions. Thus, a reference that inherits a label that its binding does not earn fails. A reference that claims adapter-only enforcement where the driver checks fails too.
 
-53 references carry `"adapter"`:
-
-- 49 `positive_id` fields in write bodies that the driver forwards unchecked (the identifiers of the add, update and edit bodies, and the `suite_id` of `move_cases_to_section`);
-- `case_ids` on the four bulk case bodies.
-
-A body field is not unchecked by default. `labels.updateLabel` runs `validateId` on the `project_id` of its body, so that reference inherits the labels of the probe. The timestamp fields need no label, because `unix_timestamp` is already the adapter's alone at its probe. Every other reference matches its probe exactly.
-
-The record form is needed where a binding validates differently rather than not at all. `labels.deleteLabels` refuses a bare number with a stated error where the `case_ids` probe crashes. A test measures this difference, and `{ "scalar": "driver" }` would record it. Every valid value is also accepted at every reference.
+In 10.0.0, 71 references carry `"adapter"` for unvalidated body fields: 49 numeric IDs and 22 timestamps. The four bulk case writes explicitly reject a bare number passed as `case_ids`. Thus, each of them uses the override `{ "scalar": "driver" }`. The `case_ids` probe still crashes on that input. Every valid value is also accepted at every reference.
 
 A parameter inside a reviewed array names its member with `*`, as in `body.results[].status_id`. The derived rejections of the parameter mutate the first member alone. Thus, every other member stays valid, and the refusal can still only have come from the member under test.
 
@@ -663,8 +658,8 @@ A parameter of any scope can reference a shared domain when the adapter holds th
 The Cases family added three domains:
 
 - `id_filter` is one identifier or a non-empty list, proven through the `typeId` option of `cases.getCasesPage`, which is one of the seven filters that the driver comma-joins. Its `list` requirement carries seven proven lists rather than one, because a case that sets several list filters must give each a different list. Equal lists could not expose two filters that are mapped onto each other's options.
-- `unix_timestamp` is proven through `createdAfter`. The driver forwards any value there, so every rejection is recorded as the adapter's.
-- `case_ids` is a non-empty identifier list proven through `cases.getCaseTitles`. This is a query-side proof. The driver forwards the four bulk bodies that reference the same domain unchecked, so their guarantee is the adapter's alone. Each body reference records this in its semantics and, mechanically, with `rejected_by: "adapter"`.
+- `unix_timestamp` is proven through `createdAfter`, which validates the value before dispatch. Write-body timestamp fields use individual overrides where the driver forwards them unchecked.
+- `case_ids` is a non-empty identifier list proven through `cases.getCaseTitles`. The four bulk write methods validate their lists and send them in the JSON body.
 
 The Plans family added `entry_id`, the only non-numeric identifier in the library, proven through `attachments.getAttachmentsForPlanEntry`. The driver validates the UUID layout there before dispatch, so its eight rejections are recorded as the driver's rather than the adapter's. The `get_attachments_for_plan_entry` manifest, first written in F04 with the rule inline, references the domain since T12, as does `add_attachment_to_plan_entry`.
 

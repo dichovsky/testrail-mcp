@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -82,7 +82,7 @@ function permissions(block: string, indent: number): string[] | undefined {
 
 /** Each job the workflow has, with the only permissions it may hold. */
 const JOBS: Record<string, string[]> = {
-  verify: ['contents: read'],
+  verify: ['contents: read', 'actions: read'],
   publish: ['contents: read', 'id-token: write'],
 };
 
@@ -125,13 +125,13 @@ describe('the Publish workflow', () => {
       expect(before, name).toContain('run: git fetch --no-tags origin main:refs/remotes/origin/main');
       expect(before, name).not.toMatch(/setup-node|npm |node /u);
     }
-    expect(publish.match(/node-version: '24\.19\.0'/gu)).toHaveLength(2);
+    expect(publish.match(/node-version: '26\.13\.1'/gu)).toHaveLength(2);
     expect(publish.match(/package-manager-cache: false/gu)).toHaveLength(2);
   });
 
   it('runs every release gate in the verify job', () => {
     expect(ascending(positions(verify, [
-      'run: npm ci --ignore-scripts --registry=https://registry.npmjs.org/',
+      'run: npm ci --engine-strict --ignore-scripts --registry=https://registry.npmjs.org/',
       'run: node scripts/release-preflight.mjs context',
       'run: node scripts/release-notes.mjs "$RELEASE_TAG" > /dev/null',
       'run: npm run build',
@@ -141,27 +141,45 @@ describe('the Publish workflow', () => {
       'run: npm run test:coverage',
       'run: npm audit --omit=dev --audit-level=moderate',
       'run: npm run test:package',
+      'node scripts/audit-driver-ledger.mjs',
+      'node scripts/prepare-candidate.mjs',
+      'node scripts/release-evidence.mjs verify',
+      'node scripts/verify-published.mjs',
       'run: node scripts/release-preflight.mjs registry',
     ]))).toBe(true);
     // Every check `npm run check` runs is a gate here too, the tests with coverage.
     for (const part of (packageJson.scripts.check ?? '').split(' && ')) expect(verify, part).toContain(`run: ${part === 'npm test' ? 'npm run test:coverage' : part}`);
   });
 
-  it('hands only the tested build to the publish job, with its digest', () => {
-    expect(verify).toContain('dist-sha256: ${{ steps.release-artifact.outputs.sha256 }}');
-    expect(verify.match(/if: steps\.preflight\.outputs\.already-published == 'false'/gu)).toHaveLength(2);
-    // Archived after the last gate that builds, so it is the build the gates tested.
-    expect(verify.indexOf('tar -cf release-dist.tar -C dist .')).toBeGreaterThan(verify.indexOf('run: npm run test:package'));
-    expect(publish.match(/name: npm-release-dist/gu)).toHaveLength(2);
+  it('hands only the qualified tarball to the publish job, with its digest', () => {
+    expect(verify).toContain('integrity: ${{ steps.qualification.outputs.integrity }}');
+    expect(verify).toContain('candidate-expires-at: ${{ steps.qualification.outputs.candidate_expires_at }}');
+    expect(verify.match(/if: steps\.preflight\.outputs\.already-published == 'false'/gu)).toHaveLength(1);
+    expect(verify.indexOf('name: Keep the qualified tarball')).toBeGreaterThan(verify.indexOf('node scripts/release-evidence.mjs verify'));
+    expect(publish.match(/name: npm-qualified-release/gu)).toHaveLength(2);
     expect(verify).toContain('if-no-files-found: error');
-    expect(publishJob).toContain('sha256sum .release-artifact/release-dist.tar');
-    expect(publish.match(/find dist -mindepth 1 ! -type f ! -type d/gu)).toHaveLength(2);
-    expect(publishJob).toContain('test -f dist/cli.js');
+    expect(verify).toContain('path: ${{ runner.temp }}/qualified-candidate/candidate.tgz');
+    expect(publishJob).toContain('openssl dgst -sha512 -binary "$CANDIDATE"');
+    expect(publishJob).toContain('"$ACTUAL_INTEGRITY" != "$QUALIFIED_INTEGRITY"');
+    expect(publishJob).not.toMatch(/tar -[tx]|npm pack/u);
+  });
+
+  it('checks the Prepare Candidate artifact expiry before the first npm upload', async () => {
+    expect(publishJob).toContain('CANDIDATE_EXPIRES_AT: ${{ needs.verify.outputs.candidate-expires-at }}');
+    expect(ascending(positions(publishJob, ['const expiresAt = Date.parse', 'npm publish "$CANDIDATE"']))).toBe(true);
+    const program = /--eval '([^']*const expiresAt = Date\.parse\(process\.env\.CANDIDATE_EXPIRES_AT\);[^']*)'/u.exec(publishJob)?.[1];
+    if (program === undefined) throw new Error('The protected job expiry guard is missing');
+    const check = (expiry: string) => run(process.execPath, ['--input-type=module', '--eval', program], {
+      env: { ...process.env, CANDIDATE_EXPIRES_AT: expiry },
+    });
+    await expect(check(new Date(Date.now() + 60_000).toISOString())).resolves.toBeDefined();
+    await expect(check(new Date(Date.now() - 60_000).toISOString())).rejects.toMatchObject({ code: 1 });
+    await expect(check('')).rejects.toMatchObject({ code: 1 });
   });
 
   it('runs no repository or dependency code in the job that can mint an npm credential', () => {
     expect(ascending(positions(publishJob, [
-      'Verify source provenance before repository code runs', 'actions/download-artifact@', 'Set up the release Node.js', 'npm publish "$GITHUB_WORKSPACE"',
+      'Verify source provenance before repository code runs', 'actions/download-artifact@', 'Set up the release Node.js', 'npm publish "$CANDIDATE"',
     ]))).toBe(true);
     expect(publishJob).not.toMatch(/npm ci|npm run|node scripts\/|npx /u);
   });
@@ -170,7 +188,7 @@ describe('the Publish workflow', () => {
     for (const flag of ['--provenance', '--access=public', '--ignore-scripts', '--registry=https://registry.npmjs.org/', '--userconfig="$USER_CONFIG"', '--globalconfig="$GLOBAL_CONFIG"']) {
       expect(publishJob, flag).toContain(flag);
     }
-    const command = publishJob.slice(publishJob.indexOf('npm publish "$GITHUB_WORKSPACE"'), publishJob.indexOf('VERIFIED=false'));
+    const command = publishJob.slice(publishJob.indexOf('npm publish "$CANDIDATE"'), publishJob.indexOf('VERIFIED=false'));
     expect(command).not.toContain('--tag');
     expect(publishJob).toContain('NPM_CONFIG_* | NODE_AUTH_TOKEN | NPM_TOKEN | NPM_ID_TOKEN');
     expect(publishJob).toContain("PACKAGE_NAME='@dichovsky/testrail-mcp'");
@@ -178,13 +196,11 @@ describe('the Publish workflow', () => {
   });
 
   it('re-checks the registry right before publishing, then verifies what npm serves', () => {
-    expect(ascending(positions(publishJob, ['EXACT_OUTPUT=', 'registry-state.json', 'npm publish "$GITHUB_WORKSPACE"', 'VERIFIED=false', 'DIFF_VERIFIED=false']))).toBe(true);
+    expect(ascending(positions(publishJob, ['EXACT_OUTPUT=', 'registry-state.json', 'npm publish "$CANDIDATE"', 'VERIFIED=false', 'PROVENANCE=']))).toBe(true);
     expect(publishJob).toContain('timeout --signal=KILL "${METADATA_REMAINING}s" npm view');
     expect(publishJob).toContain('--fetch-retries=0 --fetch-timeout=10000');
-    expect(publishJob).toContain('dist-tags.latest dist.attestations');
+    expect(publishJob).toContain('dist-tags.latest dist.integrity dist.attestations');
     expect(publishJob).toContain('https://slsa.dev/provenance/v1');
-    expect(publishJob.match(/for ATTEMPT in \{1\.\.10\}; do/gu)).toHaveLength(1);
-    expect(publishJob).toContain('--cache="$ISOLATED_NPM_DIRECTORY/npm-diff-cache-$ATTEMPT"');
   });
 
   /** The workflow's own last-moment version rule, run on a registry state. */
@@ -221,15 +237,45 @@ describe('the Publish workflow', () => {
    * no real wait.
    */
   describe.skipIf(process.platform === 'win32')('after npm accepts the publication', () => {
-    const verification = publishJob.slice(publishJob.indexOf('VERIFIED=false'), publishJob.indexOf('DIFF_VERIFIED=false'));
+    const verification = publishJob.slice(publishJob.indexOf('VERIFIED=false'));
     const VERSION = '1.0.0';
     const RELEASE_SHA = '1234567890abcdef1234567890abcdef12345678';
+    const QUALIFIED_INTEGRITY = `sha512-${Buffer.alloc(64, 85).toString('base64')}`;
     const metadata = {
-      version: VERSION, gitHead: RELEASE_SHA, 'dist-tags.latest': VERSION,
+      version: VERSION, gitHead: RELEASE_SHA, 'dist-tags.latest': VERSION, 'dist.integrity': QUALIFIED_INTEGRITY,
       'dist.attestations': { provenance: { predicateType: 'https://slsa.dev/provenance/v1' } },
     };
+    const predicateType = metadata['dist.attestations'].provenance.predicateType;
+    const repository = 'https://github.com/dichovsky/testrail-mcp';
+    const ref = `refs/tags/release/${VERSION}`;
+    const workflow = { repository, ref, path: '.github/workflows/publish.yml' };
+    const source = { uri: `git+${repository}@${ref}`, digest: { gitCommit: RELEASE_SHA } };
+    const buildDefinition = { externalParameters: { workflow }, resolvedDependencies: [source] };
+    const provenance = (sha512: string, build = buildDefinition) => JSON.stringify({ attestations: [{ predicateType, bundle: { dsseEnvelope: {
+      payload: Buffer.from(JSON.stringify({
+        predicateType,
+        subject: [{ name: 'pkg:npm/%40dichovsky/testrail-mcp@1.0.0', digest: { sha512 } }],
+        predicate: { buildDefinition: build },
+      })).toString('base64'),
+    } } }] });
 
-    const wait = async (unavailable: number, response: typeof metadata) => {
+    it.each([
+      ['workflow repository', { ...buildDefinition, externalParameters: { workflow: { ...workflow, repository: 'https://github.com/example/another-repo' } } }],
+      ['workflow tag', { ...buildDefinition, externalParameters: { workflow: { ...workflow, ref: 'refs/tags/release/0.9.0' } } }],
+      ['workflow path', { ...buildDefinition, externalParameters: { workflow: { ...workflow, path: '.github/workflows/ci.yml' } } }],
+      ['source commit', { ...buildDefinition, resolvedDependencies: [{ ...source, digest: { gitCommit: 'a'.repeat(40) } }] }],
+      ['source URI', { ...buildDefinition, resolvedDependencies: [{ ...source, uri: `git+${repository}@refs/heads/main` }] }],
+    ])('rejects a mismatched attested %s even when the subject matches', (_label, build) => {
+      const rule = /"\$PROVENANCE" \| EXPECTED_VERSION="\$EXPECTED_VERSION" node --input-type=module --eval '\n([\s\S]*?)\n\s*'\n/u.exec(verification)?.[1];
+      if (rule === undefined) throw new Error('no attestation rule in the publish job');
+      const result = spawnSync(process.execPath, ['--input-type=module', '--eval', rule], {
+        input: provenance('55'.repeat(64), build),
+        env: { EXPECTED_VERSION: VERSION, GITHUB_SHA: RELEASE_SHA, QUALIFIED_INTEGRITY },
+      });
+      expect(result.status).toBe(1);
+    });
+
+    const wait = async (unavailable: number, response: typeof metadata, sha512 = '55'.repeat(64)) => {
       const directory = await mkdtemp(join(tmpdir(), 'testrail-mcp-publication-wait-'));
       try {
         const program = `set -euo pipefail
@@ -249,11 +295,13 @@ npm() {
   if (( calls <= MOCK_UNAVAILABLE_ATTEMPTS )); then return 1; fi
   printf '%s' "$MOCK_METADATA"
 }
+curl() { printf '%s' "$MOCK_PROVENANCE"; }
 sleep() { SECONDS=$((SECONDS + $1)); }
 ${verification}`;
         const env = {
           PATH: process.env.PATH ?? '', EXPECTED_VERSION: VERSION, GITHUB_SHA: RELEASE_SHA, PACKAGE_SPEC: `@dichovsky/testrail-mcp@${VERSION}`,
           USER_CONFIG: '/dev/null', GLOBAL_CONFIG: '/dev/null', MOCK_UNAVAILABLE_ATTEMPTS: String(unavailable), MOCK_METADATA: JSON.stringify(response),
+          QUALIFIED_INTEGRITY, MOCK_PROVENANCE: provenance(sha512),
         };
         const { status, stderr } = await run('bash', ['-c', program], { cwd: directory, env, timeout: 30_000 })
           .then(({ stderr: text }) => ({ status: 0, stderr: text }), (error: { code?: number; stderr?: string }) => ({ status: error.code ?? -1, stderr: error.stderr ?? '' }));
@@ -273,10 +321,11 @@ ${verification}`;
     }, 60_000);
 
     it.each([
-      ['unavailable metadata', 100, metadata],
-      ['a mismatched identity', 0, { ...metadata, gitHead: 'a'.repeat(40) }],
-    ])('stops at the deadline for %s without accepting the release', async (_label, unavailable, response) => {
-      const result = await wait(unavailable, response);
+      ['unavailable metadata', 100, metadata, '55'.repeat(64)],
+      ['a mismatched identity', 0, { ...metadata, gitHead: 'a'.repeat(40) }, '55'.repeat(64)],
+      ['a mismatched provenance subject', 0, metadata, '44'.repeat(64)],
+    ])('stops at the deadline for %s without accepting the release', async (_label, unavailable, response, sha512) => {
+      const result = await wait(unavailable, response, sha512);
       expect(result.status).toBe(1);
       expect(result.attempts).toBeGreaterThan(10);
       expect(result.attempts).toBeLessThanOrEqual(30);
@@ -294,11 +343,8 @@ ${verification}`;
 });
 
 /*
- * F10's networked re-check of the driver release ledger. It is the only workflow that
- * reaches the driver's repository or the npm registry for the ledger, it runs only when
- * what it checks changes, and it holds nothing but read access. The last test keeps the
- * ledger audit, and any mention of the driver's repository, out of CI, the Publish
- * workflow and npm's scripts; it does not read the test files `npm test` runs.
+ * The networked ledger audit runs outside the offline PR checks. Publish `verify`
+ * repeats it before handing the candidate to the protected job.
  */
 describe('the driver ledger workflow', () => {
   /**
@@ -333,7 +379,7 @@ describe('the driver ledger workflow', () => {
   it('runs only when the ledger, its audit script or the workflow changes, or by hand', () => {
     const paths = ['    paths:', '      - tests/fixtures/driver-releases.json', '      - scripts/audit-driver-ledger.mjs', '      - .github/workflows/driver-ledger.yml'];
     expect(driverLedger.slice(driverLedger.indexOf('\non:\n') + 1, driverLedger.indexOf('\npermissions:'))).toBe([
-      'on:', '  pull_request:', ...paths, '  push:', '    branches: [main]', ...paths, '  workflow_dispatch:', '',
+      'on:', '  push:', '    branches: [main]', ...paths, '  workflow_dispatch:', '',
     ].join('\n'));
   });
 
@@ -359,7 +405,7 @@ describe('the driver ledger workflow', () => {
       },
       {
         keys: action, name: 'Set up Node.js', uses: 'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0',
-        with: ['node-version: \'24\'', 'package-manager-cache: false'], run: undefined,
+        with: ['node-version: \'26\'', 'package-manager-cache: false'], run: undefined,
       },
       {
         keys: command, name: 'Clone the driver without file contents', uses: undefined, with: undefined,
@@ -373,8 +419,8 @@ describe('the driver ledger workflow', () => {
     for (const { uses } of steps(job(driverLedger, 'audit'))) if (uses !== undefined) expect([...pins], uses).toContain(uses);
   });
 
-  it('keeps the ledger audit and the driver clone out of CI, the Publish workflow and npm\'s scripts', () => {
-    for (const [name, text] of [['ci.yml', ci], ['publish.yml', publish], ['package.json scripts', JSON.stringify(packageJson.scripts)]] as const) {
+  it('keeps the networked ledger audit out of offline CI and the protected publish job', () => {
+    for (const [name, text] of [['ci.yml', ci], ['protected publish job', job(publish, 'publish')], ['package.json scripts', JSON.stringify(packageJson.scripts)]] as const) {
       // A clone or checkout of the driver names its repository: an https or ssh URL, with
       // or without `.git`, the checkout action's `repository:`, or `gh repo clone`, with the
       // owner written out or taken from an expression. Only the npm package, which is
@@ -388,7 +434,7 @@ describe('every workflow', () => {
   it('pins each action to a full commit, with the version it stands for', async () => {
     const directory = new URL('../.github/workflows/', import.meta.url);
     const workflows = (await readdir(directory)).filter((name) => /\.ya?ml$/u.test(name));
-    expect(workflows.sort()).toEqual(['ci.yml', 'driver-ledger.yml', 'publish.yml']);
+    expect(workflows.sort()).toEqual(['ci.yml', 'driver-ledger.yml', 'prepare-candidate.yml', 'publish.yml']);
     for (const name of workflows) {
       const text = lf(await readFile(new URL(name, directory), 'utf8'));
       const uses = [...text.matchAll(/^\s*(?:- )?uses: (\S+)(.*)$/gmu)];

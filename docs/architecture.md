@@ -20,11 +20,11 @@ Preserve compatible responses. Surface unavailable endpoints, parameters, permis
 
 ## Runtime and component boundaries
 
-Use TypeScript compiled to ESM, with Node engines `>=24`. Run the release test matrix on Node 24. An engine range that admits another Node version does not claim that the other version has been certified. The planned npm package is `@dichovsky/testrail-mcp`. It exposes the `testrail-mcp` executable.
+Use TypeScript compiled to ESM, with Node engines `>=26`. Run the release test matrix on Node 26. An engine range that admits another Node version does not claim that the other version has been certified. The planned npm package is `@dichovsky/testrail-mcp`. It exposes the `testrail-mcp` executable.
 
 Use the official `@modelcontextprotocol/server` SDK pinned to **2.3.0**, with `@modelcontextprotocol/client` **2.3.0** for protocol tests. Host the server through `serveStdio(factory)` and retain its default legacy compatibility. Test both the earlier initialization flow and MCP 2026-07-28 discovery. Do not assume that a required client uses the modern revision by default. The [released stdio entry point](https://raw.githubusercontent.com/modelcontextprotocol/typescript-sdk/@modelcontextprotocol%2Fserver@2.3.0/packages/server/src/server/serveStdio.ts) supports both.
 
-Pin `@dichovsky/testrail-api-client` to the qualified published release **9.0.0**. It contains these items:
+Pin `@dichovsky/testrail-api-client` to the qualified published release **10.0.0**. It contains these items:
 
 - the network-guard fixes;
 - the fixes that prevent report execution from being cached or coalesced;
@@ -228,7 +228,7 @@ Release acceptance requires:
 - Passing deterministic contracts for every endpoint, including administrative and destructive operations against synthetic upstream fixtures.
 - Passing pagination, field-preservation, response-structure, attachment containment/lifetime, budget, cancellation, and indeterminate-outcome tests.
 - A published, exactly pinned driver release containing the required network and report-execution fixes and public operation-settlement API, followed by rerun integration tests.
-- Passing Node 24 checks and recorded results for each required client surface with the complete catalog.
+- Passing Node 26 checks and recorded results for each required client surface with the complete catalog.
 - A packed npm executable, configuration examples, sanitized diagnostics, and documented TestRail/version/permission limitations that match verified behavior.
 
 Do not turn unavailable live infrastructure or an untested client into a passing result. TestRail permissions and licenses can limit live smoke coverage. Distinguish that coverage from the exhaustive fixture-based adapter contract tests. No live production writes are necessary to verify destructive endpoint mappings.

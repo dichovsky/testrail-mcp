@@ -73,4 +73,16 @@ tool_timeout_sec = 120
 
 ## Update
 
-Debian's security updates install automatically every day through `unattended-upgrades`. Node.js and the server update only when you run `update` in the container. `update` installs the latest npm release of `@dichovsky/testrail-mcp`. It also enables the automatic security updates in containers that were created before the updates were added. Open sessions keep the old version until they reconnect.
+Debian's security updates install automatically every day through `unattended-upgrades`. Run `update` in the container to provision Node.js 26 and install the latest npm release of `@dichovsky/testrail-mcp`. Before they invoke npm, the installer and the updater check the Node executable on their PATH. They also enforce the Node engine requirement of the package. Open sessions keep their old server process until they reconnect.
+
+To roll back the package, run `npm install -g --ignore-scripts --engine-strict @dichovsky/testrail-mcp@1.0.0` inside the container. Then reconnect. The 1.0.0 package runs on Node 26 as well as Node 24. Use the current bootstrap script when installing or upgrading a container for 2.0.0.
+
+### Release rehearsal
+
+Before you publish 2.0.0, use disposable Debian 13 containers to exercise these operations:
+
+- a fresh install;
+- an update from Node 24 and TestRail MCP 1.0.0;
+- the exact 1.0.0 rollback.
+
+Use a disposable registry that serves the qualified 2.0.0 tarball as `latest` until public npm has the release. After each operation, open a new forced-SSH MCP session against the fixture. Check the advertised server version of the session. Verify the Node executable that the running process uses. Confirm that the authorized keys, the environment configuration and an existing completed download survive the upgrade and the rollback.

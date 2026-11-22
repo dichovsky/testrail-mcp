@@ -16,18 +16,18 @@ It targets Codex desktop and CLI, Claude Code and GitHub Copilot CLI. It covers 
 | Area | State |
 | --- | --- |
 | Endpoint tools | All 133 registered, each with a complete independent parameter manifest ([coverage reports](docs/coverage-reports.md)) |
-| Offline verification | Fixture contracts for every endpoint, both MCP protocol eras (legacy `initialize` and 2026-07-28), and the packed executable on Node 24 across Linux, macOS and Windows |
-| Client qualification | The owner closed it on 2026-10-04: [R02](https://github.com/dichovsky/testrail-mcp/issues/23). Claude Code passed all 12 scenarios against the fixture stand-in ([record](docs/evidence/clients/claude-code.json)). Codex CLI passed 10 of 12, as the owner reported. Codex desktop and Copilot CLI were not tested. [Client configuration](docs/client-compatibility.md#required-surfaces-and-evidence) has the details |
-| Live TestRail 10.8.1 qualification and npm release | [R03](https://github.com/dichovsky/testrail-mcp/issues/24). The [live run](docs/evidence/live/testrail-10.8.1.json) on 10.8.1 with the driver of the release, 9.0.0, on 2026-10-04, has no failures. 98 tools pass. 27 tools are blocked by the license of the instance or the permissions of the API user. 8 tools were left out. Those 35 are documented limitations, not passes. The [changelog](CHANGELOG.md) lists them. 1.0.0 is the first npm release. The placeholder before it, `0.0.0-bootstrap.0`, is deprecated |
+| Offline verification | Fixture contracts for every endpoint, both MCP protocol eras (legacy `initialize` and 2026-07-28), and the packed executable on Node 26 across Linux, macOS and Windows |
+| Client qualification | For 1.0.0, the owner closed it on 2026-10-04: [R02](https://github.com/dichovsky/testrail-mcp/issues/23). Claude Code passed all 12 scenarios against the fixture stand-in ([record](docs/evidence/clients/claude-code.json)). Codex CLI passed 10 of 12, as the owner reported. Codex desktop and Copilot CLI were not tested. [Client configuration](docs/client-compatibility.md#required-surfaces-and-evidence) has the details |
+| Live TestRail 10.8.1 qualification and npm release | [R03](https://github.com/dichovsky/testrail-mcp/issues/24). The [live run](docs/evidence/live/testrail-10.8.1.json) on 10.8.1 with the driver of the 1.0.0 release, 9.0.0, on 2026-10-04, has no failures. 98 tools pass. 27 tools are blocked by the license of the instance or the permissions of the API user. 8 tools were left out. Those 35 are documented limitations, not passes. The [changelog](CHANGELOG.md) lists them. 1.0.0 is the first npm release. The placeholder before it, `0.0.0-bootstrap.0`, is deprecated |
 
 ## Install
 
-Node 24 or later is required. Node 24 is tested. The pinned driver, `@dichovsky/testrail-api-client` 9.0.0, requires Node 24 itself. Later majors satisfy the engine range, but they are untested and best effort.
+The 2.0.0 line requires Node 26 or later. It is tested on Node 26. The published 1.0.0 release also supports Node 24. Later Node majors are best effort.
 
 Install an exact version from npm:
 
 ```sh
-npm install --global @dichovsky/testrail-mcp@1.0.0
+npm install --global @dichovsky/testrail-mcp@2.0.0
 testrail-mcp --version
 ```
 
@@ -94,7 +94,7 @@ The client passes the variables under [Configure](#configure) to the server. Thu
 - **Network.** By default the server connects to TestRail directly, to the address the driver's DNS check approved. The server does not use proxy settings (`HTTP_PROXY`, `HTTPS_PROXY`, `NODE_USE_ENV_PROXY`). Thus, by default the server cannot use an instance that is reachable only through a proxy. If `TESTRAIL_ALLOW_PRIVATE_HOSTS` is `true`, the driver skips that check and the pinning. Then Node's own connection settings apply, a configured proxy included. That proxy then carries the credential. For a private certificate authority, set `NODE_EXTRA_CA_CERTS` before starting the server. DNS resolution counts against each request's 15-second timeout. See [startup configuration](docs/startup-configuration.md).
 - **Files.** Uploads read a local path that must resolve inside an upload root. The server makes a copy in a private directory under the system's temporary directory, and it sends that copy. On Windows, the private directory is only as private as that temporary directory. It removes the copy after the request has settled. Each download writes a new file to the download directory and never overwrites one. Thus, the server marks the tools for downloads as not read-only. The server never deletes a completed download. See [local files](docs/local-files.md).
 - **Side effects.** Every tool carries MCP annotations describing its effect. Do not call the report-run tools repeatedly. Each report run generates a report and may send the configured email of the template. The server adds no confirmation step of its own. The approval settings of your client apply.
-- **Cancellation.** Cancelling a call stops the server waiting for it, and the client gets no result for that call. A request that the server already sent to TestRail may still complete. Thus, treat a cancelled write as possibly applied. Check before you retry it. The MCP SDK causes one exception. On a 2026-07-28 connection, the SDK ignores the cancellation of the first ordinary request, whose id is 0. That call completes and answers normally. See [runtime lifetime](docs/runtime-lifetime.md) and [stdio transport](docs/transport.md).
+- **Cancellation.** Cancelling a call stops the server waiting for it, and the client gets no result for that call. A request that the server already sent to TestRail may still complete. Thus, treat a cancelled write as possibly applied. Check before you retry it. See [runtime lifetime](docs/runtime-lifetime.md) and [stdio transport](docs/transport.md).
 
 ## Development
 
@@ -112,7 +112,9 @@ npm run check
 
 Passing tests hide their console output and JSON diagnostics. Failing tests show them. Other stderr output remains visible. To see all per-call diagnostics, run `npm test -- --silent=false` (or `npm run test:coverage -- --silent=false`). This option affects test output only. The running server still writes its diagnostics to stderr.
 
-CI runs these steps on Node 24 across Linux, macOS and Windows. On Linux, the test step of CI is `npm run test:coverage` instead. This command runs the same tests. It fails if source coverage of `src/` drops below 99% for lines, statements, functions or branches. The thresholds are in `vitest.config.ts`.
+CI fetches dependencies first. Then it runs the checks with npm in offline mode and with local fixtures, on Node 26 across Linux, macOS and Windows. On Linux, CI also isolates network access from external services.
+
+On Linux, the test step of CI is `npm run test:coverage` instead. This command runs the same tests. It fails if source coverage of `src/` drops below 99% for lines, statements, functions or branches. The thresholds are in `vitest.config.ts`.
 
 CI also publishes the [coverage reports](docs/coverage-reports.md) as artifacts. Source layout follows the [component boundaries](src/README.md).
 

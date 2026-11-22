@@ -3,10 +3,10 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "9.0.0",
-    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
+    "driver_version": "10.0.0",
+    "driver_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-10-03",
+    "reviewed_on": "2026-11-22",
     "evidence": [
       {
         "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
@@ -34,6 +34,19 @@
           { "path": "src/cli/file-input.ts", "changed": true, "note": "Changed between the releases: resolveFile now opens its input with O_NONBLOCK, so a FIFO is refused without waiting for a writer. The --filename override and the stdin naming advice cited here are unchanged." },
           { "path": "skill/reference/recipes.md", "changed": true, "note": "New in 9.0.0: skill/SKILL.md was split into a short body and reference files, and the attachment recipes, with the --filename guidance cited from skill/SKILL.md at 8.0.0, moved here. First cited at this review." }
         ]
+      },
+      {
+        "from_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "to_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9", "reviewed_on": "2026-11-22",
+        "files": [
+          { "path": "src/modules/attachments.ts", "changed": true, "note": "Each upload delegates source ownership to withMultipartUpload before validation. The bound methods keep their route, positional identifiers, multipart parts, and response." },
+          { "path": "src/validation.ts", "changed": true, "note": "IDs and offsets use safe integers, and the driver adds explicit bulk-list and timestamp validators. UUID validation and the accepted ID and paging ranges in the fixtures still apply." },
+          { "path": "src/client-core.ts", "changed": true, "note": "The request core now classifies failed DNS as a network error and tracks multipart transport through a shared lifetime. Report intent, rate-limit handling, and the cited request shapes still match the fixtures." },
+          { "path": "src/upload-source.ts", "changed": true, "note": "Shared multipart lifetime now owns early release, and release prevents a later build. The source still streams a staged path and puts the caller filename on the file part." },
+          { "path": "src/constants.ts", "changed": true, "note": "Added credential email, stdin, and nested error-cause constants. The previously cited user email and multipart rules remain in place." },
+          { "path": "src/retry-policy.ts", "changed": false },
+          { "path": "src/cli/file-input.ts", "changed": true, "note": "The CLI now reads through an injected stdin helper. Filesystem uploads still preserve the supplied filename or fall back to the path basename." },
+          { "path": "skill/reference/recipes.md", "changed": true, "note": "The attachment recipes were shortened and reorganized. They still show --filename overriding the file basename." }
+        ]
       }
     ]
   },
@@ -47,43 +60,43 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/attachments.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/modules/attachments.ts",
       "supports": "addAttachmentToResult validates the result ID, places it as the only path segment of add_attachment_to_result and posts the file through the shared multipart pipeline with the caller's filename as a multipart body, which the core never retries. It parses no schema, so TestRail's reply is returned as received."
     },
     {
       "id": "driver-validation",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/validation.ts",
-      "supports": "validateId accepts any positive integer: it tests Number.isInteger and has no safe-integer bound, so the largest-safe-integer ceiling on these identifiers is this server's own. validateEntryId and validateAttachmentId test strings against one case-insensitive UUID expression anchored at both ends, so a traversal sequence, a surrounding space or a trailing line terminator is refused; validateAttachmentId otherwise accepts any positive integer, with the same missing bound."
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/validation.ts",
+      "supports": "validateId requires a positive safe integer. validateEntryId and validateAttachmentId test strings against one case-insensitive UUID expression anchored at both ends, so a traversal sequence, a surrounding space or a trailing line terminator is refused; validateAttachmentId also accepts a positive safe integer."
     },
     {
       "id": "driver-client",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/client-core.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/client-core.ts",
       "supports": "request() hands a multipart body to createUploadSource and derives its retry policy from the request's shape with deriveRetryPolicy, which selects the none policy for any multipart body before considering anything else, so an upload re-sends nothing, not even a 429. The built form data is the request body, sent without a JSON content type."
     },
     {
       "id": "driver-upload",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/upload-source.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/upload-source.ts",
       "supports": "createUploadSource appends the file to a FormData under the field name attachment (MULTIPART_FIELD_NAME) with the caller's filename, and opens a path input with openAsBlob as a blob whose media type is the one supplied, as given, or empty when none was; FormData lowercases it when it wraps the blob as a File. Its build() refuses a second call, because the first one hands the descriptor over and releases it when the body has been consumed."
     },
     {
       "id": "driver-constants",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/constants.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/constants.ts",
       "supports": "MULTIPART_FIELD_NAME is attachment."
     },
     {
       "id": "driver-retry",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/retry-policy.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/retry-policy.ts",
       "supports": "NO_RETRY_POLICY, the none policy, retries no status and no network error. deriveRetryPolicy selects it for every multipart body, ahead of any other input, because an upload is not idempotent and TestRail documents no retry semantics for one, so zero retries is the safe default."
     },
     {
       "id": "driver-cli",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/cli/file-input.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/cli/file-input.ts",
       "supports": "The filename flag overrides the basename-derived filename when a caller wants to rename on upload, and callers reading from stdin are encouraged to pass one so TestRail stores a sensible value."
     },
     {
       "id": "driver-skill",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/skill/reference/recipes.md",
-      "supports": "The --filename option overrides the path basename so the attachment shows up with a meaningful name in the TestRail UI."
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/skill/reference/recipes.md",
+      "supports": "The --filename option overrides the path basename shown for the attachment in TestRail."
     },
     {
       "id": "testrail-attachments",

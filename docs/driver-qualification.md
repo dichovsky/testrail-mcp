@@ -1,8 +1,18 @@
 # Driver qualification
 
-F01 is qualified. The MCP package pins the published release `@dichovsky/testrail-api-client@9.0.0`. Its acceptance checks run as standing tests in [`tests/driver-qualification.test.ts`](../tests/driver-qualification.test.ts) against the installed artifact rather than a sibling checkout.
+F01 is qualified. The MCP package pins the published release `@dichovsky/testrail-api-client@10.0.0`. Its acceptance checks run as standing tests in [`tests/driver-qualification.test.ts`](../tests/driver-qualification.test.ts) against the installed artifact rather than a sibling checkout.
 
-## Qualified release — 9.0.0, verified 2026-10-03
+## Offline qualification — 10.0.0, verified 2026-11-22
+
+- [Release 10.0.0](https://github.com/dichovsky/testrail-api-client/releases/tag/release/10.0.0) tags commit `b7cde3748f8f937acb79b0004985a43ea9f916a9`. The [npm release](https://registry.npmjs.org/@dichovsky%2ftestrail-api-client/10.0.0) requires Node 26+ and has integrity `sha512-PFMg3PnYaihenrHnbvrtiNRG9YPeRlNx5PizPkWaTzYYKPZk9VjRJOzkIFGRVooXtr26yrXtUdXv3GqJl46nuA==`, matching the lockfile.
+- The standing tests exercise all 133 endpoint bindings and 48 page/all helpers, the lifetime of a call whose result deadline wins, and report generation with caching, coalescing, network errors, HTTP 5xx and the accepted 429 retry.
+- Driver 10 classifies failed or empty DNS lookups and an interrupted successful response body as status-zero failures. Both reach the caller as `INVALID_RESPONSE`, with `write_outcome: "unknown"` on writes that entered the driver. Eligible reads retry a DNS failure, whereas writes and report runs do not. The request timeout still covers unresolved DNS and the call retains its slot until settlement. See [results and errors](results-and-errors.md).
+- The driver checks safe integers in path IDs, selected list filters and bulk-write lists before dispatch. The MCP schemas keep the same accepted inputs. The public-driver probes recheck rejection ownership for each reference. The driver derives multipart lifetime through a shared owner and validates soft-delete previews inside the request. The adapter continues to supply staged paths and observes settlement before releasing them.
+- All 133 parameter manifests and the domain library were reviewed against this release. Of 50 ledger paths, 35 source blobs and 23 shipped-file hashes changed. The [driver provenance evidence](parameter-manifest.md#driver-provenance-evidence) records each change relevant to the cited contracts.
+
+Fresh Node 26 client records and a live TestRail 10.8.1 record for the exact 2.0.0 candidate are release gates. See the [release checklist](release.md#release-checklist).
+
+## Previously qualified release — 9.0.0, verified 2026-10-03
 
 - [Release 9.0.0](https://github.com/dichovsky/testrail-api-client/releases/tag/release/9.0.0), tag commit `a5ccffbfa176e9c6675bd81fff61859bd7b6be5d`, published from [upstream PR #308](https://github.com/dichovsky/testrail-api-client/pull/308).
 - npm integrity `sha512-CfGOEAkrEfrJTHaVY57YqzUBla3V0FP0cXXFyEfY7FcW+PdMJBp0Ro39MS9qLdz748X7fKOhdy971mZQ/rzkmg==`, matching the committed lockfile and asserted by test. Release 9.0.0 still requires Node 24 or later.
@@ -63,6 +73,7 @@ That comparison is now data that the manifest audit checks rather than prose. Ea
 
 ## Superseded audits
 
+- **9.0.0, 2026-10-03.** Qualified and pinned until the 10.0.0 migration. The live evidence for this driver is retained.
 - **8.0.0, 2026-10-03.** Qualified and pinned until later that day, when 9.0.0 replaced it. Its record is kept above.
 - **7.2.0, 2026-09-17.** Qualified and pinned until 2026-10-03, when 8.0.0 replaced it. Its record is kept above.
 - **7.1.0, 2026-09-10.** Included the network-guard fixes from [upstream PR #266](https://github.com/dichovsky/testrail-api-client/pull/266) and all 181 endpoint/helper bindings, but had no `trackOperation`. Two sequential `reports.runReport` calls made only one upstream request. Not qualified.
@@ -70,10 +81,10 @@ That comparison is now data that the manifest audit checks rather than prose. Ea
 
 ## Remaining release dependencies
 
-Qualification covers the driver contract only. R03 also requires live TestRail 10.8.1 evidence. A later driver upgrade requires these items:
+A later driver upgrade needs these items:
 
 - an exact dependency review;
-- an inventory/parameter diff;
-- a repeat of the checks above against the newly installed artifact.
+- an inventory and parameter diff;
+- a repeat of the standing checks against the newly installed artifact.
 
-The 8.0.0 and 9.0.0 upgrades did these steps on 2026-10-03, and the live run on 9.0.0 followed on 2026-10-04.
+The Publish workflow checks the live and client evidence for the release candidate.

@@ -23,16 +23,18 @@ Status, priority, type, template, role and user references choose among the inst
 
 A read whose answer later steps use is checked the same way, because what the read returns can become the run's own. For example, the run's Tests are read from the Test Run that it created. A refused call is a failure. It means a fault in the plan, or an answer that the plan did not expect.
 
-Before the project, the run deletes each attachment that it uploaded. TestRail stores attachments apart from what they are attached to. Thus, the run does not leave them to be deleted with the project. The last step deletes the project and everything in it.
+Before the run deletes the project, it deletes each attachment that it uploaded. It retries each deletion that did not succeed. TestRail stores attachments apart from what they are attached to. The last step deletes the project and everything in it.
 
-The run stops early if a call fails, the MCP session breaks or you press Ctrl-C. In that case, the runner still deletes the project, and the group when there is one, when it exits. Closing the terminal (SIGHUP) and SIGTERM stop the run the same way.
+If the run stops early, cleanup still tries to delete pending attachments, the project, and any group that the run created. Ctrl-C, SIGHUP and SIGTERM all enter this cleanup path.
 
 Ctrl-C at a terminal stops the server as well as the runner. Thus, the runner starts a fresh server and cleans up through that server. Ctrl-C also stops a `| tee` that keeps the log. Output that can no longer be written does not stop the cleanup.
 
 Then the runner asks TestRail for the project, the group and each attachment again, and counts the answers in the evidence's `cleanup.verified`:
-- `gone`: TestRail answered `NOT_FOUND`, or the 400 it gives for an ID it does not have.
-- `present`: TestRail still served it. The runner deletes an attachment that is still served once more and asks for it again.
-- `unverified`: any other answer, such as a permission refusal, a server error or no session.
+- `gone` means that the read returned `NOT_FOUND` with HTTP 404 or a recognized TestRail ID error for that endpoint with HTTP 400.
+- `present` means that TestRail still served it. The runner retries deletion for that attachment and reads it again.
+- `unverified` covers other outcomes, including a generic HTTP 400, a permission refusal, a server error or a lost session.
+
+An attachment also needs a successful DELETE for that same ID. If a later read serves the attachment again, the next DELETE must succeed before another readback can confirm absence. Candidate evidence records the plan label of the attachment, where deletion succeeded, and the sanitized readback.
 
 Anything still present is listed in `cleanup.residue`, as is anything unverified, under `unverified <kind>`. Either one fails the run.
 
@@ -55,7 +57,15 @@ The user's name and the case field's label start with `testrail-mcp qualificatio
 
    `--remember-deletions` makes the stand-in answer a read of a deleted project, group or attachment with TestRail's 400. Thus, the rehearsal checks the cleanup as a live run does.
 
-   In a second terminal, export the five `TESTRAIL_` variables that the stand-in prints. Then run the command in step 3 with `--instance-writes --report-template-id 1 --cross-project-report-template-id 2`. The runner makes its own upload and download directories. Every tool passes against the stand-in. Without those options, the six writes outside the project and the two reports are `not_run`.
+   In a second terminal, export the five `TESTRAIL_` variables that the stand-in prints. Then run the rehearsal command below. It writes a fresh temporary file with `fixture_stand_in` provenance.
+
+   ```sh
+   rehearsal=$(mktemp -d)
+   node scripts/live-qualification.mjs --create-qualification-project --fixture \
+     --out "$rehearsal/evidence.json" --instance-writes --report-template-id 1 --cross-project-report-template-id 2
+   ```
+
+   During either run, the runner makes its own upload and download directories. Every tool passes against the stand-in. Without those options, the six writes outside the project and the two reports are `not_run`.
 
 2. Give the runner the instance through the environment only. The runner never takes credentials as arguments:
 
@@ -65,19 +75,23 @@ The user's name and the case field's label start with `testrail-mcp qualificatio
    export TESTRAIL_API_KEY=...
    ```
 
-3. Run it:
+3. Run the live checks against an authorized disposable project. Download both candidate files from the same successful Prepare Candidate attempt. Start after the attempt finishes and use a fresh output path. Keep the runner's complete evidence for Publish, including the observed version, step outcomes, cleanup dispositions and sanitized readbacks for the resources created.
 
    ```sh
-   node scripts/live-qualification.mjs --create-qualification-project --out docs/evidence/live/testrail-10.8.1.json
+   node scripts/live-qualification.mjs --create-qualification-project \
+     --candidate candidate.json --tarball candidate.tgz --out live-2.0.0.json
    ```
 
 | Option | Effect |
 | --- | --- |
 | `--create-qualification-project` | Required. Confirms that the run may create, use and delete a project. |
-| `--out <file>` | Required. Where the evidence goes. The runner creates its directory if needed. The runner refuses a directory, or a path that cannot be written, before it sends anything. The runner checks an existing file without changing it. |
+| `--out <file>` | Required. Where the evidence goes. The runner creates its directory if needed. Use a new file. The runner refuses existing files and unwritable paths before any project operation. |
 | `--instance-writes` | Also run the writes outside the project. Disposable instances only. |
 | `--report-template-id <id>` | A single-project report template configured for the test. |
 | `--cross-project-report-template-id <id>` | A cross-project report template configured for the test. |
+| `--candidate <file>` | The release candidate manifest emitted by Prepare Candidate. Use with `--tarball`. |
+| `--tarball <file>` | The verified candidate archive. The runner installs it under a temporary prefix and records its package, runtime and dependency identities. |
+| `--fixture` | Labels a stand-in rehearsal as fixture evidence. |
 | `--command <cmd>` and repeated `--arg <arg>` | The server to drive, such as an installed `testrail-mcp`. By default the runner drives `node dist/cli.js`. Write an argument that starts with a dash as `--arg=-y`. |
 
 The runner starts the server itself. It gives the server a temporary upload root that holds the two files it uploads, and a temporary download directory. It removes both afterwards.

@@ -318,7 +318,7 @@ async function executeOperation(
      * already dispatched and reported `unknown`.
      */
     abandon.abort();
-    const safe = classifyError(error, { mutates, dispatched, acknowledged, aggregate: mode === 'all' });
+    const safe = classifyError(error, { mutates, dispatched, acknowledged, aggregate: mode === 'all', token: operation.token });
     logEvent('tool_call', {
       correlation, tool: operation.tool, outcome: 'error',
       code: safe.code, duration_ms: Date.now() - started,
