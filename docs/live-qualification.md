@@ -84,7 +84,7 @@ The runner starts the server itself. It gives the server a temporary upload root
 
 The server's driver allows 100 TestRail requests a minute. The runner stays below that pace. It retries a rate-limited call after the window has passed, because a 429 means TestRail did not handle the request. A full run takes about two minutes.
 
-Before the runner sends anything, it refuses a configured value that the evidence's own words contain, such as an API key that is also a status. Evidence that names such a value could never be checked. The runner checks the host as a whole name. Thus, a host such as `testrail` does not match `testrail_add_case`.
+Before the runner sends anything, it refuses a configured value that the evidence's own words contain. An example is an API key that is also a status. Evidence that names such a value could never be checked. The runner checks the host as a whole name. Thus, a host such as `testrail` does not match `testrail_add_case`.
 
 The runner prints one line for each step, with the error code and the server's message for any failure. Then it prints what cleanup did and a summary. It prints what cleanup did even when it cannot write the evidence. It reports a server that will not start with its own reason.
 

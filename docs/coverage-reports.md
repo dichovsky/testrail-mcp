@@ -11,7 +11,7 @@ Every file opens with the same header:
 | Field | Meaning |
 | --- | --- |
 | `evidence` | Always `offline_fixtures`. The files come from a passing run of the deterministic suite (`npm test`). The suite replays hand-authored fixtures through the registered tools and the pinned driver, with an injected fetch. |
-| `live.testrail`, `live.clients` | Always `not_run`. Each links the issue that owns that qualification: [R03](https://github.com/dichovsky/testrail-mcp/issues/24) for a live TestRail instance, [R02](https://github.com/dichovsky/testrail-mcp/issues/23) for MCP host clients. |
+| `live.testrail`, `live.clients` | Always `not_run`. Each links the issue that owns that qualification: [R03](https://github.com/dichovsky/testrail-mcp/issues/24) for a live TestRail instance, [R02](https://github.com/dichovsky/testrail-mcp/issues/23) for clients. |
 | `package` | This package's name and version. |
 | `driver` | The installed driver's name and version, with the tarball URL and integrity hash from the lockfile. `reviewed_commits` is the driver commit every manifest was reviewed against. |
 | `runtime` | Node version, platform and architecture of the job. |
@@ -89,4 +89,4 @@ The report test's gates cover registration, manifests and coverage. They do not 
 
 ## What they do not claim
 
-An `implemented` row, and every count in these files, describes offline verification against a pinned driver and fixture replies. This offline verification does not claim that an operation succeeds on a particular TestRail instance, version, edition or permission set, or that a particular MCP host can discover and call it. Those results belong to R02 and R03 and will be recorded separately. These reports will never report them as passed.
+An `implemented` row, and every count in these files, describes offline verification against a pinned driver and fixture replies. This offline verification does not claim that an operation succeeds on a particular TestRail instance, version, edition or permission set. It also does not claim that a particular host can discover and call the operation. Those results belong to R02 and R03 and will be recorded separately. These reports will never report them as passed.

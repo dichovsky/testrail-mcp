@@ -143,21 +143,25 @@ Through the tools, each of these mutations fails the end-to-end suite:
 
 The F06 audit added nineteen more mutations. Each of them passed every test before. Seven are in the adapter:
 
-- an empty page read as the end or advised as `all`;
+- an empty page read as the end;
+- an empty page advised as `all`;
 - a `next_offset` computed from the page;
 - a hardcoded reported `start_offset`;
-- stripped or invented progress;
+- stripped progress;
+- invented progress;
 - an aggregate exempt from the result budget.
 
 Seven are in the driver:
 
-- `>=` for `>` on a terminal page's items or bytes;
+- `>=` for `>` on a terminal page's items;
+- `>=` for `>` on a terminal page's bytes;
 - `>` for `>=` on the bytes before another page;
-- either terminal check removed;
+- one terminal check removed;
+- the other terminal check removed;
 - `max_pages` applied to the last page;
 - a next page fetched from the link's own path.
 
-The other five are in inputs, descriptions and imports. The paging sentence mutations are one missing and one invented. The five are:
+The other five are in inputs, descriptions and imports. Two of them are paging sentence mutations: one missing and one invented. The five are:
 
 - page mode accepting `start_offset` and `max_duration_ms`;
 - a missing paging sentence;

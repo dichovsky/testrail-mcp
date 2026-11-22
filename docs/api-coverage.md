@@ -8,7 +8,7 @@ Every row is **implemented**. For each row, the tool is registered with the inve
 
 `tests/coverage-report.test.ts` fails when a row here disagrees with the [operation inventory](operation-inventory.json) in its endpoint, tool, driver method, page/all helpers, counts or status. The test also fails when the inventory's statuses disagree with the registry and manifests. CI publishes the [coverage reports](coverage-reports.md) that it checks, as artifacts. The [architecture](architecture.md) records the accepted decisions.
 
-This document maps the full-API scope to the driver. An `implemented` row is offline evidence. It does not claim that the operation was tested against a live TestRail instance or through an MCP host client. [R03](https://github.com/dichovsky/testrail-mcp/issues/24) and [R02](https://github.com/dichovsky/testrail-mcp/issues/23) track those qualifications.
+This document maps the full-API scope to the driver. An `implemented` row is offline evidence. It does not claim that the operation was tested against a live TestRail instance or through a client. [R03](https://github.com/dichovsky/testrail-mcp/issues/24) and [R02](https://github.com/dichovsky/testrail-mcp/issues/23) track those qualifications.
 
 ## Provenance and compatibility boundary
 
@@ -38,7 +38,7 @@ The exact npm dependency **`@dichovsky/testrail-api-client@7.0.0` is the develop
 
 The endpoint inventory, domain modules, and 181 endpoint/helper methods of this release match this baseline. The published tarball was integrity-checked. Its declarations and JavaScript bindings were verified. The machine-readable [operation inventory](operation-inventory.json) records this verification and the development-only dependency scope.
 
-Follow-up on 2026-09-10: published 7.1.0 includes the network-guard fixes and retains all 181 endpoint/helper bindings, but still lacks independent report execution and the settlement API. See the [current driver qualification evidence](driver-qualification.md). The original 7.0.0 audit above remains the development baseline.
+Follow-up on 2026-09-10: published 7.1.0 includes the network-guard fixes and retains all 181 endpoint/helper bindings. However, 7.1.0 still lacks independent report execution and the settlement API. See the [current driver qualification evidence](driver-qualification.md). The original 7.0.0 audit above remains the development baseline.
 
 **Production release is blocked on a new fixed published driver version**, which must include all three requirements:
 

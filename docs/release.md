@@ -65,7 +65,7 @@ The Publish workflow publishes with `--ignore-scripts`. This flag runs no packag
      - A [live qualification](live-qualification.md) record for 10.8.1 has no `fail`.
      - The record was made with the driver that the release pins (its `server.driver_version`).
      - Each `blocked` or `not_run` tool is explained and listed as a known limitation in the release notes.
-   - [Client configuration](client-compatibility.md) and the [release gates](implementation-plan.md#release-gates-and-evidence) list what each gate must contain.
+   - [Client configuration](client-compatibility.md) and the [release gates](implementation-plan.md#release-gates-and-evidence) list what each must contain.
 2. **Version pull request.**
    1. Choose a stable version that is newer than all published stable versions.
    2. Set the version with `npm version X.Y.Z --no-git-tag-version --ignore-scripts`. This command updates `package.json` and the two root version fields of `package-lock.json`.

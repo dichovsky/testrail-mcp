@@ -105,7 +105,7 @@ enabled = true
 
 Codex documents shared MCP configuration for local desktop/CLI surfaces, command-launched stdio, environment forwarding, and configurable startup/call timeouts. Reconnect or restart the client after changes. Check server state with `/mcp`. Record the actual automatic tool-discovery behavior rather than assuming a specific model context strategy. Keep the first 512 characters of server instructions self-contained. Source: [official Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
 
-**Cancellation.** Codex does not tell the server that a call was cancelled. Neither Esc nor `tool_timeout_sec` sends `notifications/cancelled`. Codex drops the call on its side. The server finishes the call within its own budgets, 15 seconds per TestRail request and 45 seconds for a complete fetch. The server holds its slot until then.
+**Cancellation.** Codex does not tell the server that a call was cancelled. Neither Esc nor `tool_timeout_sec` sends `notifications/cancelled`. Codex drops the call on its side. The server finishes the call within its own budgets, 15 seconds per TestRail request and 45 seconds for a fetch-all. The server holds its slot until then.
 
 Treat a write cancelled in Codex as possibly applied. Check before you retry the write.
 

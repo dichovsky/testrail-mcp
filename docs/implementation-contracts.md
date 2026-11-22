@@ -17,7 +17,7 @@ The qualified driver is exactly `9.0.0`, release commit `a5ccffbfa176e9c6675bd81
 
 One deviation is recorded in [driver qualification](driver-qualification.md): the driver still retries a rate-limited report generation. Update provenance and regression evidence with any future dependency change. Do not guess a version number.
 
-`run_report` and `run_cross_project_report` are GET endpoints with side effects. Their public driver methods must bypass both result caching and in-flight GET coalescing, and must not retry a network error or 5xx. The baseline asked for `retry: 'none'` and `bypassCache: true`. 7.2.0 declared `bypassCache: true` with a rate-limit-only retry. 8.0.0 derives the same behavior from the methods' `side-effecting-read` intent, which 9.0.0 keeps. Require upstream tests that prove separate sequential and concurrent calls execute separately and that network and 5xx failures are not retried.
+`run_report` and `run_cross_project_report` are GET endpoints with side effects. Their public driver methods must bypass both result caching and in-flight GET coalescing, and must not retry a network error or 5xx. The baseline asked for `retry: 'none'` and `bypassCache: true`. 7.2.0 declared `bypassCache: true` with a rate-limit-only retry. 8.0.0 derives the same behavior from the methods' `side-effecting-read` intent, which 9.0.0 keeps. Require upstream tests that prove that separate sequential and concurrent calls execute separately. Require upstream tests that prove that network and 5xx failures are not retried.
 
 A rate-limited (429) response is exempt. TestRail rejects it before it handles the request, so a re-send cannot generate the report twice or send a duplicate template-configured email. A 5xx is not exempt, because the server may already have begun generating.
 
@@ -269,9 +269,9 @@ Apply this layer to every attachment upload/download and to BDD add/update uploa
 
 Open and inspect the actual file handle. Use no-follow options where available, and recheck path/identity as supported. Do not claim isolation from a malicious process running as the same OS user.
 
-Copy the validated source through an owned handle into an exclusively created file in a private staging directory with restrictive permissions. This bounded staging copy decouples upload bytes from subsequent source-path replacement. Close adapter-owned source handles exactly once.
+Copy the validated source through an owned handle into an exclusively created file. Put that file in a private staging directory with restrictive permissions. This bounded staging copy decouples upload bytes from subsequent source-path replacement. Close adapter-owned source handles exactly once.
 
-Give the driver a staged `{ path: ... }` upload input, with the approved filename/content type where applicable. Retain the staged file until the operation handle's `settled` signal completes, even if `result` already rejected. Do not pass an adapter-owned descriptor to the driver, because early DNS failures and platform fallback behavior make descriptor ownership difficult to guarantee.
+Give the driver a staged `{ path: ... }` upload input, with the approved filename/content type where applicable. Retain the staged file until the operation handle's `settled` signal completes, even if `result` already rejected. Do not pass an adapter-owned descriptor to the driver. Early DNS failures and platform fallback behavior make descriptor ownership difficult to guarantee.
 
 Clean up staging in these cases:
 - success;

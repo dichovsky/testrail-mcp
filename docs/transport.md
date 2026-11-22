@@ -242,7 +242,7 @@ The validated value now passes through untouched. An operation registered withou
 
 **Staged uploads leaked on refusal.** The runtime rejects `BUSY` and pre-dispatch cancellation *before* it creates the slot that runs cleanup. Thus, a call refused at admission left its staged copy in the staging directory for the life of the process.
 
-The catch now disposes it, but only for a call that never entered the driver. Once the call is dispatched, the runtime's settlement cleanup disposes the copy instead, because a cancelled or timed-out upload may still be reading the copy into its request. Disposing the copy from the catch would fail that request part-way. F07's closing work later removed that catch disposal. Staging now runs inside the slot, so a call refused at admission has staged nothing, and settlement cleanup is the copy's only disposer.
+The catch now disposes it, but only for a call that never entered the driver. Once the call is dispatched, the runtime's settlement cleanup disposes the copy instead. The reason is that a cancelled or timed-out upload may still be reading the copy into its request. Disposing the copy from the catch would fail that request part-way. F07's closing work later removed that catch disposal. Staging now runs inside the slot, so a call refused at admission has staged nothing, and settlement cleanup is the copy's only disposer.
 
 A third fault surfaced while writing the test for the second. The reserved upload inputs are **flat**: `file_path`, `filename` and `content_type`. The pipeline was reading a nested `file` object that it had invented. That object would never have matched a real registered upload, so staging would silently never have happened. The registry's own layout check caught the fault.
 

@@ -4,7 +4,7 @@ This guide gives the rules for repository prose. It applies to new text and to e
 
 ## Standard and verification level
 
-The prose follows the writing rules of [ASD-STE100 Simplified Technical English, Issue 9](https://www.asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf). The rewrite of 2026-11 is an **STE-principles rewrite**. It applies the rules in [Core rules](#core-rules). No one checked the words against the ASD-STE100 dictionary. Thus, this repository does not claim that a word is approved or that a document is compliant with ASD-STE100.
+The target standard is [ASD-STE100 Simplified Technical English, Issue 9](https://www.asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf). The rewrite of 2026-11 is an **STE-principles rewrite**. It applies only the rules in [Core rules](#core-rules), without the specification text. No one checked the words against the ASD-STE100 dictionary. Thus, this repository does not claim that a word is approved or that a document is compliant with ASD-STE100.
 
 If you check a document against a licensed copy of the dictionary, record the edition and the documents that you checked in this section.
 
@@ -89,7 +89,7 @@ The TestRail domain terms (Test Case, Test Run, Test, Test Result, Attachment, C
 | driver | Technical name | `@dichovsky/testrail-api-client`, the TestRail client library that the server calls | SDK, API client, library |
 | driver client | Technical name | One instance of the driver's client, which holds the credential | connection, session |
 | client | Technical name | The MCP client side of the connection, and the application that implements it (Claude Code, Codex CLI, Codex desktop, Copilot CLI). Record and document names use this term | agent, consumer (for the application) |
-| host | Technical name | The application that a person runs and that contains the MCP client. Use this term in procedures where a person operates the application | host client, MCP host, app |
+| host | Technical name | The application that a person runs and that contains the MCP client. Use this term in procedures where a person operates the application | host client, MCP host |
 | endpoint | Technical name | One TestRail REST API endpoint: an HTTP method and a route | API, route (for the full endpoint) |
 | tool | Technical name | The MCP tool that the server registers for one endpoint | command, function |
 | operation | Technical name | One entry of the operation inventory, which binds an endpoint to its tool and driver method | — |
@@ -121,18 +121,22 @@ The TestRail domain terms (Test Case, Test Run, Test, Test Result, Attachment, C
 - Some table cells contain more than one sentence, because a Markdown table cell cannot contain a vertical list. Some cells are lists of nouns, which stay as they are.
 - Quoted text stays as it is: test titles, TestRail messages and the driver's match phrases. Some sentences that contain a quote are longer than the limit.
 - "cancelled" keeps its British spelling, because the error code `CANCELLED` and the MCP notification `notifications/cancelled` use it.
+- Some terms stay as they are in a sentence that mirrors a runtime string, for example "MCP host clients" in `docs/coverage-reports.md`, which repeats the statement that the coverage report writes.
+- "certify" is used for the Node versions that CI tests. It is a different concept from "qualify".
+- "SDK" means the MCP SDK (`@modelcontextprotocol/server` and `@modelcontextprotocol/client`), never the driver.
+- "chunk" means a part of a file that is copied, not a page.
+- "desktop app" and "the app" can name a desktop host in a procedure.
 - Older sentences that were not rewritten can keep British spelling (for example "behaviour" or "licence"). Use US spelling when you rewrite such a sentence.
 
 ## Validation
 
-Run these commands after a change to a document:
+Run this command after a change to a document:
 
 ```sh
-npm test
-npm run registry:check
+npm run check
 ```
 
-`npm test` includes the tests that read the documents. `npm run registry:check` fails if `docs/operation-reference.md` does not match the registry. Run `npm run check` before you push.
+The command builds the package and then runs all checks. These checks include the tests that read the documents, and `npm run registry:check`, which fails if `docs/operation-reference.md` does not match the registry.
 
 The repository has no Markdown linter, formatter or link checker. Thus, review the links and anchors in a changed document yourself.
 

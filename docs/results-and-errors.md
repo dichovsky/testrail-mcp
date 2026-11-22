@@ -32,7 +32,7 @@ The server validates outer structure strictly. A record that is not a record, or
 
 A soft-delete preview is the one reply whose meaning depends on the input. `delete_case`, `delete_cases`, `delete_section`, `delete_suite` and `delete_run` delete when a caller calls them plainly. With `query.soft: true`, they ask TestRail what the delete would remove. After a delete the result is `data: null`, and the server checks nothing. After a preview the server returns the counts as sent. It checks them advisorily against the driver's own preview schema, so a count that arrives as a string is reported as `SCHEMA_DRIFT`.
 
-A preview reply that carries none of the seven affected-entity counts with a value (an empty body, `{}`, only unknown keys, or only `null` counts) is not reported as a preview of nothing. A TestRail that ignores the flag deletes and answers just the same. Such a reply is `INVALID_RESPONSE` with `write_outcome: "unknown"`, after exactly one request. Thus, the caller learns that the rows may be gone rather than that none would be affected. The tools stay annotated as destructive, because the caller chooses a preview for each call and the annotation describes the tool.
+Some preview replies carry none of the seven affected-entity counts with a value: an empty body, `{}`, only unknown keys, or only `null` counts. Such a reply is not reported as a preview of nothing. A TestRail that ignores the flag deletes and answers just the same. Such a reply is `INVALID_RESPONSE` with `write_outcome: "unknown"`, after exactly one request. Thus, the caller learns that the rows may be gone rather than that none would be affected. The tools stay annotated as destructive, because the caller chooses a preview for each call and the annotation describes the tool.
 
 The server deliberately discards the parsed output. A schema that would strip unknown keys or apply a default must not alter what the caller receives. Validation observes. It does not repair.
 
@@ -42,7 +42,7 @@ Only a bounded count crosses the boundary. A count is capped at 1 000, and a res
 
 ## Errors say only what is known
 
-Codes come from a fixed set, messages are fixed text, and metadata is an allowlist. The server never forwards a driver message, status text or response body, because any of them can embed the configured host, a local path or instance data.
+Codes come from a fixed set, messages are fixed text, and metadata is an allowlist. The server never forwards a driver message, status text or response body. Any of them can embed the configured host, a local path or instance data.
 
 Subclass precedence is essential, because the driver's own hierarchy makes the general case also match the specific one. `TestRailLicenseError` extends `TestRailApiError`, so the adapter must recognize a license restriction before a plain 403 permission denial. `TestRailPaginationError` extends `TestRailValidationError`, so the adapter must recognize an aggregate stop before generic validation. Within that stop, a safety bound (`max_pages`, `max_items`, `max_bytes`, `max_duration`) is `PAGINATION_LIMIT`, and a structural fault (`invalid_page`, `invalid_continuation`, `non_progress`) is `INVALID_RESPONSE`.
 
