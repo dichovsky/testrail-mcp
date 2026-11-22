@@ -26,9 +26,11 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      actions: read
     outputs:
       already-published: ${{ steps.preflight.outputs.already-published }}
       integrity: ${{ steps.qualification.outputs.integrity }}
+      candidate-expires-at: ${{ steps.qualification.outputs.candidate_expires_at }}
 
     steps:
       - name: Check out the immutable release commit
@@ -274,6 +276,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           QUALIFIED_INTEGRITY: ${{ needs.verify.outputs.integrity }}
+          CANDIDATE_EXPIRES_AT: ${{ needs.verify.outputs.candidate-expires-at }}
         run: |
           set -euo pipefail
           while IFS= read -r CONFIG_NAME; do
@@ -375,6 +378,14 @@ jobs:
             if (!valid) process.exit(1);
           '
 
+          if ! node --input-type=module --eval '
+            const expiresAt = Date.parse(process.env.CANDIDATE_EXPIRES_AT);
+            if (!Number.isFinite(expiresAt) || Date.now() >= expiresAt) process.exit(1);
+          '; then
+            echo 'The verified Prepare Candidate artifact has expired or its expiry is missing. Qualify a fresh candidate before publishing.' >&2
+            exit 1
+          fi
+
           npm publish "$CANDIDATE" \
             --provenance \
             --registry=https://registry.npmjs.org/ \
@@ -413,6 +424,8 @@ jobs:
               printf '%s' "$PROVENANCE" | EXPECTED_VERSION="$EXPECTED_VERSION" node --input-type=module --eval '
                 import fs from "node:fs";
                 const predicate = "https://slsa.dev/provenance/v1";
+                const repository = "https://github.com/dichovsky/testrail-mcp";
+                const releaseRef = `refs/tags/release/${process.env.EXPECTED_VERSION}`;
                 const expectedName = `pkg:npm/%40dichovsky/testrail-mcp@${process.env.EXPECTED_VERSION}`;
                 const expectedHash = Buffer.from(process.env.QUALIFIED_INTEGRITY.slice(7), "base64").toString("hex");
                 const value = JSON.parse(fs.readFileSync(0, "utf8"));
@@ -421,6 +434,12 @@ jobs:
                 const statement = JSON.parse(Buffer.from(matches[0].bundle.dsseEnvelope.payload, "base64").toString("utf8"));
                 if (statement.predicateType !== predicate || statement.subject.length !== 1 ||
                   statement.subject[0].name !== expectedName || statement.subject[0].digest.sha512 !== expectedHash) process.exit(1);
+                const build = statement.predicate?.buildDefinition;
+                const workflow = build?.externalParameters?.workflow;
+                const dependencies = build?.resolvedDependencies;
+                const source = Array.isArray(dependencies) && dependencies.length === 1 ? dependencies[0] : undefined;
+                if (workflow?.repository !== repository || workflow.ref !== releaseRef || workflow.path !== ".github/workflows/publish.yml" ||
+                  source?.uri !== `git+${repository}@${releaseRef}` || source.digest?.gitCommit !== process.env.GITHUB_SHA) process.exit(1);
               '
             then
               VERIFIED=true

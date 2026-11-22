@@ -30,12 +30,12 @@ jobs:
         run: npm run build
 
       - name: Pack the candidate and record its identity
-        run: node scripts/prepare-candidate.mjs "$RUNNER_TEMP/candidate"
+        run: node scripts/prepare-candidate.mjs "$RUNNER_TEMP/candidate" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
 
       - name: Keep the candidate for qualification
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: npm-release-candidate
+          name: npm-release-candidate-${{ github.run_attempt }}
           path: ${{ runner.temp }}/candidate/
           if-no-files-found: error
           include-hidden-files: false

@@ -27,6 +27,8 @@ export const EXPECTED_PACKAGE_NAME = '@dichovsky/testrail-mcp';
 export const NPM_REGISTRY = 'https://registry.npmjs.org/';
 export const SLSA_PROVENANCE_PREDICATE = 'https://slsa.dev/provenance/v1';
 
+const RELEASE_REPOSITORY = 'https://github.com/dichovsky/testrail-mcp';
+const RELEASE_WORKFLOW = '.github/workflows/publish.yml';
 const STABLE_SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/u;
@@ -244,7 +246,7 @@ export function shouldSkipPublishedVersion({ packageVersion, releaseSha, qualifi
   return true;
 }
 
-export function validatePublishedProvenance(value, { spec, qualifiedIntegrity }) {
+export function validatePublishedProvenance(value, { spec, qualifiedIntegrity, releaseRef, releaseSha }) {
   const matches = value?.attestations?.filter((entry) => entry.predicateType === SLSA_PROVENANCE_PREDICATE);
   if (matches?.length !== 1) throw new Error('Expected one SLSA provenance record for the qualified tarball');
   const payload = matches[0].bundle?.dsseEnvelope?.payload;
@@ -254,6 +256,14 @@ export function validatePublishedProvenance(value, { spec, qualifiedIntegrity })
   if (statement.predicateType !== SLSA_PROVENANCE_PREDICATE || statement.subject?.length !== 1
     || subject?.name !== `pkg:npm/${spec.replace(/^@/u, '%40')}` || subject.digest?.sha512 !== expectedDigest) {
     throw new Error('npm provenance does not identify the qualified tarball');
+  }
+  const build = statement.predicate?.buildDefinition;
+  const workflow = build?.externalParameters?.workflow;
+  const dependencies = build?.resolvedDependencies;
+  const source = Array.isArray(dependencies) && dependencies.length === 1 ? dependencies[0] : undefined;
+  if (workflow?.repository !== RELEASE_REPOSITORY || workflow.ref !== releaseRef || workflow.path !== RELEASE_WORKFLOW
+    || source?.uri !== `git+${RELEASE_REPOSITORY}@${releaseRef}` || source.digest?.gitCommit !== normalizeSha(releaseSha, 'release SHA')) {
+    throw new Error('npm provenance does not identify the release repository, workflow, tag and commit');
   }
 }
 
@@ -379,7 +389,12 @@ async function runRegistryCheck() {
   if (alreadyPublished) {
     const response = await fetch(new URL(`-/npm/v1/attestations/${spec.replace('/', '%2F')}`, NPM_REGISTRY), { signal: AbortSignal.timeout(30_000) });
     if (!response.ok) throw new Error(`npm provenance lookup failed with HTTP ${response.status}`);
-    validatePublishedProvenance(await response.json(), { spec, qualifiedIntegrity });
+    validatePublishedProvenance(await response.json(), {
+      spec,
+      qualifiedIntegrity,
+      releaseRef: requireEnv('GITHUB_REF'),
+      releaseSha: requireEnv('GITHUB_SHA'),
+    });
   }
   appendFileSync(requireEnv('GITHUB_OUTPUT'), `already-published=${String(alreadyPublished)}\n`, 'utf8');
   process.stdout.write(alreadyPublished

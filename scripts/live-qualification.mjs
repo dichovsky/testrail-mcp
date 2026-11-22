@@ -38,7 +38,7 @@ export { PLAN };
 
 export const TOOL_PREFIX = 'testrail_';
 /** Codes that mean the instance lacks a licensed feature or the user a permission. */
-const BLOCKING = new Set(['LICENSE_REQUIRED', 'PERMISSION_DENIED']);
+export const BLOCKING = new Set(['LICENSE_REQUIRED', 'PERMISSION_DENIED']);
 const REQUIRED_VARIABLES = ['TESTRAIL_BASE_URL', 'TESTRAIL_EMAIL', 'TESTRAIL_API_KEY'];
 /** Ctrl-C, a closed terminal, and a polite kill. */
 const SIGNALS = ['SIGINT', 'SIGHUP', 'SIGTERM'];
@@ -81,6 +81,8 @@ export class MissingDependency extends Error {
     this.name = 'MissingDependency';
   }
 }
+
+export const missingOptionReason = (name) => `needs --${name.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}`;
 
 export class GuardRefusal extends Error {
   constructor(message) {
@@ -261,7 +263,7 @@ export async function runQualification({
   };
   const cleanup = { project: 'not_created', group: 'not_created' };
   let verified;
-  const absent = new Set();
+  let projectReadback = null;
   let residue;
   try {
     for (const step of plan) {
@@ -271,7 +273,7 @@ export async function runQualification({
         continue;
       }
       if (step.requires !== undefined && !options[step.requires]) {
-        record(step, { status: 'not_run', reason: `needs --${step.requires.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`)}` });
+        record(step, { status: 'not_run', reason: missingOptionReason(step.requires) });
         continue;
       }
       let input;
@@ -316,6 +318,9 @@ export async function runQualification({
       if (outcome.status === 'pass' && step.capture !== undefined) {
         try {
           step.capture(data, c);
+          for (const name of step.provides ?? []) {
+            if (!c.has(name) && !c.values.has(name)) throw new MissingDependency(name);
+          }
         } catch (error) {
           if (step.unconfirmed !== undefined) c.residue(`possible ${step.unconfirmed}`);
           record(step, { ...outcome, status: 'fail', reason: `unexpected response: ${error instanceof Error ? error.message : String(error)}` });
@@ -372,6 +377,9 @@ export async function runQualification({
       try {
         const { status, code, http_status: httpStatus } = classify(await clean(`${TOOL_PREFIX}${tool}`, input));
         if (status === 'pass') return 'present';
+        if (tool === 'get_project' && ((code === 'NOT_FOUND' && httpStatus === 404) || (code === 'UPSTREAM_ERROR' && httpStatus === 400))) {
+          projectReadback = { code, http_status: httpStatus };
+        }
         return code === 'NOT_FOUND' || httpStatus === 400 ? 'gone' : 'unverified';
       } catch {
         return 'unverified';
@@ -382,7 +390,6 @@ export async function runQualification({
       const entry = c.named.get(kind);
       if (entry === undefined) continue;
       const found = await state(tool, { [key]: entry.id });
-      if (found === 'gone') absent.add(kind);
       verified[found] += 1;
       // One whose deletion failed and that TestRail cannot be asked about is left behind.
       if (found === 'present' || (found === 'unverified' && cleanup[kind] === 'left_behind')) c.residue(kind);
@@ -404,7 +411,8 @@ export async function runQualification({
   // The signed-in user's address is kept only to prove the evidence does not carry it.
   const personal = [c.values.get('current_user_email')].filter((value) => typeof value === 'string');
   return {
-    steps, cleanup: { ...cleanup, verified, residue }, projectVerifiedAbsent: absent.has('project'),
+    steps, cleanup: { ...cleanup, verified, residue }, projectReadback,
+    existingGroupFound: c.values.has('existing_group') ? c.values.get('existing_group') !== null : null,
     stopped: stopped ?? null, testrailVersion: c.values.get('testrail_version') ?? null, personal,
   };
 }
@@ -693,8 +701,11 @@ export async function main({
     });
     if (candidate !== undefined) {
       Object.assign(evidence, { source_commit: candidate.source_commit, integrity: candidate.integrity,
+        prepare_run_id: candidate.prepare_run_id, prepare_run_attempt: candidate.prepare_run_attempt,
         started_at: startedAt, finished_at: new Date().toISOString() });
-      evidence.cleanup.project_verified_absent = run.projectVerifiedAbsent;
+      evidence.cleanup.project_verified_absent = run.projectReadback !== null;
+      evidence.cleanup.project_readback = run.projectReadback;
+      evidence.observations = { existing_group_found: run.existingGroupFound };
     }
     const text = `${JSON.stringify(evidence, null, 2)}\n`;
     assertSanitized(text, secretsOf(env, run.personal));

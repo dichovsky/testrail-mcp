@@ -34,7 +34,7 @@ interface Preflight {
   parsePackageIdentity: (value: unknown, source: string) => PackageIdentity;
   shouldSkipPublishedVersion: (input: { packageVersion: string; releaseSha: string; qualifiedIntegrity: string; publishedMetadata: PublishedVersionMetadata | null }) => boolean;
   validateNewStableVersion: (input: { candidateVersion: string; publishedVersions: readonly string[]; latestVersion: string }) => void;
-  validatePublishedProvenance: (value: unknown, options: { spec: string; qualifiedIntegrity: string }) => void;
+  validatePublishedProvenance: (value: unknown, options: { spec: string; qualifiedIntegrity: string; releaseRef: string; releaseSha: string }) => void;
   validateReleaseContext: (input: ReleaseContextInput) => PackageIdentity;
   validateTrustedPublishingNodeVersion: (version: string) => void;
   validateTrustedPublishingNpmVersion: (version: string) => void;
@@ -189,18 +189,41 @@ describe('the npm registry preflight', () => {
     expect(() => validateNewStableVersion({ candidateVersion, publishedVersions, latestVersion })).toThrow();
   });
 
-  it('requires provenance naming the same package and SHA-512', () => {
+  it('requires provenance for the qualified package and the exact Publish source', () => {
     const subject = { name: 'pkg:npm/%40dichovsky/testrail-mcp@1.0.0', digest: { sha512: '55'.repeat(64) } };
-    const bundle = (name: string, sha512: string) => ({ attestations: [{
+    const repository = 'https://github.com/dichovsky/testrail-mcp';
+    const releaseRef = `refs/tags/release/${VERSION}`;
+    const workflow = { repository, ref: releaseRef, path: '.github/workflows/publish.yml' };
+    const source = { uri: `git+${repository}@${releaseRef}`, digest: { gitCommit: RELEASE_SHA } };
+    const buildDefinition = { externalParameters: { workflow }, resolvedDependencies: [source] };
+    const bundle = (name: string, sha512: string, build = buildDefinition) => ({ attestations: [{
       predicateType: SLSA_PROVENANCE_PREDICATE,
       bundle: { dsseEnvelope: { payload: Buffer.from(JSON.stringify({
         predicateType: SLSA_PROVENANCE_PREDICATE, subject: [{ name, digest: { sha512 } }],
+        predicate: { buildDefinition: build },
       })).toString('base64') } },
     }] });
-    const options = { spec: `${EXPECTED_PACKAGE_NAME}@${VERSION}`, qualifiedIntegrity: INTEGRITY };
+    const options = { spec: `${EXPECTED_PACKAGE_NAME}@${VERSION}`, qualifiedIntegrity: INTEGRITY, releaseRef, releaseSha: RELEASE_SHA };
     expect(() => validatePublishedProvenance(bundle(subject.name, subject.digest.sha512), options)).not.toThrow();
     expect(() => validatePublishedProvenance(bundle(subject.name, '44'.repeat(64)), options)).toThrow();
     expect(() => validatePublishedProvenance(bundle('pkg:npm/other@1.0.0', subject.digest.sha512), options)).toThrow();
+
+    for (const changedWorkflow of [
+      { ...workflow, repository: 'https://github.com/example/another-repo' },
+      { ...workflow, ref: 'refs/tags/release/0.9.0' },
+      { ...workflow, path: '.github/workflows/ci.yml' },
+    ]) {
+      const build = { ...buildDefinition, externalParameters: { workflow: changedWorkflow } };
+      expect(() => validatePublishedProvenance(bundle(subject.name, subject.digest.sha512, build), options)).toThrow(/release repository/u);
+    }
+    for (const dependencies of [
+      [{ ...source, digest: { gitCommit: 'a'.repeat(40) } }],
+      [{ ...source, uri: `git+${repository}@refs/heads/main` }],
+      [],
+    ]) {
+      const build = { ...buildDefinition, resolvedDependencies: dependencies };
+      expect(() => validatePublishedProvenance(bundle(subject.name, subject.digest.sha512, build), options)).toThrow(/release repository/u);
+    }
   });
 
   it('publishes when the exact version is absent, and skips only an identical immutable release', () => {

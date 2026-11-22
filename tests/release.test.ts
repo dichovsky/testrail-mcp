@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -82,7 +82,7 @@ function permissions(block: string, indent: number): string[] | undefined {
 
 /** Each job the workflow has, with the only permissions it may hold. */
 const JOBS: Record<string, string[]> = {
-  verify: ['contents: read'],
+  verify: ['contents: read', 'actions: read'],
   publish: ['contents: read', 'id-token: write'],
 };
 
@@ -153,6 +153,7 @@ describe('the Publish workflow', () => {
 
   it('hands only the qualified tarball to the publish job, with its digest', () => {
     expect(verify).toContain('integrity: ${{ steps.qualification.outputs.integrity }}');
+    expect(verify).toContain('candidate-expires-at: ${{ steps.qualification.outputs.candidate_expires_at }}');
     expect(verify.match(/if: steps\.preflight\.outputs\.already-published == 'false'/gu)).toHaveLength(1);
     expect(verify.indexOf('name: Keep the qualified tarball')).toBeGreaterThan(verify.indexOf('node scripts/release-evidence.mjs verify'));
     expect(publish.match(/name: npm-qualified-release/gu)).toHaveLength(2);
@@ -161,6 +162,19 @@ describe('the Publish workflow', () => {
     expect(publishJob).toContain('openssl dgst -sha512 -binary "$CANDIDATE"');
     expect(publishJob).toContain('"$ACTUAL_INTEGRITY" != "$QUALIFIED_INTEGRITY"');
     expect(publishJob).not.toMatch(/tar -[tx]|npm pack/u);
+  });
+
+  it('checks the Prepare Candidate artifact expiry before the first npm upload', async () => {
+    expect(publishJob).toContain('CANDIDATE_EXPIRES_AT: ${{ needs.verify.outputs.candidate-expires-at }}');
+    expect(ascending(positions(publishJob, ['const expiresAt = Date.parse', 'npm publish "$CANDIDATE"']))).toBe(true);
+    const program = /--eval '([^']*const expiresAt = Date\.parse\(process\.env\.CANDIDATE_EXPIRES_AT\);[^']*)'/u.exec(publishJob)?.[1];
+    if (program === undefined) throw new Error('The protected job expiry guard is missing');
+    const check = (expiry: string) => run(process.execPath, ['--input-type=module', '--eval', program], {
+      env: { ...process.env, CANDIDATE_EXPIRES_AT: expiry },
+    });
+    await expect(check(new Date(Date.now() + 60_000).toISOString())).resolves.toBeDefined();
+    await expect(check(new Date(Date.now() - 60_000).toISOString())).rejects.toMatchObject({ code: 1 });
+    await expect(check('')).rejects.toMatchObject({ code: 1 });
   });
 
   it('runs no repository or dependency code in the job that can mint an npm credential', () => {
@@ -232,9 +246,34 @@ describe('the Publish workflow', () => {
       'dist.attestations': { provenance: { predicateType: 'https://slsa.dev/provenance/v1' } },
     };
     const predicateType = metadata['dist.attestations'].provenance.predicateType;
-    const provenance = (sha512: string) => JSON.stringify({ attestations: [{ predicateType, bundle: { dsseEnvelope: {
-      payload: Buffer.from(JSON.stringify({ predicateType, subject: [{ name: 'pkg:npm/%40dichovsky/testrail-mcp@1.0.0', digest: { sha512 } }] })).toString('base64'),
+    const repository = 'https://github.com/dichovsky/testrail-mcp';
+    const ref = `refs/tags/release/${VERSION}`;
+    const workflow = { repository, ref, path: '.github/workflows/publish.yml' };
+    const source = { uri: `git+${repository}@${ref}`, digest: { gitCommit: RELEASE_SHA } };
+    const buildDefinition = { externalParameters: { workflow }, resolvedDependencies: [source] };
+    const provenance = (sha512: string, build = buildDefinition) => JSON.stringify({ attestations: [{ predicateType, bundle: { dsseEnvelope: {
+      payload: Buffer.from(JSON.stringify({
+        predicateType,
+        subject: [{ name: 'pkg:npm/%40dichovsky/testrail-mcp@1.0.0', digest: { sha512 } }],
+        predicate: { buildDefinition: build },
+      })).toString('base64'),
     } } }] });
+
+    it.each([
+      ['workflow repository', { ...buildDefinition, externalParameters: { workflow: { ...workflow, repository: 'https://github.com/example/another-repo' } } }],
+      ['workflow tag', { ...buildDefinition, externalParameters: { workflow: { ...workflow, ref: 'refs/tags/release/0.9.0' } } }],
+      ['workflow path', { ...buildDefinition, externalParameters: { workflow: { ...workflow, path: '.github/workflows/ci.yml' } } }],
+      ['source commit', { ...buildDefinition, resolvedDependencies: [{ ...source, digest: { gitCommit: 'a'.repeat(40) } }] }],
+      ['source URI', { ...buildDefinition, resolvedDependencies: [{ ...source, uri: `git+${repository}@refs/heads/main` }] }],
+    ])('rejects a mismatched attested %s even when the subject matches', (_label, build) => {
+      const rule = /"\$PROVENANCE" \| EXPECTED_VERSION="\$EXPECTED_VERSION" node --input-type=module --eval '\n([\s\S]*?)\n\s*'\n/u.exec(verification)?.[1];
+      if (rule === undefined) throw new Error('no attestation rule in the publish job');
+      const result = spawnSync(process.execPath, ['--input-type=module', '--eval', rule], {
+        input: provenance('55'.repeat(64), build),
+        env: { EXPECTED_VERSION: VERSION, GITHUB_SHA: RELEASE_SHA, QUALIFIED_INTEGRITY },
+      });
+      expect(result.status).toBe(1);
+    });
 
     const wait = async (unavailable: number, response: typeof metadata, sha512 = '55'.repeat(64)) => {
       const directory = await mkdtemp(join(tmpdir(), 'testrail-mcp-publication-wait-'));

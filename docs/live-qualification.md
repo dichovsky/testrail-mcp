@@ -61,7 +61,7 @@ TestRail's API cannot delete users or case fields. With `--instance-writes`, one
    export TESTRAIL_API_KEY=...
    ```
 
-3. Run the live checks against an authorized disposable project. Use the exact candidate from the release workflow and a fresh output path.
+3. Run the live checks against an authorized disposable project. Download both candidate files from the same successful Prepare Candidate attempt. Start after the attempt finishes and use a fresh output path. Keep the runner's complete evidence for Publish, including the observed version, step outcomes and post-delete project readback.
 
    ```sh
    node scripts/live-qualification.mjs --create-qualification-project \

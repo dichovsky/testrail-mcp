@@ -4,7 +4,7 @@ Run C01–C12 in Claude Code, Codex desktop, Codex CLI and Copilot CLI. Use the 
 
 The whole run uses the [fixture stand-in](client-compatibility.md#the-fixture-backed-kit): no TestRail account and no real credentials. It is written for macOS and Linux. Expect about an hour per host.
 
-**Which build to test.** Use the `candidate.json` and `candidate.tgz` artifacts from Prepare Candidate. Install the tarball separately for each host and keep its verified commit and integrity with the results.
+**Which build to test.** Download `candidate.json` and `candidate.tgz` from the same successful Prepare Candidate run attempt. Start each test run after that attempt finishes. Install the tarball separately for each host and keep its commit, integrity, run ID, and attempt with the results.
 
 | Host | Configuration it reads | How the variables reach the server |
 | --- | --- | --- |
@@ -208,7 +208,7 @@ Paste each prompt exactly as written, replacing `<R2>` with your run directory.
 
 Record C10 counts from the trace and fixture log as `admitted`, `busy`, `busy_upstream_requests`, and `timed_out`. Record `cancelled_request_id`, the matching `notification_request_id`, `late_reply`, and `recovered` in the client record's `c10` object. The offline runtime tests cover unresolved DNS, fetch, and body settlement.
 
-Use the recorded Node version without its leading `v` in `client.node_machine_version`. Copy the commit and integrity from the install record to `source_commit` and `integrity`, and record UTC ISO timestamps in `started_at` and `finished_at`. Use sanitized evidence references in each scenario. Keep the raw logs and local executable paths in the run directory.
+Use the recorded Node version without its leading `v` in `client.node_machine_version`. Copy `source_commit`, `integrity`, `prepare_run_id`, and `prepare_run_attempt` from the install record. Keep the run ID and attempt as numbers. Record UTC ISO timestamps in `started_at` and `finished_at`. Use sanitized evidence references in each scenario. Keep the raw logs and local executable paths in the run directory.
 
 To print the 28 C03 prompts, run this in the repository, not in `$R2/work`:
 

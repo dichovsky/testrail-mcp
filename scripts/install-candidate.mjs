@@ -26,8 +26,10 @@ export async function installCandidate(candidateFile, tarballFile, prefix, env =
   const tarball = await readFile(tarballFile);
   const integrity = `sha512-${createHash('sha512').update(tarball).digest('base64')}`;
   if (candidate.schema_version !== 1 || candidate.package_name !== PACKAGE || candidate.integrity !== integrity
-    || !/^[a-f0-9]{40}$/u.test(candidate.source_commit) || process.versions.node.split('.')[0] !== '26') {
-    throw new Error('Expected the declared release candidate tarball and a Node 26 runtime.');
+    || !/^[a-f0-9]{40}$/u.test(candidate.source_commit) || process.versions.node.split('.')[0] !== '26'
+    || !Number.isSafeInteger(candidate.prepare_run_id) || candidate.prepare_run_id < 1
+    || !Number.isSafeInteger(candidate.prepare_run_attempt) || candidate.prepare_run_attempt < 1) {
+    throw new Error('Expected the declared release candidate tarball, Prepare Candidate run, and a Node 26 runtime.');
   }
 
   await mkdir(prefix);
@@ -56,6 +58,8 @@ export async function installCandidate(candidateFile, tarballFile, prefix, env =
     command: process.execPath,
     args: [join(installRoot, 'node_modules', PACKAGE, 'dist', 'cli.js')],
     source_commit: candidate.source_commit,
+    prepare_run_id: candidate.prepare_run_id,
+    prepare_run_attempt: candidate.prepare_run_attempt,
     integrity,
     package_version: pkg.version,
     driver_version: driver.version,

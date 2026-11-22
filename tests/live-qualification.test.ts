@@ -545,11 +545,15 @@ describe('a full run against the stand-in', () => {
 
   it('binds packaged rehearsal evidence to the installed candidate and recovery of its project', async () => {
     const { packCandidate } = (await import(new URL('../scripts/prepare-candidate.mjs', import.meta.url).href)) as {
-      packCandidate: (options: { root: string; output: string; sourceCommit: string }) => Promise<{ integrity: string }>;
+      packCandidate: (options: { root: string; output: string; sourceCommit: string; preparationRun: { id: number; attempt: number } }) => Promise<{ integrity: string }>;
+    };
+    const { validateLivePlan } = (await import(new URL('../scripts/release-evidence.mjs', import.meta.url).href)) as {
+      validateLivePlan: (evidence: unknown) => void;
     };
     const directory = join(base, 'packaged-rehearsal');
     const sourceCommit = 'a'.repeat(40);
-    const { integrity } = await packCandidate({ root: fileURLToPath(new URL('../', import.meta.url)), output: directory, sourceCommit });
+    const preparationRun = { id: 777, attempt: 2 };
+    const { integrity } = await packCandidate({ root: fileURLToPath(new URL('../', import.meta.url)), output: directory, sourceCommit, preparationRun });
     const candidate = join(directory, 'candidate.json');
     const tarball = join(directory, 'candidate.tgz');
     const out = join(directory, 'evidence.json');
@@ -560,12 +564,16 @@ describe('a full run against the stand-in', () => {
       argv: ['--create-qualification-project', '--fixture', '--candidate', candidate, '--tarball', tarball, '--out', out],
       env: { ...process.env, ...standIn.environment, npm_config_offline: 'true' }, connect, pacing: INSTANT, log: () => undefined,
     };
-    await expect(runner.main(options)).resolves.toMatchObject({
+    const evidence = await runner.main(options);
+    expect(evidence).toMatchObject({
       provenance: 'fixture_stand_in', source_commit: sourceCommit, integrity,
+      prepare_run_id: preparationRun.id, prepare_run_attempt: preparationRun.attempt,
       server: { package_version: packageJson.version, driver_version: installedDriver.version, node_version: process.versions.node,
         production_dependencies: { '@dichovsky/testrail-api-client': installedDriver.version } },
-      cleanup: { project: 'deleted', project_verified_absent: true },
+      cleanup: { project: 'deleted', project_verified_absent: true, project_readback: { code: 'UPSTREAM_ERROR', http_status: 400 } },
+      observations: { existing_group_found: null },
     });
+    expect(() => validateLivePlan(evidence)).not.toThrow();
     expect(connect).toHaveBeenCalledWith(expect.objectContaining({
       command: process.execPath, args: [expect.stringContaining(join('node_modules', '@dichovsky', 'testrail-mcp', 'dist', 'cli.js'))],
     }));

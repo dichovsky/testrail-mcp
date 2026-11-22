@@ -28,7 +28,7 @@ async function copyDist(source, destination) {
   }
 }
 
-export async function packCandidate({ root, output, sourceCommit, preparedAt = new Date().toISOString() }) {
+export async function packCandidate({ root, output, sourceCommit, preparationRun, preparedAt = new Date().toISOString() }) {
   if (!SHA_PATTERN.test(sourceCommit)) throw new Error('Invalid source commit for the release candidate');
   const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
   const driver = manifest.dependencies?.[DRIVER_NAME];
@@ -66,6 +66,7 @@ export async function packCandidate({ root, output, sourceCommit, preparedAt = n
       integrity,
       driver_version: driver,
       prepared_at: preparedAt,
+      ...(preparationRun === undefined ? {} : { prepare_run_id: preparationRun.id, prepare_run_attempt: preparationRun.attempt }),
       node_version: RELEASE_NODE,
       npm_version: RELEASE_NPM,
     };
@@ -87,14 +88,19 @@ function cleanCommit(root) {
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const output = process.argv[2];
-  if (output === undefined) throw new Error('Usage: node scripts/prepare-candidate.mjs <output-directory>');
+  const [output, runId, attempt, extra] = process.argv.slice(2);
+  const usage = 'Usage: node scripts/prepare-candidate.mjs <output-directory> [run-id run-attempt]';
+  if (output === undefined || extra !== undefined || (runId === undefined) !== (attempt === undefined)) throw new Error(usage);
+  const preparationRun = runId === undefined ? undefined : { id: Number(runId), attempt: Number(attempt) };
+  if (preparationRun !== undefined && ![preparationRun.id, preparationRun.attempt].every((value) => Number.isSafeInteger(value) && value > 0)) {
+    throw new Error(usage);
+  }
   const [command, prefix] = npmCommand();
   const npmVersion = execFileSync(command, [...prefix, '--version'], { encoding: 'utf8' }).trim();
   if (process.versions.node !== RELEASE_NODE || npmVersion !== RELEASE_NPM) {
     throw new Error(`Candidate packaging requires Node ${RELEASE_NODE} and npm ${RELEASE_NPM}`);
   }
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const candidate = await packCandidate({ root, output: resolve(output), sourceCommit: cleanCommit(root) });
+  const candidate = await packCandidate({ root, output: resolve(output), sourceCommit: cleanCommit(root), preparationRun });
   console.log(`Packed ${candidate.package_name}@${candidate.package_version}: ${candidate.integrity}`);
 }
