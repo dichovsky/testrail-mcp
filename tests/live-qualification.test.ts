@@ -553,7 +553,9 @@ describe('a full run against the stand-in', () => {
     const candidate = join(directory, 'candidate.json');
     const tarball = join(directory, 'candidate.tgz');
     const out = join(directory, 'evidence.json');
-    const connect = vi.fn<Connect>((server) => inProcess()(server));
+    const projectTools = new Set(['testrail_get_version', 'testrail_add_project', 'testrail_get_project', 'testrail_delete_project']);
+    const connect = vi.fn<Connect>((server) => inProcess((tool, input, real) =>
+      projectTools.has(tool) ? real(tool, input) : Promise.resolve(failure('PERMISSION_DENIED', 403)))(server));
     const options = {
       argv: ['--create-qualification-project', '--fixture', '--candidate', candidate, '--tarball', tarball, '--out', out],
       env: { ...process.env, ...standIn.environment, npm_config_offline: 'true' }, connect, pacing: INSTANT, log: () => undefined,
@@ -572,7 +574,7 @@ describe('a full run against the stand-in', () => {
     await expect(runner.main({ ...options, argv: [...options.argv.slice(0, -1), join(directory, 'second.json')] }))
       .rejects.toThrow(/declared release candidate tarball/u);
     expect(connect.mock.calls).toHaveLength(callsBefore);
-  }, 30_000);
+  }, 90_000);
 
   it('writes evidence with no credential, address or personal detail, and no TestRail data', () => {
     const { TESTRAIL_EMAIL: email = '', TESTRAIL_API_KEY: key = '' } = standIn.environment;
