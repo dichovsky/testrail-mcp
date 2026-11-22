@@ -4,6 +4,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    setupFiles: ['tests/setup.ts'],
+    silent: 'passed-only',
     testTimeout: 10_000,
     coverage: {
       provider: 'v8',

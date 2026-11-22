@@ -17,6 +17,10 @@ All notable changes to `@dichovsky/testrail-mcp` are recorded here. Versions fol
 
 ### Maintenance
 
+- Passing tests hide diagnostic logs by default; failures retain their logs, and `--silent=false` shows all test diagnostics.
+- Registration finalizes one immutable input contract for discovery, runtime validation and typed driver bindings ([#130](https://github.com/dichovsky/testrail-mcp/pull/130)). Internal direct binding calls reject non-JSON inputs before driver lookup; all 133 tools retain their published schemas and metadata.
+- Explicit list declarations own filter projection, driver argument mappings, page/all preparation and reply interpretation ([#132](https://github.com/dichovsky/testrail-mcp/pull/132)). Configured aggregate limits also apply to internal direct binding calls; client-visible paging contracts are unchanged.
+- A process-owned operation executor owns ordinary calls, Attachment transfers and the shared driver/runtime/staging lifetime ([#133](https://github.com/dichovsky/testrail-mcp/pull/133)). Transport delegates execution and shutdown to it, preserving result/error, cancellation, settlement and file-lifetime contracts.
 - npm publishing requires approval from the repository owner through the `npm-publish` environment, with self-approval permitted by the release policy.
 - GitHub vulnerability alerts and security-update pull requests are enabled. Dependabot configuration checks npm and GitHub Actions versions weekly while retaining dependency review and driver qualification.
 
