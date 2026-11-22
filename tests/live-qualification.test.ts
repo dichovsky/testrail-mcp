@@ -67,6 +67,9 @@ interface StandIn { baseUrl: string; environment: Record<string, string>; reques
 
 const script = (name: string): string => fileURLToPath(new URL(`../scripts/${name}`, import.meta.url));
 const runner = (await import(new URL('../scripts/live-qualification.mjs', import.meta.url).href)) as Runner;
+const { validateLivePlan } = (await import(new URL('../scripts/release-evidence.mjs', import.meta.url).href)) as {
+  validateLivePlan: (evidence: unknown) => { expectedGone: number; expectedResidue: string[] };
+};
 const { startFixtureTestRail } = (await import(new URL('../scripts/fixture-testrail.mjs', import.meta.url).href)) as {
   startFixtureTestRail: (options?: { rememberDeletions?: boolean }) => Promise<StandIn>;
 };
@@ -526,6 +529,9 @@ describe('a full run against the stand-in', () => {
         { kind: 'user', count: 1 }, { kind: 'case_field', count: 1 },
       ],
     });
+    const { expectedGone, expectedResidue } = validateLivePlan({ ...full.evidence, observations: { existing_group_found: true } });
+    expect(expectedGone).toBe(full.evidence.cleanup.verified.gone);
+    expect(expectedResidue).toHaveLength(full.evidence.cleanup.residue.length);
     expect(full.evidence).toMatchObject({
       provenance: 'fixture_stand_in', testrail_version: '10.6.0.1041',
       server: { package_version: packageJson.version, driver_version: '10.0.0' },
@@ -546,9 +552,6 @@ describe('a full run against the stand-in', () => {
   it('binds packaged rehearsal evidence to the installed candidate and recovery of its project', async () => {
     const { packCandidate } = (await import(new URL('../scripts/prepare-candidate.mjs', import.meta.url).href)) as {
       packCandidate: (options: { root: string; output: string; sourceCommit: string; preparationRun: { id: number; attempt: number } }) => Promise<{ integrity: string }>;
-    };
-    const { validateLivePlan } = (await import(new URL('../scripts/release-evidence.mjs', import.meta.url).href)) as {
-      validateLivePlan: (evidence: unknown) => void;
     };
     const directory = join(base, 'packaged-rehearsal');
     const sourceCommit = 'a'.repeat(40);
@@ -573,7 +576,7 @@ describe('a full run against the stand-in', () => {
       cleanup: { project: 'deleted', project_verified_absent: true, project_readback: { code: 'UPSTREAM_ERROR', http_status: 400 } },
       observations: { existing_group_found: null },
     });
-    expect(() => validateLivePlan(evidence)).not.toThrow();
+    expect(validateLivePlan(evidence)).toEqual({ expectedGone: 1, expectedResidue: [] });
     expect(connect).toHaveBeenCalledWith(expect.objectContaining({
       command: process.execPath, args: [expect.stringContaining(join('node_modules', '@dichovsky', 'testrail-mcp', 'dist', 'cli.js'))],
     }));

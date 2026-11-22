@@ -47,6 +47,7 @@ const priorLiveRun = JSON.parse(await readFile(new URL('../docs/evidence/live/te
   options: { instance_writes: boolean; report_template: boolean; cross_project_report_template: boolean };
   tools: Record<string, ToolEvidence>;
   summary: { pass: number; blocked: number; not_run: number; fail: number };
+  cleanup: { project: string; group: string; verified: { gone: number; present: number; unverified: number }; residue: { kind: string; count: number }[] };
 };
 const tools = operations.map(({ tool }) => tool).sort();
 const driver = '@dichovsky/testrail-api-client';
@@ -83,8 +84,7 @@ function qualification() {
     observations: { existing_group_found: true },
     server: { ...server, node_version: '26.13.1', production_dependencies: { ...dependencies } },
     summary: { ...priorLiveRun.summary },
-    cleanup: { project: 'deleted', project_verified_absent: true, project_readback: { code: 'UPSTREAM_ERROR', http_status: 400 },
-      verified: { gone: 1, present: 0, unverified: 0 }, residue: [] },
+    cleanup: { ...structuredClone(priorLiveRun.cleanup), project_verified_absent: true, project_readback: { code: 'UPSTREAM_ERROR', http_status: 400 } },
   };
   const options = {
     candidate, tools, preparedAt: '2026-11-23T12:08:00Z', publishedAt: '2026-11-25T00:00:00Z',
@@ -149,6 +149,50 @@ describe('the release-only qualification gate', () => {
     expect(() => validateQualification(input.value, input.options)).not.toThrow();
   });
 
+  it.each([1, 6])('rejects %i verified absences when the project and four uploads passed', (gone) => {
+    const { value, options } = qualification();
+    value.live.cleanup.verified.gone = gone;
+    expect(() => validateQualification(value, options)).toThrow(/verify 5 absences/u);
+  });
+
+  it('requires a readback for a created group even when its planned delete was refused', () => {
+    const input = qualification();
+    const { live } = input.value;
+    enableInstanceWrites(live);
+    live.tools.testrail_add_group = { status: 'pass', steps: [{ label: null, status: 'pass' }] };
+    live.tools.testrail_get_group!.steps[1] = { label: 'own group', status: 'pass' };
+    live.tools.testrail_get_group!.status = 'pass';
+    live.tools.testrail_update_group = { status: 'pass', steps: [{ label: null, status: 'pass' }] };
+    live.tools.testrail_delete_group = { status: 'blocked', steps: [{ label: null, status: 'blocked', code: 'PERMISSION_DENIED', http_status: 403 }] };
+    live.cleanup.group = 'deleted_in_cleanup';
+    summarizeLive(input);
+    expect(() => validateQualification(input.value, input.options)).toThrow(/verify 6 absences/u);
+    live.cleanup.verified.gone += 1;
+    expect(() => validateQualification(input.value, input.options)).not.toThrow();
+  });
+
+  it.each([
+    ['testrail_run_report', 'report_template'],
+    ['testrail_run_cross_project_report', 'cross_project_report_template'],
+    ['testrail_add_user', 'instance_writes'],
+    ['testrail_add_case_field', 'instance_writes'],
+  ] as const)('rejects a passing %s with omitted residue', (tool, requiredOption) => {
+    const input = qualification();
+    const { live } = input.value;
+    if (requiredOption === 'instance_writes') enableInstanceWrites(live);
+    live.options[requiredOption] = true;
+    live.tools[tool] = { status: 'pass', steps: [{ label: null, status: 'pass' }] };
+    if (tool === 'testrail_add_user') live.tools.testrail_update_user = { status: 'pass', steps: [{ label: null, status: 'pass' }] };
+    summarizeLive(input);
+    expect(() => validateQualification(input.value, input.options)).toThrow(`successful steps leave residue: ${tool}`);
+  });
+
+  it('rejects reported residue even when all required readbacks found the entities gone', () => {
+    const { value, options } = qualification();
+    value.live.cleanup.residue = [{ kind: 'possible attachment', count: 1 }];
+    expect(() => validateQualification(value, options)).toThrow(/residue/u);
+  });
+
   it.each<[string, (live: ReturnType<typeof qualification>['value']['live']) => void, RegExp]>([
     ['an unobserved version probe', (live) => {
       live.tools.testrail_get_version = { status: 'blocked', steps: [{ label: null, status: 'blocked', code: 'PERMISSION_DENIED', http_status: 403 }] };
@@ -180,6 +224,20 @@ describe('the release-only qualification gate', () => {
     expect(() => validateQualification(input.value, input.options)).toThrow(expected);
   });
 });
+
+function enableInstanceWrites(live: ReturnType<typeof qualification>['value']['live']) {
+  live.options.instance_writes = true;
+  for (const tool of ['testrail_add_group', 'testrail_add_user', 'testrail_add_case_field']) {
+    live.tools[tool] = { status: 'blocked', steps: [{ label: null, status: 'blocked', code: 'PERMISSION_DENIED', http_status: 403 }] };
+  }
+  for (const tool of ['testrail_get_group', 'testrail_update_group', 'testrail_delete_group', 'testrail_update_user']) {
+    const kind = tool.endsWith('_group') ? 'group' : 'user';
+    const groupRead = tool === 'testrail_get_group';
+    const step = { label: groupRead ? 'own group' : null, status: 'blocked', reason: `needs the ${kind} an earlier step did not provide` };
+    live.tools[tool]!.steps[groupRead ? 1 : 0] = step;
+    live.tools[tool]!.status = 'blocked';
+  }
+}
 
 function summarizeLive({ value: { live }, options }: ReturnType<typeof qualification>) {
   const outcomes = Object.values(live.tools);

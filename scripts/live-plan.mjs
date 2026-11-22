@@ -16,6 +16,8 @@
  * `capture` records what a step created, which is what the runner's guard lets later
  * writes touch. `provides` names the captures that later steps depend on, so release
  * validation can replay prerequisite checks without actual TestRail IDs.
+ * `verifyCleanup` marks a creation whose ID the runner checks after cleanup.
+ * `residue` names what a successful step leaves behind without an API deletion.
  * `unconfirmed` names what a step may have created when the run cannot
  * tell, so the evidence can say it may have been left behind.
  */
@@ -109,7 +111,7 @@ export const PLAN = [
 
   // The qualification project. Everything the run creates below lives in it.
   {
-    tool: 'add_project', scope: 'own', unconfirmed: 'project', provides: ['project'],
+    tool: 'add_project', scope: 'own', unconfirmed: 'project', provides: ['project'], verifyCleanup: true,
     input: (c) => ({ body: {
       name: c.name('project'),
       announcement: 'Created by the testrail-mcp live qualification and deleted when the run ends.',
@@ -348,14 +350,17 @@ export const PLAN = [
   // Attachments on the case, run and result.
   {
     tool: 'add_attachment_to_case', scope: 'own', unconfirmed: 'attachment', provides: ['attachment'], input: (c) => ({ case_id: c.id('case'), ...c.upload('text') }),
+    verifyCleanup: true,
     capture: (data, c) => { c.own('attachment', idOf(data, 'attachment_id')); },
   },
   {
     tool: 'add_attachment_to_run', scope: 'own', unconfirmed: 'attachment', provides: ['run attachment'], input: (c) => ({ run_id: c.id('run'), ...c.upload('text') }),
+    verifyCleanup: true,
     capture: (data, c) => { c.own('attachment', idOf(data, 'attachment_id'), 'run attachment'); },
   },
   {
     tool: 'add_attachment_to_result', scope: 'own', unconfirmed: 'attachment', provides: ['result attachment'], input: (c) => ({ result_id: c.id('result'), ...c.upload('text') }),
+    verifyCleanup: true,
     capture: (data, c) => { c.own('attachment', idOf(data, 'attachment_id'), 'result attachment'); },
   },
   { tool: 'get_attachments_for_case', scope: 'read', input: (c) => ({ case_id: c.id('case') }) },
@@ -397,10 +402,12 @@ export const PLAN = [
   { tool: 'update_run_in_plan_entry', scope: 'own', input: (c) => ({ run_id: c.id('plan run'), body: { description: 'Updated.' } }) },
   {
     tool: 'add_attachment_to_plan', scope: 'own', unconfirmed: 'attachment', provides: ['plan attachment'], input: (c) => ({ plan_id: c.id('plan'), ...c.upload('text') }),
+    verifyCleanup: true,
     capture: (data, c) => { c.own('attachment', idOf(data, 'attachment_id'), 'plan attachment'); },
   },
   {
     tool: 'add_attachment_to_plan_entry', scope: 'own', unconfirmed: 'attachment', provides: ['entry attachment'], input: (c) => ({ plan_id: c.id('plan'), entry_id: c.id('entry'), ...c.upload('text') }),
+    verifyCleanup: true,
     capture: (data, c) => { c.own('attachment', idOf(data, 'attachment_id'), 'entry attachment'); },
   },
   { tool: 'get_attachments_for_plan', scope: 'read', input: (c) => ({ plan_id: c.id('plan') }) },
@@ -432,39 +439,35 @@ export const PLAN = [
   // Reports, only from templates the operator configured for the test. TestRail's API cannot
   // delete a generated report, so each one is left behind for the operator to delete.
   {
-    tool: 'run_report', scope: 'report', requires: 'reportTemplateId', unconfirmed: 'generated report',
-    input: (c) => ({ report_template_id: c.option('reportTemplateId') }), capture: (_data, c) => { c.residue('generated report'); },
+    tool: 'run_report', scope: 'report', requires: 'reportTemplateId', unconfirmed: 'generated report', residue: 'generated report',
+    input: (c) => ({ report_template_id: c.option('reportTemplateId') }),
   },
   {
-    tool: 'run_cross_project_report', scope: 'report', requires: 'crossProjectReportTemplateId', unconfirmed: 'generated cross-project report',
-    input: (c) => ({ report_template_id: c.option('crossProjectReportTemplateId') }), capture: (_data, c) => { c.residue('generated cross-project report'); },
+    tool: 'run_cross_project_report', scope: 'report', requires: 'crossProjectReportTemplateId', unconfirmed: 'generated cross-project report', residue: 'generated cross-project report',
+    input: (c) => ({ report_template_id: c.option('crossProjectReportTemplateId') }),
   },
 
   // Writes outside the project: a disposable instance only.
   {
     tool: 'add_group', scope: 'instance', requires: 'instanceWrites', unconfirmed: 'group', provides: ['group'], input: (c) => ({ body: { name: c.name('group'), user_ids: [c.value('current_user')] } }),
+    verifyCleanup: true,
     capture: (data, c) => { c.own('group', idOf(data)); },
   },
   { tool: 'get_group', label: 'own group', scope: 'read', requires: 'instanceWrites', input: (c) => ({ group_id: c.id('group') }) },
   { tool: 'update_group', scope: 'instance', requires: 'instanceWrites', input: (c) => ({ group_id: c.id('group'), body: { name: c.name('group, updated') } }) },
   { tool: 'delete_group', scope: 'instance', requires: 'instanceWrites', input: (c) => ({ group_id: c.id('group') }), capture: (_data, c) => { c.gone('group'); } },
   {
-    tool: 'add_user', scope: 'instance', requires: 'instanceWrites', unconfirmed: 'user', provides: ['user'],
+    tool: 'add_user', scope: 'instance', requires: 'instanceWrites', unconfirmed: 'user', provides: ['user'], residue: 'user',
     input: (c) => ({ body: { name: c.name('user'), email: c.email(), is_active: false, email_notifications: false } }),
-    capture: (data, c) => {
-      const id = idOf(data);
-      c.residue('user');
-      c.own('user', id);
-    },
+    capture: (data, c) => { c.own('user', idOf(data)); },
   },
   { tool: 'update_user', scope: 'instance', requires: 'instanceWrites', input: (c) => ({ user_id: c.id('user'), body: { name: c.name('user, updated') } }) },
   {
-    tool: 'add_case_field', scope: 'instance', requires: 'instanceWrites', unconfirmed: 'case_field',
+    tool: 'add_case_field', scope: 'instance', requires: 'instanceWrites', unconfirmed: 'case_field', residue: 'case_field',
     input: (c) => ({ body: {
       type: 'String', name: c.short('f').replaceAll('-', '_'), label: c.name('field'), include_all: false,
       configs: [{ context: { is_global: false, project_ids: [c.id('project')] }, options: { is_required: false } }],
     } }),
-    capture: (_data, c) => { c.residue('case_field'); },
   },
 
   // Each remaining attachment is deleted itself: attachments are stored apart from what they

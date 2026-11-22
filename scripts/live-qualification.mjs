@@ -327,6 +327,7 @@ export async function runQualification({
           continue;
         }
       }
+      if (outcome.status === 'pass' && step.residue !== undefined) c.residue(step.residue);
       if (outcome.code === 'AUTHENTICATION_FAILED') stopped = 'TestRail refused the credentials';
       record(step, message === undefined ? outcome : { ...outcome, message });
     }

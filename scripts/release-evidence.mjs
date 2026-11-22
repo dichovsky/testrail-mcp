@@ -113,7 +113,7 @@ function planLimitation(step, context, options) {
   }
 }
 
-/** Rebuild the plan's prerequisites in order, using names rather than TestRail values. */
+/** Replay the plan's prerequisites and derive the cleanup required by passing steps. */
 export function validateLivePlan(live) {
   const options = {
     instanceWrites: live.options.instance_writes, reportTemplateId: live.options.report_template,
@@ -135,6 +135,8 @@ export function validateLivePlan(live) {
     upload: () => ({}), option: () => 1,
   };
   const positions = new Map();
+  let expectedGone = 0;
+  const expectedResidue = [];
   for (const step of PLAN) {
     const tool = `${TOOL_PREFIX}${step.tool}`;
     const index = positions.get(tool) ?? 0;
@@ -156,11 +158,14 @@ export function validateLivePlan(live) {
     }
     if (recorded.status === 'pass') {
       for (const name of step.provides ?? []) available.add(name);
+      if (step.verifyCleanup) expectedGone += 1;
+      if (step.residue !== undefined) expectedResidue.push(`${description} (${step.residue})`);
     }
   }
   for (const [tool, result] of Object.entries(live.tools)) {
     if (result.steps.length !== positions.get(tool)) throw new Error(`Live evidence has unexpected steps for ${tool}`);
   }
+  return { expectedGone, expectedResidue };
 }
 
 function requireRunIdentity(run, candidate, preparedAt, publishedAt) {
@@ -207,7 +212,7 @@ export function validateQualification(value, { candidate, tools, preparedAt, pub
     if (live.server.production_dependencies[name] !== pinned) throw new Error(`Live evidence must identify the installed ${name} ${pinned}`);
   }
   if (Object.keys(live.tools).sort().join('\n') !== expectedNames.join('\n')) throw new Error('Live evidence must list every catalog tool');
-  validateLivePlan(live);
+  const { expectedGone, expectedResidue } = validateLivePlan(live);
   const counts = { pass: 0, blocked: 0, not_run: 0, fail: 0 };
   for (const { status: verdict, steps } of Object.values(live.tools)) {
     if (toolStatus(steps) !== verdict) throw new Error('A live tool status disagrees with the recorded steps');
@@ -216,6 +221,12 @@ export function validateQualification(value, { candidate, tools, preparedAt, pub
   if (Object.entries(counts).some(([verdict, count]) => live.summary[verdict] !== count)
     || ['get_version', 'add_project', 'delete_project'].some((name) => live.tools[`${TOOL_PREFIX}${name}`]?.status !== 'pass')) {
     throw new Error('Live qualification needs matching counts, a successful version probe, and project creation and deletion');
+  }
+  if (live.cleanup.verified.gone !== expectedGone) {
+    throw new Error(`Live cleanup must verify ${expectedGone} absences for successful creation steps, found ${live.cleanup.verified.gone}`);
+  }
+  if (expectedResidue.length > 0) {
+    throw new Error(`Live qualification requires zero residue, but successful steps leave residue: ${expectedResidue.join(', ')}`);
   }
   const limitations = renderLiveLimitations(live.tools);
   if (releaseNotes.split(BEGIN_LIMITATIONS).length !== 2 || releaseNotes.split(END_LIMITATIONS).length !== 2
