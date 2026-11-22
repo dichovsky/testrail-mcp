@@ -38,6 +38,8 @@ Subclass precedence is load-bearing, because the driver's own hierarchy makes th
 
 A 404 is `NOT_FOUND`, and its message says only that the resource does not exist. Nothing infers an unsupported TestRail version from a reply: an older TestRail's `400` for an unknown method stays TestRail's own error, `UPSTREAM_ERROR` with its status.
 
+On `get_project`, `get_group` and `get_attachment`, a 400 with a recognized JSON error for an invalid or inaccessible ID carries the fixed reason `resource_not_found` alongside `UPSTREAM_ERROR` and `http_status: 400`. Live qualification uses the reason when it reads back deleted IDs. The server matches the exact error text for the endpoint, so generic 400 responses have no such reason.
+
 Status 0 and status 200 both map to `INVALID_RESPONSE`. A status-zero failure is not automatically a transport failure; malformed success JSON reaches the adapter the same way. The one exception is the driver's own body timeout, described below.
 
 Unless `TESTRAIL_ALLOW_PRIVATE_HOSTS` is set, the driver resolves the host before a request and connects to an approved address. Malformed resolver answers and private, loopback or other denied addresses raise driver validation errors that reach the caller as `INTERNAL_ERROR`. A failed lookup or a lookup with no answers is a status-zero network error on driver 10 and reaches the caller as `INVALID_RESPONSE` without `http_status`. Eligible reads retry failed lookups. Writes and report generation do not retry them. A connection failure before headers is also a status-zero network error with the same code. When private hosts are allowed, Node resolves the name when it connects.

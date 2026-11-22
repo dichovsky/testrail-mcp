@@ -19,6 +19,7 @@ interface Candidate {
   npm_version: string;
 }
 interface ToolEvidence { status: string; steps: { label: string | null; status: string; reason?: string; code?: string; http_status?: number }[] }
+interface ReadbackEvidence { code: string; http_status: number; reason?: string }
 interface ValidationOptions {
   candidate: Candidate;
   tools: string[];
@@ -61,6 +62,8 @@ const candidate = {
   driver_version: '10.0.0', prepared_at: '2026-11-23T12:00:00.000Z', prepare_run_id: 777, prepare_run_attempt: 2,
   node_version: '26.13.1', npm_version: '11.20.0',
 };
+const invalidResource: ReadbackEvidence = { code: 'UPSTREAM_ERROR', http_status: 400, reason: 'resource_not_found' };
+const notFound: ReadbackEvidence = { code: 'NOT_FOUND', http_status: 404 };
 
 function qualification() {
   const identity = {
@@ -84,7 +87,11 @@ function qualification() {
     observations: { existing_group_found: true },
     server: { ...server, node_version: '26.13.1', production_dependencies: { ...dependencies } },
     summary: { ...priorLiveRun.summary },
-    cleanup: { ...structuredClone(priorLiveRun.cleanup), project_verified_absent: true, project_readback: { code: 'UPSTREAM_ERROR', http_status: 400 } },
+    cleanup: {
+      ...structuredClone(priorLiveRun.cleanup), project_verified_absent: true, project_readback: { ...invalidResource },
+      group_readback: null as ReadbackEvidence | null,
+      attachment_readbacks: Array.from({ length: priorLiveRun.cleanup.verified.gone - 1 }, () => ({ ...notFound })),
+    },
   };
   const options = {
     candidate, tools, preparedAt: '2026-11-23T12:08:00Z', publishedAt: '2026-11-25T00:00:00Z',
@@ -155,20 +162,59 @@ describe('the release-only qualification gate', () => {
     expect(() => validateQualification(value, options)).toThrow(/verify 5 absences/u);
   });
 
-  it('requires a readback for a created group even when its planned delete was refused', () => {
+  it.each([3, 5])('rejects %i attachment absence readbacks when four uploads passed', (length) => {
+    const { value, options } = qualification();
+    value.live.cleanup.attachment_readbacks = Array.from({ length }, () => ({ ...notFound }));
+    expect(() => validateQualification(value, options)).toThrow(/include 4 attachment absence readbacks/u);
+  });
+
+  it.each(['project_readback', 'group_readback', 'attachment_readbacks'] as const)('rejects a bare HTTP 400 in %s', (field) => {
+    const input = qualification();
+    const { live } = input.value;
+    const bare400 = { code: 'UPSTREAM_ERROR', http_status: 400 };
+    if (field === 'group_readback') recordGroupCleanup(input, 'pass');
+    if (field === 'attachment_readbacks') live.cleanup.attachment_readbacks[0] = bare400;
+    else live.cleanup[field] = bare400;
+    expect(() => validateQualification(input.value, input.options)).toThrow(new RegExp(field, 'u'));
+  });
+
+  it('requires a group that was never created to have neither deletion nor an absence readback', () => {
     const input = qualification();
     const { live } = input.value;
     enableInstanceWrites(live);
-    live.tools.testrail_add_group = { status: 'pass', steps: [{ label: null, status: 'pass' }] };
-    live.tools.testrail_get_group!.steps[1] = { label: 'own group', status: 'pass' };
-    live.tools.testrail_get_group!.status = 'pass';
-    live.tools.testrail_update_group = { status: 'pass', steps: [{ label: null, status: 'pass' }] };
-    live.tools.testrail_delete_group = { status: 'blocked', steps: [{ label: null, status: 'blocked', code: 'PERMISSION_DENIED', http_status: 403 }] };
-    live.cleanup.group = 'deleted_in_cleanup';
     summarizeLive(input);
+    expect(() => validateQualification(input.value, input.options)).not.toThrow();
+    live.cleanup.group = 'deleted';
+    expect(() => validateQualification(input.value, input.options)).toThrow(/report group as not_created/u);
+    live.cleanup.group = 'not_created';
+    live.cleanup.group_readback = notFound;
+    expect(() => validateQualification(input.value, input.options)).toThrow(/group absence readback exactly when group creation passed/u);
+  });
+
+  it.each([
+    ['pass', 'deleted', 'deleted_in_cleanup'],
+    ['blocked', 'deleted_in_cleanup', 'deleted'],
+  ] as const)('requires the group proof and disposition when planned deletion is %s', (plannedDelete, expectedGroup, wrongGroup) => {
+    const input = qualification();
+    const { live } = input.value;
+    recordGroupCleanup(input, plannedDelete);
+    expect(live.cleanup.group).toBe(expectedGroup);
+    expect(() => validateQualification(input.value, input.options)).not.toThrow();
+
+    live.cleanup.verified.gone -= 1;
     expect(() => validateQualification(input.value, input.options)).toThrow(/verify 6 absences/u);
     live.cleanup.verified.gone += 1;
-    expect(() => validateQualification(input.value, input.options)).not.toThrow();
+
+    live.cleanup.group_readback = null;
+    expect(() => validateQualification(input.value, input.options)).toThrow(/group absence readback exactly when group creation passed/u);
+    live.cleanup.group_readback = notFound;
+
+    live.cleanup.group = wrongGroup;
+    expect(() => validateQualification(input.value, input.options)).toThrow(`report group as ${expectedGroup}`);
+    live.cleanup.group = 'not_created';
+    expect(() => validateQualification(input.value, input.options)).toThrow(`report group as ${expectedGroup}`);
+    live.cleanup.group = 'left_behind';
+    expect(() => validateQualification(input.value, input.options)).toThrow(/"group"/u);
   });
 
   it.each([
@@ -237,6 +283,22 @@ function enableInstanceWrites(live: ReturnType<typeof qualification>['value']['l
     live.tools[tool]!.steps[groupRead ? 1 : 0] = step;
     live.tools[tool]!.status = 'blocked';
   }
+}
+
+function recordGroupCleanup(input: ReturnType<typeof qualification>, plannedDelete: 'pass' | 'blocked') {
+  const { live } = input.value;
+  enableInstanceWrites(live);
+  live.tools.testrail_add_group = { status: 'pass', steps: [{ label: null, status: 'pass' }] };
+  live.tools.testrail_get_group!.steps[1] = { label: 'own group', status: 'pass' };
+  live.tools.testrail_get_group!.status = 'pass';
+  live.tools.testrail_update_group = { status: 'pass', steps: [{ label: null, status: 'pass' }] };
+  live.tools.testrail_delete_group = { status: plannedDelete, steps: [{
+    label: null, status: plannedDelete, ...(plannedDelete === 'blocked' ? { code: 'PERMISSION_DENIED', http_status: 403 } : {}),
+  }] };
+  live.cleanup.group = plannedDelete === 'pass' ? 'deleted' : 'deleted_in_cleanup';
+  live.cleanup.group_readback = { ...invalidResource };
+  live.cleanup.verified.gone += 1;
+  summarizeLive(input);
 }
 
 function summarizeLive({ value: { live }, options }: ReturnType<typeof qualification>) {

@@ -457,7 +457,7 @@ describe('the stand-in\'s memory of deletions', () => {
     ...(method === 'POST' ? { body: '{}' } : {}),
   });
 
-  it('answers a read of a deleted project, group or attachment as TestRail does only when asked to, until a creation hands its ID out again', async () => {
+  it('remembers deleted IDs and gives each upload a new ID in stateful mode', async () => {
     for (const remember of [false, true]) {
       const standIn = await startFixtureTestRail({ rememberDeletions: remember });
       try {
@@ -470,9 +470,14 @@ describe('the stand-in\'s memory of deletions', () => {
           expect(after.status, label).toBe(remember ? 400 : 200);
           if (remember) expect(await after.json(), label).toEqual({ error: `Field :${kind}_id is not a valid or accessible ${kind}.` });
           else await after.arrayBuffer();
-          // A creation that hands the ID out again brings it back.
-          await (await send(standIn.baseUrl, 'POST', add)).arrayBuffer();
-          expect((await send(standIn.baseUrl, 'GET', `get_${kind}/${id}`)).status, label).toBe(200);
+          const newId = String(((await (await send(standIn.baseUrl, 'POST', add)).json()) as Record<string, unknown>)[field]);
+          if (remember && kind === 'attachment') {
+            expect(newId).not.toBe(id);
+            expect((await send(standIn.baseUrl, 'GET', `get_${kind}/${id}`)).status).toBe(400);
+          } else {
+            expect(newId).toBe(id);
+          }
+          expect((await send(standIn.baseUrl, 'GET', `get_${kind}/${newId}`)).status, label).toBe(200);
         }
       } finally {
         await standIn.close();

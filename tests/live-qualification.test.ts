@@ -364,7 +364,7 @@ describe('the guard\'s view of every argument', () => {
     const call: Call = (tool) => {
       sent.push(tool);
       // Read back after cleanup, the deleted project is answered as TestRail answers an ID it does not have.
-      return Promise.resolve(tool === 'testrail_get_project' ? failure('UPSTREAM_ERROR', 400) : { structuredContent: { data: { id: 5 } } });
+      return Promise.resolve(tool === 'testrail_get_project' ? failure('NOT_FOUND', 404) : { structuredContent: { data: { id: 5 } } });
     };
     const plan: PlanStep[] = [
       { tool: 'add_project', scope: 'own', input: () => ({ body: { name: 'p' } }), capture: (data, c) => { c.own('project', (data as { id: number }).id); } },
@@ -573,7 +573,11 @@ describe('a full run against the stand-in', () => {
       prepare_run_id: preparationRun.id, prepare_run_attempt: preparationRun.attempt,
       server: { package_version: packageJson.version, driver_version: installedDriver.version, node_version: process.versions.node,
         production_dependencies: { '@dichovsky/testrail-api-client': installedDriver.version } },
-      cleanup: { project: 'deleted', project_verified_absent: true, project_readback: { code: 'UPSTREAM_ERROR', http_status: 400 } },
+      cleanup: {
+        project: 'deleted', project_verified_absent: true,
+        project_readback: { code: 'UPSTREAM_ERROR', http_status: 400, reason: 'resource_not_found' },
+        group_readback: null, attachment_readbacks: [],
+      },
       observations: { existing_group_found: null },
     });
     expect(validateLivePlan(evidence)).toEqual({ expectedGone: 1, expectedResidue: [] });
@@ -631,8 +635,29 @@ describe('a run by default', () => {
     expect(evidence.tools.testrail_get_group?.steps.map(({ label, status }) => `${String(label)}: ${status}`)).toEqual(['existing group: pass', 'own group: not_run']);
     const routes = requests.map(({ tool }) => tool?.replace(/^testrail_/u, ''));
     for (const tool of [...INSTANCE_WRITES, 'run_report', 'run_cross_project_report']) expect(routes, tool).not.toContain(tool);
-    // Read back after cleanup: the project, and the one attachment ID the stand-in gives every upload.
-    expect(evidence.cleanup).toEqual({ project: 'deleted', group: 'not_created', verified: { gone: 2, present: 0, unverified: 0 }, residue: [] });
+    expect(evidence.cleanup).toEqual({ project: 'deleted', group: 'not_created', verified: { gone: 6, present: 0, unverified: 0 }, residue: [] });
+  });
+
+  it.each([
+    ['an exact numeric ID', 700_001, 700_001],
+    ['a UUID in different hex case', '2ec27be4-812f-4806-9a5d-d39130d1691a', '2EC27BE4-812F-4806-9A5D-D39130D1691A'],
+  ] as const)('fails a second upload that returns %s already captured', async (_label, first, second) => {
+    const { evidence, requests, text } = await qualify([], (tool, input, real) => {
+      if (tool === 'testrail_add_attachment_to_case' || tool === 'testrail_add_attachment_to_run') {
+        return Promise.resolve({ structuredContent: { data: { attachment_id: tool.endsWith('_case') ? first : second } } });
+      }
+      return real(tool, input);
+    });
+    expect(evidence.tools.testrail_add_attachment_to_case?.status).toBe('pass');
+    expect(evidence.tools.testrail_add_attachment_to_run?.steps[0]).toMatchObject({
+      status: 'fail', reason: 'unexpected response: the upload returned an attachment ID already created by this run',
+    });
+    expect(evidence.cleanup).toMatchObject({ verified: { gone: 5, present: 0, unverified: 0 }, residue: [{ kind: 'possible attachment', count: 1 }] });
+    const afterCleanup = requests.slice(requests.findIndex(({ tool }) => tool === 'testrail_delete_project'));
+    expect(afterCleanup.filter(({ endpoint }) => endpoint.toLowerCase() === `get_attachment/${first}`).map(({ endpoint }) => endpoint))
+      .toEqual([`get_attachment/${first}`]);
+    expect(text).not.toContain(String(first));
+    expect(runner.exitCode(evidence)).toBe(1);
   });
 });
 
@@ -656,31 +681,58 @@ describe('cleanup, checked afterwards', () => {
     }));
     // What reached TestRail: the first check was answered above, so it sees the deletion and the second check.
     const after = kept.requests.slice(kept.requests.findIndex(({ tool }) => tool === 'testrail_delete_project'));
-    expect(after.map(({ tool }) => tool)).toEqual(['testrail_delete_project', 'testrail_get_project', 'testrail_delete_attachment', 'testrail_get_attachment']);
-    expect(kept.evidence.cleanup).toEqual({ project: 'deleted', group: 'not_created', verified: { gone: 2, present: 0, unverified: 0 }, residue: [] });
+    expect(after.map(({ tool }) => tool)).toEqual([
+      'testrail_delete_project', 'testrail_get_project', 'testrail_delete_attachment', ...Array<string>(5).fill('testrail_get_attachment'),
+    ]);
+    expect(kept.evidence.cleanup).toEqual({ project: 'deleted', group: 'not_created', verified: { gone: 6, present: 0, unverified: 0 }, residue: [] });
     expect(runner.exitCode(kept.evidence)).toBe(0);
     // Served every time, and its deletion refused.
     let gone = false;
+    let stuckId: unknown;
     const stuck = await qualify([], (name, input, real) => {
       if (name === 'testrail_delete_project') gone = true;
-      if (gone && name === 'testrail_get_attachment') return Promise.resolve({ structuredContent: { data: { path: 'kept' } } });
-      if (gone && name === 'testrail_delete_attachment') return Promise.resolve(failure('PERMISSION_DENIED', 403));
+      if (gone && (name === 'testrail_get_attachment' || name === 'testrail_delete_attachment')) {
+        const { attachment_id: id } = input as { attachment_id: unknown };
+        stuckId ??= id;
+        if (stuckId === id) return Promise.resolve(name === 'testrail_get_attachment'
+          ? { structuredContent: { data: { path: 'kept' } } } : failure('PERMISSION_DENIED', 403));
+      }
       return real(name, input);
     });
-    expect(stuck.evidence.cleanup).toEqual({ project: 'deleted', group: 'not_created', verified: { gone: 1, present: 1, unverified: 0 }, residue: [{ kind: 'attachment', count: 1 }] });
+    expect(stuck.evidence.cleanup).toEqual({ project: 'deleted', group: 'not_created', verified: { gone: 5, present: 1, unverified: 0 }, residue: [{ kind: 'attachment', count: 1 }] });
     expect(runner.exitCode(stuck.evidence)).toBe(1);
-    expect(stuck.log.at(-2)).toBe('Cleanup: project deleted, group not_created; checked afterwards: 1 gone, 1 still there, 0 unverified; left behind: 1 attachment.');
+    expect(stuck.log.at(-2)).toBe('Cleanup: project deleted, group not_created; checked afterwards: 5 gone, 1 still there, 0 unverified; left behind: 1 attachment.');
   });
 
   it('fails a run whose cleanup TestRail cannot confirm, and says which', async () => {
     const unanswered = await qualify([], afterDeletion('testrail_get_project', () => Promise.resolve(failure('UPSTREAM_ERROR', 500))));
-    expect(unanswered.evidence.cleanup).toEqual({ project: 'deleted', group: 'not_created', verified: { gone: 1, present: 0, unverified: 1 }, residue: [{ kind: 'unverified project', count: 1 }] });
+    expect(unanswered.evidence.cleanup).toEqual({ project: 'deleted', group: 'not_created', verified: { gone: 5, present: 0, unverified: 1 }, residue: [{ kind: 'unverified project', count: 1 }] });
     expect(runner.exitCode(unanswered.evidence)).toBe(1);
     // A permission refusal is no answer either: only NOT_FOUND, or TestRail's 400 for an ID it does not have, is gone.
     const forbidden = await qualify([], afterDeletion('testrail_get_attachment', () => Promise.resolve(failure('PERMISSION_DENIED', 403))));
-    expect(forbidden.evidence.cleanup.residue).toEqual([{ kind: 'unverified attachment', count: 1 }]);
+    expect(forbidden.evidence.cleanup.residue).toEqual([{ kind: 'unverified attachment', count: 5 }]);
     const missing = await qualify([], afterDeletion('testrail_get_project', () => Promise.resolve(failure('NOT_FOUND', 404))));
-    expect(missing.evidence.cleanup.verified).toEqual({ gone: 2, present: 0, unverified: 0 });
+    expect(missing.evidence.cleanup.verified).toEqual({ gone: 6, present: 0, unverified: 0 });
+  });
+
+  it('keeps an attachment unverified after a refused deletion and a generic 400 readback', async () => {
+    let caseAttachment: number | undefined;
+    let deletedProject = false;
+    const { evidence } = await qualify([], async (tool, input, real) => {
+      const { attachment_id: id } = input as { attachment_id?: number };
+      if (caseAttachment !== undefined && id === caseAttachment) {
+        if (tool === 'testrail_delete_attachment') return failure('PERMISSION_DENIED', 403);
+        if (deletedProject && tool === 'testrail_get_attachment') return failure('UPSTREAM_ERROR', 400);
+      }
+      const result = await real(tool, input);
+      if (tool === 'testrail_delete_project') deletedProject = true;
+      if (tool === 'testrail_add_attachment_to_case') {
+        caseAttachment = (result.structuredContent as { data: { attachment_id: number } }).data.attachment_id;
+      }
+      return result;
+    });
+    expect(evidence.cleanup).toMatchObject({ verified: { gone: 5, present: 0, unverified: 1 }, residue: [{ kind: 'unverified attachment', count: 1 }] });
+    expect(runner.exitCode(evidence)).toBe(1);
   });
 
   it('skips, rather than blocks, deleting an attachment that was never made', async () => {
@@ -779,14 +831,14 @@ describe('a run that cannot finish', () => {
     expect(evidence.tools.testrail_update_group?.steps[0]).toMatchObject({ status: 'not_run', reason: 'interrupted' });
     expect(evidence.cleanup).toEqual({
       project: 'deleted_in_cleanup', group: 'deleted_in_cleanup',
-      // The project, the group and the attachment, all read back gone.
-      verified: { gone: 3, present: 0, unverified: 0 },
+      // The project, the group and the five attachments, all read back gone.
+      verified: { gone: 7, present: 0, unverified: 0 },
       // The reports ran before the group was made, and TestRail's API cannot delete them.
       residue: [{ kind: 'generated report', count: 1 }, { kind: 'generated cross-project report', count: 1 }],
     });
     const deletes = requests.filter(({ method, tool }) => method === 'POST' && tool?.startsWith('testrail_delete_') === true).map(({ tool }) => tool);
-    // The attachment first, while the project it hangs on still exists.
-    expect(deletes).toEqual(['testrail_delete_attachment', 'testrail_delete_project', 'testrail_delete_group']);
+    // The attachments first, while the project they hang on still exists.
+    expect(deletes).toEqual([...Array<string>(5).fill('testrail_delete_attachment'), 'testrail_delete_project', 'testrail_delete_group']);
     expect(log[log.findIndex((line) => line.startsWith('Stopping:'))]).toBe('Stopping: the qualification project will be deleted. Press Ctrl-C again to abandon that cleanup.');
     for (const signal of ['SIGINT', 'SIGHUP', 'SIGTERM']) expect(signals.listenerCount(signal), signal).toBe(0);
     expect(runner.exitCode(evidence)).toBe(1);
@@ -850,11 +902,11 @@ describe('a run that cannot finish', () => {
   it('reports a project, or a group, it could not delete even through a fresh session', async () => {
     const refusing = await qualify([], (tool, input, real) => (tool === 'testrail_delete_project' ? Promise.reject(new Error('Not connected')) : real(tool, input)));
     // Still served when read back; its attachment is gone.
-    expect(refusing.evidence.cleanup).toEqual({ project: 'left_behind', group: 'not_created', verified: { gone: 1, present: 1, unverified: 0 }, residue: [{ kind: 'project', count: 1 }] });
+    expect(refusing.evidence.cleanup).toEqual({ project: 'left_behind', group: 'not_created', verified: { gone: 5, present: 1, unverified: 0 }, residue: [{ kind: 'project', count: 1 }] });
     expect(refusing.log).toContain('The session to the server has ended; starting a fresh one to clean up.');
     const denied = await qualify(FULL, (tool, input, real) => (tool === 'testrail_delete_group' ? Promise.resolve(failure('PERMISSION_DENIED', 403)) : real(tool, input)));
     expect(denied.evidence.cleanup).toEqual({
-      project: 'deleted', group: 'left_behind', verified: { gone: 2, present: 1, unverified: 0 },
+      project: 'deleted', group: 'left_behind', verified: { gone: 6, present: 1, unverified: 0 },
       residue: [
         { kind: 'generated report', count: 1 }, { kind: 'generated cross-project report', count: 1 },
         { kind: 'user', count: 1 }, { kind: 'case_field', count: 1 }, { kind: 'group', count: 1 },
@@ -999,7 +1051,7 @@ describe('a run that cannot finish', () => {
       expect(settled, value).toMatch(/the evidence would carry \d+ configured or personal value\(s\); it was not written/u);
       expect(written, value).toBe(false);
       // What cleanup did is still said.
-      expect(log, value).toContain('Cleanup: project deleted, group not_created; checked afterwards: 2 gone, 0 still there, 0 unverified.');
+      expect(log, value).toContain('Cleanup: project deleted, group not_created; checked afterwards: 6 gone, 0 still there, 0 unverified.');
     }
   });
 

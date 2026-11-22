@@ -22,9 +22,9 @@ Before the project, the run deletes each attachment it uploaded: TestRail stores
 Ctrl-C at a terminal stops the server as well as the runner, so the runner starts a fresh server to clean up through. It also stops a `| tee` that keeps the log; output that can no longer be written does not stop the cleanup.
 
 Then the runner asks TestRail for the project, the group and each attachment again, and counts the answers in the evidence's `cleanup.verified`:
-- `gone`: TestRail answered `NOT_FOUND`, or the 400 it gives for an ID it does not have.
-- `present`: TestRail still served it. An attachment still served is deleted once more and asked for again.
-- `unverified`: any other answer, such as a permission refusal, a server error or no session.
+- `gone` means the read returned `NOT_FOUND` with HTTP 404 or a recognized TestRail ID error for that endpoint with HTTP 400.
+- `present` means TestRail still served it. The runner retries deletion for that attachment and reads it again.
+- `unverified` covers other outcomes, including a generic HTTP 400, a permission refusal, a server error or a lost session.
 
 Anything still present is listed in `cleanup.residue`, as is anything unverified, under `unverified <kind>`. Either one fails the run.
 
@@ -61,7 +61,7 @@ TestRail's API cannot delete users or case fields. With `--instance-writes`, one
    export TESTRAIL_API_KEY=...
    ```
 
-3. Run the live checks against an authorized disposable project. Download both candidate files from the same successful Prepare Candidate attempt. Start after the attempt finishes and use a fresh output path. Keep the runner's complete evidence for Publish, including the observed version, step outcomes and post-delete project readback.
+3. Run the live checks against an authorized disposable project. Download both candidate files from the same successful Prepare Candidate attempt. Start after the attempt finishes and use a fresh output path. Keep the runner's complete evidence for Publish, including the observed version, step outcomes, cleanup dispositions and sanitized readbacks for the resources created.
 
    ```sh
    node scripts/live-qualification.mjs --create-qualification-project \

@@ -5,6 +5,7 @@ import { AttachmentSchema, TestRailClient } from '@dichovsky/testrail-api-client
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { LIMIT_CEILINGS } from '../../src/config/limits.js';
+import type { SafeError } from '../../src/contracts/errors.js';
 import { driverOptions } from '../../src/driver/configuration.js';
 import { createStagingArea } from '../../src/files/staging.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
@@ -129,8 +130,8 @@ function warnings(result: { structuredContent?: unknown }): unknown {
   return (result.structuredContent as { warnings?: unknown }).warnings ?? [];
 }
 
-function errorOf(result: { structuredContent?: unknown }): { code: string; http_status?: number; write_outcome?: string } {
-  return (result.structuredContent as { error: { code: string; http_status?: number; write_outcome?: string } }).error;
+function errorOf(result: { structuredContent?: unknown }): SafeError {
+  return (result.structuredContent as { error: SafeError }).error;
 }
 
 // ------------------------------------------------------------------ download
@@ -190,9 +191,11 @@ describe('T12 get_attachment writes a new local file on every call', () => {
     });
     try {
       const result = await executor.execute(operation('testrail_get_attachment'), { attachment_id: 17 });
-      expect(errorOf(result)).toEqual(expect.objectContaining({ code, http_status: status }));
+      const error = errorOf(result);
+      expect(error).toMatchObject({ code, http_status: status });
+      expect(error.reason).toBe(status === 400 ? 'resource_not_found' : undefined);
       // A download only reads TestRail, so its failure says nothing about a write.
-      expect(errorOf(result).write_outcome).toBeUndefined();
+      expect(error.write_outcome).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(await readdir(env.downloads)).toEqual([]);
     } finally { await executor.shutdown(); }

@@ -70,6 +70,10 @@ const liveTool = z.object({
     label: nonempty.nullable(), status, reason: nonempty.optional(), code: nonempty.optional(), http_status: z.int().optional(),
   })).min(1),
 });
+const absenceReadback = z.union([
+  z.strictObject({ code: z.literal('UPSTREAM_ERROR'), http_status: z.literal(400), reason: z.literal('resource_not_found') }),
+  z.strictObject({ code: z.literal('NOT_FOUND'), http_status: z.literal(404) }),
+]);
 const liveSchema = z.object({
   ...runIdentity,
   schema_version: z.literal(2),
@@ -88,11 +92,11 @@ const liveSchema = z.object({
   tools: z.record(z.string().regex(/^testrail_[a-z_]+$/u), liveTool),
   cleanup: z.object({
     project: z.literal('deleted'),
+    group: z.enum(['not_created', 'deleted', 'deleted_in_cleanup']),
     project_verified_absent: z.literal(true),
-    project_readback: z.union([
-      z.strictObject({ code: z.literal('UPSTREAM_ERROR'), http_status: z.literal(400) }),
-      z.strictObject({ code: z.literal('NOT_FOUND'), http_status: z.literal(404) }),
-    ]),
+    project_readback: absenceReadback,
+    group_readback: absenceReadback.nullable(),
+    attachment_readbacks: z.array(absenceReadback),
     verified: z.object({ gone: z.int().positive(), present: z.literal(0), unverified: z.literal(0) }),
     residue: z.array(z.never()),
   }),
@@ -224,6 +228,19 @@ export function validateQualification(value, { candidate, tools, preparedAt, pub
   }
   if (live.cleanup.verified.gone !== expectedGone) {
     throw new Error(`Live cleanup must verify ${expectedGone} absences for successful creation steps, found ${live.cleanup.verified.gone}`);
+  }
+  const groupCreated = live.tools.testrail_add_group.status === 'pass';
+  let expectedGroup = 'not_created';
+  if (groupCreated) expectedGroup = live.tools.testrail_delete_group.status === 'pass' ? 'deleted' : 'deleted_in_cleanup';
+  if (live.cleanup.group !== expectedGroup) {
+    throw new Error(`Live cleanup must report group as ${expectedGroup} for the recorded group steps`);
+  }
+  if ((live.cleanup.group_readback !== null) !== groupCreated) {
+    throw new Error('Live cleanup requires a group absence readback exactly when group creation passed');
+  }
+  const expectedAttachmentReadbacks = expectedGone - 1 - Number(groupCreated);
+  if (live.cleanup.attachment_readbacks.length !== expectedAttachmentReadbacks) {
+    throw new Error(`Live cleanup must include ${expectedAttachmentReadbacks} attachment absence readbacks for successful uploads`);
   }
   if (expectedResidue.length > 0) {
     throw new Error(`Live qualification requires zero residue, but successful steps leave residue: ${expectedResidue.join(', ')}`);

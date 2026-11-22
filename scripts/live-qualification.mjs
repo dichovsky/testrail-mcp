@@ -91,6 +91,12 @@ export class GuardRefusal extends Error {
   }
 }
 
+/** Attachment UUIDs name the same attachment in either hex case. */
+function identityKey(kind, id) {
+  const key = String(id);
+  return kind === 'attachment' ? key.toLowerCase() : key;
+}
+
 /** What the run created, by kind, and what it has deleted since. */
 export class Ledger {
   #kinds = new Map();
@@ -98,7 +104,7 @@ export class Ledger {
 
   add(kind, id) {
     if (!this.#kinds.has(kind)) this.#kinds.set(kind, new Map());
-    this.#kinds.get(kind).set(String(id), id);
+    this.#kinds.get(kind).set(identityKey(kind, id), id);
   }
 
   /** Every ID of a kind the run created, deleted or not, as TestRail gave it. */
@@ -107,15 +113,15 @@ export class Ledger {
   }
 
   has(kind, id) {
-    return this.#kinds.get(kind)?.has(String(id)) ?? false;
+    return this.#kinds.get(kind)?.has(identityKey(kind, id)) ?? false;
   }
 
   remove(kind, id) {
-    this.#gone.add(`${kind}:${String(id)}`);
+    this.#gone.add(`${kind}:${identityKey(kind, id)}`);
   }
 
   isGone(kind, id) {
-    return this.#gone.has(`${kind}:${String(id)}`);
+    return this.#gone.has(`${kind}:${identityKey(kind, id)}`);
   }
 }
 
@@ -168,6 +174,7 @@ function createContext({ ledger, options, stamp, uploads }) {
   return {
     named, values, leftBehind,
     own(kind, id, name = kind) {
+      if (kind === 'attachment' && ledger.has(kind, id)) throw new Error('the upload returned an attachment ID already created by this run');
       ledger.add(kind, id);
       named.set(name, { kind, id });
       return id;
@@ -263,7 +270,7 @@ export async function runQualification({
   };
   const cleanup = { project: 'not_created', group: 'not_created' };
   let verified;
-  let projectReadback = null;
+  const readbacks = { project: null, group: null, attachments: [] };
   let residue;
   try {
     for (const step of plan) {
@@ -370,40 +377,46 @@ export async function runQualification({
       }
     }
     /*
-     * Then TestRail is asked for each one again. A deleted ID is answered NOT_FOUND, or 400 as
-     * TestRail answers an ID it does not have; any other answer leaves it unverified. An
-     * attachment still served is deleted once more and asked for again.
+     * Ask for each one again. A 400 only confirms absence when the server recognizes
+     * TestRail's rejection of that endpoint's ID. An attachment still served is deleted
+     * once more and asked for again.
      */
-    const state = async (tool, input) => {
+    const readback = async (tool, input) => {
       try {
-        const { status, code, http_status: httpStatus } = classify(await clean(`${TOOL_PREFIX}${tool}`, input));
-        if (status === 'pass') return 'present';
-        if (tool === 'get_project' && ((code === 'NOT_FOUND' && httpStatus === 404) || (code === 'UPSTREAM_ERROR' && httpStatus === 400))) {
-          projectReadback = { code, http_status: httpStatus };
+        const result = await clean(`${TOOL_PREFIX}${tool}`, input);
+        const { status, code, http_status: httpStatus } = classify(result);
+        if (status === 'pass') return { state: 'present' };
+        if (code === 'NOT_FOUND' && httpStatus === 404) return { state: 'gone', proof: { code, http_status: httpStatus } };
+        const reason = result.structuredContent?.error?.reason;
+        if (code === 'UPSTREAM_ERROR' && httpStatus === 400 && reason === 'resource_not_found') {
+          return { state: 'gone', proof: { code, http_status: httpStatus, reason } };
         }
-        return code === 'NOT_FOUND' || httpStatus === 400 ? 'gone' : 'unverified';
       } catch {
-        return 'unverified';
+        // A session or transport failure provides no evidence about the resource.
       }
+      return { state: 'unverified' };
     };
     verified = { gone: 0, present: 0, unverified: 0 };
     for (const [kind, tool, key] of [['project', 'get_project', 'project_id'], ['group', 'get_group', 'group_id']]) {
       const entry = c.named.get(kind);
       if (entry === undefined) continue;
-      const found = await state(tool, { [key]: entry.id });
-      verified[found] += 1;
+      const { state, proof } = await readback(tool, { [key]: entry.id });
+      verified[state] += 1;
+      if (proof !== undefined) readbacks[kind] = proof;
       // One whose deletion failed and that TestRail cannot be asked about is left behind.
-      if (found === 'present' || (found === 'unverified' && cleanup[kind] === 'left_behind')) c.residue(kind);
-      else if (found === 'unverified') c.residue(`unverified ${kind}`);
+      if (state === 'present' || (state === 'unverified' && cleanup[kind] === 'left_behind')) c.residue(kind);
+      else if (state === 'unverified') c.residue(`unverified ${kind}`);
     }
     for (const id of ledger.ids('attachment')) {
-      let found = await state('get_attachment', { attachment_id: id });
-      if (found === 'present') {
-        await clean(`${TOOL_PREFIX}delete_attachment`, { attachment_id: id }).catch(() => undefined);
-        found = await state('get_attachment', { attachment_id: id });
+      const input = { attachment_id: id };
+      let found = await readback('get_attachment', input);
+      if (found.state === 'present') {
+        await clean(`${TOOL_PREFIX}delete_attachment`, input).catch(() => undefined);
+        found = await readback('get_attachment', input);
       }
-      verified[found] += 1;
-      if (found !== 'gone') c.residue(found === 'present' ? 'attachment' : 'unverified attachment');
+      verified[found.state] += 1;
+      if (found.proof !== undefined) readbacks.attachments.push(found.proof);
+      else c.residue(found.state === 'present' ? 'attachment' : 'unverified attachment');
     }
     residue = [...c.leftBehind].map(([kind, count]) => ({ kind, count }));
     // Said here, so a run that throws still says what cleanup did.
@@ -412,7 +425,7 @@ export async function runQualification({
   // The signed-in user's address is kept only to prove the evidence does not carry it.
   const personal = [c.values.get('current_user_email')].filter((value) => typeof value === 'string');
   return {
-    steps, cleanup: { ...cleanup, verified, residue }, projectReadback,
+    steps, cleanup: { ...cleanup, verified, residue }, readbacks,
     existingGroupFound: c.values.has('existing_group') ? c.values.get('existing_group') !== null : null,
     stopped: stopped ?? null, testrailVersion: c.values.get('testrail_version') ?? null, personal,
   };
@@ -704,8 +717,10 @@ export async function main({
       Object.assign(evidence, { source_commit: candidate.source_commit, integrity: candidate.integrity,
         prepare_run_id: candidate.prepare_run_id, prepare_run_attempt: candidate.prepare_run_attempt,
         started_at: startedAt, finished_at: new Date().toISOString() });
-      evidence.cleanup.project_verified_absent = run.projectReadback !== null;
-      evidence.cleanup.project_readback = run.projectReadback;
+      evidence.cleanup.project_verified_absent = run.readbacks.project !== null;
+      evidence.cleanup.project_readback = run.readbacks.project;
+      evidence.cleanup.group_readback = run.readbacks.group;
+      evidence.cleanup.attachment_readbacks = run.readbacks.attachments;
       evidence.observations = { existing_group_found: run.existingGroupFound };
     }
     const text = `${JSON.stringify(evidence, null, 2)}\n`;

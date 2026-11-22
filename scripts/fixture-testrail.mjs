@@ -219,9 +219,9 @@ const json = (body) => ({ kind: 'json', body });
 /*
  * TestRail answers a read of a project, group or attachment it has deleted with a 400, as it
  * answers any ID it does not have, and the live runner checks its cleanup that way. With
- * `rememberDeletions` the stand-in does the same. It hands every creation the same few IDs,
- * so it remembers a deletion only until a creation hands that ID out again. Without it, the
- * stand-in keeps no state, and every request gets its fixture's reply.
+ * `rememberDeletions` the stand-in does the same. New uploads receive distinct attachment IDs.
+ * It remembers a project or group deletion until a creation hands that ID out again.
+ * Without it, the stand-in keeps no state, and every request gets its fixture's reply.
  */
 const DELETES = { testrail_delete_project: 'project', testrail_delete_group: 'group', testrail_delete_attachment: 'attachment' };
 const READS = { testrail_get_project: 'project', testrail_get_group: 'group', testrail_get_attachment: 'attachment' };
@@ -245,6 +245,7 @@ export async function startFixtureTestRail({
   const routes = await loadRoutes();
   const requests = [];
   const deleted = new Set();
+  let nextAttachmentId = 443;
   // A log that cannot be written is refused now, not discovered on the first request.
   if (log !== undefined) {
     try {
@@ -308,9 +309,12 @@ export async function startFixtureTestRail({
             if (reserved === RESERVED.drift) body = withDrift(body);
             reply = json(body);
           }
-          if (rememberDeletions && DELETES[route.tool] !== undefined) deleted.add(`${DELETES[route.tool]}:${String(segments[0])}`);
-          const [made, field] = CREATES[route.tool] ?? [];
-          if (made !== undefined && reply.kind === 'json') deleted.delete(`${made}:${String(reply.body?.[field])}`);
+          if (rememberDeletions) {
+            if (DELETES[route.tool] !== undefined) deleted.add(`${DELETES[route.tool]}:${String(segments[0])}`);
+            const [made, field] = CREATES[route.tool] ?? [];
+            if (made === 'attachment') reply = json({ ...reply.body, [field]: nextAttachmentId++ });
+            else if (made !== undefined) deleted.delete(`${made}:${String(reply.body?.[field])}`);
+          }
         }
         const entry = { method: request.method, endpoint: path + (query.length === 0 ? '' : `&${query.join('&')}`),
           tool: route?.tool ?? null, status, authorized: typeof request.headers.authorization === 'string', bytes: Buffer.concat(chunks).length,

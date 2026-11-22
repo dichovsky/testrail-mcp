@@ -251,6 +251,37 @@ describe('error classification', () => {
     expect(classifyError(new TestRailApiError(0, ''), read).http_status).toBeUndefined();
   });
 
+  it.each([
+    ['get_project', 'Field :project_id is not a valid or accessible project.'],
+    ['get_project', 'Field :project_id is not a valid project.'],
+    ['get_group', 'Field :group_id is not a valid or accessible group.'],
+    ['get_group', 'Field :group_id is not a valid group.'],
+    ['get_attachment', 'Field :attachment_id is not a valid or accessible attachment.'],
+    ['get_attachment', 'Field :attachment_id is not a valid attachment.'],
+  ] as const)('reports a known missing ID on %s with a fixed reason', (token, message) => {
+    const upstream = new TestRailApiError(400, 'Proxy for private.example', JSON.stringify({ error: message, detail: 'private-details' }));
+    const result = errorResult(classifyError(upstream, { ...read, token }));
+    expect(result.structuredContent).toEqual({
+      error: { code: 'UPSTREAM_ERROR', message: 'TestRail returned an error.', http_status: 400, reason: 'resource_not_found' },
+    });
+    expect(result.content[0]?.text).toBe(JSON.stringify(result.structuredContent));
+  });
+
+  it.each([
+    ['a proxy HTML response', 'get_project', '<html>Bad Request</html>'],
+    ['a proxy JSON response', 'get_project', '{"error":"Bad Request"}'],
+    ['an unknown method', 'get_project', '{"error":"Unknown API method"}'],
+    ['an invalid field', 'get_project', '{"error":"Field :project_id is required."}'],
+    ['another endpoint’s ID error', 'get_project', '{"error":"Field :group_id is not a valid or accessible group."}'],
+    ['a message with extra text', 'get_project', '{"error":"Field :project_id is not a valid or accessible project. Bad Request"}'],
+    ['a non-object JSON response', 'get_project', '"Field :project_id is not a valid or accessible project."'],
+    ['an attachment delete', 'delete_attachment', '{"error":"Field :attachment_id is not a valid attachment."}'],
+  ] as const)('keeps a 400 for %s without a missing-resource reason', (_label, token, response) => {
+    expect(classifyError(new TestRailApiError(400, 'Bad Request', response), { ...read, token })).toEqual({
+      code: 'UPSTREAM_ERROR', message: 'TestRail returned an error.', http_status: 400,
+    });
+  });
+
   /*
    * The driver's own header and body timeouts carry no status TestRail sent, so they are
    * the wait expiring, not a TestRail 408 or an unusable response. They are constructed
