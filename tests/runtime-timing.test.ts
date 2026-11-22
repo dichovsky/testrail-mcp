@@ -5,14 +5,13 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { loadConfiguration, type Configuration } from '../src/config/environment.js';
 import { createConfiguredDriver } from '../src/driver/configuration.js';
 import { operationRegistry } from '../src/operations/catalog.js';
-import { createRuntime, type Runtime } from '../src/runtime/invocation.js';
-import { executeToolCall } from '../src/transport/tool-call.js';
+import { createTestExecutor, type TestExecutor } from './support/executor.js';
 
 /*
  * Each timing budget a call can meet, told apart on a fake clock. The driver is built
  * with the production options (15-second header and body timeouts, three retries,
  * 1/2/4-second backoff capped at 10 seconds) through the composition root's own seam,
- * and the runtime uses its real 60-second watchdog timer, so these are the budgets a
+ * and the executor uses its real 60-second watchdog timer, so these are the budgets a
  * served call meets rather than a test's shortened copies. Each case shows its outcome
  * arriving at its own instant and not a millisecond before.
  */
@@ -40,7 +39,7 @@ if (getProject === undefined) throw new Error('testrail_get_project is not regis
 type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 
 interface Timed {
-  readonly runtime: Runtime;
+  readonly executor: TestExecutor;
   readonly fetchTimes: number[];
   readonly settled: () => boolean;
   readonly result: Promise<{ structuredContent?: unknown; isError?: boolean }>;
@@ -55,12 +54,10 @@ function start(fetch: Fetch, dnsLookup?: () => Promise<{ address: string; family
     fetch: ((url: string, init: RequestInit) => { fetchTimes.push(Date.now() - began); return fetch(url, init); }) as typeof globalThis.fetch,
     dnsLookup: dnsLookup ?? (() => Promise.resolve([{ address: '203.0.113.10', family: 4 }])),
   });
-  const runtime = createRuntime({ client, limits: configuration.limits });
+  const executor = createTestExecutor({ client, configuration });
   let done = false;
-  const result = executeToolCall(getProject!, { project_id: 1 }, {
-    runtime, configuration, stagingDirectory: () => Promise.resolve(directory),
-  }).finally(() => { done = true; });
-  return { runtime, fetchTimes, settled: () => done, result };
+  const result = executor.execute(getProject!, { project_id: 1 }).finally(() => { done = true; });
+  return { executor, fetchTimes, settled: () => done, result };
 }
 
 const errorOf = (result: { structuredContent?: unknown }) =>
@@ -117,15 +114,15 @@ describe('timing budgets on a fake clock, with production driver options', () =>
       expect(error).not.toHaveProperty('http_status');
       expect(call.fetchTimes).toEqual([]);
       // Answered, but the lookup is still running: the slot is still taken.
-      expect(call.runtime.stats().active).toBe(1);
+      expect(call.executor.stats().active).toBe(1);
       await vi.advanceTimersByTimeAsync(60_000);
-      expect(call.runtime.stats().active).toBe(1);
+      expect(call.executor.stats().active).toBe(1);
       answer();
       await vi.advanceTimersByTimeAsync(0);
-      expect(call.runtime.stats().active).toBe(0);
+      expect(call.executor.stats().active).toBe(0);
       // A late answer starts no request, and nothing retried the timed-out attempt.
       expect(call.fetchTimes).toEqual([]);
-    } finally { await call.runtime.shutdown(); }
+    } finally { await call.executor.shutdown(); }
   });
 
   it('gives the body its own 15 seconds from the arrival of the headers', async () => {
@@ -139,7 +136,7 @@ describe('timing budgets on a fake clock, with production driver options', () =>
       // The driver stopped reading: the wait expired, not an unusable response.
       expect(errorOf(await call.result)).toMatchObject({ code: 'TIMEOUT' });
       expect(call.fetchTimes).toEqual([0]);
-    } finally { await call.runtime.shutdown(); }
+    } finally { await call.executor.shutdown(); }
   });
 
   it('completes a body that finishes inside its own 15 seconds, although 28 seconds have passed', async () => {
@@ -148,7 +145,7 @@ describe('timing budgets on a fake clock, with production driver options', () =>
       await vi.advanceTimersByTimeAsync(28_000);
       expect(call.settled()).toBe(true);
       expect((await call.result).isError).toBeFalsy();
-    } finally { await call.runtime.shutdown(); }
+    } finally { await call.executor.shutdown(); }
   });
 
   it('backs off 1, 2 and 4 seconds between the three retries of a 503', async () => {
@@ -160,7 +157,7 @@ describe('timing budgets on a fake clock, with production driver options', () =>
       await vi.advanceTimersByTimeAsync(1);
       expect(call.fetchTimes).toEqual([0, 1_000, 3_000, 7_000]);
       expect((await call.result).isError).toBeFalsy();
-    } finally { await call.runtime.shutdown(); }
+    } finally { await call.executor.shutdown(); }
   });
 
   it.each([
@@ -175,7 +172,7 @@ describe('timing budgets on a fake clock, with production driver options', () =>
       await vi.advanceTimersByTimeAsync(1);
       expect(call.fetchTimes).toEqual([0, wait]);
       expect((await call.result).isError).toBeFalsy();
-    } finally { await call.runtime.shutdown(); }
+    } finally { await call.executor.shutdown(); }
   });
 
   it('reports TIMEOUT at 60 seconds while the driver is still retrying, and keeps the slot until it gives up', async () => {
@@ -191,14 +188,14 @@ describe('timing budgets on a fake clock, with production driver options', () =>
       expect(errorOf(await call.result)).toMatchObject({ code: 'TIMEOUT' });
       expect(call.fetchTimes).toEqual([0, 24_000, 48_000]);
       // The watchdog stopped the waiting, not the driver: the slot stays owned.
-      expect(call.runtime.stats().active).toBe(1);
+      expect(call.executor.stats().active).toBe(1);
 
       await vi.advanceTimersByTimeAsync(25_999);
       expect(call.fetchTimes).toEqual([0, 24_000, 48_000, 72_000]);
-      expect(call.runtime.stats().active).toBe(1);
+      expect(call.executor.stats().active).toBe(1);
       // The fourth attempt's 503 at 86 s exhausts the retries and settles the operation.
       await vi.advanceTimersByTimeAsync(1);
-      await vi.waitFor(() => { expect(call.runtime.stats().active).toBe(0); });
-    } finally { await call.runtime.shutdown(); }
+      await vi.waitFor(() => { expect(call.executor.stats().active).toBe(0); });
+    } finally { await call.executor.shutdown(); }
   });
 });

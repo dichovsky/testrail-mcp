@@ -5,8 +5,7 @@ import { TestRailClient } from '@dichovsky/testrail-api-client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
-import { createRuntime } from '../../src/runtime/invocation.js';
-import { executeToolCall } from '../../src/transport/tool-call.js';
+import { createTestExecutor } from '../support/executor.js';
 
 let base: string;
 let configuration: Configuration;
@@ -50,16 +49,16 @@ describe('T02 bulk writes with an unrecognized successful reply', () => {
       registerProcessHandlers: false, maxRetries: 0, fetch,
       dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
     });
-    const runtime = createRuntime({ client, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client });
     try {
-      const result = await executeToolCall(operation(tool), input, { runtime, configuration });
+      const result = await executor.execute(operation(tool), input);
       expect(result.isError).toBe(true);
       const { error } = result.structuredContent as { error: { code: string; http_status?: number; write_outcome?: string } };
       expect(error.code).toBe('INVALID_RESPONSE');
       expect(error.http_status).toBe(200);
       expect(error.write_outcome).toBe('unknown');
       expect(fetch).toHaveBeenCalledTimes(1);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('testrail_add_cases wraps the array under cases and unwraps the created cases', async () => {
@@ -72,12 +71,12 @@ describe('T02 bulk writes with an unrecognized successful reply', () => {
       registerProcessHandlers: false, maxRetries: 0, fetch,
       dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
     });
-    const runtime = createRuntime({ client, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client });
     try {
-      const result = await executeToolCall(operation('testrail_add_cases'), { section_id: 5, body: [{ title: 'One' }] }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_add_cases'), { section_id: 5, body: [{ title: 'One' }] });
       expect(result.isError).toBeUndefined();
       expect((result.structuredContent as { data: unknown }).data).toEqual(created);
       expect(JSON.parse(fetch.mock.calls[0]?.[1]?.body as string)).toEqual({ cases: [{ title: 'One' }] });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });

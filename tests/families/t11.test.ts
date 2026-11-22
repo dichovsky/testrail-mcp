@@ -8,9 +8,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { driverOptions } from '../../src/driver/configuration.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
-import { createRuntime } from '../../src/runtime/invocation.js';
+import { createTestExecutor } from '../support/executor.js';
 import { buildServer } from '../../src/transport/server.js';
-import { executeToolCall } from '../../src/transport/tool-call.js';
 
 let base: string;
 let configuration: Configuration;
@@ -53,8 +52,8 @@ function driverFor(fetch: ReturnType<typeof vi.fn>, overrides: DriverOverrides =
   });
 }
 
-function runtimeFor(fetch: ReturnType<typeof vi.fn>, overrides: DriverOverrides = {}) {
-  return createRuntime({ client: driverFor(fetch, overrides), limits: configuration.limits });
+function executorFor(fetch: ReturnType<typeof vi.fn>, overrides: DriverOverrides = {}) {
+  return createTestExecutor({ configuration, client: driverFor(fetch, overrides) });
 }
 
 function json(body: unknown, status = 200): Response {
@@ -111,14 +110,12 @@ const GENERATORS = [
 
 /**
  * A client connected to a server over the full registry, so a call takes the same path a
- * host's call does: through the MCP tool handler, not straight into executeToolCall.
+ * host's call does: through the MCP tool handler, not straight into the operation executor.
  */
 async function connect(fetch: ReturnType<typeof vi.fn>) {
-  const runtime = runtimeFor(fetch);
+  const executor = executorFor(fetch);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  const handle = serveStdio(() => buildServer({
-    configuration, runtime, registry: operationRegistry, stagingDirectory: () => Promise.resolve(base),
-  }), { transport: serverTransport });
+  const handle = serveStdio(() => buildServer({ executor, registry: operationRegistry }), { transport: serverTransport });
   const client = new Client({ name: 't11', version: '1.0.0' });
   await client.connect(clientTransport);
   return {
@@ -126,7 +123,7 @@ async function connect(fetch: ReturnType<typeof vi.fn>) {
     close: async () => {
       await client.close().catch(() => undefined);
       await handle.close().catch(() => undefined);
-      await runtime.shutdown();
+      await executor.shutdown();
     },
   };
 }
@@ -141,27 +138,27 @@ describe('T11 every report run reaches TestRail exactly once', () => {
   it.each(GENERATORS)('%s runs twice when called twice, whether or not the cache is on', async (tool, endpoint, urls) => {
     for (const enableCache of [false, true]) {
       const fetch = replying(urls);
-      const runtime = runtimeFor(fetch, { enableCache });
+      const executor = executorFor(fetch, { enableCache });
       try {
-        const first = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
-        const second = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+        const first = await executor.execute(operation(tool), { report_template_id: 383 });
+        const second = await executor.execute(operation(tool), { report_template_id: 383 });
         expect(first.isError, `enableCache ${enableCache}`).toBeUndefined();
         expect(second.isError, `enableCache ${enableCache}`).toBeUndefined();
         expect(fetch, `enableCache ${enableCache}`).toHaveBeenCalledTimes(2);
         for (const index of [0, 1]) expect(requested(fetch, index)).toMatch(new RegExp(`/api/v2/${endpoint}/383$`));
-      } finally { await runtime.shutdown(); }
+      } finally { await executor.shutdown(); }
     }
   });
 
   it.each(GENERATORS)('%s runs three times when three callers ask at once', async (tool, _endpoint, urls) => {
     const fetch = replying(urls);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
       const results = await Promise.all([1, 2, 3].map(() =>
-        executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration })));
+        executor.execute(operation(tool), { report_template_id: 383 })));
       expect(results.map(({ isError }) => isError)).toEqual([undefined, undefined, undefined]);
       expect(fetch).toHaveBeenCalledTimes(3);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -180,14 +177,14 @@ describe('T11 every report run reaches TestRail exactly once', () => {
     const driver = driverFor(fetch);
     // Counted at the driver method too, so a re-invocation above the wire cannot hide.
     const invoked = vi.spyOn(driver.reports, method);
-    const runtime = createRuntime({ client: driver, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client: driver });
     try {
-      const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      const result = await executor.execute(operation(tool), { report_template_id: 383 });
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(invoked).toHaveBeenCalledTimes(1);
       expect(result.isError).toBe(true);
       expect(errorOf(result)).toEqual({ ...expected, message: expect.any(String) as unknown, write_outcome: 'unknown' });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -205,14 +202,14 @@ describe('T11 every report run reaches TestRail exactly once', () => {
     }));
     const driver = driverFor(fetch, { timeout: 100 });
     const invoked = vi.spyOn(driver.reports, method);
-    const runtime = createRuntime({ client: driver, limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client: driver });
     try {
-      const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      const result = await executor.execute(operation(tool), { report_template_id: 383 });
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(invoked).toHaveBeenCalledTimes(1);
       expect(result.isError).toBe(true);
       expect(errorOf(result)).toEqual({ code: 'TIMEOUT', message: expect.any(String) as unknown, write_outcome: 'unknown' });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   // A refusal is TestRail's answer, but it still carries unknown; its code and status say what TestRail answered.
@@ -221,12 +218,12 @@ describe('T11 every report run reaches TestRail exactly once', () => {
     [tool, 403, 'PERMISSION_DENIED'],
   ] as const))('%s reports a %i refusal with its status and an unknown outcome', async (tool, status, code) => {
     const fetch = replying({ error: 'refused' }, status);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      const result = await executor.execute(operation(tool), { report_template_id: 383 });
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(errorOf(result)).toMatchObject({ code, http_status: status, write_outcome: 'unknown' });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -235,14 +232,14 @@ describe('T11 every report run reaches TestRail exactly once', () => {
    */
   it.each(GENERATORS)('%s reports a run the driver\'s own rate limiter refused as a 429 that was never sent', async (tool, _endpoint, urls) => {
     const fetch = replying(urls);
-    const runtime = runtimeFor(fetch, { rateLimiter: { maxRequests: 1, windowMs: 60_000 } });
+    const executor = executorFor(fetch, { rateLimiter: { maxRequests: 1, windowMs: 60_000 } });
     try {
-      const first = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      const first = await executor.execute(operation(tool), { report_template_id: 383 });
       expect(first.isError).toBeFalsy();
-      const refused = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      const refused = await executor.execute(operation(tool), { report_template_id: 383 });
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(errorOf(refused)).toMatchObject({ code: 'RATE_LIMITED', http_status: 429, write_outcome: 'unknown' });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -267,11 +264,11 @@ describe('T11 every report run reaches TestRail exactly once', () => {
   // The contrast that shows the single request above is the report's own policy, not a cap.
   it('retries an ordinary template read after the same 500', async () => {
     const fetch = replying({ error: 'upstream' }, 500);
-    const runtime = runtimeFor(fetch, { maxRetries: 1 });
+    const executor = executorFor(fetch, { maxRetries: 1 });
     try {
-      await executeToolCall(operation('testrail_get_reports'), { project_id: 7 }, { runtime, configuration });
+      await executor.execute(operation('testrail_get_reports'), { project_id: 7 });
       expect(fetch).toHaveBeenCalledTimes(2);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -287,12 +284,12 @@ describe('T11 every report run reaches TestRail exactly once', () => {
       () => json({ error: 'x'.repeat(configuration.limits.max_json_response_bytes) }, 500)],
   ] as const)('does not retry an ordinary template read whose %i reply\'s body %s, and reports %s with no status', async (_status, _label, code, reply) => {
     const fetch = vi.fn().mockImplementation(() => Promise.resolve(reply()));
-    const runtime = runtimeFor(fetch, { maxRetries: 1, bodyTimeout: 100 });
+    const executor = executorFor(fetch, { maxRetries: 1, bodyTimeout: 100 });
     try {
-      const result = await executeToolCall(operation('testrail_get_reports'), { project_id: 7 }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_reports'), { project_id: 7 });
       expect(errorOf(result)).toEqual({ code, message: expect.any(String) as unknown });
       expect(fetch).toHaveBeenCalledTimes(1);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -308,12 +305,12 @@ describe('T11 every report run reaches TestRail exactly once', () => {
       JSON.stringify({ error: 'API rate limit exceeded' }),
       { status: 429, headers: { 'content-type': 'application/json', 'retry-after': '0' } },
     )));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      const result = await executor.execute(operation(tool), { report_template_id: 383 });
       expect(fetch).toHaveBeenCalledTimes(1 + budget);
       expect(errorOf(result)).toMatchObject({ code: 'RATE_LIMITED', http_status: 429, write_outcome: 'unknown' });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   }, 30_000);
 
   /*
@@ -324,12 +321,12 @@ describe('T11 every report run reaches TestRail exactly once', () => {
     const fetch = vi.fn()
       .mockImplementationOnce(() => Promise.resolve(json({ error: 'API rate limit exceeded' }, 429)))
       .mockImplementationOnce(() => Promise.resolve(json(urls)));
-    const runtime = runtimeFor(fetch, { maxRetries: 1 });
+    const executor = executorFor(fetch, { maxRetries: 1 });
     try {
-      const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      const result = await executor.execute(operation(tool), { report_template_id: 383 });
       expect(result.isError).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(2);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -341,19 +338,19 @@ describe('T11 every report run reaches TestRail exactly once', () => {
 describe('T11 what a run returns', () => {
   it.each(GENERATORS)('%s returns its documented URLs as sent and fetches none of them', async (tool, _endpoint, urls) => {
     const fetch = replying(urls);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     // The URLs are not API endpoints, so the driver could not fetch them; anything else would
     // have to use the global fetch, which is watched here as well.
     const globalFetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('no request expected'));
     try {
-      const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      const result = await executor.execute(operation(tool), { report_template_id: 383 });
       expect(data(result)).toEqual(urls);
       expect(warnings(result)).toEqual([]);
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(globalFetch).not.toHaveBeenCalled();
     } finally {
       globalFetch.mockRestore();
-      await runtime.shutdown();
+      await executor.shutdown();
     }
   });
 
@@ -365,26 +362,26 @@ describe('T11 what a run returns', () => {
     [tool, 'a null report_url', { report_url: null }],
   ] as const))('%s returns %s as sent, with a warning, and does not run again', async (tool, _label, reply) => {
     const fetch = replying(reply);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      const result = await executor.execute(operation(tool), { report_template_id: 383 });
       expect(result.isError).toBeUndefined();
       expect(data(result)).toEqual(reply);
       expect(warnings(result)).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
       expect(fetch).toHaveBeenCalledTimes(1);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   // TestRail answered the run even though this server cannot use the reply, so it is not "not started".
   it.each(GENERATORS)('%s reports an unusable JSON reply as a run TestRail answered', async (tool, _endpoint, urls) => {
     const fetch = replying([urls]);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      const result = await executor.execute(operation(tool), { report_template_id: 383 });
       expect(result.isError).toBe(true);
       expect(errorOf(result)).toMatchObject({ code: 'INVALID_RESPONSE', write_outcome: 'acknowledged' });
       expect(fetch).toHaveBeenCalledTimes(1);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -400,13 +397,13 @@ describe('T11 what a run returns', () => {
       [overDriver, 'INVALID_RESPONSE', 'unknown'],
     ] as const) {
       const fetch = replying(body);
-      const runtime = runtimeFor(fetch);
+      const executor = executorFor(fetch);
       try {
-        const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+        const result = await executor.execute(operation(tool), { report_template_id: 383 });
         expect(result.isError).toBe(true);
         expect(errorOf(result)).toMatchObject({ code, write_outcome: outcome });
         expect(fetch).toHaveBeenCalledTimes(1);
-      } finally { await runtime.shutdown(); }
+      } finally { await executor.shutdown(); }
     }
   });
 
@@ -414,13 +411,13 @@ describe('T11 what a run returns', () => {
   it.each(GENERATORS)('%s reports a reply the driver cannot parse as an unknown outcome', async (tool) => {
     const fetch = vi.fn().mockImplementation(() => Promise.resolve(
       new Response('<html>ok</html>', { status: 200, headers: { 'content-type': 'application/json' } })));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+      const result = await executor.execute(operation(tool), { report_template_id: 383 });
       expect(result.isError).toBe(true);
       expect(errorOf(result)).toMatchObject({ code: 'INVALID_RESPONSE', write_outcome: 'unknown' });
       expect(fetch).toHaveBeenCalledTimes(1);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -432,23 +429,23 @@ describe('T11 what a run returns', () => {
   it.each(GENERATORS.flatMap(([tool]) => [200, 408, 500].map((status) => [tool, status] as const)))(
     '%s reports a %i reply whose body stalls as TIMEOUT with no status, and an unknown outcome', async (tool, status) => {
       const fetch = vi.fn().mockImplementation(() => Promise.resolve(stalling(status)));
-      const runtime = runtimeFor(fetch, { bodyTimeout: 100 });
+      const executor = executorFor(fetch, { bodyTimeout: 100 });
       try {
-        const result = await executeToolCall(operation(tool), { report_template_id: 383 }, { runtime, configuration });
+        const result = await executor.execute(operation(tool), { report_template_id: 383 });
         expect(result.isError).toBe(true);
         expect(errorOf(result)).toEqual({ code: 'TIMEOUT', message: expect.any(String) as unknown, write_outcome: 'unknown' });
         expect(fetch).toHaveBeenCalledTimes(1);
-      } finally { await runtime.shutdown(); }
+      } finally { await executor.shutdown(); }
     });
 
   it.each(GENERATORS)('%s is refused before any request when the template id is not an identifier', async (tool, _endpoint, urls) => {
     const fetch = replying(urls);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), { report_template_id: '383' }, { runtime, configuration });
+      const result = await executor.execute(operation(tool), { report_template_id: '383' });
       expect(errorOf(result)).toMatchObject({ code: 'INVALID_ARGUMENT', write_outcome: 'not_started' });
       expect(fetch).not.toHaveBeenCalled();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it.each(GENERATORS)('%s is published as neither read-only nor safe to repeat, and says why', (tool) => {
@@ -504,12 +501,12 @@ describe('T11 an instance or user without cross-project reports', () => {
       ['testrail_run_cross_project_report', { report_template_id: 383 }],
     ] as const) {
       const fetch = replying({ error: message }, 403);
-      const runtime = runtimeFor(fetch);
+      const executor = executorFor(fetch);
       try {
-        const result = await executeToolCall(operation(tool), input, { runtime, configuration });
+        const result = await executor.execute(operation(tool), input);
         expect(fetch, tool).toHaveBeenCalledTimes(1);
         expect(errorOf(result), tool).toMatchObject({ code, http_status: 403 });
-      } finally { await runtime.shutdown(); }
+      } finally { await executor.shutdown(); }
     }
   });
 
@@ -543,13 +540,13 @@ describe('T11 the template lists', () => {
       cases_groupby: 'day', cases_columns: { 'cases:id': 75, 'cases:title': 0 }, cases_limit: 1000,
     };
     const fetch = replying([template]);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_reports'), { project_id: 7 }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_reports'), { project_id: 7 });
       expect(requested(fetch)).toMatch(/\/api\/v2\/get_reports\/7$/);
       expect(data(result)).toEqual([template]);
       expect(warnings(result)).toEqual([]);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -563,12 +560,12 @@ describe('T11 the template lists', () => {
     }],
   ] as const)('%s reports a template missing a required field as drift', async (tool, input, template) => {
     const fetch = replying([template]);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), input, { runtime, configuration });
+      const result = await executor.execute(operation(tool), input);
       expect(data(result)).toEqual([template]);
       expect(warnings(result)).toEqual([{ code: 'SCHEMA_DRIFT', count: 1 }]);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('returns both cross-project families without filling in the other\'s fields', async () => {
@@ -582,12 +579,12 @@ describe('T11 the template lists', () => {
         include_elapsed_test_time: true, include_estimated_test_time: true, sort_by: 'alphabetical' },
     ];
     const fetch = replying(templates);
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_cross_project_reports'), {}, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_cross_project_reports'), {});
       expect(requested(fetch)).toMatch(/\/api\/v2\/get_cross_project_reports$/);
       expect(data(result)).toEqual(templates);
       expect(warnings(result)).toEqual([]);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });

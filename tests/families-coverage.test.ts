@@ -8,8 +8,7 @@ import { DEFAULT_LIMITS } from '../src/config/limits.js';
 import { AdapterError } from '../src/contracts/errors.js';
 import { operationRegistry } from '../src/operations/catalog.js';
 import { staged } from '../src/operations/families/common.js';
-import { createRuntime } from '../src/runtime/invocation.js';
-import { executeToolCall } from '../src/transport/tool-call.js';
+import { createTestExecutor } from './support/executor.js';
 
 let base: string;
 let configuration: Configuration;
@@ -80,19 +79,15 @@ describe('T04 get_test with data, when TestRail refuses', () => {
         status: 404, headers: { 'content-type': 'application/json' },
       }),
     );
-    const runtime = createRuntime({ client: clientFor(fetch), limits: configuration.limits });
+    const executor = createTestExecutor({ configuration, client: clientFor(fetch) });
     try {
-      const result = await executeToolCall(
-        operation('testrail_get_test'),
-        { test_id: 100, query: { with_data: '1' } },
-        { runtime, configuration },
-      );
+      const result = await executor.execute(operation('testrail_get_test'), { test_id: 100, query: { with_data: '1' } });
       expect(result.isError).toBe(true);
       const { error } = result.structuredContent as { error: { code: string; http_status?: number } };
       expect(error.code).toBe('NOT_FOUND');
       expect(error.http_status).toBe(404);
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(String(fetch.mock.calls[0]?.[0])).toContain('get_test/100&with_data=1');
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TestRailClient } from '@dichovsky/testrail-api-client';
@@ -8,20 +8,20 @@ import { createInputContract, type InputContract } from '../../src/contracts/inp
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { strictObject } from '../../src/contracts/inputs.js';
 import type { ToolResult } from '../../src/contracts/results.js';
+import { createStagingArea, type StagingArea } from '../../src/files/staging.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
 import type { CallContext, DriverCall } from '../../src/operations/driver-call.js';
 import type { Operation } from '../../src/operations/registry.js';
-import { createRuntime, type Runtime } from '../../src/runtime/invocation.js';
-import { executeToolCall } from '../../src/transport/tool-call.js';
+import { createTestExecutor, type TestExecutor } from '../support/executor.js';
 
 /*
- * The parts of `executeToolCall` that the catalog's own operations never exercise.
+ * The parts of the executor that the catalog's own operations never exercise.
  *
  * Every registered input schema is a strict object and every upload requires a filename,
  * so the pipeline's handling of a non-object input, a missing upload path or filename and
  * a download without an identifier is reached here through operations derived from real
  * catalog entries with a looser schema or a stand-in driver call. The soft-delete preview
- * and the missing staging directory are reached with the catalog operations unchanged.
+ * and staging creation faults are reached with the catalog operations unchanged.
  */
 
 let base: string;
@@ -67,9 +67,13 @@ function quietDriver(): TestRailClient {
   });
 }
 
-async function withRuntime<T>(client: TestRailClient, body: (runtime: Runtime) => Promise<T>): Promise<T> {
-  const runtime = createRuntime({ client, limits: configuration.limits });
-  try { return await body(runtime); } finally { await runtime.shutdown(); }
+async function withExecutor<T>(
+  client: TestRailClient,
+  body: (executor: TestExecutor) => Promise<T>,
+  createStaging: () => Promise<StagingArea> = () => createStagingArea(staging),
+): Promise<T> {
+  const executor = createTestExecutor({ client, configuration, createStaging });
+  try { return await body(executor); } finally { await executor.shutdown(); }
 }
 
 /** Deliberately bypass registration validation to isolate downstream defensive checks. */
@@ -110,8 +114,8 @@ describe('a list input that is not an object, or whose _mcp is not an object', (
       input: uncheckedInput,
       pagination: { ...getProjects.pagination, page: pageCall.call, all: allCall.call },
     });
-    const result = await withRuntime(quietDriver(), (runtime) =>
-      executeToolCall(operation, input, { runtime, configuration }));
+    const result = await withExecutor(quietDriver(), (executor) =>
+      executor.execute(operation, input));
 
     expect(result.isError).toBeUndefined();
     expect(pageCall.invoke).toHaveBeenCalledTimes(1);
@@ -134,8 +138,8 @@ describe('a list input that is not an object, or whose _mcp is not an object', (
       response: { ...getProjects.response, outerSchema: z.any() },
       pagination: { ...getProjects.pagination, page: pageCall.call },
     });
-    const result = await withRuntime(quietDriver(), (runtime) =>
-      executeToolCall(operation, {}, { runtime, configuration }));
+    const result = await withExecutor(quietDriver(), (executor) =>
+      executor.execute(operation, {}));
 
     expect(pageCall.invoke).toHaveBeenCalledTimes(1);
     expect(result.isError).toBe(true);
@@ -156,27 +160,27 @@ describe('an upload whose request cannot be staged', () => {
   ])('is refused as FILE_ACCESS_DENIED before staging or dispatch for %s', async (_label, input) => {
     const client = quietDriver();
     const upload = vi.spyOn(client.attachments, 'addAttachmentToCase');
-    const stagingDirectory = vi.fn(() => Promise.resolve(staging));
+    const createStaging = vi.fn(() => createStagingArea(staging));
     const operation = derive(addAttachment, { input: uncheckedInput });
-    const result = await withRuntime(client, (runtime) =>
-      executeToolCall(operation, input, { runtime, configuration, stagingDirectory }));
+    const result = await withExecutor(client, (executor) =>
+      executor.execute(operation, input), createStaging);
 
     expect(result.isError).toBe(true);
     expect(errorOf(result)).toMatchObject({ code: 'FILE_ACCESS_DENIED', write_outcome: 'not_started' });
-    expect(stagingDirectory).not.toHaveBeenCalled();
+    expect(createStaging).not.toHaveBeenCalled();
     expect(upload).not.toHaveBeenCalled();
     expect(await readdir(staging)).toEqual([]);
   });
 
-  it('is refused as FILE_ACCESS_DENIED when the server offers no staging directory', async () => {
+  it('reports a staging creation failure before dispatch as INTERNAL_ERROR and not started', async () => {
     const client = quietDriver();
     const upload = vi.spyOn(client.attachments, 'addAttachmentToCase');
-    const result = await withRuntime(client, (runtime) => executeToolCall(addAttachment, {
+    const result = await withExecutor(client, (executor) => executor.execute(addAttachment, {
       case_id: 1, file_path: join(roots, 'evidence.txt'), filename: 'evidence.txt',
-    }, { runtime, configuration }));
+    }), () => Promise.reject(new Error('staging unavailable')));
 
     expect(result.isError).toBe(true);
-    expect(errorOf(result)).toMatchObject({ code: 'FILE_ACCESS_DENIED', write_outcome: 'not_started' });
+    expect(errorOf(result)).toMatchObject({ code: 'INTERNAL_ERROR', write_outcome: 'not_started' });
     expect(upload).not.toHaveBeenCalled();
   });
 });
@@ -202,9 +206,16 @@ describe('an upload whose input names no filename', () => {
       input: createInputContract(input),
       pagination: { kind: 'none', single: single.call },
     });
-    const result = await withRuntime(quietDriver(), (runtime) => executeToolCall(operation, {
-      case_id: 1, file_path: join(roots, 'evidence.txt'), ...extra,
-    }, { runtime, configuration, stagingDirectory: () => Promise.resolve(staging) }));
+    const result = await withExecutor(quietDriver(), async (executor) => {
+      const result = await executor.execute(operation, {
+        case_id: 1, file_path: join(roots, 'evidence.txt'), ...extra,
+      });
+      await vi.waitFor(() => { expect(executor.stats().active).toBe(0); });
+      if (staged === undefined) throw new Error('No staged copy reached the driver');
+      // Per-copy disposal must finish at settlement, before shutdown removes its directory.
+      await expect(stat(staged)).rejects.toThrow();
+      return result;
+    });
 
     expect(result.isError).toBeUndefined();
     expect(dataOf(result).data).toEqual({ attachment_id: 'a1' });
@@ -228,8 +239,8 @@ describe('a download whose input carries no usable identifier', () => {
     const client = quietDriver();
     const download = vi.spyOn(client.attachments, 'getAttachment');
     const operation = derive(getAttachment, { input: uncheckedInput });
-    const result = await withRuntime(client, (runtime) =>
-      executeToolCall(operation, input, { runtime, configuration }));
+    const result = await withExecutor(client, (executor) =>
+      executor.execute(operation, input));
 
     expect(result.isError).toBe(true);
     expect(errorOf(result)).toMatchObject({ code: 'INTERNAL_ERROR' });
@@ -245,8 +256,8 @@ describe('a soft-delete preview reply', () => {
   async function call(reply: unknown, input: unknown = preview) {
     const client = quietDriver();
     const remove = vi.spyOn(client.sections, 'deleteSection').mockResolvedValue(reply as never);
-    const result = await withRuntime(client, (runtime) =>
-      executeToolCall(deleteSection, input, { runtime, configuration }));
+    const result = await withExecutor(client, (executor) =>
+      executor.execute(deleteSection, input));
     return { result, remove };
   }
 
@@ -283,8 +294,8 @@ describe('an aggregate reply', () => {
   async function aggregate(operation: Operation, reply: unknown, controls: Record<string, unknown> = {}) {
     const allCall = standIn('projects.getAllProjects', () => reply);
     const derived = derive(operation, { pagination: { ...operation.pagination, all: allCall.call } });
-    const result = await withRuntime(quietDriver(), (runtime) =>
-      executeToolCall(derived, { _mcp: { pagination: 'all', ...controls } }, { runtime, configuration }));
+    const result = await withExecutor(quietDriver(), (executor) =>
+      executor.execute(derived, { _mcp: { pagination: 'all', ...controls } }));
     expect(allCall.invoke).toHaveBeenCalledTimes(1);
     return result;
   }
@@ -322,9 +333,9 @@ describe('a download reply that arrives after the call was answered', () => {
     const cancel = new AbortController();
     const before = await readdir(base);
 
-    const runtime = createRuntime({ client: quietDriver(), limits: configuration.limits });
+    const executor = createTestExecutor({ client: quietDriver(), configuration });
     try {
-      const pending = executeToolCall(operation, { attachment_id: 11 }, { runtime, configuration, signal: cancel.signal });
+      const pending = executor.execute(operation, { attachment_id: 11 }, { signal: cancel.signal });
       await vi.waitFor(() => { expect(single.invoke).toHaveBeenCalledTimes(1); });
       cancel.abort();
       const result = await pending;
@@ -336,10 +347,10 @@ describe('a download reply that arrives after the call was answered', () => {
       await held;
       // The slot is released only once the tracked call, including any file write, has
       // settled, so the directory is final once nothing is active.
-      await vi.waitFor(() => { expect(runtime.stats().active).toBe(0); });
+      await vi.waitFor(() => { expect(executor.stats().active).toBe(0); });
       expect(await readdir(base)).toEqual(before);
     } finally {
-      await runtime.shutdown();
+      await executor.shutdown();
     }
   });
 });

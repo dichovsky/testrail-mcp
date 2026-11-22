@@ -5,8 +5,7 @@ import { TestRailClient } from '@dichovsky/testrail-api-client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfiguration, type Configuration } from '../../src/config/environment.js';
 import { operationRegistry } from '../../src/operations/catalog.js';
-import { createRuntime } from '../../src/runtime/invocation.js';
-import { executeToolCall } from '../../src/transport/tool-call.js';
+import { createTestExecutor } from '../support/executor.js';
 
 let base: string;
 let configuration: Configuration;
@@ -30,15 +29,15 @@ function operation(tool: string) {
   return found;
 }
 
-function runtimeFor(fetch: ReturnType<typeof vi.fn>) {
-  return createRuntime({
+function executorFor(fetch: ReturnType<typeof vi.fn>) {
+  return createTestExecutor({
+    configuration,
     client: new TestRailClient({
       baseUrl: configuration.baseUrl, email: configuration.email, apiKey: configuration.apiKey,
       registerProcessHandlers: false, maxRetries: 0,
       dnsLookup: () => Promise.resolve([{ address: '203.0.113.10', family: 4 }]),
       fetch: fetch as unknown as typeof globalThis.fetch,
     }),
-    limits: configuration.limits,
   });
 }
 
@@ -66,23 +65,22 @@ const GROUP = { id: 7, name: 'QA', user_ids: [1, 2] };
 describe('T08 the two forms of the user list', () => {
   it('omits the segment entirely when no project is named', async () => {
     const fetch = vi.fn().mockResolvedValue(json([USER]));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_users'), {}, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_users'), {});
       expect(result.isError).toBeUndefined();
       // No trailing segment and no empty one: get_users, not get_users/ or get_users/undefined.
       expect(requested(fetch)).toMatch(/\/api\/v2\/get_users$/);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('addresses the project form when one is named', async () => {
     const fetch = vi.fn().mockResolvedValue(json([USER]));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      await executeToolCall(operation('testrail_get_users'),
-        { query: { project_id: 5 } }, { runtime, configuration });
+      await executor.execute(operation('testrail_get_users'), { query: { project_id: 5 } });
       expect(requested(fetch)).toMatch(/\/api\/v2\/get_users\/5$/);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -96,12 +94,12 @@ describe('T08 the two forms of the user list', () => {
     ['a null collection', { users: null }, []],
   ] as const)('reads %s as the same kind of answer', async (_label, reply, expected) => {
     const fetch = vi.fn().mockResolvedValue(json(reply));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_users'), {}, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_users'), {});
       expect(result.isError).toBeUndefined();
       expect((result.structuredContent as { data: unknown }).data).toEqual(expected);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -117,13 +115,12 @@ describe('T08 the address every user tool accepts', () => {
     ['a domain literal', 'ada@[192.168.1.1]', 'email=ada%40%5B192.168.1.1%5D'],
   ] as const)('sends %s percent encoded', async (_label, address, encoded) => {
     const fetch = vi.fn().mockResolvedValue(json(USER));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_user_by_email'),
-        { query: { email: address } }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_user_by_email'), { query: { email: address } });
       expect(result.isError).toBeUndefined();
       expect(requested(fetch)).toContain(encoded);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it.each([
@@ -133,14 +130,13 @@ describe('T08 the address every user tool accepts', () => {
     ['a trailing line feed', 'ada@example.com\n'],
   ] as const)('refuses %s before any request', async (_label, address) => {
     const fetch = vi.fn().mockResolvedValue(json(USER));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_user_by_email'),
-        { query: { email: address } }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_user_by_email'), { query: { email: address } });
       expect(result.isError).toBe(true);
       expect((result.structuredContent as { error: { code: string } }).error.code).toBe('INVALID_ARGUMENT');
       expect(fetch).not.toHaveBeenCalled();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   /*
@@ -153,16 +149,15 @@ describe('T08 the address every user tool accepts', () => {
     ['testrail_update_user', 'ada@[192.168.1.1]', { user_id: 1, body: { email: 'ada@[192.168.1.1]' } }],
   ] as const)('lets %s write the address %j a lookup accepts', async (tool, address, input) => {
     const fetch = vi.fn().mockImplementation(() => Promise.resolve(json(USER)));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const lookup = await executeToolCall(operation('testrail_get_user_by_email'),
-        { query: { email: address } }, { runtime, configuration });
+      const lookup = await executor.execute(operation('testrail_get_user_by_email'), { query: { email: address } });
       expect(lookup.isError).toBeUndefined();
-      const write = await executeToolCall(operation(tool), input, { runtime, configuration });
+      const write = await executor.execute(operation(tool), input);
       expect(write.isError).toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(2);
       expect(sentBody(fetch, 1)).toEqual(input.body);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -174,36 +169,33 @@ describe('T08 the address every user tool accepts', () => {
 describe('T08 the identifier a group update carries twice', () => {
   it('sends the path identifier in the body without being asked', async () => {
     const fetch = vi.fn().mockResolvedValue(json(GROUP));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      await executeToolCall(operation('testrail_update_group'),
-        { group_id: 7, body: { name: 'QA renamed' } }, { runtime, configuration });
+      await executor.execute(operation('testrail_update_group'), { group_id: 7, body: { name: 'QA renamed' } });
       expect(requested(fetch)).toContain('update_group/7');
       expect(sentBody(fetch)).toEqual({ name: 'QA renamed', group_id: 7 });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('refuses a caller-supplied group_id rather than letting it be overwritten', async () => {
     const fetch = vi.fn().mockResolvedValue(json(GROUP));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_update_group'),
-        { group_id: 7, body: { group_id: 99 } }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_update_group'), { group_id: 7, body: { group_id: 99 } });
       expect(result.isError).toBe(true);
       expect((result.structuredContent as { error: { code: string } }).error.code).toBe('INVALID_ARGUMENT');
       expect(fetch).not.toHaveBeenCalled();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   // An empty body is still a request that carries the identifier TestRail demands.
   it('carries the identifier even when the caller changes nothing', async () => {
     const fetch = vi.fn().mockResolvedValue(json(GROUP));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      await executeToolCall(operation('testrail_update_group'),
-        { group_id: 7, body: {} }, { runtime, configuration });
+      await executor.execute(operation('testrail_update_group'), { group_id: 7, body: {} });
       expect(sentBody(fetch)).toEqual({ group_id: 7 });
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
 
@@ -217,28 +209,27 @@ describe('T08 the lists that take no controls', () => {
     const fetch = vi.fn().mockResolvedValue(json({
       offset: 0, limit: 250, size: 0, _links: { next: null, prev: null }, [key]: [],
     }));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation(tool), {}, { runtime, configuration });
+      const result = await executor.execute(operation(tool), {});
       expect(result.isError).toBeUndefined();
       const url = requested(fetch);
       expect(url).not.toContain('limit=');
       expect(url).not.toContain('offset=');
       expect(url).toMatch(new RegExp(`/api/v2/${tool.replace('testrail_', '')}$`));
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it.each(['testrail_get_groups', 'testrail_get_roles'] as const)(
     '%s refuses a page control it could not honour', async (tool) => {
       const fetch = vi.fn().mockResolvedValue(json({ groups: [], roles: [] }));
-      const runtime = runtimeFor(fetch);
+      const executor = executorFor(fetch);
       try {
-        const result = await executeToolCall(operation(tool),
-          { _mcp: { pagination: 'all', page_size: 10 } }, { runtime, configuration });
+        const result = await executor.execute(operation(tool), { _mcp: { pagination: 'all', page_size: 10 } });
         expect(result.isError).toBe(true);
         expect((result.structuredContent as { error: { code: string } }).error.code).toBe('INVALID_ARGUMENT');
         expect(fetch).not.toHaveBeenCalled();
-      } finally { await runtime.shutdown(); }
+      } finally { await executor.shutdown(); }
     });
 });
 
@@ -249,22 +240,21 @@ describe('T08 the lists that take no controls', () => {
 describe('T08 the configured identity', () => {
   it('asks for the current user with no arguments at all', async () => {
     const fetch = vi.fn().mockResolvedValue(json(USER));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_current_user'), {}, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_current_user'), {});
       expect(result.isError).toBeUndefined();
       expect(requested(fetch)).toMatch(/\/api\/v2\/get_current_user$/);
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 
   it('refuses a user argument rather than ignoring it', async () => {
     const fetch = vi.fn().mockResolvedValue(json(USER));
-    const runtime = runtimeFor(fetch);
+    const executor = executorFor(fetch);
     try {
-      const result = await executeToolCall(operation('testrail_get_current_user'),
-        { user_id: 2 }, { runtime, configuration });
+      const result = await executor.execute(operation('testrail_get_current_user'), { user_id: 2 });
       expect(result.isError).toBe(true);
       expect(fetch).not.toHaveBeenCalled();
-    } finally { await runtime.shutdown(); }
+    } finally { await executor.shutdown(); }
   });
 });
