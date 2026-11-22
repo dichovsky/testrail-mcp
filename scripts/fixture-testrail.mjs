@@ -255,6 +255,7 @@ export async function startFixtureTestRail({
   }
 
   const server = createServer((request, response) => {
+    const receivedAt = new Date().toISOString();
     const chunks = [];
     request.on('data', (chunk) => { chunks.push(chunk); });
     request.on('end', () => {
@@ -293,7 +294,9 @@ export async function startFixtureTestRail({
           status = 400;
           reply = json({ error: `Field :${READS[route.tool]}_id is not a valid or accessible ${READS[route.tool]}.` });
         } else {
-          if (reserved !== undefined && DELAYS_MS[reserved] !== undefined) await sleep(DELAYS_MS[reserved] * delayScale);
+          // Distinct C10 project IDs exercise four real requests, even if identical reads coalesce.
+          const delay = /^get_project\/99002[1-4]$/u.test(path) ? DELAYS_MS[RESERVED.slow] : DELAYS_MS[reserved];
+          if (delay !== undefined) await sleep(delay * delayScale);
           reply = route.reply;
           if (reply.kind === 'json') {
             let body = reply.body;
@@ -312,7 +315,7 @@ export async function startFixtureTestRail({
         const entry = { method: request.method, endpoint: path + (query.length === 0 ? '' : `&${query.join('&')}`),
           tool: route?.tool ?? null, status, authorized: typeof request.headers.authorization === 'string', bytes: Buffer.concat(chunks).length,
           // A client that gave up, such as the driver at its request timeout, never gets the status.
-          abandoned: response.destroyed };
+          abandoned: response.destroyed, received_at: receivedAt };
         requests.push(entry);
         let logFailure;
         if (log !== undefined) await appendFile(log, `${JSON.stringify(entry)}\n`).catch((error) => { logFailure = error; });

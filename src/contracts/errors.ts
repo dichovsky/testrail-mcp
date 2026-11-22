@@ -153,9 +153,8 @@ function codeFor(error: unknown): ErrorCode {
   }
   if (error instanceof TestRailApiError) return classifyApi(error);
   // Inputs are validated before invocation, so a driver parameter rejection here
-  // means the adapter mapped them wrongly. That is ours, not TestRail's. A host the
-  // driver refuses to reach (a failed, empty or private lookup) is the same class and
-  // also lands here, kept as INTERNAL_ERROR on 2026-10-03; see docs/results-and-errors.md.
+  // means the adapter mapped them wrongly. A malformed or private resolver answer
+  // also lands here. Driver 10 classifies failed or empty lookups as network errors.
   if (error instanceof TestRailValidationError) return 'INTERNAL_ERROR';
   return 'INTERNAL_ERROR';
 }

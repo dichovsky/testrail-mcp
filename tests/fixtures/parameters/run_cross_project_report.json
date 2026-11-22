@@ -3,10 +3,10 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "9.0.0",
-    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
+    "driver_version": "10.0.0",
+    "driver_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9",
     "authored_commit": "cc7751c01c3d3956d061073283bee6b23bf33422",
-    "reviewed_on": "2026-10-03",
+    "reviewed_on": "2026-11-22",
     "evidence": [
       {
         "from_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "to_commit": "7680ab6c0d1973749e3178016a3d133af27bfb0a", "reviewed_on": "2026-10-03",
@@ -25,6 +25,15 @@
           { "path": "src/retry-policy.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/retry-policy.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
           { "path": "src/schemas/reports.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/reports.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
+      },
+      {
+        "from_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "to_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9", "reviewed_on": "2026-11-22",
+        "files": [
+          { "path": "src/modules/reports.ts", "changed": false },
+          { "path": "src/client-core.ts", "changed": true, "note": "The request core now classifies failed DNS as a network error and tracks multipart transport through a shared lifetime. Report intent, rate-limit handling, and the cited request shapes still match the fixtures." },
+          { "path": "src/retry-policy.ts", "changed": false },
+          { "path": "src/schemas/reports.ts", "changed": true, "note": "Removed redundant response type declarations. The cited runtime schema and its shipped JavaScript are identical." }
+        ]
       }
     ]
   },
@@ -38,22 +47,22 @@
   "sources": [
     {
       "id": "driver-module-reports",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/reports.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/modules/reports.ts",
       "supports": "getReports validates the project identifier with validateId and places it as the only path segment of get_reports; getCrossProjectReports takes no argument and requests get_cross_project_reports. runReport and runCrossProjectReport validate the template identifier the same way and place it as the only path segment of run_report and run_cross_project_report, requesting with intent 'side-effecting-read'. The module no longer states what that intent does; the core derives it (client-core.ts and retry-policy.ts)."
     },
     {
       "id": "driver-client",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/client-core.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/client-core.ts",
       "supports": "request() gives a GET carrying an intent no cache key, so neither the cache nor in-flight coalescing serves a side-effecting read and every explicit call reaches TestRail."
     },
     {
       "id": "driver-retry",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/retry-policy.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/retry-policy.ts",
       "supports": "deriveRetryPolicy selects the rateLimitOnly policy for a side-effecting read, which re-sends only after a 429. Its comment gives the reason: a run_report GET builds a new report and the template may email it, so a 5xx or a network error leaves an ambiguous outcome and is not retried, while the rate limiter rejects a 429 before execution, so nothing was generated."
     },
     {
       "id": "driver-schema-reports",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/reports.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/schemas/reports.ts",
       "supports": "ReportSchema requires id and name and admits a nullish description and the nullish notify_user, notify_link, notify_link_recipients, notify_attachment, notify_attachment_recipients, notify_attachment_html_format and notify_attachment_pdf_format fields, beside a nullish is_shared. CrossProjectReportSchema also requires project_ids, include_open_runs_and_plans, include_completed_runs_and_plans and report_timeframe, and its comment records that the Summary-only and User Workload-only selections stay optional because TestRail omits them from the other family, and that included_statuses admits both a list and the comma-separated string of the wire example. ReportResultSchema requires report_url and admits nullish report_html, report_pdf and user_report_url, the last a forward and legacy compatibility placeholder absent from the current reference. Every object is passthrough, so unmodelled keys survive parsing."
     },
     {

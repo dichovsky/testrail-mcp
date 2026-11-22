@@ -93,7 +93,7 @@ const count = z.number().int().nonnegative();
 const deletion = z.enum(['not_created', 'deleted', 'deleted_in_cleanup', 'left_behind']);
 const evidenceSchema = z.strictObject({
   schema_version: z.literal(2),
-  provenance: z.literal('live_testrail'),
+  provenance: z.enum(['live_testrail', 'fixture_stand_in']),
   tested_on: z.iso.date(),
   testrail_version: z.string().min(1).nullable(),
   server: z.strictObject({ package_version: z.string().nullable(), protocol: z.string().nullable(), driver_version: z.string().nullable() }),
@@ -160,7 +160,7 @@ async function qualify(flags: string[], inject?: Parameters<typeof inProcess>[0]
   const log: string[] = [];
   const before = standIn.requests.length;
   const evidence = await runner.main({
-    argv: ['--create-qualification-project', '--out', out, ...flags],
+    argv: ['--create-qualification-project', '--out', out, '--fixture', ...flags],
     env: standIn.environment, connect: connect ?? inProcess(inject), pacing: INSTANT, log: (line) => { log.push(line); },
     ...(signals === undefined ? {} : { signals }),
   });
@@ -527,8 +527,8 @@ describe('a full run against the stand-in', () => {
       ],
     });
     expect(full.evidence).toMatchObject({
-      testrail_version: '10.6.0.1041',
-      server: { package_version: packageJson.version, driver_version: '9.0.0' },
+      provenance: 'fixture_stand_in', testrail_version: '10.6.0.1041',
+      server: { package_version: packageJson.version, driver_version: '10.0.0' },
       options: { instance_writes: true, report_template: true, cross_project_report_template: true },
     });
     expect(full.returned).toEqual(full.evidence);
@@ -542,6 +542,37 @@ describe('a full run against the stand-in', () => {
     const other = await qualify(['--command', 'testrail-mcp'], refuse);
     expect(other.evidence.server).toEqual({ package_version: packageJson.version, protocol: null, driver_version: null });
   });
+
+  it('binds packaged rehearsal evidence to the installed candidate and recovery of its project', async () => {
+    const { packCandidate } = (await import(new URL('../scripts/prepare-candidate.mjs', import.meta.url).href)) as {
+      packCandidate: (options: { root: string; output: string; sourceCommit: string }) => Promise<{ integrity: string }>;
+    };
+    const directory = join(base, 'packaged-rehearsal');
+    const sourceCommit = 'a'.repeat(40);
+    const { integrity } = await packCandidate({ root: fileURLToPath(new URL('../', import.meta.url)), output: directory, sourceCommit });
+    const candidate = join(directory, 'candidate.json');
+    const tarball = join(directory, 'candidate.tgz');
+    const out = join(directory, 'evidence.json');
+    const connect = vi.fn<Connect>((server) => inProcess()(server));
+    const options = {
+      argv: ['--create-qualification-project', '--fixture', '--candidate', candidate, '--tarball', tarball, '--out', out],
+      env: { ...process.env, ...standIn.environment, npm_config_offline: 'true' }, connect, pacing: INSTANT, log: () => undefined,
+    };
+    await expect(runner.main(options)).resolves.toMatchObject({
+      provenance: 'fixture_stand_in', source_commit: sourceCommit, integrity,
+      server: { package_version: packageJson.version, driver_version: installedDriver.version, node_version: process.versions.node,
+        production_dependencies: { '@dichovsky/testrail-api-client': installedDriver.version } },
+      cleanup: { project: 'deleted', project_verified_absent: true },
+    });
+    expect(connect).toHaveBeenCalledWith(expect.objectContaining({
+      command: process.execPath, args: [expect.stringContaining(join('node_modules', '@dichovsky', 'testrail-mcp', 'dist', 'cli.js'))],
+    }));
+    await writeFile(tarball, 'different candidate bytes');
+    const callsBefore = connect.mock.calls.length;
+    await expect(runner.main({ ...options, argv: [...options.argv.slice(0, -1), join(directory, 'second.json')] }))
+      .rejects.toThrow(/declared release candidate tarball/u);
+    expect(connect.mock.calls).toHaveLength(callsBefore);
+  }, 30_000);
 
   it('writes evidence with no credential, address or personal detail, and no TestRail data', () => {
     const { TESTRAIL_EMAIL: email = '', TESTRAIL_API_KEY: key = '' } = standIn.environment;
@@ -977,12 +1008,13 @@ describe('a run that cannot finish', () => {
     expect(standIn.requests.length).toBe(before);
   });
 
-  it('checks an existing evidence file without changing it, so a run that ends early leaves it as it was', async () => {
+  it('refuses an existing evidence file before starting a rehearsal', async () => {
     const out = join(base, 'earlier.json');
     await writeFile(out, 'earlier evidence\n');
-    const connect: Connect = () => Promise.reject(new Error('the server did not start'));
-    await expect(runner.main({ argv: ['--create-qualification-project', '--out', out], env: standIn.environment, connect, pacing: INSTANT, log: () => undefined }))
-      .rejects.toThrow(/the server did not start/u);
+    const connect = vi.fn<Connect>();
+    await expect(runner.main({ argv: ['--create-qualification-project', '--out', out, '--fixture'], env: standIn.environment, connect, pacing: INSTANT, log: () => undefined }))
+      .rejects.toThrow(/already exists/u);
+    expect(connect).not.toHaveBeenCalled();
     expect(await readFile(out, 'utf8')).toBe('earlier evidence\n');
   });
 
@@ -994,7 +1026,7 @@ describe('a run that cannot finish', () => {
     await chmod(out, 0o444);
     try {
       await expect(runner.main({ argv: ['--create-qualification-project', '--out', out], env: standIn.environment, connect, pacing: INSTANT, log: () => undefined }))
-        .rejects.toThrow(/--out .* cannot be written/u);
+        .rejects.toThrow(/--out .* already exists/u);
       expect(connect).not.toHaveBeenCalled();
       expect(await readFile(out, 'utf8')).toBe('earlier evidence\n');
     } finally {
@@ -1040,7 +1072,7 @@ describe('the operator guide', () => {
     expect(guide).toContain(`allows ${String(configuration.rateLimiter?.maxRequests)} TestRail requests a minute`);
     expect(configuration.rateLimiter?.windowMs).toBe(60_000);
     const options = [...guide.matchAll(/^\| `(--[a-z-]+)[^|]*\|/gmu)].map(([, flag]) => flag);
-    expect(options.sort()).toEqual(['--command', '--create-qualification-project', '--cross-project-report-template-id', '--instance-writes', '--out', '--report-template-id']);
+    expect(options.sort()).toEqual(['--candidate', '--command', '--create-qualification-project', '--cross-project-report-template-id', '--fixture', '--instance-writes', '--out', '--report-template-id', '--tarball']);
   });
 });
 
@@ -1052,6 +1084,7 @@ describe('the live evidence in the repository', () => {
     expect(files).not.toEqual([]);
     for (const name of files) {
       const evidence = evidenceSchema.parse(JSON.parse(await readFile(new URL(name, directory), 'utf8')));
+      expect(evidence.provenance, name).toBe('live_testrail');
       expect(Object.keys(evidence.tools).sort(), name).toEqual(operationRegistry.entries.map(({ tool }) => tool).sort());
       const summary = { pass: 0, not_run: 0, blocked: 0, fail: 0 };
       for (const { status } of Object.values(evidence.tools)) summary[status] += 1;

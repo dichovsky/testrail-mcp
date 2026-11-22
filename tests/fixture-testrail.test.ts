@@ -373,7 +373,8 @@ describe('the stand-in\'s reserved IDs', () => {
     try {
       const begun = performance.now();
       const timed = (promise: Promise<{ structuredContent?: unknown }>) => promise.then((result) => ({ error: payload(result).error, after: performance.now() - begun }));
-      const results = await Promise.all(Array.from({ length: 5 }, () => timed(call('testrail_get_project', { project_id: ID.slow }, production))));
+      const results = await Promise.all(Array.from({ length: 5 }, (_value, index) =>
+        timed(call('testrail_get_project', { project_id: ID.slow + index }, production))));
       const busy = results.filter(({ error }) => error?.code === 'BUSY');
       // The driver gave up waiting, so no status is claimed.
       const timeouts = results.filter(({ error }) => error?.code === 'TIMEOUT' && error.http_status === undefined);
@@ -526,7 +527,10 @@ describe('the stand-in\'s paged lists', () => {
     const entries = text.trim().split('\n').map((line) => JSON.parse(line) as Record<string, unknown>);
     expect(entries.length).toBeGreaterThan(133);
     expect(entries.every(({ authorized }) => authorized === true)).toBe(true);
-    for (const entry of entries) expect(Object.keys(entry).sort()).toEqual(['abandoned', 'authorized', 'bytes', 'endpoint', 'method', 'status', 'tool']);
+    for (const entry of entries) {
+      expect(Object.keys(entry).sort()).toEqual(['abandoned', 'authorized', 'bytes', 'endpoint', 'method', 'received_at', 'status', 'tool']);
+      expect(entry.received_at).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/u);
+    }
     expect(entries).toContainEqual(expect.objectContaining({ method: 'GET', endpoint: `get_project/${String(ID.notFound)}`, tool: 'testrail_get_project', status: 404, abandoned: false }));
     expect(entries).toContainEqual(expect.objectContaining({ method: 'POST', endpoint: `add_case/${String(ID.failed)}`, tool: 'testrail_add_case', status: 500, abandoned: false }));
     for (const secret of ['fixture-api-key', 'fixture@example.invalid', 'Basic ', Buffer.from('fixture@example.invalid:fixture-api-key').toString('base64')]) {

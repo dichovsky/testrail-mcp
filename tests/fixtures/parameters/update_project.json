@@ -3,10 +3,10 @@
   "review": {
     "status": "complete",
     "pending": [],
-    "driver_version": "9.0.0",
-    "driver_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d",
+    "driver_version": "10.0.0",
+    "driver_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9",
     "authored_commit": "71a80d984aea14713d8eeaf6ac9a0d41c1fba12b",
-    "reviewed_on": "2026-10-03",
+    "reviewed_on": "2026-11-22",
     "evidence": [
       {
         "from_commit": "71a80d984aea14713d8eeaf6ac9a0d41c1fba12b", "to_commit": "cc7751c01c3d3956d061073283bee6b23bf33422", "reviewed_on": "2026-09-17",
@@ -28,6 +28,13 @@
           { "path": "src/modules/projects.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/modules/projects.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." },
           { "path": "src/schemas/projects.ts", "changed": true, "note": "Changed between the releases only in the shipped build: 9.0.0 no longer emits source maps, so dist/schemas/projects.js lost its trailing sourceMappingURL comment. The source is unchanged, so the claim stands." }
         ]
+      },
+      {
+        "from_commit": "a5ccffbfa176e9c6675bd81fff61859bd7b6be5d", "to_commit": "b7cde3748f8f937acb79b0004985a43ea9f916a9", "reviewed_on": "2026-11-22",
+        "files": [
+          { "path": "src/modules/projects.ts", "changed": true, "note": "getProjectsPage declares the equivalent GetProjectsOptions type. The shipped JavaScript and approved call shape are identical." },
+          { "path": "src/schemas/projects.ts", "changed": true, "note": "Removed redundant response type declarations. The cited runtime schema and its shipped JavaScript are identical." }
+        ]
       }
     ]
   },
@@ -41,12 +48,12 @@
   "sources": [
     {
       "id": "driver-module",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/modules/projects.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/modules/projects.ts",
       "supports": "updateProject validates the project ID and forwards the payload unchanged as the JSON body."
     },
     {
       "id": "driver-schema",
-      "url": "https://github.com/dichovsky/testrail-api-client/blob/a5ccffbfa176e9c6675bd81fff61859bd7b6be5d/src/schemas/projects.ts",
+      "url": "https://github.com/dichovsky/testrail-api-client/blob/b7cde3748f8f937acb79b0004985a43ea9f916a9/src/schemas/projects.ts",
       "supports": "UpdateProjectPayloadSchema leaves every body field optional. A group assignment takes a positive-integer id and a nonnegative-integer-or-null role_id; a user assignment is an exclusive union naming the user as id or as user_id with the same role_id; default_role_id is a nonnegative integer. Every object permits additional properties."
     },
     {

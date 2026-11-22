@@ -2,8 +2,8 @@ name: Publish
 
 # Runs when a GitHub Release is published for a release/<version> tag, as
 # @dichovsky/testrail-api-client releases. The read-only verify job checks the release's
-# identity before any repository code runs, runs every release gate and archives the
-# tested build. The publish job alone can mint an npm credential, through trusted
+# identity before any repository code runs, checks the candidate and qualification, and
+# passes the exact qualified tarball. The publish job alone can mint an npm credential through trusted
 # publishing (GitHub OIDC, no stored token). It waits in the protected npm-publish
 # environment, runs no repository or dependency code, publishes the tested build with
 # provenance, and then checks what npm serves. See docs/release.md.
@@ -28,7 +28,7 @@ jobs:
       contents: read
     outputs:
       already-published: ${{ steps.preflight.outputs.already-published }}
-      dist-sha256: ${{ steps.release-artifact.outputs.sha256 }}
+      integrity: ${{ steps.qualification.outputs.integrity }}
 
     steps:
       - name: Check out the immutable release commit
@@ -80,12 +80,12 @@ jobs:
       - name: Set up the release Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24.19.0'
+          node-version: '26.13.1'
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
 
       - name: Install locked dependencies without lifecycle scripts
-        run: npm ci --ignore-scripts --registry=https://registry.npmjs.org/
+        run: npm ci --engine-strict --ignore-scripts --registry=https://registry.npmjs.org/
 
       - name: Verify the complete release identity
         env:
@@ -121,6 +121,25 @@ jobs:
       - name: Smoke-test the packed package
         run: npm run test:package
 
+      - name: Audit the driver ledger against upstream
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/dichovsky/testrail-api-client.git "$RUNNER_TEMP/driver"
+          node scripts/audit-driver-ledger.mjs "$RUNNER_TEMP/driver"
+
+      - name: Rebuild the candidate package from the tag
+        run: node scripts/prepare-candidate.mjs "$RUNNER_TEMP/rebuilt-candidate"
+
+      - name: Require fresh qualification for the exact candidate
+        id: qualification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-evidence.mjs verify "$RUNNER_TEMP/rebuilt-candidate" "$RUNNER_TEMP/qualified-candidate"
+
+      - name: Smoke-test the exact qualified tarball
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: node scripts/verify-published.mjs "$RUNNER_TEMP/qualified-candidate/candidate.tgz" --version "${RELEASE_TAG#release/}"
+
       # Registry lookup is fail-closed. An immutable duplicate is green only when gitHead
       # and every packed file match this release; a new version must advance `latest` and
       # every published stable version.
@@ -131,6 +150,7 @@ jobs:
           RELEASE_DRAFT: ${{ github.event.release.draft }}
           RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
+          QUALIFIED_INTEGRITY: ${{ steps.qualification.outputs.integrity }}
         run: node scripts/release-preflight.mjs registry
 
       - name: Verify the preflight decision
@@ -144,30 +164,12 @@ jobs:
             exit 1
           fi
 
-      - name: Archive the tested build
-        id: release-artifact
-        if: steps.preflight.outputs.already-published == 'false'
-        shell: bash
-        run: |
-          set -euo pipefail
-          if find dist -mindepth 1 ! -type f ! -type d -print -quit | grep -q .; then
-            echo 'Prepared dist contains a non-regular filesystem entry.' >&2
-            exit 1
-          fi
-          tar -cf release-dist.tar -C dist .
-          SHA256="$(sha256sum release-dist.tar | cut -d ' ' -f 1)"
-          if [[ ! "$SHA256" =~ ^[0-9a-f]{64}$ ]]; then
-            echo 'Could not calculate the release artifact SHA-256.' >&2
-            exit 1
-          fi
-          echo "sha256=$SHA256" >> "$GITHUB_OUTPUT"
-
-      - name: Keep the tested build for the publish job
+      - name: Keep the qualified tarball for the publish job
         if: steps.preflight.outputs.already-published == 'false'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: npm-release-dist
-          path: release-dist.tar
+          name: npm-qualified-release
+          path: ${{ runner.temp }}/qualified-candidate/candidate.tgz
           if-no-files-found: error
           include-hidden-files: false
           retention-days: 1
@@ -234,48 +236,33 @@ jobs:
             exit 1
           fi
 
-      # The next step checks the archive's SHA-256 itself, because the download action
-      # warns, rather than fails, when its own digest does not match.
-      - name: Download the tested build
+      - name: Download the qualified tarball
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: npm-release-dist
-          path: .release-artifact/
+          name: npm-qualified-release
+          path: ${{ runner.temp }}/qualified-release/
 
-      - name: Verify the downloaded build
+      - name: Verify the downloaded tarball
         shell: bash
         env:
-          EXPECTED_DIST_SHA256: ${{ needs.verify.outputs.dist-sha256 }}
+          QUALIFIED_INTEGRITY: ${{ needs.verify.outputs.integrity }}
         run: |
           set -euo pipefail
-          if [[ ! "$EXPECTED_DIST_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
-            echo 'Expected release artifact SHA-256 is missing or invalid.' >&2
+          if [[ ! "$QUALIFIED_INTEGRITY" =~ ^sha512-[A-Za-z0-9+/]{86}==$ ]]; then
+            echo 'Qualified tarball SHA-512 integrity is missing or invalid.' >&2
             exit 1
           fi
-          ACTUAL_DIST_SHA256="$(sha256sum .release-artifact/release-dist.tar | cut -d ' ' -f 1)"
-          if [[ "$ACTUAL_DIST_SHA256" != "$EXPECTED_DIST_SHA256" ]]; then
-            echo 'Downloaded release artifact SHA-256 does not match verification.' >&2
+          CANDIDATE="$RUNNER_TEMP/qualified-release/candidate.tgz"
+          ACTUAL_INTEGRITY="sha512-$(openssl dgst -sha512 -binary "$CANDIDATE" | base64 -w0)"
+          if [[ "$ACTUAL_INTEGRITY" != "$QUALIFIED_INTEGRITY" ]]; then
+            echo 'Downloaded tarball does not match the qualified SHA-512.' >&2
             exit 1
           fi
-          while IFS= read -r ARCHIVE_PATH; do
-            NORMALIZED_PATH="${ARCHIVE_PATH#./}"
-            if [[ -n "$NORMALIZED_PATH" && ( "$NORMALIZED_PATH" == /* || "$NORMALIZED_PATH" == ../* || "$NORMALIZED_PATH" == */../* ) ]]; then
-              echo 'Downloaded release archive contains an unsafe path.' >&2
-              exit 1
-            fi
-          done < <(tar -tf .release-artifact/release-dist.tar)
-          mkdir dist
-          tar -xf .release-artifact/release-dist.tar -C dist --no-same-owner
-          if find dist -mindepth 1 ! -type f ! -type d -print -quit | grep -q .; then
-            echo 'Downloaded release files contain a non-regular filesystem entry.' >&2
-            exit 1
-          fi
-          test -f dist/cli.js
 
       - name: Set up the release Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24.19.0'
+          node-version: '26.13.1'
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
 
@@ -286,6 +273,7 @@ jobs:
         shell: bash
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
+          QUALIFIED_INTEGRITY: ${{ needs.verify.outputs.integrity }}
         run: |
           set -euo pipefail
           while IFS= read -r CONFIG_NAME; do
@@ -294,10 +282,12 @@ jobs:
               NPM_CONFIG_* | NODE_AUTH_TOKEN | NPM_TOKEN | NPM_ID_TOKEN) unset "$CONFIG_NAME" ;;
             esac
           done < <(compgen -e)
+          [[ "$(node --version)" == 'v26.13.1' && "$(npm --version)" == '11.20.0' ]]
 
           EXPECTED_VERSION="${RELEASE_TAG#release/}"
           PACKAGE_NAME='@dichovsky/testrail-mcp'
           PACKAGE_SPEC="${PACKAGE_NAME}@${EXPECTED_VERSION}"
+          CANDIDATE="$RUNNER_TEMP/qualified-release/candidate.tgz"
           ISOLATED_NPM_DIRECTORY="$(mktemp -d "$RUNNER_TEMP/npm-publish.XXXXXX")"
           USER_CONFIG="$ISOLATED_NPM_DIRECTORY/user.npmrc"
           GLOBAL_CONFIG="$ISOLATED_NPM_DIRECTORY/global.npmrc"
@@ -385,7 +375,7 @@ jobs:
             if (!valid) process.exit(1);
           '
 
-          npm publish "$GITHUB_WORKSPACE" \
+          npm publish "$CANDIDATE" \
             --provenance \
             --registry=https://registry.npmjs.org/ \
             --access=public \
@@ -401,7 +391,7 @@ jobs:
           while (( SECONDS < METADATA_DEADLINE )); do
             METADATA_REMAINING=$((METADATA_DEADLINE - SECONDS))
             if (( METADATA_REMAINING <= 0 )); then break; fi
-            if METADATA="$(timeout --signal=KILL "${METADATA_REMAINING}s" npm view "$PACKAGE_SPEC" version gitHead dist-tags.latest dist.attestations --json --prefer-online --fetch-retries=0 --fetch-timeout=10000 --userconfig="$USER_CONFIG" --globalconfig="$GLOBAL_CONFIG" --registry=https://registry.npmjs.org/ 2>/dev/null)" &&
+            if METADATA="$(timeout --signal=KILL "${METADATA_REMAINING}s" npm view "$PACKAGE_SPEC" version gitHead dist-tags.latest dist.integrity dist.attestations --json --prefer-online --fetch-retries=0 --fetch-timeout=10000 --userconfig="$USER_CONFIG" --globalconfig="$GLOBAL_CONFIG" --registry=https://registry.npmjs.org/ 2>/dev/null)" &&
               printf '%s' "$METADATA" |
                 EXPECTED_VERSION="$EXPECTED_VERSION" EXPECTED_SHA="$GITHUB_SHA" node --input-type=module --eval '
                   import fs from "node:fs";
@@ -414,9 +404,24 @@ jobs:
                     value.version === process.env.EXPECTED_VERSION &&
                     value.gitHead === process.env.EXPECTED_SHA &&
                     value["dist-tags.latest"] === process.env.EXPECTED_VERSION &&
+                    value["dist.integrity"] === process.env.QUALIFIED_INTEGRITY &&
                     attestations?.provenance?.predicateType === "https://slsa.dev/provenance/v1";
                   if (!valid) process.exit(1);
-                '
+                ' &&
+              PROVENANCE_REMAINING=$((METADATA_DEADLINE - SECONDS)) && (( PROVENANCE_REMAINING > 0 )) &&
+              PROVENANCE="$(curl --fail --silent --max-time "$PROVENANCE_REMAINING" "https://registry.npmjs.org/-/npm/v1/attestations/@dichovsky%2Ftestrail-mcp@$EXPECTED_VERSION")" &&
+              printf '%s' "$PROVENANCE" | EXPECTED_VERSION="$EXPECTED_VERSION" node --input-type=module --eval '
+                import fs from "node:fs";
+                const predicate = "https://slsa.dev/provenance/v1";
+                const expectedName = `pkg:npm/%40dichovsky/testrail-mcp@${process.env.EXPECTED_VERSION}`;
+                const expectedHash = Buffer.from(process.env.QUALIFIED_INTEGRITY.slice(7), "base64").toString("hex");
+                const value = JSON.parse(fs.readFileSync(0, "utf8"));
+                const matches = value.attestations.filter((entry) => entry.predicateType === predicate);
+                if (matches.length !== 1) process.exit(1);
+                const statement = JSON.parse(Buffer.from(matches[0].bundle.dsseEnvelope.payload, "base64").toString("utf8"));
+                if (statement.predicateType !== predicate || statement.subject.length !== 1 ||
+                  statement.subject[0].name !== expectedName || statement.subject[0].digest.sha512 !== expectedHash) process.exit(1);
+              '
             then
               VERIFIED=true
               break
@@ -433,24 +438,5 @@ jobs:
           done
           if [[ "$VERIFIED" != 'true' ]]; then
             echo 'npm accepted the publication, but metadata did not converge within 300 seconds. Wait for registry processing, then rerun the entire workflow, including verify; do not publish again.' >&2
-            exit 1
-          fi
-          DIFF_VERIFIED=false
-          for ATTEMPT in {1..10}; do
-            if DIFF_OUTPUT="$(npm diff --diff="$GITHUB_WORKSPACE" --diff="$PACKAGE_SPEC" --diff-name-only --ignore-scripts --prefer-online --cache="$ISOLATED_NPM_DIRECTORY/npm-diff-cache-$ATTEMPT" --userconfig="$USER_CONFIG" --globalconfig="$GLOBAL_CONFIG" --registry=https://registry.npmjs.org/ 2>/dev/null)"; then
-              if [[ -n "${DIFF_OUTPUT//[[:space:]]/}" ]]; then
-                echo 'Published npm package content differs from the verified release.' >&2
-                exit 1
-              fi
-              DIFF_VERIFIED=true
-              break
-            fi
-            if [[ "$ATTEMPT" -lt 10 ]]; then
-              echo "Published npm package content is not retrievable yet (attempt $ATTEMPT/10); retrying." >&2
-              sleep 3
-            fi
-          done
-          if [[ "$DIFF_VERIFIED" != 'true' ]]; then
-            echo 'Published npm package content did not become retrievable for verification.' >&2
             exit 1
           fi

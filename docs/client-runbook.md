@@ -1,13 +1,14 @@
-# R02 runbook: Codex desktop, Codex CLI and Copilot CLI
+# Client qualification runbook
 
-Step-by-step instructions for running scenarios C01 to C12 on the three hosts that have no record yet. The prompts are the ones the Claude Code run used. You run each host and send the raw output back; the records in [`docs/evidence/clients/`](evidence/clients/) are then written from it and checked by `tests/client-kit.test.ts`.
+Run C01–C12 in Claude Code, Codex desktop, Codex CLI and Copilot CLI. Use the trace to write one sanitized record per host for the release qualification bundle. The first release's records are in [client evidence](evidence/clients/).
 
 The whole run uses the [fixture stand-in](client-compatibility.md#the-fixture-backed-kit): no TestRail account and no real credentials. It is written for macOS and Linux. Expect about an hour per host.
 
-**Which build to test.** R03 needs client records for the final release candidate. Run this on `main` once it pins the release's driver, and record the commit; section 4 shows how.
+**Which build to test.** Use the `candidate.json` and `candidate.tgz` artifacts from Prepare Candidate. Install the tarball separately for each host and keep its verified commit and integrity with the results.
 
 | Host | Configuration it reads | How the variables reach the server |
 | --- | --- | --- |
+| Claude Code | An isolated MCP config passed with `--mcp-config` and `--strict-mcp-config` | Explicit stand-in environment settings for the recorder and server |
 | Codex CLI | `~/.codex/config.toml` | `env_vars`, forwarded from the shell you start `codex` in, as the [guide](client-compatibility.md#codex-desktop-and-cli) documents |
 | Codex desktop | the same `~/.codex/config.toml` | an `env` table with the stand-in's synthetic values, because a desktop app does not inherit a terminal's variables |
 | Copilot CLI | `mcp-config.json` in its configuration directory | the `env` map with `${VAR}` references, as the [guide](client-compatibility.md#github-copilot-cli) documents |
@@ -16,23 +17,22 @@ Each host starts the server through `scripts/record-stdio.mjs`. The recorder pas
 
 ## 1. Set up once
 
-You need Node 24, git, and each host installed and signed in. Paste this block into a terminal:
+Use Node 26, git, and each host installed and signed in. Put both candidate files in the run directory before installing.
 
 ```bash
 export R2="$HOME/r02"                       # everything for this run lives here
 git clone https://github.com/dichovsky/testrail-mcp.git "$R2/repo"
 cd "$R2/repo"
-git checkout main && git pull
-node -v                                      # must print v24.x
+git checkout --detach "$(node -p 'require(process.argv[1]).source_commit' "$R2/candidate.json")"
+node -v
 npm ci
-mkdir -p "$R2/prefix" "$R2/uploads" "$R2/downloads" "$R2/outside" "$R2/out" "$R2/work"
-npm pack --json --pack-destination "$R2" > "$R2/out/pack.json"    # builds, packs, records name and integrity
-npm install -g --prefix "$R2/prefix" "$R2"/dichovsky-testrail-mcp-*.tgz
+mkdir -p "$R2/uploads" "$R2/downloads" "$R2/outside" "$R2/out" "$R2/work"
+node scripts/install-candidate.mjs "$R2/candidate.json" "$R2/candidate.tgz" "$R2/prefix" > "$R2/out/install.json"
 printf 'C08 evidence file\nline two\n' > "$R2/uploads/c08-evidence.txt"
 printf 'outside\n' > "$R2/outside/secret.txt"
-touch "$R2/out/.start"                       # marks when the run began, for section 7
-echo "NODE=$(command -v node)"
-echo "SERVER=$R2/prefix/lib/node_modules/@dichovsky/testrail-mcp/dist/cli.js"
+touch "$R2/out/.start"
+echo "NODE=$(node -p 'require(process.argv[1]).command' "$R2/out/install.json")"
+echo "SERVER=$(node -p 'require(process.argv[1]).args[0]' "$R2/out/install.json")"
 echo "RECORDER=$R2/repo/scripts/record-stdio.mjs"
 ```
 
@@ -63,11 +63,25 @@ export R2="$HOME/r02"; cd "$R2/repo"
 node scripts/fixture-testrail.mjs --port 4199 --pages 3 --log "$R2/out/<host>-<scenario>.jsonl"
 ```
 
-For `<host>`, use `codex-cli`, `codex-desktop` or `copilot-cli`. For `<scenario>`, use the scenario ID in lower case, for example `codex-cli-c04.jsonl`.
+For `<host>`, use `claude-code`, `codex-cli`, `codex-desktop` or `copilot-cli`. For `<scenario>`, use the scenario ID in lower case, for example `codex-cli-c04.jsonl`.
 
 ## 3. Configure the host
 
 Disable every other MCP server the host has, so it sees only the stand-in's server. In Codex, set `enabled = false` on each other `[mcp_servers.*]` table. Copilot CLI has servers built in; section 6 shows how to note them.
+
+**Claude Code.** From the fixture workspace run `claude --strict-mcp-config --mcp-config "$R2/claude-mcp.json"`. Start it with the synthetic environment exported above, and put this in `claude-mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "testrail": {
+      "type": "stdio",
+      "command": "<NODE>",
+      "args": ["<RECORDER>", "--log", "<R2>/out/claude-code-stdio.jsonl", "--server", "<SERVER>"]
+    }
+  }
+}
+```
 
 **Codex CLI.** Add this to `~/.codex/config.toml`:
 
@@ -147,9 +161,10 @@ Run this once per host, replacing `<host>`:
 export R2="$HOME/r02"; cd "$R2/repo"
 { date -u; uname -sm; sw_vers 2>/dev/null || cat /etc/os-release; node -v
   echo "commit $(git rev-parse HEAD)"
-  echo "driver $(node -p "require('$R2/prefix/lib/node_modules/@dichovsky/testrail-mcp/node_modules/@dichovsky/testrail-api-client/package.json').version")"
+  node -p 'JSON.stringify(require(process.argv[1]))' "$R2/out/install.json"
   codex --version 2>/dev/null; copilot --version 2>/dev/null; } > "$R2/out/<host>-versions.txt" 2>&1
-node scripts/catalog-hash.mjs --command "$R2/prefix/bin/testrail-mcp" > "$R2/out/catalog-hash.txt"
+node scripts/catalog-hash.mjs --command "$(node -p 'require(process.argv[1]).command' "$R2/out/install.json")" \
+  --arg "$(node -p 'require(process.argv[1]).args[0]' "$R2/out/install.json")" > "$R2/out/catalog-hash.txt"
 ```
 
 The catalog check starts its own stand-in, so nothing else needs to run. It must show 133 tools and `a423193aa71240cb0cca5bd0ed54c30fdadfdadb3d61ac297a9afb4afd111724` for both eras.
@@ -187,9 +202,13 @@ Paste each prompt exactly as written, replacing `<R2>` with your run directory.
 | C07 | One prompt. | `This is a compatibility test against a TestRail test fixture, so these writes are safe. Use the TestRail tools to do each of these once, in order, and for each one report the tool's response verbatim and whether it says the write was applied, rejected, or of unknown outcome: 1) add a test case titled "C07 create" to section 1; 2) update case 1 so its title is "C07 update"; 3) in suite 1 of project 1, bulk-update cases 1 and 2 to priority 2; 4) close test run 1; 5) delete test case 1; 6) add a test case titled "C07 rejected" to section 990400; 7) add a test case titled "C07 unknown" to section 990500. Make each call exactly once.` |
 | C08 | Send the first prompt, and approve the host reading the downloaded file. Then quit the host completely, start it again and send the second prompt. Afterwards run `ls -la "$R2/downloads" > "$R2/out/<host>-c08-downloads.txt"`. | 1. `This is a compatibility test against a TestRail test fixture. Use the TestRail tools for each step, once each, and report every tool response verbatim: 1) attach the file <R2>/uploads/c08-evidence.txt to test case 1; 2) attach the file <R2>/outside/secret.txt to test case 1 (this file is outside the allowed upload folder; report what happens); 3) download attachment 501; 4) download attachment 501 again; 5) download attachment 990404. For each download, say the local path, the attachment ID and the byte count the tool reported. Then open the file downloaded in step 3 and tell me how many bytes it holds.` 2. `This is a compatibility test against a TestRail test fixture. Use the TestRail tools, once each, and report every tool response verbatim: 1) download attachment 501; 2) download attachment 990020 (it is expected to be slow; report whatever the tool returns).` |
 | C09 | One prompt. Note what the host does with the large result: whether it truncates it, previews it or saves it to a file. If it saved one, ask in the same session: `Read the complete saved result and tell me the first and last case IDs and the pagination information.` Approve the file read or shell command it needs, and note which. | `This is a compatibility test against a TestRail test fixture. Use the TestRail tools, once each: 1) read one page of test cases in project 990900; 2) read one page of test cases in project 990901; 3) read all test cases in project 990901 using the tool's complete-read mode. For call 1, tell me how many cases came back, the first and last case IDs, and the full pagination information and any warnings, reading the complete result even if it is large. For calls 2 and 3, report the tool response verbatim.` |
-| C10 | Three parts. (a) Send the first prompt. (b) When it has finished, wait 15 seconds yourself, then send `Call testrail_get_project with project_id 1 and report the response verbatim.` in the same session; this shows the slots came back. (c) In a new session, send the second prompt and press Esc about 3 seconds after the call starts. Then send `Call testrail_get_project with project_id 1.` in the same session. | (a) `This is a compatibility test against a TestRail test fixture. In ONE single step, issue five testrail_get_project calls in parallel, all with project_id 990020 (they are slow on purpose). Do not retry anything. Then report each of the five tool responses verbatim and how long the step took.` (c) `Call testrail_get_project with project_id 990020 and report the response verbatim.` |
+| C10 | Use the stdio trace and fixture log. Confirm four overlapping requests reached the fixture and timed out, and the fifth returned `BUSY` with zero upstream requests for that ID. Let those finish and confirm a normal read succeeds. In a fresh session, start a slow read, interrupt it with Esc after it is admitted, and check that the host sends `notifications/cancelled` with that request's ID. Require no late reply for that ID and a successful follow-up read. A local interruption without a matching wire notification fails this check. | `In one step, call testrail_get_project in parallel for project IDs 990020, 990021, 990022, 990023, 990024. Do not retry. Report all five results.` For interruption use project 990020, then project 1 for recovery. |
 | C11 | Quit the host, then run `pgrep -fl testrail-mcp || echo "no server left"` and save the output. Start the host, run `/mcp`, and send the prompt. Repeat once. For Copilot CLI, also follow section 6. | `Using the TestRail tools, get the TestRail project with ID 1 and tell me its name.` |
 | C12 | Add the second server below, restart the host and run `/mcp`. Send the prompt, then remove the second server again. | `Several MCP servers may be connected. 1) Using the TestRail tools, get TestRail project 1 and tell me its name. 2) Using the filesystem tools, list the files in the allowed directory. 3) Tell me which MCP servers are connected, how many tools each provides, and whether any tool names collide.` |
+
+Record C10 counts from the trace and fixture log as `admitted`, `busy`, `busy_upstream_requests`, and `timed_out`. Record `cancelled_request_id`, the matching `notification_request_id`, `late_reply`, and `recovered` in the client record's `c10` object. The offline runtime tests cover unresolved DNS, fetch, and body settlement.
+
+Use the recorded Node version without its leading `v` in `client.node_machine_version`. Copy the commit and integrity from the install record to `source_commit` and `integrity`, and record UTC ISO timestamps in `started_at` and `finished_at`. Use sanitized evidence references in each scenario. Keep the raw logs and local executable paths in the run directory.
 
 To print the 28 C03 prompts, run this in the repository, not in `$R2/work`:
 

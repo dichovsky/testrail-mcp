@@ -5,14 +5,9 @@ name: Driver ledger
 # SHA-256 and integrity. The offline gate can hold only the installed release to real
 # bytes, and cannot recompute git blob IDs at all, so this is the one mechanical check
 # of a historical entry, and of any entry's blob IDs and release tag. It needs github.com
-# and registry.npmjs.org, so it runs only when the ledger, the audit script or this
-# workflow changes, or by hand; neither CI nor `npm test` runs it.
+# and registry.npmjs.org, so it runs after merge on ledger changes or by hand.
+# PR verification checks the installed artifact and committed ledger offline.
 on:
-  pull_request:
-    paths:
-      - tests/fixtures/driver-releases.json
-      - scripts/audit-driver-ledger.mjs
-      - .github/workflows/driver-ledger.yml
   push:
     branches: [main]
     paths:
@@ -25,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -43,7 +38,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24'
+          node-version: '26'
           package-manager-cache: false
 
       # Commits and trees only: the audit reads blob IDs from trees and never needs a blob.

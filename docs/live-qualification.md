@@ -43,7 +43,15 @@ TestRail's API cannot delete users or case fields. With `--instance-writes`, one
 
    `--remember-deletions` makes the stand-in answer a read of a deleted project, group or attachment with TestRail's 400, so the rehearsal checks the cleanup as a live run does.
 
-   In a second terminal, export the five `TESTRAIL_` variables it prints, then run the command in step 3 with `--instance-writes --report-template-id 1 --cross-project-report-template-id 2`; the runner makes its own upload and download directories. Every tool passes against the stand-in. Without those options, the six writes outside the project and the two reports are `not_run`.
+   In a second terminal, export the five `TESTRAIL_` variables it prints, then run the rehearsal command below. It writes a fresh temporary file with `fixture_stand_in` provenance.
+
+   ```sh
+   rehearsal=$(mktemp -d)
+   node scripts/live-qualification.mjs --create-qualification-project --fixture \
+     --out "$rehearsal/evidence.json" --instance-writes --report-template-id 1 --cross-project-report-template-id 2
+   ```
+
+   During either run, the runner makes its own upload and download directories. Every tool passes against the stand-in. Without those options, the six writes outside the project and the two reports are `not_run`.
 
 2. Give the runner the instance through the environment only; it never takes credentials as arguments:
 
@@ -53,19 +61,23 @@ TestRail's API cannot delete users or case fields. With `--instance-writes`, one
    export TESTRAIL_API_KEY=...
    ```
 
-3. Run it:
+3. Run the live checks against an authorized disposable project. Use the exact candidate from the release workflow and a fresh output path.
 
    ```sh
-   node scripts/live-qualification.mjs --create-qualification-project --out docs/evidence/live/testrail-10.8.1.json
+   node scripts/live-qualification.mjs --create-qualification-project \
+     --candidate candidate.json --tarball candidate.tgz --out live-2.0.0.json
    ```
 
 | Option | Effect |
 | --- | --- |
 | `--create-qualification-project` | Required. Confirms that the run may create, use and delete a project. |
-| `--out <file>` | Required. Where the evidence goes; its directory is created if needed. A directory, or a path that cannot be written, is refused before anything is sent. An existing file is checked without being changed. |
+| `--out <file>` | Required. Where the evidence goes; its directory is created if needed. Use a new file. Existing files and unwritable paths are refused before any project operation. |
 | `--instance-writes` | Also run the writes outside the project. Disposable instances only. |
 | `--report-template-id <id>` | A single-project report template configured for the test. |
 | `--cross-project-report-template-id <id>` | A cross-project report template configured for the test. |
+| `--candidate <file>` | The release candidate manifest emitted by Prepare Candidate. Use with `--tarball`. |
+| `--tarball <file>` | The verified candidate archive. The runner installs it under a temporary prefix and records its package, runtime and dependency identities. |
+| `--fixture` | Labels a stand-in rehearsal as fixture evidence. |
 | `--command <cmd>` and repeated `--arg <arg>` | The server to drive, such as an installed `testrail-mcp`. By default the runner drives `node dist/cli.js`. Write an argument that starts with a dash as `--arg=-y`. |
 
 The runner starts the server itself, gives it a temporary upload root holding the two files it uploads and a temporary download directory, and removes both afterwards. The server's driver allows 100 TestRail requests a minute. The runner keeps under that pace and retries a rate-limited call after the window has moved on, since a 429 means TestRail did not handle the request. A full run takes about two minutes.

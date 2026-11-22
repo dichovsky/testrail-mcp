@@ -69,20 +69,21 @@ describe('T07 the two shapes of a label mutation reply', () => {
   it.each([
     ['testrail_add_label', { project_id: 1, body: { title: 'regression' } }],
     ['testrail_update_label', { label_id: 1, body: { project_id: 1, title: 'regression' } }],
-  ] as const)('%s returns the same label flat or wrapped', async (tool, input) => {
-    const results: unknown[] = [];
-    for (const reply of [LABEL, { label: LABEL }]) {
+  ] as const)('%s unwraps valid and drifted label replies', async (tool, input) => {
+    const drifted = { ...LABEL, created_on: 'later' };
+    for (const { reply, expected } of [
+      { reply: LABEL, expected: { data: LABEL } },
+      { reply: { label: LABEL }, expected: { data: LABEL } },
+      { reply: { label: drifted }, expected: { data: drifted, warnings: [{ code: 'SCHEMA_DRIFT', count: 1 }] } },
+    ]) {
       const fetch = vi.fn().mockResolvedValue(json(reply));
       const executor = executorFor(fetch);
       try {
         const result = await executor.execute(operation(tool), input);
         expect(result.isError).toBeUndefined();
-        results.push((result.structuredContent as { data: unknown }).data);
+        expect(result.structuredContent).toEqual(expected);
       } finally { await executor.shutdown(); }
     }
-    // Same record both times, and the wrapper is gone rather than passed through.
-    expect(results[0]).toEqual(LABEL);
-    expect(results[1]).toEqual(LABEL);
   });
 });
 

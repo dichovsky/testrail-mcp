@@ -20,10 +20,18 @@ $STD apt install -y openssh-server unattended-upgrades
 systemctl enable -q --now apt-daily.timer apt-daily-upgrade.timer
 msg_ok "Installed Dependencies"
 
-NODE_VERSION="24" setup_nodejs
+if ! NODE_VERSION="26" setup_nodejs; then
+  msg_error "Node.js 26 setup failed."
+  exit 1
+fi
+hash -r
+if ! node -e 'if (process.versions.node.split(".")[0] !== "26") process.exit(1)'; then
+  msg_error "Node.js 26 is required in PATH before installing TestRail MCP."
+  exit 1
+fi
 
 msg_info "Installing TestRail MCP"
-$STD npm install -g --ignore-scripts @dichovsky/testrail-mcp@latest
+$STD npm install -g --ignore-scripts --engine-strict @dichovsky/testrail-mcp@latest
 msg_ok "Installed TestRail MCP"
 
 msg_info "Configuring TestRail MCP"

@@ -21,7 +21,7 @@
  *   TESTRAIL_BASE_URL=... TESTRAIL_EMAIL=... TESTRAIL_API_KEY=... \
  *   node scripts/live-qualification.mjs --create-qualification-project --out evidence.json \
  *     [--instance-writes] [--report-template-id N] [--cross-project-report-template-id N] \
- *     [--command testrail-mcp] [--arg ...]
+ *     [--command testrail-mcp] [--arg ...] [--fixture] [--candidate candidate.json --tarball candidate.tgz]
  */
 import { randomBytes } from 'node:crypto';
 import { realpathSync, rmSync } from 'node:fs';
@@ -31,6 +31,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { installCandidate } from './install-candidate.mjs';
 import { NotApplicable, PLAN, QUALIFICATION_PREFIX, UPLOADS } from './live-plan.mjs';
 
 export { PLAN };
@@ -260,6 +261,7 @@ export async function runQualification({
   };
   const cleanup = { project: 'not_created', group: 'not_created' };
   let verified;
+  const absent = new Set();
   let residue;
   try {
     for (const step of plan) {
@@ -380,6 +382,7 @@ export async function runQualification({
       const entry = c.named.get(kind);
       if (entry === undefined) continue;
       const found = await state(tool, { [key]: entry.id });
+      if (found === 'gone') absent.add(kind);
       verified[found] += 1;
       // One whose deletion failed and that TestRail cannot be asked about is left behind.
       if (found === 'present' || (found === 'unverified' && cleanup[kind] === 'left_behind')) c.residue(kind);
@@ -401,7 +404,8 @@ export async function runQualification({
   // The signed-in user's address is kept only to prove the evidence does not carry it.
   const personal = [c.values.get('current_user_email')].filter((value) => typeof value === 'string');
   return {
-    steps, cleanup: { ...cleanup, verified, residue }, stopped: stopped ?? null, testrailVersion: c.values.get('testrail_version') ?? null, personal,
+    steps, cleanup: { ...cleanup, verified, residue }, projectVerifiedAbsent: absent.has('project'),
+    stopped: stopped ?? null, testrailVersion: c.values.get('testrail_version') ?? null, personal,
   };
 }
 
@@ -417,7 +421,7 @@ export function toolStatus(steps) {
 }
 
 /** The evidence record: statuses and codes only. */
-export function buildEvidence({ run, tools, options, testedOn, server }) {
+export function buildEvidence({ run, tools, options, testedOn, server, provenance = 'live_testrail' }) {
   const byTool = Object.fromEntries([...tools].sort().map((tool) => {
     const steps = run.steps.filter((step) => step.tool === tool).map(({ label, status, code, http_status: httpStatus, reason, warnings, retries }) => ({
       label, status, ...(code === undefined ? {} : { code }), ...(httpStatus === undefined ? {} : { http_status: httpStatus }),
@@ -428,7 +432,7 @@ export function buildEvidence({ run, tools, options, testedOn, server }) {
   const summary = Object.fromEntries(RANK.map((status) => [status, Object.values(byTool).filter((entry) => entry.status === status).length]));
   return {
     schema_version: 2,
-    provenance: 'live_testrail',
+    provenance,
     tested_on: testedOn,
     testrail_version: run.testrailVersion,
     server,
@@ -491,7 +495,8 @@ export function mcpCaller(client) {
 }
 
 const USAGE = `Usage: node scripts/live-qualification.mjs --create-qualification-project --out <evidence.json>
-  [--instance-writes] [--report-template-id N] [--cross-project-report-template-id N] [--command testrail-mcp] [--arg ...]
+  [--instance-writes] [--report-template-id N] [--cross-project-report-template-id N]
+  [--fixture] [--candidate candidate.json --tarball candidate.tgz | --command testrail-mcp [--arg ...]]
 Reads TESTRAIL_BASE_URL, TESTRAIL_EMAIL and TESTRAIL_API_KEY from the environment. See docs/live-qualification.md.`;
 
 function positiveInteger(value, flag) {
@@ -510,12 +515,19 @@ export function parseOptions(argv) {
       'instance-writes': { type: 'boolean', default: false },
       'report-template-id': { type: 'string' },
       'cross-project-report-template-id': { type: 'string' },
+      fixture: { type: 'boolean', default: false },
+      candidate: { type: 'string' },
+      tarball: { type: 'string' },
       command: { type: 'string' },
       arg: { type: 'string', multiple: true, default: [] },
     },
   });
   if (!values['create-qualification-project']) throw new Error(`The run creates, uses and deletes a TestRail project; pass --create-qualification-project to confirm.\n${USAGE}`);
   if (values.out === undefined || values.out === '') throw new Error(`Name the evidence file with --out.\n${USAGE}`);
+  if ((values.candidate === undefined) !== (values.tarball === undefined)
+    || (values.candidate !== undefined && (values.command !== undefined || values.arg.length > 0))) {
+    throw new Error('Use --candidate and --tarball together, without --command or --arg.');
+  }
   const options = { instanceWrites: values['instance-writes'] };
   const report = positiveInteger(values['report-template-id'], '--report-template-id');
   const crossProject = positiveInteger(values['cross-project-report-template-id'], '--cross-project-report-template-id');
@@ -524,7 +536,8 @@ export function parseOptions(argv) {
   const server = values.command === undefined
     ? { command: process.execPath, args: [fileURLToPath(new URL('../dist/cli.js', import.meta.url))] }
     : { command: values.command, args: values.arg };
-  return { out: values.out, options, server, ownServer: values.command === undefined };
+  return { out: values.out, options, server, ownServer: values.command === undefined,
+    fixture: values.fixture, candidateFile: values.candidate, tarballFile: values.tarball };
 }
 
 /** Write the plan's upload files into a fresh directory. */
@@ -547,15 +560,11 @@ async function checkOut(out) {
   await mkdir(dirname(out), { recursive: true });
   const existing = await stat(out).catch(() => undefined);
   if (existing?.isDirectory() === true) throw new Error(`--out ${out} is a directory; name the evidence file.`);
+  if (existing !== undefined) throw new Error(`--out ${out} already exists; name a new evidence file.`);
   try {
-    if (existing === undefined) {
-      const probe = `${out}.${randomBytes(4).toString('hex')}.tmp`;
-      await writeFile(probe, '');
-      await rm(probe, { force: true });
-    } else {
-      // Opened for writing without truncating it, so a refusal leaves the file as it was.
-      await (await open(out, 'r+')).close();
-    }
+    const probe = `${out}.${randomBytes(4).toString('hex')}.tmp`;
+    await (await open(probe, 'wx')).close();
+    await rm(probe, { force: true });
   } catch (error) {
     throw new Error(`--out ${out} cannot be written: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
   }
@@ -583,9 +592,13 @@ export async function main({
   argv = process.argv.slice(2), env = process.env, connect = connectStdio, pacing = LIVE_PACING, log = (line) => { process.stderr.write(`${line}\n`); },
   signals = process, exit = (code) => process.exit(code),
 } = {}) {
-  const { out, options, server, ownServer } = parseOptions(argv);
+  const { out, options, server, ownServer, fixture, candidateFile, tarballFile } = parseOptions(argv);
+  const provenance = fixture ? 'fixture_stand_in' : 'live_testrail';
   const missing = REQUIRED_VARIABLES.filter((key) => (env[key] ?? '') === '');
   if (missing.length > 0) throw new Error(`Set ${missing.join(', ')} in the environment; the runner never takes credentials as arguments.`);
+  if (fixture && !['127.0.0.1', '[::1]'].includes(URL.parse(env.TESTRAIL_BASE_URL)?.hostname)) {
+    throw new Error('Fixture qualification requires a loopback stand-in.');
+  }
   // Before any request: a configured value that the evidence's own words contain would make
   // every run's evidence unwritable, and a finished run is never lost to an unusable --out.
   const tools = new Set(PLAN.map(({ tool }) => `${TOOL_PREFIX}${tool}`));
@@ -594,7 +607,7 @@ export async function main({
       steps: PLAN.map((step) => ({ tool: `${TOOL_PREFIX}${step.tool}`, label: step.label ?? null, status: 'not_run', reason: 'interrupted' })),
       cleanup: { project: 'left_behind', group: 'left_behind', verified: { gone: 0, present: 0, unverified: 0 }, residue: [] }, stopped: 'interrupted', testrailVersion: null,
     },
-    tools, options, testedOn: '2000-01-01', server: { package_version: null, protocol: null, driver_version: null },
+    tools, options, testedOn: '2000-01-01', provenance, server: { package_version: null, protocol: null, driver_version: null },
   });
   try {
     assertSanitized(JSON.stringify(blank), secretsOf(env));
@@ -621,6 +634,9 @@ export async function main({
   for (const signal of SIGNALS) signals.on(signal, onSignal);
   const sessions = [];
   try {
+    const candidate = candidateFile === undefined ? undefined
+      : await installCandidate(candidateFile, tarballFile, join(work, 'package'), env);
+    const startedAt = new Date().toISOString();
     const uploadRoot = join(work, 'uploads');
     const downloadDirectory = join(work, 'downloads');
     await Promise.all([uploadRoot, downloadDirectory].map((directory) => mkdir(directory)));
@@ -628,7 +644,7 @@ export async function main({
     const serverEnv = { ...env, TESTRAIL_MCP_UPLOAD_ROOTS: JSON.stringify([uploadRoot]), TESTRAIL_MCP_DOWNLOAD_DIR: downloadDirectory };
     delete serverEnv.NODE_OPTIONS;
     const open = async () => {
-      const opened = await connect({ ...server, env: serverEnv });
+      const opened = await connect({ command: candidate?.command ?? server.command, args: candidate?.args ?? server.args, env: serverEnv });
       sessions.push(opened);
       return opened;
     };
@@ -636,6 +652,9 @@ export async function main({
     log(`Qualification project: ${QUALIFICATION_PREFIX} ${stamp} project`);
     let run;
     try {
+      if (candidate !== undefined && session.serverVersion !== candidate.package_version) {
+        throw new Error('The candidate server reported a different package version.');
+      }
       run = await runQualification({
         call: session.call, options, stamp, uploads, pacing, shouldStop: () => stop,
         reconnect: async () => {
@@ -660,17 +679,26 @@ export async function main({
       run,
       tools,
       options,
+      provenance,
       testedOn: new Date().toISOString().slice(0, 10),
       server: {
         package_version: session.serverVersion ?? null,
         protocol: session.protocol ?? null,
         // Another server's driver cannot be seen from here; its package version names the release.
-        driver_version: ownServer ? await installedDriverVersion() : null,
+        driver_version: candidate?.driver_version ?? (ownServer ? await installedDriverVersion() : null),
+        ...(candidate === undefined ? {} : {
+          node_version: candidate.node_version, production_dependencies: candidate.production_dependencies,
+        }),
       },
     });
+    if (candidate !== undefined) {
+      Object.assign(evidence, { source_commit: candidate.source_commit, integrity: candidate.integrity,
+        started_at: startedAt, finished_at: new Date().toISOString() });
+      evidence.cleanup.project_verified_absent = run.projectVerifiedAbsent;
+    }
     const text = `${JSON.stringify(evidence, null, 2)}\n`;
     assertSanitized(text, secretsOf(env, run.personal));
-    await writeFile(out, text);
+    await writeFile(out, text, { flag: 'wx' });
     log(`Evidence written to ${out}: ${Object.entries(evidence.summary).map(([status, count]) => `${String(count)} ${status}`).join(', ')}${evidence.stopped === null ? '' : `; stopped early: ${evidence.stopped}`}.`);
     return evidence;
   } finally {

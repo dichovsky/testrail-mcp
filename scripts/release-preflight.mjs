@@ -9,7 +9,7 @@
 // that package.json and the lockfile name this package at that version. `registry` then
 // asks npm, with an isolated configuration, whether the version is already published. It
 // writes `already-published=true` only for an identical release: same gitHead, `latest`,
-// SLSA provenance and packed files. A new version must be newer than `latest` and than
+// SLSA provenance and qualified tarball integrity. A new version must be newer than `latest` and than
 // every published stable version. Any other registry answer stops the release.
 //
 // One rule differs from the driver's: until this package's first stable release, npm's
@@ -19,8 +19,9 @@
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { INTEGRITY_PATTERN } from './prepare-candidate.mjs';
 
 export const EXPECTED_PACKAGE_NAME = '@dichovsky/testrail-mcp';
 export const NPM_REGISTRY = 'https://registry.npmjs.org/';
@@ -29,7 +30,6 @@ export const SLSA_PROVENANCE_PREDICATE = 'https://slsa.dev/provenance/v1';
 const STABLE_SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/u;
-const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const isRecord = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 
@@ -120,6 +120,7 @@ function parsePublishedMetadata(output) {
   const version = requireString(value, 'version', 'published npm metadata');
   const gitHead = value.gitHead;
   const latestVersion = value['dist-tags.latest'];
+  const integrity = value['dist.integrity'];
   const attestations = value['dist.attestations'];
   let provenancePredicate;
   if (isRecord(attestations) && isRecord(attestations.provenance) && typeof attestations.provenance.predicateType === 'string') {
@@ -131,10 +132,14 @@ function parsePublishedMetadata(output) {
   if (latestVersion !== undefined && (typeof latestVersion !== 'string' || latestVersion.length === 0)) {
     throw new Error('published npm metadata contains an invalid latest dist-tag');
   }
+  if (integrity !== undefined && (typeof integrity !== 'string' || !INTEGRITY_PATTERN.test(integrity))) {
+    throw new Error('npm returned an invalid tarball integrity');
+  }
   return {
     version,
     ...(typeof gitHead === 'string' ? { gitHead } : {}),
     ...(typeof latestVersion === 'string' ? { latestVersion } : {}),
+    ...(typeof integrity === 'string' ? { integrity } : {}),
     ...(provenancePredicate === undefined ? {} : { provenancePredicate }),
   };
 }
@@ -212,18 +217,11 @@ export function validateNewStableVersion({ candidateVersion, publishedVersions, 
   }
 }
 
-/** `npm diff` exits zero even for differences, so its output must be empty as well. */
-export function validateNpmDiffResult(status, output) {
-  if (status !== 0 || output.trim().length !== 0) {
-    throw new Error('published npm package content differs from the prepared release; refusing to skip');
-  }
-}
-
 /**
  * Whether an existing immutable npm version is this same current release. A historical
  * release fails this once `latest` advances, so only the active release can re-run green.
  */
-export function shouldSkipPublishedVersion({ packageVersion, releaseSha, publishedMetadata }) {
+export function shouldSkipPublishedVersion({ packageVersion, releaseSha, qualifiedIntegrity, publishedMetadata }) {
   if (publishedMetadata === null) return false;
   if (publishedMetadata.version !== packageVersion) {
     throw new Error('npm reports the requested version as published but returned a different version identity');
@@ -240,7 +238,23 @@ export function shouldSkipPublishedVersion({ packageVersion, releaseSha, publish
   if (normalizeSha(publishedMetadata.gitHead, 'published npm gitHead') !== normalizeSha(releaseSha, 'release SHA')) {
     throw new Error('published npm gitHead does not match the release SHA; refusing to skip');
   }
+  if (!INTEGRITY_PATTERN.test(qualifiedIntegrity) || publishedMetadata.integrity !== qualifiedIntegrity) {
+    throw new Error('published npm integrity does not match the qualified tarball; refusing to skip');
+  }
   return true;
+}
+
+export function validatePublishedProvenance(value, { spec, qualifiedIntegrity }) {
+  const matches = value?.attestations?.filter((entry) => entry.predicateType === SLSA_PROVENANCE_PREDICATE);
+  if (matches?.length !== 1) throw new Error('Expected one SLSA provenance record for the qualified tarball');
+  const payload = matches[0].bundle?.dsseEnvelope?.payload;
+  const statement = parseJson(Buffer.from(payload, 'base64').toString('utf8'), 'npm provenance statement');
+  const expectedDigest = Buffer.from(qualifiedIntegrity.slice(7), 'base64').toString('hex');
+  const subject = statement.subject?.[0];
+  if (statement.predicateType !== SLSA_PROVENANCE_PREDICATE || statement.subject?.length !== 1
+    || subject?.name !== `pkg:npm/${spec.replace(/^@/u, '%40')}` || subject.digest?.sha512 !== expectedDigest) {
+    throw new Error('npm provenance does not identify the qualified tarball');
+  }
 }
 
 function parseJsonFile(filePath) {
@@ -294,17 +308,9 @@ function isolatedNpm(args, isolation) {
 }
 
 function queryPublishedMetadata(spec, isolation) {
-  const result = isolatedNpm(['view', spec, 'version', 'gitHead', 'dist-tags.latest', 'dist.attestations', '--json'], isolation);
+  const result = isolatedNpm(['view', spec, 'version', 'gitHead', 'dist-tags.latest', 'dist.integrity', 'dist.attestations', '--json', '--prefer-online'], isolation);
   if (result.error !== undefined || result.status === null || typeof result.stdout !== 'string') throw new Error('npm registry lookup failed; refusing to publish');
   return parseNpmViewResult(result.status, result.stdout.trim());
-}
-
-function requirePublishedContentMatch(spec, isolation) {
-  const result = isolatedNpm(['diff', `--diff=${REPOSITORY_ROOT}`, `--diff=${spec}`, '--diff-name-only', '--ignore-scripts'], isolation);
-  if (result.error !== undefined || result.status === null || typeof result.stdout !== 'string') {
-    throw new Error('npm package content comparison failed; refusing to publish');
-  }
-  validateNpmDiffResult(result.status, result.stdout);
 }
 
 function npmView(args, label, isolation) {
@@ -349,18 +355,19 @@ function runContextCheck() {
   process.stdout.write(`Verified ${identity.name}@${identity.version} release identity.\n`);
 }
 
-function runRegistryCheck() {
+async function runRegistryCheck() {
   const identity = loadAndValidateContext();
   const spec = `${identity.name}@${identity.version}`;
+  const qualifiedIntegrity = requireEnv('QUALIFIED_INTEGRITY');
+  if (!INTEGRITY_PATTERN.test(qualifiedIntegrity)) throw new Error('The qualified tarball SHA-512 is invalid');
   const alreadyPublished = withNpmIsolation((isolation) => {
     const published = shouldSkipPublishedVersion({
       packageVersion: identity.version,
       releaseSha: requireEnv('GITHUB_SHA'),
+      qualifiedIntegrity,
       publishedMetadata: queryPublishedMetadata(spec, isolation),
     });
-    if (published) {
-      requirePublishedContentMatch(spec, isolation);
-    } else {
+    if (!published) {
       validateNewStableVersion({
         candidateVersion: identity.version,
         publishedVersions: parseNpmStringList(npmView([identity.name, 'versions', '--json'], 'looking up published npm versions', isolation), 'published versions'),
@@ -369,6 +376,11 @@ function runRegistryCheck() {
     }
     return published;
   });
+  if (alreadyPublished) {
+    const response = await fetch(new URL(`-/npm/v1/attestations/${spec.replace('/', '%2F')}`, NPM_REGISTRY), { signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) throw new Error(`npm provenance lookup failed with HTTP ${response.status}`);
+    validatePublishedProvenance(await response.json(), { spec, qualifiedIntegrity });
+  }
   appendFileSync(requireEnv('GITHUB_OUTPUT'), `already-published=${String(alreadyPublished)}\n`, 'utf8');
   process.stdout.write(alreadyPublished
     ? `::notice::Verified identical ${identity.name}@${identity.version}; skipping publish.\n`
@@ -380,7 +392,7 @@ if (invokedPath !== undefined && resolve(invokedPath) === fileURLToPath(import.m
   try {
     const mode = process.argv[2];
     if (mode === 'context') runContextCheck();
-    else if (mode === 'registry') runRegistryCheck();
+    else if (mode === 'registry') await runRegistryCheck();
     else throw new Error('usage: release-preflight.mjs <context|registry>');
   } catch (error) {
     process.stderr.write(`Release preflight failed: ${error instanceof Error ? error.message : String(error)}\n`);

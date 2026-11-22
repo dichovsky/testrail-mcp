@@ -148,3 +148,22 @@ describe('T05 reads that name a case rather than a test', () => {
     } finally { await executor.shutdown(); }
   });
 });
+
+describe('T05 result quality ratings', () => {
+  it('keeps numeric and per-dimension ratings without schema drift', async () => {
+    const results = [
+      { id: 1, test_id: 101, status_id: 1, quality_rating: 4 },
+      { id: 2, test_id: 102, status_id: 1, quality_rating: { factual_accuracy: 4, relevance: 5 } },
+    ];
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      offset: 0, limit: 50, size: results.length, _links: { next: null, prev: null }, results,
+    }), { headers: { 'content-type': 'application/json' } }));
+    const executor = executorFor(fetch);
+    try {
+      const result = await executor.execute(operation('testrail_get_results_for_run'), { run_id: 1 });
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent.data).toEqual(results);
+      expect(result.structuredContent).not.toHaveProperty('warnings');
+    } finally { await executor.shutdown(); }
+  });
+});

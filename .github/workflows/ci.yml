@@ -21,7 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node: ['24']
+        node: ['26']
 
     steps:
       - name: Check out repository
@@ -35,35 +35,54 @@ jobs:
           node-version: ${{ matrix.node }}
           package-manager-cache: false
 
-      - name: Install locked dependencies
-        run: npm ci
+      - name: Fetch locked dependencies and packed-install metadata
+        shell: bash
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund --engine-strict
+          prefix=$(node -p "require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'testrail-mcp-cache-'))")
+          trap 'node -e "require(\"node:fs\").rmSync(process.argv[1], { recursive: true, force: true })" "$prefix"' EXIT
+          node -e 'require("node:fs").writeFileSync(require("node:path").join(process.argv[1], "package.json"), JSON.stringify({ private: true, dependencies: require("./package.json").dependencies }))' "$prefix"
+          npm install --prefix "$prefix" --ignore-scripts --no-audit --no-fund --engine-strict
 
-      - name: Build
-        run: npm run build
-
-      - name: Verify operation registry and generated reference
-        run: npm run registry:check
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Test
+      - name: Verify offline with isolated networking and coverage
+        if: runner.os == 'Linux'
+        shell: bash
         env:
-          # tests/coverage-report.test.ts writes the R01 reports here only after every
-          # one of its gates has passed; they are uploaded only if every later step passes.
           TESTRAIL_MCP_REPORT_DIR: ${{ runner.temp }}/coverage-reports
-        # Linux also enforces the 99% source-coverage thresholds in vitest.config.ts. The
-        # other systems skip a few platform-specific paths, so they run the suite without it.
-        run: npm run ${{ matrix.os == 'ubuntu-latest' && 'test:coverage' || 'test' }}
+        run: |
+          namespace=testrail-mcp-ci
+          sudo ip netns add "$namespace"
+          trap 'sudo ip netns delete "$namespace"' EXIT
+          sudo ip -n "$namespace" link set lo up
+          sudo ip -n "$namespace" address add 203.0.113.10/32 dev lo
+          sudo ip netns exec "$namespace" sudo -u "$(id -un)" env \
+            HOME="$HOME" PATH="$PATH" npm_config_offline=true VITEST_MAX_WORKERS=3 \
+            GITHUB_ACTIONS="$GITHUB_ACTIONS" GITHUB_EVENT_NAME="$GITHUB_EVENT_NAME" GITHUB_EVENT_PATH="$GITHUB_EVENT_PATH" GITHUB_SHA="$GITHUB_SHA" \
+            TESTRAIL_MCP_REPORT_DIR="$TESTRAIL_MCP_REPORT_DIR" TESTRAIL_MCP_GUARDED_TEST_ADDRESS=203.0.113.10 \
+            bash -e -c '
+              npm ci --offline --engine-strict --no-audit --no-fund
+              npm run build
+              npm run registry:check
+              npm run typecheck
+              npm run lint
+              npm run test:coverage
+              npm pack --dry-run --ignore-scripts
+              npm run test:package
+              bash -n proxmox/ct/testrail-mcp.sh
+              bash -n proxmox/install/testrail-mcp-install.sh
+            '
 
-      - name: Inspect package contents
-        run: npm pack --dry-run
-
-      - name: Test packed installation and executable
-        run: npm run test:package
+      - name: Verify offline with local fixtures
+        if: runner.os != 'Linux'
+        shell: bash
+        env:
+          npm_config_offline: 'true'
+          VITEST_MAX_WORKERS: '3'
+          TESTRAIL_MCP_REPORT_DIR: ${{ runner.temp }}/coverage-reports
+        run: |
+          npm ci --offline --engine-strict --no-audit --no-fund
+          npm run check
+          npm pack --dry-run --ignore-scripts
 
       - name: Upload coverage reports
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
